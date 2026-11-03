@@ -1,0 +1,11 @@
+[package]
+name = "writing-studio-desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Desktop shell for Writing Studio"
+
+[dependencies]
+dioxus.workspace = true
+tracing-subscriber.workspace = true
+writing-studio-ui.workspace = true

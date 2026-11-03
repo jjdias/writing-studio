@@ -1,0 +1,10 @@
+[package]
+name = "writing-studio-plotting"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Plot Grid engine (Phase 3)"
+
+[dependencies]
+serde.workspace = true
+writing-studio-core.workspace = true

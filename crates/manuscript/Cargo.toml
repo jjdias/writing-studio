@@ -1,0 +1,10 @@
+[package]
+name = "writing-studio-manuscript"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Manuscript hierarchy helpers (book, part, chapter, scene)"
+
+[dependencies]
+writing-studio-core.workspace = true
+writing-studio-project.workspace = true

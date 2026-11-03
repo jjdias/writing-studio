@@ -1,0 +1,11 @@
+[package]
+name = "writing-studio-templates"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Project templates for new writing projects"
+
+[dependencies]
+writing-studio-core.workspace = true
+writing-studio-document.workspace = true
+writing-studio-project.workspace = true

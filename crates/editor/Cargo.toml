@@ -1,0 +1,10 @@
+[package]
+name = "writing-studio-editor"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Editing sessions, undo/redo, and document statistics"
+
+[dependencies]
+writing-studio-core.workspace = true
+writing-studio-document.workspace = true

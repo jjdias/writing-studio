@@ -1,0 +1,9 @@
+[package]
+name = "writing-studio-synchronization"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Offline-first sync engine (Phase 5)"
+
+[dependencies]
+writing-studio-core.workspace = true

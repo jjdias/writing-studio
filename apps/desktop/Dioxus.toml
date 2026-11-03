@@ -1,0 +1,6 @@
+[application]
+name = "Writing Studio"
+default_platform = "desktop"
+
+[web.app]
+title = "Writing Studio"

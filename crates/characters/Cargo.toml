@@ -1,0 +1,10 @@
+[package]
+name = "writing-studio-characters"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Character profiles and relationships (Phase 3)"
+
+[dependencies]
+serde.workspace = true
+writing-studio-core.workspace = true

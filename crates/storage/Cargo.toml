@@ -1,0 +1,15 @@
+[package]
+name = "writing-studio-storage"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Local-first SQLite project storage, autosave, and backups"
+
+[dependencies]
+chrono.workspace = true
+rusqlite.workspace = true
+serde_json.workspace = true
+writing-studio-core.workspace = true
+writing-studio-document.workspace = true
+writing-studio-project.workspace = true
+writing-studio-templates.workspace = true

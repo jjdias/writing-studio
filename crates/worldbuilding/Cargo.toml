@@ -1,0 +1,10 @@
+[package]
+name = "writing-studio-worldbuilding"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Locations, timelines, and lore (Phase 3)"
+
+[dependencies]
+serde.workspace = true
+writing-studio-core.workspace = true

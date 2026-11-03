@@ -1,0 +1,18 @@
+[package]
+name = "writing-studio-ui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Dioxus workspace UI for Writing Studio"
+
+[dependencies]
+dioxus.workspace = true
+rfd.workspace = true
+writing-studio-core.workspace = true
+writing-studio-corkboard.workspace = true
+writing-studio-document.workspace = true
+writing-studio-editor.workspace = true
+writing-studio-manuscript.workspace = true
+writing-studio-project.workspace = true
+writing-studio-search.workspace = true
+writing-studio-storage.workspace = true

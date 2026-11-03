@@ -1,0 +1,9 @@
+[package]
+name = "writing-studio-search"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Full-text search (Phase 2, Tantivy)"
+
+[dependencies]
+writing-studio-core.workspace = true

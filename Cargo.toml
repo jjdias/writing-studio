@@ -1,0 +1,60 @@
+[workspace]
+resolver = "2"
+members = [
+    "apps/desktop",
+    "crates/core",
+    "crates/document",
+    "crates/editor",
+    "crates/project",
+    "crates/manuscript",
+    "crates/storage",
+    "crates/ui",
+    "crates/corkboard",
+    "crates/plotting",
+    "crates/characters",
+    "crates/worldbuilding",
+    "crates/research",
+    "crates/search",
+    "crates/collaboration",
+    "crates/synchronization",
+    "crates/export",
+    "crates/templates",
+    "crates/security",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+authors = ["Writing Studio contributors"]
+rust-version = "1.80"
+
+[workspace.dependencies]
+writing-studio-core = { path = "crates/core" }
+writing-studio-document = { path = "crates/document" }
+writing-studio-editor = { path = "crates/editor" }
+writing-studio-project = { path = "crates/project" }
+writing-studio-manuscript = { path = "crates/manuscript" }
+writing-studio-storage = { path = "crates/storage" }
+writing-studio-ui = { path = "crates/ui" }
+writing-studio-corkboard = { path = "crates/corkboard" }
+writing-studio-plotting = { path = "crates/plotting" }
+writing-studio-characters = { path = "crates/characters" }
+writing-studio-worldbuilding = { path = "crates/worldbuilding" }
+writing-studio-research = { path = "crates/research" }
+writing-studio-search = { path = "crates/search" }
+writing-studio-collaboration = { path = "crates/collaboration" }
+writing-studio-synchronization = { path = "crates/synchronization" }
+writing-studio-export = { path = "crates/export" }
+writing-studio-templates = { path = "crates/templates" }
+writing-studio-security = { path = "crates/security" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+thiserror = "2"
+tracing = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
+rusqlite = { version = "0.32", features = ["bundled", "backup"] }
+dioxus = { version = "0.6", features = ["desktop"] }
+rfd = "0.15"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

@@ -1,0 +1,12 @@
+[package]
+name = "writing-studio-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Shared identifiers, events, errors, and time helpers for Writing Studio"
+
+[dependencies]
+chrono.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+uuid.workspace = true

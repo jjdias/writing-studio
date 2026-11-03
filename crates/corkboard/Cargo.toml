@@ -1,0 +1,10 @@
+[package]
+name = "writing-studio-corkboard"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Corkboard cards derived from manuscript scenes"
+
+[dependencies]
+writing-studio-core.workspace = true
+writing-studio-project.workspace = true

@@ -1,0 +1,10 @@
+[package]
+name = "writing-studio-project"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Project metadata, binder hierarchy, and settings"
+
+[dependencies]
+serde.workspace = true
+writing-studio-core.workspace = true
