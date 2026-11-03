@@ -5,7 +5,10 @@
 //! Backups copy the database into `backups/` without touching the live file
 //! until the copy succeeds.
 
+mod recovery;
 mod schema;
+
+pub use recovery::{BackupInfo, SnapshotInfo};
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -20,7 +23,7 @@ use writing_studio_templates::blank_novel;
 
 pub struct ProjectStore {
     pub root: PathBuf,
-    conn: Connection,
+    pub(crate) conn: Connection,
 }
 
 impl ProjectStore {
@@ -267,7 +270,7 @@ impl ProjectStore {
     }
 }
 
-fn open_connection(path: &Path) -> Result<Connection> {
+pub(crate) fn open_connection(path: &Path) -> Result<Connection> {
     let conn = Connection::open(path).map_err(sqlite)?;
     conn.pragma_update(None, "journal_mode", "WAL").map_err(sqlite)?;
     conn.pragma_update(None, "synchronous", "NORMAL").map_err(sqlite)?;
@@ -325,7 +328,7 @@ fn parse_ts(value: &str) -> Timestamp {
     Timestamp::parse(value).unwrap_or_else(|_| Timestamp::now())
 }
 
-fn sqlite(err: rusqlite::Error) -> Error {
+pub(crate) fn sqlite(err: rusqlite::Error) -> Error {
     Error::message(err.to_string())
 }
 
@@ -352,6 +355,70 @@ mod tests {
         let reopened = ProjectStore::open(&dir).unwrap();
         let loaded = reopened.load_document(doc_id).unwrap();
         assert_eq!(loaded.to_plain_text(), "She opened the door.");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn snapshot_restore_replaces_document_and_keeps_pre_restore_copy() {
+        let dir = env::temp_dir().join(format!("ws-snap-{}", Id::new()));
+        let store = ProjectStore::create(&dir, "Snap Novel").unwrap();
+        let tree = store.load_binder().unwrap();
+        let doc_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.kind == NodeKind::Scene)
+            .and_then(|node| node.document_id)
+            .unwrap();
+
+        let mut document = store.load_document(doc_id).unwrap();
+        document.replace_plain_text("Original scene.");
+        store.save_document(&document).unwrap();
+        let snap = store.snapshot_document(&document, "keep").unwrap();
+
+        document.replace_plain_text("Changed scene.");
+        store.save_document(&document).unwrap();
+
+        let restored = store.restore_snapshot(snap).unwrap();
+        assert_eq!(restored.to_plain_text(), "Original scene.");
+        assert_eq!(
+            store.load_document(doc_id).unwrap().to_plain_text(),
+            "Original scene."
+        );
+        let snaps = store.list_snapshots(doc_id).unwrap();
+        assert!(snaps.iter().any(|item| item.label == "pre-restore"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn backup_restore_reloads_earlier_project_state() {
+        let dir = env::temp_dir().join(format!("ws-bak-{}", Id::new()));
+        let mut store = ProjectStore::create(&dir, "Backup Novel").unwrap();
+        let tree = store.load_binder().unwrap();
+        let doc_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.kind == NodeKind::Scene)
+            .and_then(|node| node.document_id)
+            .unwrap();
+
+        let mut document = store.load_document(doc_id).unwrap();
+        document.replace_plain_text("Version one.");
+        store.save_document(&document).unwrap();
+        let backup = store.backup().unwrap();
+
+        document.replace_plain_text("Version two.");
+        store.save_document(&document).unwrap();
+        assert_eq!(
+            store.load_document(doc_id).unwrap().to_plain_text(),
+            "Version two."
+        );
+
+        store.restore_backup(&backup).unwrap();
+        assert_eq!(
+            store.load_document(doc_id).unwrap().to_plain_text(),
+            "Version one."
+        );
+        assert!(!store.list_backups().unwrap().is_empty());
         let _ = fs::remove_dir_all(dir);
     }
 }

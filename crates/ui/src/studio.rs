@@ -99,7 +99,12 @@ fn Workspace() -> Element {
                 oninput: move |event| state.write().search = event.value(),
             }
             nav { class: "modes",
-                for candidate in [WorkspaceMode::Writing, WorkspaceMode::Corkboard, WorkspaceMode::Outliner] {
+                for candidate in [
+                    WorkspaceMode::Writing,
+                    WorkspaceMode::Corkboard,
+                    WorkspaceMode::Outliner,
+                    WorkspaceMode::History,
+                ] {
                     button {
                         class: if mode == candidate { "mode active" } else { "mode" },
                         onclick: move |_| state.write().mode = candidate,
@@ -136,9 +141,10 @@ fn Workspace() -> Element {
                     WorkspaceMode::Writing => rsx! { EditorPane {} },
                     WorkspaceMode::Corkboard => rsx! { CorkboardPane {} },
                     WorkspaceMode::Outliner => rsx! { OutlinerPane {} },
+                    WorkspaceMode::History => rsx! { HistoryPane {} },
                 }}
             }
-            if !focus && mode == WorkspaceMode::Writing {
+            if !focus && matches!(mode, WorkspaceMode::Writing | WorkspaceMode::History) {
                 aside { class: "inspector",
                     Inspector {}
                 }
@@ -269,8 +275,103 @@ fn Inspector() -> Element {
                 onblur: move |_| state.write().save_all(),
             }
             button { onclick: move |_| state.write().snapshot(), "Snapshot this document" }
+            SnapshotList {}
         } else {
             p { class: "hint", "Select a binder item to edit metadata." }
+        }
+    }
+}
+
+#[component]
+fn SnapshotList() -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let snapshots = state.read().snapshots_for_selected();
+    rsx! {
+        div { class: "pane-title history-title", "Snapshots" }
+        if snapshots.is_empty() {
+            p { class: "hint", "No snapshots yet. Capture one to keep a local copy of this document." }
+        } else {
+            ul { class: "history-list",
+                for item in snapshots {
+                    li { class: "history-item",
+                        div {
+                            strong { "{item.label}" }
+                            span { class: "card-meta", "{item.created_label()} · {item.word_count} words" }
+                            p { class: "preview", "{item.preview}" }
+                        }
+                        button {
+                            onclick: move |_| state.write().restore_snapshot(item.id),
+                            "Restore"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn HistoryPane() -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let snapshots = state.read().snapshots_for_selected();
+    let backups = state.read().backups();
+    let confirm = state.read().confirm_backup.clone();
+    let heading = state
+        .read()
+        .selected_node()
+        .map(|node| node.title.clone())
+        .unwrap_or_else(|| "No document selected".into());
+    rsx! {
+        div { class: "history-pane",
+            section {
+                h2 { "Document snapshots" }
+                p { class: "hint", "Local copies of “{heading}”. Restoring writes the previous text as a pre-restore snapshot." }
+                if snapshots.is_empty() {
+                    p { class: "hint", "Select a scene or note, then snapshot it from the inspector." }
+                } else {
+                    ul { class: "history-list wide",
+                        for item in snapshots {
+                            li { class: "history-item",
+                                div {
+                                    strong { "{item.label}" }
+                                    span { class: "card-meta", "{item.created_label()} · {item.word_count} words" }
+                                    p { class: "preview", "{item.preview}" }
+                                }
+                                button {
+                                    onclick: move |_| state.write().restore_snapshot(item.id),
+                                    "Restore"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            section {
+                h2 { "Project backups" }
+                p { class: "hint", "SQLite copies in this project’s backups folder. Restore is local only and asks for a second click." }
+                div { class: "binder-tools",
+                    button { class: "primary", onclick: move |_| state.write().backup(), "Write backup now" }
+                }
+                if backups.is_empty() {
+                    p { class: "hint", "No backups yet. Use Backup in the toolbar or the button above." }
+                } else {
+                    ul { class: "history-list wide",
+                        for item in backups {
+                            li { class: "history-item",
+                                div {
+                                    strong { "{item.file_name}" }
+                                    span { class: "card-meta", "{item.modified_label} · {item.size_label()}" }
+                                }
+                                button {
+                                    class: if confirm.as_ref() == Some(&item.path) { "primary" } else { "" },
+                                    onclick: move |_| state.write().request_backup_restore(item.path.clone()),
+                                    if confirm.as_ref() == Some(&item.path) { "Confirm restore" } else { "Restore" }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

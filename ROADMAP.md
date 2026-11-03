@@ -39,6 +39,8 @@ These pieces exist and are used by the desktop app.
 - Save (Ctrl+S / Save button) writes documents, binder metadata, and project settings to disk
 - Folder backups copy SQLite into `backups/` without replacing the live file until the copy succeeds
 - Per-document snapshots (inspector “Snapshot this document”)
+- Snapshot restore from the inspector and History mode (previous text kept as a `pre-restore` snapshot)
+- Backup restore from History mode (second click to confirm; a safety copy of the live database is written first)
 - Soft-delete tombstones on binder nodes (`deleted_at`)
 - UUIDs and RFC 3339 timestamps
 
@@ -98,7 +100,7 @@ These crates exist so module boundaries stay stable. They are **types or stubs**
 | `writing-studio-synchronization` | “optional = true” stub | Optional cloud sync |
 | `writing-studio-security` | Notes that local folders are unencrypted | Optional encryption / credentials when cloud exists |
 
-Also not in the UI yet: restoring a snapshot, listing backups, drag-and-drop binder order, rich-text rendering of marks, export commands, trash workflow.
+Also not in the UI yet: drag-and-drop binder order, rich-text rendering of marks, export commands, trash workflow.
 
 ---
 
@@ -182,10 +184,9 @@ When cloud work starts, the source of truth for a disconnected writer remains th
 
 Highest value after Phase 1, still fully local:
 
-1. Snapshot restore and backup restore in the UI
-2. Timed autosave
-3. Binder reorder (drag-and-drop) and trash
-4. Rich-text editing on the existing block model
-5. Compile to Markdown / DOCX from the current export crate
+1. Timed autosave
+2. Binder reorder (drag-and-drop) and trash
+3. Rich-text editing on the existing block model
+4. Compile to Markdown / DOCX from the current export crate
 
 Cloud sync and collaboration stay off this near-term list on purpose.

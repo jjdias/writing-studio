@@ -161,6 +161,24 @@ button.primary, button.mode.active, .binder-item.selected {
 .outliner th, .outliner td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); }
 .outliner tr { cursor: pointer; }
 
+.history-pane { padding: 24px 8%; display: flex; flex-direction: column; gap: 28px; }
+.history-pane h2 { font-family: var(--font); margin: 0 0 8px; }
+.history-title { margin-top: 22px; }
+.history-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.history-item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #0f0d0b;
+}
+.history-item .preview { color: var(--muted); font-size: 12px; margin: 6px 0 0; line-height: 1.4; }
+.history-item button { flex-shrink: 0; }
+.history-list.wide .history-item { background: var(--panel-2); }
+
 .status {
   display: flex;
   justify-content: space-between;

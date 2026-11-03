@@ -5,13 +5,14 @@ use std::rc::Rc;
 use writing_studio_core::{Id, PRODUCT_NAME};
 use writing_studio_editor::EditorSession;
 use writing_studio_project::{BinderNode, BinderTree, NodeKind, ProjectMeta};
-use writing_studio_storage::ProjectStore;
+use writing_studio_storage::{BackupInfo, ProjectStore, SnapshotInfo};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WorkspaceMode {
     Writing,
     Corkboard,
     Outliner,
+    History,
 }
 
 impl WorkspaceMode {
@@ -20,6 +21,7 @@ impl WorkspaceMode {
             Self::Writing => "Writing",
             Self::Corkboard => "Corkboard",
             Self::Outliner => "Outliner",
+            Self::History => "History",
         }
     }
 }
@@ -38,6 +40,7 @@ pub struct StudioState {
     pub focus_mode: bool,
     pub status: String,
     pub new_title: String,
+    pub confirm_backup: Option<PathBuf>,
 }
 
 impl Default for StudioState {
@@ -55,6 +58,7 @@ impl Default for StudioState {
             focus_mode: false,
             status: "Offline · Local-first".into(),
             new_title: "Untitled Novel".into(),
+            confirm_backup: None,
         }
     }
 }
@@ -225,8 +229,103 @@ impl StudioState {
         self.flush_editor();
         if let (Some(store), Some(session)) = (&self.store, &self.session) {
             match store.borrow().snapshot_document(session.document(), "manual") {
-                Ok(_) => self.status = "Snapshot saved.".into(),
+                Ok(_) => self.status = "Snapshot saved locally.".into(),
                 Err(err) => self.status = format!("Snapshot failed: {err}"),
+            }
+        }
+    }
+
+    pub fn snapshots_for_selected(&self) -> Vec<SnapshotInfo> {
+        let Some(doc_id) = self.selected_node().and_then(|node| node.document_id) else {
+            return Vec::new();
+        };
+        self.store
+            .as_ref()
+            .and_then(|store| store.borrow().list_snapshots(doc_id).ok())
+            .unwrap_or_default()
+    }
+
+    pub fn backups(&self) -> Vec<BackupInfo> {
+        self.store
+            .as_ref()
+            .and_then(|store| store.borrow().list_backups().ok())
+            .unwrap_or_default()
+    }
+
+    pub fn restore_snapshot(&mut self, snapshot_id: Id) {
+        self.flush_editor();
+        let Some(store) = &self.store else {
+            return;
+        };
+        match store.borrow().restore_snapshot(snapshot_id) {
+            Ok(document) => {
+                let session = EditorSession::new(document);
+                self.editor_text = session.plain_text();
+                self.session = Some(session);
+                self.status =
+                    "Snapshot restored locally. Previous text was saved as a pre-restore snapshot."
+                        .into();
+            }
+            Err(err) => self.status = format!("Could not restore snapshot: {err}"),
+        }
+    }
+
+    pub fn request_backup_restore(&mut self, path: PathBuf) {
+        if self.confirm_backup.as_ref() == Some(&path) {
+            self.restore_backup_file(path);
+        } else {
+            self.confirm_backup = Some(path);
+            self.status =
+                "Click restore again to replace the live project with this local backup. A safety copy is written first."
+                    .into();
+        }
+    }
+
+    fn restore_backup_file(&mut self, path: PathBuf) {
+        self.confirm_backup = None;
+        self.flush_editor();
+        let Some(store) = self.store.clone() else {
+            return;
+        };
+        let restored = store.borrow_mut().restore_backup(&path);
+        match restored {
+            Ok(()) => self.reload_after_backup(
+                "Restored local backup. A safety copy of the previous live project was saved first.",
+            ),
+            Err(err) => self.status = format!("Could not restore backup: {err}"),
+        }
+    }
+
+    fn reload_after_backup(&mut self, status: &str) {
+        let Some(store) = self.store.clone() else {
+            return;
+        };
+        let (meta, binder) = {
+            let store = store.borrow();
+            (store.load_meta(), store.load_binder())
+        };
+        match (meta, binder) {
+            (Ok(meta), Ok(binder)) => {
+                let previous = self.selected;
+                self.meta = Some(meta);
+                self.binder = binder;
+                self.session = None;
+                self.editor_text.clear();
+                self.status = status.into();
+                if let Some(id) = previous.filter(|id| self.binder.get(*id).is_some()) {
+                    self.select_node(id);
+                } else if let Some(scene) = self
+                    .binder
+                    .nodes
+                    .iter()
+                    .find(|node| node.kind == NodeKind::Scene)
+                {
+                    let id = scene.id;
+                    self.select_node(id);
+                }
+            }
+            (Err(err), _) | (_, Err(err)) => {
+                self.status = format!("Backup restored, but reload failed: {err}");
             }
         }
     }
