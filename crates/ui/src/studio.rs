@@ -21,6 +21,12 @@ pub fn App() -> Element {
 #[component]
 fn Studio() -> Element {
     let mut state = use_context::<Signal<StudioState>>();
+    use_future(move || async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+            state.write().autosave_tick();
+        }
+    });
     let open = state.read().is_open();
 
     rsx! {
@@ -85,6 +91,7 @@ fn Workspace() -> Element {
     let project_words = state.read().project_word_count();
     let goal = state.read().goal();
     let search = state.read().search.clone();
+    let unsaved = state.read().has_unsaved();
 
     rsx! {
         header { class: "topbar",
@@ -153,7 +160,13 @@ fn Workspace() -> Element {
         footer { class: "status",
             span { "Words: {words}" }
             span { "Project: {project_words} / {goal}" }
-            span { "Sync: Offline · {status}" }
+            span {
+                if unsaved {
+                    "Unsaved · {status}"
+                } else {
+                    "Offline · {status}"
+                }
+            }
         }
     }
 }
@@ -242,7 +255,7 @@ fn EditorPane() -> Element {
                 value: "{text}",
                 oninput: move |event| state.write().apply_editor_text(event.value()),
                 onblur: move |_| state.write().flush_editor(),
-                placeholder: "Write this scene. Autosave keeps a local copy when you leave the field or press Ctrl+S.",
+                placeholder: "Write this scene. Changes save locally a few seconds after you stop typing, on blur, or with Ctrl+S.",
             }
         }
     }

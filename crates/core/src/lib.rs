@@ -3,11 +3,13 @@
 //! The UI must never own these types. Persistence, sync, and export all speak
 //! this language so manuscript data stays independent of the interface.
 
+mod autosave;
 mod error;
 mod event;
 mod id;
 mod time;
 
+pub use autosave::{autosave_due, autosave_wait};
 pub use error::{Error, Result};
 pub use event::StudioEvent;
 pub use id::{Id, NodeId};

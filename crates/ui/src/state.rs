@@ -1,8 +1,9 @@
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::time::Instant;
 
-use writing_studio_core::{Id, PRODUCT_NAME};
+use writing_studio_core::{autosave_due, autosave_wait, Id, PRODUCT_NAME};
 use writing_studio_editor::EditorSession;
 use writing_studio_project::{BinderNode, BinderTree, NodeKind, ProjectMeta};
 use writing_studio_storage::{BackupInfo, ProjectStore, SnapshotInfo};
@@ -41,6 +42,8 @@ pub struct StudioState {
     pub status: String,
     pub new_title: String,
     pub confirm_backup: Option<PathBuf>,
+    pub binder_dirty: bool,
+    pub last_edit: Option<Instant>,
 }
 
 impl Default for StudioState {
@@ -59,6 +62,8 @@ impl Default for StudioState {
             status: "Offline · Local-first".into(),
             new_title: "Untitled Novel".into(),
             confirm_backup: None,
+            binder_dirty: false,
+            last_edit: None,
         }
     }
 }
@@ -173,6 +178,9 @@ impl StudioState {
         self.editor_text = text.clone();
         if let Some(session) = &mut self.session {
             session.apply_plain_text(&text);
+            if session.is_dirty() {
+                self.note_edit();
+            }
         }
     }
 
@@ -212,7 +220,40 @@ impl StudioState {
                 }
             }
         }
+        if self.session.as_ref().is_some_and(EditorSession::is_dirty) {
+            return;
+        }
+        self.binder_dirty = false;
+        self.last_edit = None;
         self.status = "All changes saved locally.".into();
+    }
+
+    pub fn autosave_tick(&mut self) {
+        if !self.is_open() {
+            return;
+        }
+        let wait = autosave_wait(
+            self.meta
+                .as_ref()
+                .map(|meta| meta.settings.autosave_seconds)
+                .unwrap_or(2),
+        );
+        if !autosave_due(self.has_unsaved(), self.last_edit, Instant::now(), wait) {
+            return;
+        }
+        self.save_all();
+        if self.has_unsaved() {
+            return;
+        }
+        self.status = "Autosaved locally.".into();
+    }
+
+    pub fn has_unsaved(&self) -> bool {
+        self.binder_dirty || self.session.as_ref().is_some_and(EditorSession::is_dirty)
+    }
+
+    fn note_edit(&mut self) {
+        self.last_edit = Some(Instant::now());
     }
 
     pub fn backup(&mut self) {
@@ -334,6 +375,7 @@ impl StudioState {
         if let Some(session) = &mut self.session {
             if session.undo() {
                 self.editor_text = session.plain_text();
+                self.note_edit();
             }
         }
     }
@@ -342,6 +384,7 @@ impl StudioState {
         if let Some(session) = &mut self.session {
             if session.redo() {
                 self.editor_text = session.plain_text();
+                self.note_edit();
             }
         }
     }
@@ -429,6 +472,8 @@ impl StudioState {
                 node.title = title;
                 node.updated_at = writing_studio_core::Timestamp::now();
             }
+            self.binder_dirty = true;
+            self.note_edit();
         }
     }
 
@@ -438,6 +483,8 @@ impl StudioState {
                 node.synopsis = synopsis;
                 node.updated_at = writing_studio_core::Timestamp::now();
             }
+            self.binder_dirty = true;
+            self.note_edit();
         }
     }
 
@@ -447,6 +494,8 @@ impl StudioState {
                 node.status = status;
                 node.updated_at = writing_studio_core::Timestamp::now();
             }
+            self.binder_dirty = true;
+            self.note_edit();
         }
     }
 }

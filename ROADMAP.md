@@ -57,7 +57,7 @@ These pieces exist and are used by the desktop app.
 - Structured document model (blocks, inlines, marks) stored as JSON
 - Phase 1 editor is a plain-text `textarea` mapped onto that model (one paragraph per line)
 - Undo / redo (Ctrl+Z / Ctrl+Y), dirty tracking, word and character counts
-- Flush on blur and on scene change
+- Flush on blur, on scene change, and on a local idle timer (`autosave_seconds`, default 2s after the last edit)
 
 ### Workspace UI
 
@@ -114,7 +114,6 @@ Phases below keep **local writing complete**. Anything involving accounts, serve
 - Binder drag-and-drop, nesting, labels, colors, and trash / restore
 - Corkboard: reorder scenes, filter/group, card colors
 - Outliner: inline metadata edit and word counts per row
-- Autosave on a timer (not only blur / Ctrl+S)
 - Keyboard shortcuts beyond save / undo / redo
 - Full-text search of manuscript content (Tantivy), not only binder titles
 - Daily writing targets and session statistics stored in the local project
@@ -184,9 +183,8 @@ When cloud work starts, the source of truth for a disconnected writer remains th
 
 Highest value after Phase 1, still fully local:
 
-1. Timed autosave
-2. Binder reorder (drag-and-drop) and trash
-3. Rich-text editing on the existing block model
-4. Compile to Markdown / DOCX from the current export crate
+1. Binder reorder (drag-and-drop) and trash
+2. Rich-text editing on the existing block model
+3. Compile to Markdown / DOCX from the current export crate
 
 Cloud sync and collaboration stay off this near-term list on purpose.
