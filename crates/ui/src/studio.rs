@@ -92,6 +92,11 @@ fn Workspace() -> Element {
     let goal = state.read().goal();
     let search = state.read().search.clone();
     let unsaved = state.read().has_unsaved();
+    let selected_in_trash = state
+        .read()
+        .selected
+        .is_some_and(|id| state.read().binder.is_in_trash(id));
+    let confirm_empty = state.read().confirm_empty_trash;
 
     rsx! {
         header { class: "topbar",
@@ -140,6 +145,18 @@ fn Workspace() -> Element {
                         button { onclick: move |_| state.write().add_node(NodeKind::Scene), "Scene" }
                         button { onclick: move |_| state.write().add_node(NodeKind::Note), "Note" }
                     }
+                    div { class: "binder-tools",
+                        button { onclick: move |_| state.write().trash_selected(), "Trash" }
+                        if selected_in_trash {
+                            button { class: "primary", onclick: move |_| state.write().restore_selected(), "Restore" }
+                        }
+                        button {
+                            class: if confirm_empty { "primary" } else { "" },
+                            onclick: move |_| state.write().empty_trash(),
+                            if confirm_empty { "Confirm empty" } else { "Empty trash" }
+                        }
+                    }
+                    p { class: "hint binder-hint", "Drag items to reorder, nest, or drop on Trash." }
                     BinderTreeView {}
                 }
             }
@@ -206,6 +223,10 @@ fn BinderNodeView(id: Id, depth: u32) -> Element {
         }
     }
     let selected = snapshot.selected == Some(id);
+    let dragging = snapshot.dragging == Some(id);
+    let drop_target = snapshot.drop_target == Some(id);
+    let trashed = snapshot.binder.is_in_trash(id) && node.kind != NodeKind::TrashRoot;
+    let can_drag = !node.kind.is_root();
     let children: Vec<Id> = snapshot
         .binder
         .children(Some(id))
@@ -213,12 +234,29 @@ fn BinderNodeView(id: Id, depth: u32) -> Element {
         .map(|child| child.id)
         .collect();
     let pad = 8 + depth * 14;
+    let class = binder_item_class(selected, dragging, drop_target, trashed);
 
     rsx! {
         button {
-            class: if selected { "binder-item selected" } else { "binder-item" },
+            class: "{class}",
             style: "padding-left: {pad}px",
+            draggable: can_drag,
             onclick: move |_| state.write().select_node(id),
+            ondragstart: move |event| {
+                event.stop_propagation();
+                state.write().begin_drag(id);
+            },
+            ondragover: move |event| {
+                event.prevent_default();
+                event.stop_propagation();
+                state.write().set_drop_target(id);
+            },
+            ondrop: move |event| {
+                event.prevent_default();
+                event.stop_propagation();
+                state.write().drop_on(id);
+            },
+            ondragend: move |_| state.write().end_drag(),
             span { class: "kind", "{node.kind.icon_label()}" }
             span { "{node.title}" }
         }
@@ -286,6 +324,11 @@ fn Inspector() -> Element {
                 value: "{node.status}",
                 oninput: move |event| state.write().update_selected_status(event.value()),
                 onblur: move |_| state.write().save_all(),
+            }
+            if state.read().binder.is_in_trash(node.id) && node.kind != NodeKind::TrashRoot {
+                button { class: "primary", onclick: move |_| state.write().restore_selected(), "Restore from trash" }
+            } else if !node.kind.is_root() {
+                button { onclick: move |_| state.write().trash_selected(), "Move to trash" }
             }
             button { onclick: move |_| state.write().snapshot(), "Snapshot this document" }
             SnapshotList {}
@@ -501,6 +544,23 @@ fn OutlinerPane() -> Element {
             }
         }
     }
+}
+
+fn binder_item_class(selected: bool, dragging: bool, drop_target: bool, trashed: bool) -> String {
+    let mut class = String::from("binder-item");
+    if selected {
+        class.push_str(" selected");
+    }
+    if dragging {
+        class.push_str(" dragging");
+    }
+    if drop_target {
+        class.push_str(" drop-target");
+    }
+    if trashed {
+        class.push_str(" trashed");
+    }
+    class
 }
 
 struct OwnedOutlineBook {

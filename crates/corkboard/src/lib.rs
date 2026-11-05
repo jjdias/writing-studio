@@ -18,7 +18,9 @@ where
     let mut cards: Vec<CorkCard> = tree
         .nodes
         .iter()
-        .filter(|node| node.deleted_at.is_none() && node.kind == NodeKind::Scene)
+        .filter(|node| {
+            node.kind == NodeKind::Scene && node.deleted_at.is_none() && !tree.is_in_trash(node.id)
+        })
         .map(|node| CorkCard {
             node_id: node.id,
             title: node.title.clone(),

@@ -49,6 +49,8 @@ These pieces exist and are used by the desktop app.
 - Binder tree: manuscript, research, trash, book, chapter, scene, note
 - Blank novel template seeds a first chapter, scene, and research note
 - Add chapter, scene, or note from the binder toolbar
+- Drag-and-drop reorder and nesting in the binder (drop on Trash to discard)
+- Trash, restore to the previous parent, and empty-trash with a second-click confirm
 - Inspector: title, synopsis, status
 - Word counts for the current document and the whole project; project word goal is stored in settings (default 80,000)
 
@@ -100,7 +102,7 @@ These crates exist so module boundaries stay stable. They are **types or stubs**
 | `writing-studio-synchronization` | “optional = true” stub | Optional cloud sync |
 | `writing-studio-security` | Notes that local folders are unencrypted | Optional encryption / credentials when cloud exists |
 
-Also not in the UI yet: drag-and-drop binder order, rich-text rendering of marks, export commands, trash workflow.
+Also not in the UI yet: rich-text rendering of marks, export commands, binder labels/colors.
 
 ---
 
@@ -111,7 +113,7 @@ Phases below keep **local writing complete**. Anything involving accounts, serve
 ### Phase 2 — Writing environment (local)
 
 - True rich-text editing (bold, italic, headings, lists, quotes) on the existing document model
-- Binder drag-and-drop, nesting, labels, colors, and trash / restore
+- Binder labels, colors, and deeper nesting polish
 - Corkboard: reorder scenes, filter/group, card colors
 - Outliner: inline metadata edit and word counts per row
 - Keyboard shortcuts beyond save / undo / redo
@@ -183,8 +185,7 @@ When cloud work starts, the source of truth for a disconnected writer remains th
 
 Highest value after Phase 1, still fully local:
 
-1. Binder reorder (drag-and-drop) and trash
-2. Rich-text editing on the existing block model
-3. Compile to Markdown / DOCX from the current export crate
+1. Rich-text editing on the existing block model
+2. Compile to Markdown / DOCX from the current export crate
 
 Cloud sync and collaboration stay off this near-term list on purpose.

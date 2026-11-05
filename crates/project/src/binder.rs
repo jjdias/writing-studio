@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use writing_studio_core::{Id, Timestamp};
+use writing_studio_core::{Error, Id, Result, Timestamp};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -49,6 +49,26 @@ impl NodeKind {
         matches!(self, Self::Scene | Self::Note | Self::Chapter)
     }
 
+    pub fn is_root(self) -> bool {
+        matches!(
+            self,
+            Self::DraftRoot | Self::ResearchRoot | Self::TrashRoot
+        )
+    }
+
+    pub fn can_contain(self, child: NodeKind) -> bool {
+        match self {
+            Self::DraftRoot => matches!(child, Self::Book | Self::Folder),
+            Self::Book => matches!(child, Self::Part | Self::Chapter | Self::Folder),
+            Self::Part => matches!(child, Self::Chapter | Self::Folder),
+            Self::Chapter => matches!(child, Self::Scene),
+            Self::ResearchRoot => matches!(child, Self::Note | Self::Folder),
+            Self::Folder => matches!(child, Self::Note | Self::Folder),
+            Self::TrashRoot => !child.is_root(),
+            Self::Scene | Self::Note => false,
+        }
+    }
+
     pub fn icon_label(self) -> &'static str {
         match self {
             Self::DraftRoot => "Manuscript",
@@ -77,6 +97,7 @@ pub struct BinderNode {
     pub status: String,
     pub color: String,
     pub deleted_at: Option<Timestamp>,
+    pub restore_parent_id: Option<Id>,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
 }
@@ -101,6 +122,7 @@ impl BinderNode {
             status: String::from("draft"),
             color: String::new(),
             deleted_at: None,
+            restore_parent_id: None,
             created_at: now,
             updated_at: now,
         }
@@ -125,10 +147,15 @@ impl BinderTree {
     }
 
     pub fn children(&self, parent: Option<Id>) -> Vec<&BinderNode> {
+        let parent_is_trash = parent
+            .and_then(|id| self.get(id))
+            .is_some_and(|node| node.kind == NodeKind::TrashRoot);
         let mut kids: Vec<&BinderNode> = self
             .nodes
             .iter()
-            .filter(|node| node.parent_id == parent && node.deleted_at.is_none())
+            .filter(|node| {
+                node.parent_id == parent && (parent_is_trash || node.deleted_at.is_none())
+            })
             .collect();
         kids.sort_by_key(|node| node.sort_index);
         kids
@@ -159,15 +186,296 @@ impl BinderTree {
             .find(|node| node.kind == NodeKind::ResearchRoot)
     }
 
+    pub fn trash_root(&self) -> Option<&BinderNode> {
+        self.nodes.iter().find(|node| node.kind == NodeKind::TrashRoot)
+    }
+
+    pub fn is_in_trash(&self, id: Id) -> bool {
+        let mut current = Some(id);
+        let mut guard = 0;
+        while let Some(cid) = current {
+            if self.get(cid).is_some_and(|node| node.kind == NodeKind::TrashRoot) {
+                return true;
+            }
+            current = self.get(cid).and_then(|node| node.parent_id);
+            guard += 1;
+            if guard > 10_000 {
+                break;
+            }
+        }
+        false
+    }
+
+    fn is_under(&self, node: Id, ancestor: Id) -> bool {
+        let mut current = Some(node);
+        let mut guard = 0;
+        while let Some(cid) = current {
+            if cid == ancestor {
+                return true;
+            }
+            current = self.get(cid).and_then(|n| n.parent_id);
+            guard += 1;
+            if guard > 10_000 {
+                break;
+            }
+        }
+        false
+    }
+
+    /// Drop `dragged` onto `target`: nest, reorder, or move to trash.
+    pub fn drop_on(&mut self, dragged: Id, target: Id) -> Result<()> {
+        if dragged == target {
+            return Err(Error::message("cannot drop an item on itself"));
+        }
+        if self.is_under(target, dragged) {
+            return Err(Error::message("cannot drop an item into its own contents"));
+        }
+        let drag_kind = self
+            .get(dragged)
+            .map(|node| node.kind)
+            .ok_or_else(|| Error::NodeNotFound(dragged.to_string()))?;
+        if drag_kind.is_root() {
+            return Err(Error::message("manuscript, research, and trash cannot be moved"));
+        }
+        let target_node = self
+            .get(target)
+            .cloned()
+            .ok_or_else(|| Error::NodeNotFound(target.to_string()))?;
+
+        if target_node.kind == NodeKind::TrashRoot {
+            return self.trash(dragged);
+        }
+        if target_node.kind.can_contain(drag_kind) {
+            return self.place(dragged, Some(target), None);
+        }
+        if target_node
+            .parent_id
+            .and_then(|parent| self.get(parent).map(|node| node.kind))
+            .is_some_and(|kind| kind.can_contain(drag_kind))
+        {
+            return self.place(dragged, target_node.parent_id, Some(target));
+        }
+        Err(Error::message("that binder item cannot hold the dragged item"))
+    }
+
+    pub fn trash(&mut self, id: Id) -> Result<()> {
+        let node = self
+            .get(id)
+            .cloned()
+            .ok_or_else(|| Error::NodeNotFound(id.to_string()))?;
+        if node.kind.is_root() {
+            return Err(Error::message("cannot trash a binder root"));
+        }
+        let trash_id = self
+            .trash_root()
+            .map(|root| root.id)
+            .ok_or_else(|| Error::message("project has no trash"))?;
+        if self.is_in_trash(id) {
+            return Ok(());
+        }
+        let old_parent = node.parent_id;
+        if let Some(entry) = self.get_mut(id) {
+            entry.restore_parent_id = old_parent;
+            entry.parent_id = Some(trash_id);
+            entry.deleted_at = Some(Timestamp::now());
+            entry.updated_at = Timestamp::now();
+        }
+        self.reindex(old_parent);
+        self.reindex(Some(trash_id));
+        Ok(())
+    }
+
+    pub fn restore(&mut self, id: Id) -> Result<()> {
+        let node = self
+            .get(id)
+            .cloned()
+            .ok_or_else(|| Error::NodeNotFound(id.to_string()))?;
+        if !self.is_in_trash(id) && node.deleted_at.is_none() {
+            return Err(Error::message("item is not in the trash"));
+        }
+        let dest = node
+            .restore_parent_id
+            .filter(|parent| {
+                self.get(*parent)
+                    .is_some_and(|candidate| {
+                        candidate.deleted_at.is_none()
+                            && !self.is_in_trash(*parent)
+                            && candidate.kind.can_contain(node.kind)
+                    })
+            })
+            .or_else(|| self.default_parent(node.kind));
+        self.place(id, dest, None)
+    }
+
+    pub fn default_parent(&self, kind: NodeKind) -> Option<Id> {
+        match kind {
+            NodeKind::Note | NodeKind::Folder => self.research_root().map(|node| node.id),
+            NodeKind::Scene => self
+                .nodes
+                .iter()
+                .rev()
+                .find(|node| node.kind == NodeKind::Chapter && node.deleted_at.is_none())
+                .map(|node| node.id),
+            NodeKind::Chapter | NodeKind::Part => self
+                .nodes
+                .iter()
+                .find(|node| node.kind == NodeKind::Book && node.deleted_at.is_none())
+                .map(|node| node.id),
+            NodeKind::Book => self.draft_root().map(|node| node.id),
+            _ => self.draft_root().map(|node| node.id),
+        }
+    }
+
+    /// Permanently remove trashed items (not the trash root).
+    /// Returns `(removed node ids, document ids to delete)`.
+    pub fn purge_trash(&mut self) -> (Vec<Id>, Vec<Id>) {
+        let ids: Vec<Id> = self
+            .nodes
+            .iter()
+            .filter(|node| !node.kind.is_root() && self.is_in_trash(node.id))
+            .map(|node| node.id)
+            .collect();
+        let documents: Vec<Id> = ids
+            .iter()
+            .filter_map(|id| self.get(*id).and_then(|node| node.document_id))
+            .collect();
+        self.nodes.retain(|node| !ids.contains(&node.id));
+        if let Some(trash_id) = self.trash_root().map(|node| node.id) {
+            self.reindex(Some(trash_id));
+        }
+        (ids, documents)
+    }
+
+    fn place(&mut self, dragged: Id, new_parent: Option<Id>, after: Option<Id>) -> Result<()> {
+        let old_parent = self.get(dragged).and_then(|node| node.parent_id);
+        if let Some(node) = self.get_mut(dragged) {
+            node.parent_id = new_parent;
+            node.deleted_at = None;
+            node.restore_parent_id = None;
+            node.updated_at = Timestamp::now();
+        } else {
+            return Err(Error::NodeNotFound(dragged.to_string()));
+        }
+
+        let mut order: Vec<Id> = self
+            .children(new_parent)
+            .into_iter()
+            .map(|node| node.id)
+            .filter(|id| *id != dragged)
+            .collect();
+        if let Some(after_id) = after {
+            if let Some(index) = order.iter().position(|id| *id == after_id) {
+                order.insert(index + 1, dragged);
+            } else {
+                order.push(dragged);
+            }
+        } else {
+            order.push(dragged);
+        }
+        for (index, id) in order.iter().enumerate() {
+            if let Some(node) = self.get_mut(*id) {
+                node.sort_index = index as i64;
+                node.updated_at = Timestamp::now();
+            }
+        }
+        if old_parent != new_parent {
+            self.reindex(old_parent);
+        }
+        Ok(())
+    }
+
+    fn reindex(&mut self, parent: Option<Id>) {
+        let ids: Vec<Id> = self.children(parent).into_iter().map(|node| node.id).collect();
+        for (index, id) in ids.iter().enumerate() {
+            if let Some(node) = self.get_mut(*id) {
+                node.sort_index = index as i64;
+                node.updated_at = Timestamp::now();
+            }
+        }
+    }
+
     pub fn total_word_count<F>(&self, mut words_for: F) -> u32
     where
         F: FnMut(Id) -> u32,
     {
         self.nodes
             .iter()
-            .filter(|node| node.deleted_at.is_none())
+            .filter(|node| node.deleted_at.is_none() && !self.is_in_trash(node.id))
             .filter_map(|node| node.document_id)
             .map(|id| words_for(id))
             .sum()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tree() -> (BinderTree, Id, Id, Id, Id) {
+        let draft = BinderNode::new(NodeKind::DraftRoot, "Manuscript", None, 0);
+        let research = BinderNode::new(NodeKind::ResearchRoot, "Research", None, 1);
+        let trash = BinderNode::new(NodeKind::TrashRoot, "Trash", None, 2);
+        let book = BinderNode::new(NodeKind::Book, "Book", Some(draft.id), 0);
+        let chapter = BinderNode::new(NodeKind::Chapter, "Chapter 1", Some(book.id), 0);
+        let scene_a = BinderNode::new(NodeKind::Scene, "Scene A", Some(chapter.id), 0);
+        let scene_b = BinderNode::new(NodeKind::Scene, "Scene B", Some(chapter.id), 1);
+        let chapter_id = chapter.id;
+        let a = scene_a.id;
+        let b = scene_b.id;
+        let trash_id = trash.id;
+        let binder = BinderTree::new(vec![
+            draft, research, trash, book, chapter, scene_a, scene_b,
+        ]);
+        (binder, chapter_id, a, b, trash_id)
+    }
+
+    #[test]
+    fn reorder_scene_after_sibling() {
+        let (mut binder, _, a, b, _) = tree();
+        binder.drop_on(a, b).unwrap();
+        let order: Vec<_> = binder
+            .children(binder.get(a).and_then(|node| node.parent_id))
+            .into_iter()
+            .map(|node| node.title.as_str())
+            .collect();
+        assert_eq!(order, vec!["Scene B", "Scene A"]);
+        binder.drop_on(b, a).unwrap();
+        let order: Vec<_> = binder
+            .children(binder.get(a).and_then(|node| node.parent_id))
+            .into_iter()
+            .map(|node| node.title.as_str())
+            .collect();
+        assert_eq!(order, vec!["Scene A", "Scene B"]);
+    }
+
+    #[test]
+    fn trash_and_restore_keeps_previous_parent() {
+        let (mut binder, chapter, a, _, trash_id) = tree();
+        binder.trash(a).unwrap();
+        assert!(binder.is_in_trash(a));
+        assert_eq!(binder.get(a).unwrap().parent_id, Some(trash_id));
+        assert!(binder.children(Some(chapter)).iter().all(|node| node.id != a));
+        binder.restore(a).unwrap();
+        assert!(!binder.is_in_trash(a));
+        assert_eq!(binder.get(a).unwrap().parent_id, Some(chapter));
+        assert!(binder.get(a).unwrap().deleted_at.is_none());
+    }
+
+    #[test]
+    fn cannot_drop_into_own_descendant() {
+        let (mut binder, chapter, a, _, _) = tree();
+        let err = binder.drop_on(chapter, a).unwrap_err();
+        assert!(err.to_string().contains("own contents"));
+    }
+
+    #[test]
+    fn purge_removes_trashed_documents() {
+        let (mut binder, _, a, _, _) = tree();
+        let doc = binder.get(a).unwrap().document_id.unwrap();
+        binder.trash(a).unwrap();
+        let (nodes, docs) = binder.purge_trash();
+        assert!(nodes.contains(&a));
+        assert!(docs.contains(&doc));
+        assert!(binder.get(a).is_none());
     }
 }

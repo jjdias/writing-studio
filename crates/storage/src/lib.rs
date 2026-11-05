@@ -118,7 +118,7 @@ impl ProjectStore {
             .conn
             .prepare(
                 "SELECT id, parent_id, kind, title, sort_index, document_id, synopsis, label, status, color,
-                        deleted_at, created_at, updated_at
+                        deleted_at, created_at, updated_at, restore_parent_id
                  FROM binder_nodes",
             )
             .map_err(sqlite)?;
@@ -135,8 +135,8 @@ impl ProjectStore {
             .execute(
                 "INSERT INTO binder_nodes (
                     id, parent_id, kind, title, sort_index, document_id, synopsis, label, status, color,
-                    deleted_at, created_at, updated_at
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+                    deleted_at, created_at, updated_at, restore_parent_id
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
                  ON CONFLICT(id) DO UPDATE SET
                     parent_id=excluded.parent_id,
                     title=excluded.title,
@@ -147,7 +147,8 @@ impl ProjectStore {
                     status=excluded.status,
                     color=excluded.color,
                     deleted_at=excluded.deleted_at,
-                    updated_at=excluded.updated_at",
+                    updated_at=excluded.updated_at,
+                    restore_parent_id=excluded.restore_parent_id",
                 params![
                     node.id.to_string(),
                     node.parent_id.map(|id| id.to_string()),
@@ -162,7 +163,41 @@ impl ProjectStore {
                     node.deleted_at.map(|ts| ts.to_rfc3339()),
                     node.created_at.to_rfc3339(),
                     node.updated_at.to_rfc3339(),
+                    node.restore_parent_id.map(|id| id.to_string()),
                 ],
+            )
+            .map_err(sqlite)?;
+        Ok(())
+    }
+
+    pub fn persist_binder(&self, tree: &BinderTree) -> Result<()> {
+        for node in &tree.nodes {
+            self.upsert_node(node)?;
+        }
+        Ok(())
+    }
+
+    pub fn delete_node(&self, id: Id) -> Result<()> {
+        self.conn
+            .execute(
+                "DELETE FROM binder_nodes WHERE id = ?1",
+                params![id.to_string()],
+            )
+            .map_err(sqlite)?;
+        Ok(())
+    }
+
+    pub fn delete_document(&self, id: Id) -> Result<()> {
+        self.conn
+            .execute(
+                "DELETE FROM snapshots WHERE document_id = ?1",
+                params![id.to_string()],
+            )
+            .map_err(sqlite)?;
+        self.conn
+            .execute(
+                "DELETE FROM documents WHERE id = ?1",
+                params![id.to_string()],
             )
             .map_err(sqlite)?;
         Ok(())
@@ -315,6 +350,12 @@ fn row_to_node(row: &rusqlite::Row<'_>) -> BinderNode {
         status: row.get(8).unwrap_or_default(),
         color: row.get(9).unwrap_or_default(),
         deleted_at: deleted.as_deref().and_then(|value| Timestamp::parse(value).ok()),
+        restore_parent_id: row
+            .get::<_, Option<String>>(13)
+            .ok()
+            .flatten()
+            .as_deref()
+            .map(parse_id),
         created_at: parse_ts(&row.get::<_, String>(11).unwrap_or_default()),
         updated_at: parse_ts(&row.get::<_, String>(12).unwrap_or_default()),
     }

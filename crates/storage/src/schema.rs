@@ -24,6 +24,7 @@ pub fn install(conn: &Connection) -> rusqlite::Result<()> {
             status TEXT NOT NULL DEFAULT 'draft',
             color TEXT NOT NULL DEFAULT '',
             deleted_at TEXT,
+            restore_parent_id TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
@@ -45,5 +46,10 @@ pub fn install(conn: &Connection) -> rusqlite::Result<()> {
             label TEXT
         );
         "#,
-    )
+    )?;
+    let _ = conn.execute(
+        "ALTER TABLE binder_nodes ADD COLUMN restore_parent_id TEXT",
+        [],
+    );
+    Ok(())
 }

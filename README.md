@@ -6,7 +6,7 @@ Local-first writing environment in Rust: manuscript binder, scene documents, cor
 
 - Cargo workspace with a shared core and a Dioxus desktop app
 - Versioned project folder (`*.writingstudio`) backed by SQLite
-- Binder: manuscript, research, chapters, scenes, notes
+- Binder: manuscript, research, chapters, scenes, notes, drag-and-drop, trash
 - Structured documents stored per scene (plain-text editing in v1)
 - Undo/redo, word counts, snapshots, folder backups, timed local autosave
 - Writing, corkboard, and outliner workspace modes

@@ -104,8 +104,13 @@ button.primary, button.mode.active, .binder-item.selected {
 }
 .inspector { border-right: 0; border-left: 1px solid var(--line); }
 .pane-title { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
-.binder-tools { display: flex; gap: 6px; margin-bottom: 10px; }
+.binder-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
 .binder-tools button { flex: 1; font-size: 12px; padding: 6px; }
+.binder-hint { font-size: 12px; margin: 0 0 10px; }
+
+.binder-item.dragging { opacity: 0.45; }
+.binder-item.drop-target { outline: 1px solid var(--gold); }
+.binder-item.trashed { opacity: 0.7; font-style: italic; }
 
 .binder-item {
   display: flex;

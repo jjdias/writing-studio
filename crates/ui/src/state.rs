@@ -44,6 +44,9 @@ pub struct StudioState {
     pub confirm_backup: Option<PathBuf>,
     pub binder_dirty: bool,
     pub last_edit: Option<Instant>,
+    pub dragging: Option<Id>,
+    pub drop_target: Option<Id>,
+    pub confirm_empty_trash: bool,
 }
 
 impl Default for StudioState {
@@ -64,6 +67,9 @@ impl Default for StudioState {
             confirm_backup: None,
             binder_dirty: false,
             last_edit: None,
+            dragging: None,
+            drop_target: None,
+            confirm_empty_trash: false,
         }
     }
 }
@@ -436,6 +442,136 @@ impl StudioState {
         self.status = "Added to binder.".into();
     }
 
+    fn persist_binder(&mut self) -> bool {
+        let Some(store) = &self.store else {
+            return false;
+        };
+        if let Err(err) = store.borrow().persist_binder(&self.binder) {
+            self.status = format!("Could not save binder: {err}");
+            false
+        } else {
+            true
+        }
+    }
+
+    pub fn begin_drag(&mut self, id: Id) {
+        if self.binder.get(id).is_some_and(|node| node.kind.is_root()) {
+            self.dragging = None;
+            return;
+        }
+        self.dragging = Some(id);
+        self.drop_target = None;
+    }
+
+    pub fn set_drop_target(&mut self, id: Id) {
+        if self.dragging.is_some_and(|dragged| dragged != id) {
+            self.drop_target = Some(id);
+        }
+    }
+
+    pub fn end_drag(&mut self) {
+        self.dragging = None;
+        self.drop_target = None;
+    }
+
+    pub fn drop_on(&mut self, target: Id) {
+        let Some(dragged) = self.dragging.take() else {
+            self.drop_target = None;
+            return;
+        };
+        self.drop_target = None;
+        self.flush_editor();
+        match self.binder.drop_on(dragged, target) {
+            Ok(()) => {
+                if self.persist_binder() {
+                    self.status = "Binder updated locally.".into();
+                    if self.selected == Some(dragged) {
+                        self.select_node(dragged);
+                    }
+                }
+            }
+            Err(err) => self.status = err.to_string(),
+        }
+    }
+
+    pub fn trash_selected(&mut self) {
+        let Some(id) = self.selected else {
+            return;
+        };
+        self.flush_editor();
+        match self.binder.trash(id) {
+            Ok(()) => {
+                if self.persist_binder() {
+                    self.status = "Moved to trash. Restore from the Trash folder or the inspector.".into();
+                    if let Some(trash) = self.binder.trash_root() {
+                        let trash_id = trash.id;
+                        self.select_node(trash_id);
+                    }
+                }
+            }
+            Err(err) => self.status = err.to_string(),
+        }
+    }
+
+    pub fn restore_selected(&mut self) {
+        let Some(id) = self.selected else {
+            return;
+        };
+        self.flush_editor();
+        match self.binder.restore(id) {
+            Ok(()) => {
+                if self.persist_binder() {
+                    self.status = "Restored from trash.".into();
+                    self.select_node(id);
+                }
+            }
+            Err(err) => self.status = err.to_string(),
+        }
+    }
+
+    pub fn empty_trash(&mut self) {
+        if !self.confirm_empty_trash {
+            self.confirm_empty_trash = true;
+            self.status = "Click Empty trash again to permanently delete trashed items on disk.".into();
+            return;
+        }
+        self.confirm_empty_trash = false;
+        self.flush_editor();
+        let selected_in_trash = self
+            .selected
+            .is_some_and(|id| self.binder.is_in_trash(id));
+        let (nodes, documents) = self.binder.purge_trash();
+        if nodes.is_empty() {
+            self.status = "Trash is already empty.".into();
+            return;
+        }
+        if let Some(store) = &self.store {
+            let store = store.borrow();
+            for id in &documents {
+                if let Err(err) = store.delete_document(*id) {
+                    self.status = format!("Could not delete document: {err}");
+                    return;
+                }
+            }
+            for id in &nodes {
+                if let Err(err) = store.delete_node(*id) {
+                    self.status = format!("Could not delete binder item: {err}");
+                    return;
+                }
+            }
+        }
+        if !self.persist_binder() {
+            return;
+        }
+        if selected_in_trash {
+            if let Some(trash) = self.binder.trash_root() {
+                let trash_id = trash.id;
+                self.select_node(trash_id);
+            }
+        }
+        self.status = format!("Permanently deleted {} item(s) from local trash.", nodes.len());
+    }
+
     fn infer_parent(&self, kind: NodeKind) -> Option<Id> {
         let selected = self.selected.and_then(|id| self.binder.get(id));
         match kind {
@@ -448,7 +584,7 @@ impl StudioState {
                     .nodes
                     .iter()
                     .rev()
-                    .find(|node| node.kind == NodeKind::Chapter)
+                    .find(|node| node.kind == NodeKind::Chapter && !self.binder.is_in_trash(node.id))
                     .map(|node| node.id),
             }),
             NodeKind::Chapter => selected.and_then(|node| match node.kind {
