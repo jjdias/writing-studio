@@ -1,6 +1,7 @@
 use dioxus::prelude::*;
 use writing_studio_core::Id;
 use writing_studio_corkboard::cards_from_binder;
+use writing_studio_document::InlineNote;
 use writing_studio_manuscript::build_outline;
 use writing_studio_project::{BinderNode, NodeKind};
 use writing_studio_search::matches_query;
@@ -283,6 +284,11 @@ fn EditorPane() -> Element {
     let html = snapshot.editor_html.clone();
     let epoch = snapshot.editor_epoch;
     let can_edit = snapshot.session.is_some();
+    let notes = snapshot
+        .session
+        .as_ref()
+        .map(|session| session.document().comments())
+        .unwrap_or_default();
     let initial_html = if html.trim().is_empty() {
         "<p><br></p>".into()
     } else {
@@ -296,6 +302,16 @@ fn EditorPane() -> Element {
                 h2 { "{heading}" }
             }
             FormatToolbar { enabled: can_edit }
+            if !notes.is_empty() {
+                ul { class: "comment-list",
+                    for note in notes {
+                        li {
+                            span { class: "comment-anchor", "{comment_anchor(&note)}" }
+                            span { "{note.comment}" }
+                        }
+                    }
+                }
+            }
             div {
                 key: "{epoch}",
                 class: "manuscript rich",
@@ -326,6 +342,17 @@ fn read_manuscript_html(mut state: Signal<StudioState>) {
     });
 }
 
+fn comment_anchor(note: &InlineNote) -> String {
+    let trimmed = note.text.trim();
+    let label = if trimmed.is_empty() { "Comment" } else { trimmed };
+    let count = label.chars().count();
+    if count <= 42 {
+        label.to_string()
+    } else {
+        format!("{}…", label.chars().take(42).collect::<String>())
+    }
+}
+
 fn run_format_command(mut state: Signal<StudioState>, command: &'static str, argument: &'static str) {
     spawn(async move {
         let script = format!(
@@ -349,23 +376,111 @@ fn run_format_command(mut state: Signal<StudioState>, command: &'static str, arg
     });
 }
 
+fn run_editor_script(mut state: Signal<StudioState>, body: &'static str) {
+    spawn(async move {
+        let script = format!(
+            r#"
+            const el = document.querySelector('[data-manuscript]');
+            if (el) {{ el.focus(); }}
+            {body}
+            dioxus.send(el ? el.innerHTML : '');
+            "#
+        );
+        let mut eval = document::eval(&script);
+        if let Ok(html) = eval.recv::<String>().await {
+            state.write().apply_editor_html(html);
+        }
+    });
+}
+
 #[component]
 fn FormatToolbar(enabled: bool) -> Element {
     let state = use_context::<Signal<StudioState>>();
     rsx! {
         div { class: "format-toolbar",
-            button { disabled: !enabled, onclick: move |_| run_format_command(state, "bold", ""), "Bold" }
-            button { disabled: !enabled, onclick: move |_| run_format_command(state, "italic", ""), "Italic" }
-            button { disabled: !enabled, onclick: move |_| run_format_command(state, "underline", ""), "Underline" }
-            button { disabled: !enabled, onclick: move |_| run_format_command(state, "strikeThrough", ""), "Strike" }
-            button { disabled: !enabled, onclick: move |_| run_format_command(state, "formatBlock", "H2"), "Heading" }
-            button { disabled: !enabled, onclick: move |_| run_format_command(state, "formatBlock", "P"), "Body" }
-            button { disabled: !enabled, onclick: move |_| run_format_command(state, "formatBlock", "BLOCKQUOTE"), "Quote" }
-            button { disabled: !enabled, onclick: move |_| run_format_command(state, "insertUnorderedList", ""), "List" }
-            button { disabled: !enabled, onclick: move |_| run_format_command(state, "insertOrderedList", ""), "Numbered" }
+            div { class: "format-group",
+                button { disabled: !enabled, onclick: move |_| run_format_command(state, "bold", ""), "Bold" }
+                button { disabled: !enabled, onclick: move |_| run_format_command(state, "italic", ""), "Italic" }
+                button { disabled: !enabled, onclick: move |_| run_format_command(state, "underline", ""), "Underline" }
+                button { disabled: !enabled, onclick: move |_| run_format_command(state, "strikeThrough", ""), "Strike" }
+                button { disabled: !enabled, onclick: move |_| run_editor_script(state, LINK_SCRIPT), "Link" }
+                button { disabled: !enabled, onclick: move |_| run_format_command(state, "unlink", ""), "Unlink" }
+                button { disabled: !enabled, onclick: move |_| run_editor_script(state, COMMENT_SCRIPT), "Comment" }
+                button { disabled: !enabled, onclick: move |_| run_editor_script(state, UNCOMMENT_SCRIPT), "Uncomment" }
+            }
+            div { class: "format-group",
+                button { disabled: !enabled, onclick: move |_| run_format_command(state, "formatBlock", "H1"), "H1" }
+                button { disabled: !enabled, onclick: move |_| run_format_command(state, "formatBlock", "H2"), "H2" }
+                button { disabled: !enabled, onclick: move |_| run_format_command(state, "formatBlock", "H3"), "H3" }
+                button { disabled: !enabled, onclick: move |_| run_format_command(state, "formatBlock", "P"), "Body" }
+                button { disabled: !enabled, onclick: move |_| run_format_command(state, "formatBlock", "BLOCKQUOTE"), "Quote" }
+                button { disabled: !enabled, onclick: move |_| run_format_command(state, "insertUnorderedList", ""), "List" }
+                button { disabled: !enabled, onclick: move |_| run_format_command(state, "insertOrderedList", ""), "Numbered" }
+                button { disabled: !enabled, onclick: move |_| run_format_command(state, "formatBlock", "PRE"), "Code" }
+                button { disabled: !enabled, onclick: move |_| run_format_command(state, "insertHorizontalRule", ""), "Break" }
+            }
         }
     }
 }
+
+const LINK_SCRIPT: &str = r#"
+const sel = window.getSelection();
+if (sel && sel.rangeCount && !sel.isCollapsed) {
+    const saved = sel.getRangeAt(0).cloneRange();
+    const raw = window.prompt('Link address');
+    if (raw && raw.trim()) {
+        let url = raw.trim();
+        if (!/^[a-z][a-z0-9+.-]*:/i.test(url)) {
+            url = 'https://' + url;
+        }
+        if (/^(https?:|mailto:)/i.test(url)) {
+            sel.removeAllRanges();
+            sel.addRange(saved);
+            document.execCommand('createLink', false, url);
+        }
+    }
+}
+"#;
+
+const COMMENT_SCRIPT: &str = r#"
+const sel = window.getSelection();
+if (sel && sel.rangeCount && !sel.isCollapsed && el && el.contains(sel.getRangeAt(0).commonAncestorContainer)) {
+    const saved = sel.getRangeAt(0).cloneRange();
+    const raw = window.prompt('Comment on the selection');
+    if (raw && raw.trim()) {
+        sel.removeAllRanges();
+        sel.addRange(saved);
+        const span = document.createElement('span');
+        span.className = 'ws-comment';
+        span.setAttribute('data-comment', raw.trim());
+        span.title = raw.trim();
+        const range = sel.getRangeAt(0);
+        try {
+            range.surroundContents(span);
+        } catch (err) {
+            span.appendChild(range.extractContents());
+            range.insertNode(span);
+        }
+    }
+}
+"#;
+
+const UNCOMMENT_SCRIPT: &str = r#"
+const sel = window.getSelection();
+if (sel && sel.rangeCount && el) {
+    const range = sel.getRangeAt(0);
+    const spans = Array.from(el.querySelectorAll('span[data-comment]'));
+    spans.forEach((span) => {
+        const hit = range.collapsed
+            ? span.contains(range.startContainer)
+            : (range.intersectsNode ? range.intersectsNode(span) : false);
+        if (!hit) return;
+        const parent = span.parentNode;
+        while (span.firstChild) parent.insertBefore(span.firstChild, span);
+        parent.removeChild(span);
+    });
+}
+"#;
 
 #[component]
 fn Inspector() -> Element {

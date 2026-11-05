@@ -1,5 +1,5 @@
-use docx_rs::{Docx, DocxError, Paragraph, Run, RunFonts};
-use writing_studio_document::{BlockKind, Document, Inline};
+use docx_rs::{Docx, DocxError, Hyperlink, HyperlinkType, Paragraph, Run, RunFonts};
+use writing_studio_document::{normalize_link, BlockKind, Document, Inline};
 
 use crate::compile::{collect_sections, CompileInput};
 
@@ -46,6 +46,31 @@ fn add_document(mut docx: Docx, document: &Document) -> Docx {
                     docx = docx.add_paragraph(paragraph);
                 }
             }
+            BlockKind::Code { .. } => {
+                let text = block.plain_text();
+                let lines: Vec<&str> = if text.is_empty() {
+                    vec![""]
+                } else {
+                    text.split('\n').collect()
+                };
+                for line in lines {
+                    docx = docx.add_paragraph(Paragraph::new().add_run(
+                        Run::new()
+                            .add_text(line)
+                            .size(20)
+                            .fonts(RunFonts::new().ascii("Consolas")),
+                    ));
+                }
+            }
+            BlockKind::SceneBreak => {
+                docx = docx.add_paragraph(Paragraph::new().add_run(
+                    Run::new()
+                        .add_text("* * *")
+                        .italic()
+                        .size(22)
+                        .fonts(RunFonts::new().ascii("Times New Roman")),
+                ));
+            }
         }
     }
     docx
@@ -86,23 +111,51 @@ fn add_inlines(
         return paragraph.add_run(Run::new().add_text(""));
     }
     for inline in inlines {
-        let mut run = Run::new()
-            .add_text(&inline.text)
-            .size(size)
-            .fonts(RunFonts::new().ascii("Times New Roman"));
-        if force_bold || inline.marks.bold {
-            run = run.bold();
+        let run = styled_run(inline, size, force_bold, force_italic);
+        if let Some(url) = inline.marks.link.as_deref().and_then(normalize_link) {
+            paragraph = paragraph.add_hyperlink(
+                Hyperlink::new(url, HyperlinkType::External)
+                    .add_run(run.color("1D4E89").underline("single")),
+            );
+        } else {
+            paragraph = paragraph.add_run(run);
         }
-        if force_italic || inline.marks.italic {
-            run = run.italic();
+        if let Some(note) = inline
+            .marks
+            .comment
+            .as_deref()
+            .map(str::trim)
+            .filter(|note| !note.is_empty())
+        {
+            paragraph = paragraph.add_run(
+                Run::new()
+                    .add_text(format!(" [{note}]"))
+                    .italic()
+                    .size(size.saturating_sub(4).max(16))
+                    .color("6B5E48")
+                    .fonts(RunFonts::new().ascii("Times New Roman")),
+            );
         }
-        if inline.marks.strikethrough {
-            run = run.strike();
-        }
-        if inline.marks.underline {
-            run = run.underline("single");
-        }
-        paragraph = paragraph.add_run(run);
     }
     paragraph
+}
+
+fn styled_run(inline: &Inline, size: usize, force_bold: bool, force_italic: bool) -> Run {
+    let mut run = Run::new()
+        .add_text(&inline.text)
+        .size(size)
+        .fonts(RunFonts::new().ascii("Times New Roman"));
+    if force_bold || inline.marks.bold {
+        run = run.bold();
+    }
+    if force_italic || inline.marks.italic {
+        run = run.italic();
+    }
+    if inline.marks.strikethrough {
+        run = run.strike();
+    }
+    if inline.marks.underline {
+        run = run.underline("single");
+    }
+    run
 }

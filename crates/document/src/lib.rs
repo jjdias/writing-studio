@@ -7,6 +7,6 @@
 mod html;
 mod model;
 
-pub use model::{Block, BlockKind, Document, Inline, ListItem, Marks};
+pub use model::{normalize_link, Block, BlockKind, Document, Inline, InlineNote, ListItem, Marks};
 
 pub const DOCUMENT_SCHEMA_VERSION: u32 = 1;

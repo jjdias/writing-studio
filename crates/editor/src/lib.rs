@@ -136,4 +136,18 @@ mod tests {
         assert!(html.contains("<strong>there</strong>"));
         assert_eq!(session.plain_text(), "Hello there");
     }
+
+    #[test]
+    fn html_keeps_link_comment_and_scene_break() {
+        let mut session = EditorSession::empty(Id::new());
+        session.apply_html(
+            r#"<p><span class="ws-comment" data-comment="tide"><a href="https://example.com">harbor</a></span></p><hr><pre>code</pre>"#,
+        );
+        let html = session.html();
+        assert!(html.contains("https://example.com"));
+        assert!(html.contains("data-comment=\"tide\""));
+        assert!(html.contains("<hr>"));
+        assert!(html.contains("<pre>code</pre>"));
+        assert_eq!(session.document().comments().len(), 1);
+    }
 }

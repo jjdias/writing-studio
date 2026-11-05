@@ -66,6 +66,43 @@ mod tests {
     }
 
     #[test]
+    fn markdown_exports_links_comments_code_and_scene_breaks() {
+        let mut document = Document::new(writing_studio_core::Id::new());
+        document.blocks = vec![
+            Block {
+                id: writing_studio_core::Id::new(),
+                kind: BlockKind::Paragraph {
+                    inlines: vec![Inline {
+                        id: writing_studio_core::Id::new(),
+                        text: "harbor".into(),
+                        marks: Marks {
+                            link: Some("https://example.com/tide".into()),
+                            comment: Some("check the tide".into()),
+                            ..Marks::default()
+                        },
+                    }],
+                },
+            },
+            Block {
+                id: writing_studio_core::Id::new(),
+                kind: BlockKind::Code {
+                    inlines: vec![Inline::text("let x = 1;")],
+                },
+            },
+            Block {
+                id: writing_studio_core::Id::new(),
+                kind: BlockKind::SceneBreak,
+            },
+        ];
+        let markdown = crate::markdown::document_markdown(&document);
+        assert!(markdown.contains("[harbor](https://example.com/tide)[^1]"));
+        assert!(markdown.contains("[^1]: check the tide"));
+        assert!(markdown.contains("```\nlet x = 1;\n```"));
+        assert!(markdown.contains("* * *"));
+        assert!(!markdown.contains("javascript:"));
+    }
+
+    #[test]
     fn docx_bytes_are_a_zip_package() {
         let seeded = blank_novel("Docx Novel");
         let tree = BinderTree::new(seeded.nodes);

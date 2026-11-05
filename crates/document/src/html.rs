@@ -5,7 +5,7 @@
 
 use writing_studio_core::Id;
 
-use crate::model::{Block, BlockKind, Document, Inline, ListItem, Marks};
+use crate::model::{normalize_link, Block, BlockKind, Document, Inline, ListItem, Marks};
 
 impl Document {
     pub fn to_html(&self) -> String {
@@ -37,6 +37,8 @@ fn block_to_html(block: &Block) -> String {
                 .collect();
             format!("<{tag}>{body}</{tag}>")
         }
+        BlockKind::Code { inlines } => format!("<pre>{}</pre>", inlines_to_html(inlines)),
+        BlockKind::SceneBreak => "<hr>".into(),
     }
 }
 
@@ -64,8 +66,20 @@ fn inline_to_html(inline: &Inline) -> String {
     if inline.marks.bold {
         body = format!("<strong>{body}</strong>");
     }
-    if let Some(url) = &inline.marks.link {
-        body = format!("<a href=\"{}\">{body}</a>", escape_attr(url));
+    if let Some(url) = inline.marks.link.as_deref().and_then(normalize_link) {
+        body = format!("<a href=\"{}\">{body}</a>", escape_attr(&url));
+    }
+    if let Some(note) = inline
+        .marks
+        .comment
+        .as_deref()
+        .map(str::trim)
+        .filter(|note| !note.is_empty())
+    {
+        let attr = escape_attr(note);
+        body = format!(
+            "<span class=\"ws-comment\" data-comment=\"{attr}\" title=\"{attr}\">{body}</span>"
+        );
     }
     body
 }
@@ -84,6 +98,7 @@ fn parse_html(html: &str) -> Vec<Block> {
     let tokens = tokenize(html);
     let mut blocks = Vec::new();
     let mut marks = Marks::default();
+    let mut comment_stack: Vec<Option<String>> = Vec::new();
     let mut current_inlines: Vec<Inline> = Vec::new();
     let mut list_items: Vec<ListItem> = Vec::new();
     let mut list_ordered = false;
@@ -115,6 +130,11 @@ fn parse_html(html: &str) -> Vec<Block> {
                     flush_named_block(&mut blocks, &mut current_inlines, block_tag);
                     block_tag = Some(OpenBlock::Quote);
                 }
+                "pre" => {
+                    close_list(&mut blocks, &mut list_items, list_ordered, &mut in_list);
+                    flush_named_block(&mut blocks, &mut current_inlines, block_tag);
+                    block_tag = Some(OpenBlock::Code);
+                }
                 "ul" | "ol" => {
                     flush_named_block(&mut blocks, &mut current_inlines, block_tag);
                     in_list = true;
@@ -125,6 +145,15 @@ fn parse_html(html: &str) -> Vec<Block> {
                 "li" => {
                     current_inlines.clear();
                 }
+                "hr" => {
+                    close_list(&mut blocks, &mut list_items, list_ordered, &mut in_list);
+                    flush_named_block(&mut blocks, &mut current_inlines, block_tag);
+                    block_tag = None;
+                    blocks.push(Block {
+                        id: Id::new(),
+                        kind: BlockKind::SceneBreak,
+                    });
+                }
                 "br" => push_text(&mut current_inlines, "\n", &marks),
                 "strong" | "b" => marks.bold = true,
                 "em" | "i" => marks.italic = true,
@@ -134,12 +163,23 @@ fn parse_html(html: &str) -> Vec<Block> {
                     marks.link = attrs
                         .iter()
                         .find(|(name, _)| name == "href")
-                        .map(|(_, value)| unescape(value));
+                        .and_then(|(_, value)| normalize_link(&unescape(value)));
+                }
+                "span" => {
+                    comment_stack.push(marks.comment.clone());
+                    if let Some(note) = attrs
+                        .iter()
+                        .find(|(name, _)| name == "data-comment")
+                        .map(|(_, value)| unescape(value).trim().to_string())
+                        .filter(|note| !note.is_empty())
+                    {
+                        marks.comment = Some(note);
+                    }
                 }
                 _ => {}
             },
             Token::End(tag) => match tag.as_str() {
-                "p" | "div" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "blockquote" => {
+                "p" | "div" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "blockquote" | "pre" => {
                     if !(in_list && matches!(tag.as_str(), "p" | "div")) {
                         flush_named_block(&mut blocks, &mut current_inlines, block_tag);
                         block_tag = None;
@@ -168,6 +208,7 @@ fn parse_html(html: &str) -> Vec<Block> {
                 "u" => marks.underline = false,
                 "s" | "strike" | "del" => marks.strikethrough = false,
                 "a" => marks.link = None,
+                "span" => marks.comment = comment_stack.pop().flatten(),
                 _ => {}
             },
         }
@@ -184,6 +225,28 @@ enum OpenBlock {
     Paragraph,
     Heading(u8),
     Quote,
+    Code,
+}
+
+fn close_list(
+    blocks: &mut Vec<Block>,
+    list_items: &mut Vec<ListItem>,
+    list_ordered: bool,
+    in_list: &mut bool,
+) {
+    if !*in_list {
+        return;
+    }
+    if !list_items.is_empty() {
+        blocks.push(Block {
+            id: Id::new(),
+            kind: BlockKind::List {
+                ordered: list_ordered,
+                items: std::mem::take(list_items),
+            },
+        });
+    }
+    *in_list = false;
 }
 
 fn flush_named_block(blocks: &mut Vec<Block>, inlines: &mut Vec<Inline>, tag: Option<OpenBlock>) {
@@ -197,6 +260,7 @@ fn flush_named_block(blocks: &mut Vec<Block>, inlines: &mut Vec<Inline>, tag: Op
             inlines,
         },
         OpenBlock::Quote => BlockKind::Quote { inlines },
+        OpenBlock::Code => BlockKind::Code { inlines },
         OpenBlock::Paragraph => BlockKind::Paragraph { inlines },
     };
     blocks.push(Block {
@@ -239,7 +303,10 @@ fn reuse_ids(old: &[Block], mut new: Vec<Block>) -> Vec<Block> {
             | (
                 BlockKind::Heading { inlines: old_in, .. },
                 BlockKind::Heading { inlines: new_in, .. },
-            ) => zip_inlines(old_in, new_in),
+            )
+            | (BlockKind::Code { inlines: old_in }, BlockKind::Code { inlines: new_in }) => {
+                zip_inlines(old_in, new_in)
+            }
             (BlockKind::List { items: old_items, .. }, BlockKind::List { items: new_items, .. }) => {
                 for (old_item, new_item) in old_items.iter().zip(new_items.iter_mut()) {
                     new_item.id = old_item.id;
@@ -433,6 +500,72 @@ mod tests {
                 assert_eq!(join_inlines(&items[1].inlines), "Two");
             }
             _ => panic!("expected list"),
+        }
+    }
+
+    #[test]
+    fn links_comments_code_and_scene_breaks_round_trip() {
+        let mut doc = Document::new(Id::new());
+        doc.blocks = vec![
+            Block {
+                id: Id::new(),
+                kind: BlockKind::Paragraph {
+                    inlines: vec![Inline {
+                        id: Id::new(),
+                        text: "harbor".into(),
+                        marks: Marks {
+                            link: Some("https://example.com/tide".into()),
+                            comment: Some("check the tide".into()),
+                            ..Marks::default()
+                        },
+                    }],
+                },
+            },
+            Block {
+                id: Id::new(),
+                kind: BlockKind::Code {
+                    inlines: vec![Inline::text("let x = 1;")],
+                },
+            },
+            Block {
+                id: Id::new(),
+                kind: BlockKind::SceneBreak,
+            },
+            Block::paragraph("After"),
+        ];
+        let html = doc.to_html();
+        assert!(html.contains("href=\"https://example.com/tide\""));
+        assert!(html.contains("data-comment=\"check the tide\""));
+        assert!(html.contains("<pre>"));
+        assert!(html.contains("<hr>"));
+        let mut restored = Document::new(doc.id);
+        restored.replace_html(&html);
+        assert_eq!(restored.blocks.len(), 4);
+        match &restored.blocks[0].kind {
+            BlockKind::Paragraph { inlines } => {
+                assert_eq!(
+                    inlines[0].marks.link.as_deref(),
+                    Some("https://example.com/tide")
+                );
+                assert_eq!(inlines[0].marks.comment.as_deref(), Some("check the tide"));
+            }
+            other => panic!("expected paragraph, got {other:?}"),
+        }
+        assert!(matches!(restored.blocks[1].kind, BlockKind::Code { .. }));
+        assert!(matches!(restored.blocks[2].kind, BlockKind::SceneBreak));
+        assert_eq!(restored.blocks[3].plain_text(), "After");
+    }
+
+    #[test]
+    fn script_links_are_dropped() {
+        let mut doc = Document::new(Id::new());
+        doc.replace_html(r#"<p><a href="javascript:alert(1)">nope</a></p>"#);
+        match &doc.blocks[0].kind {
+            BlockKind::Paragraph { inlines } => {
+                assert_eq!(inlines[0].text, "nope");
+                assert!(inlines[0].marks.link.is_none());
+            }
+            other => panic!("expected paragraph, got {other:?}"),
         }
     }
 }
