@@ -39,7 +39,7 @@ pub struct Inline {
     pub marks: Marks,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Marks {
     pub bold: bool,
     pub italic: bool,
@@ -145,7 +145,7 @@ impl Inline {
     }
 }
 
-fn join_inlines(inlines: &[Inline]) -> String {
+pub(crate) fn join_inlines(inlines: &[Inline]) -> String {
     inlines.iter().map(|inline| inline.text.as_str()).collect()
 }
 

@@ -278,8 +278,14 @@ fn EditorPane() -> Element {
         .selected_node()
         .map(|node| node.kind.icon_label())
         .unwrap_or("Document");
-    let text = snapshot.editor_text.clone();
+    let html = snapshot.editor_html.clone();
+    let epoch = snapshot.editor_epoch;
     let can_edit = snapshot.session.is_some();
+    let initial_html = if html.trim().is_empty() {
+        "<p><br></p>".into()
+    } else {
+        html
+    };
 
     rsx! {
         div { class: "editor-pane",
@@ -287,14 +293,74 @@ fn EditorPane() -> Element {
                 p { class: "eyebrow", "{kind}" }
                 h2 { "{heading}" }
             }
-            textarea {
-                class: "manuscript",
-                disabled: !can_edit,
-                value: "{text}",
-                oninput: move |event| state.write().apply_editor_text(event.value()),
-                onblur: move |_| state.write().flush_editor(),
-                placeholder: "Write this scene. Changes save locally a few seconds after you stop typing, on blur, or with Ctrl+S.",
+            FormatToolbar { enabled: can_edit }
+            div {
+                key: "{epoch}",
+                class: "manuscript rich",
+                contenteditable: can_edit,
+                "data-manuscript": "true",
+                dangerous_inner_html: "{initial_html}",
+                oninput: move |_| read_manuscript_html(state),
+                onblur: move |_| {
+                    read_manuscript_html(state);
+                    state.write().flush_editor();
+                },
             }
+        }
+    }
+}
+
+fn read_manuscript_html(mut state: Signal<StudioState>) {
+    spawn(async move {
+        let mut eval = document::eval(
+            r#"
+            const el = document.querySelector('[data-manuscript]');
+            dioxus.send(el ? el.innerHTML : '');
+            "#,
+        );
+        if let Ok(html) = eval.recv::<String>().await {
+            state.write().apply_editor_html(html);
+        }
+    });
+}
+
+fn run_format_command(mut state: Signal<StudioState>, command: &'static str, argument: &'static str) {
+    spawn(async move {
+        let script = format!(
+            r#"
+            const el = document.querySelector('[data-manuscript]');
+            if (el) {{ el.focus(); }}
+            document.execCommand('{command}', false, {arg});
+            dioxus.send(el ? el.innerHTML : '');
+            "#,
+            command = command,
+            arg = if argument.is_empty() {
+                "null".into()
+            } else {
+                format!("'{argument}'")
+            }
+        );
+        let mut eval = document::eval(&script);
+        if let Ok(html) = eval.recv::<String>().await {
+            state.write().apply_editor_html(html);
+        }
+    });
+}
+
+#[component]
+fn FormatToolbar(enabled: bool) -> Element {
+    let state = use_context::<Signal<StudioState>>();
+    rsx! {
+        div { class: "format-toolbar",
+            button { disabled: !enabled, onclick: move |_| run_format_command(state, "bold", ""), "Bold" }
+            button { disabled: !enabled, onclick: move |_| run_format_command(state, "italic", ""), "Italic" }
+            button { disabled: !enabled, onclick: move |_| run_format_command(state, "underline", ""), "Underline" }
+            button { disabled: !enabled, onclick: move |_| run_format_command(state, "strikeThrough", ""), "Strike" }
+            button { disabled: !enabled, onclick: move |_| run_format_command(state, "formatBlock", "H2"), "Heading" }
+            button { disabled: !enabled, onclick: move |_| run_format_command(state, "formatBlock", "P"), "Body" }
+            button { disabled: !enabled, onclick: move |_| run_format_command(state, "formatBlock", "BLOCKQUOTE"), "Quote" }
+            button { disabled: !enabled, onclick: move |_| run_format_command(state, "insertUnorderedList", ""), "List" }
+            button { disabled: !enabled, onclick: move |_| run_format_command(state, "insertOrderedList", ""), "Numbered" }
         }
     }
 }

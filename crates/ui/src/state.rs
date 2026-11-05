@@ -36,6 +36,8 @@ pub struct StudioState {
     pub selected: Option<Id>,
     pub session: Option<EditorSession>,
     pub editor_text: String,
+    pub editor_html: String,
+    pub editor_epoch: u64,
     pub search: String,
     pub mode: WorkspaceMode,
     pub focus_mode: bool,
@@ -59,6 +61,8 @@ impl Default for StudioState {
             selected: None,
             session: None,
             editor_text: String::new(),
+            editor_html: String::new(),
+            editor_epoch: 0,
             search: String::new(),
             mode: WorkspaceMode::Writing,
             focus_mode: false,
@@ -166,10 +170,11 @@ impl StudioState {
         self.selected = Some(id);
         let document_id = self.binder.get(id).and_then(|node| node.document_id);
         if let (Some(store), Some(doc_id)) = (&self.store, document_id) {
-            match store.borrow().load_or_create_document(doc_id) {
+            let loaded = store.borrow().load_or_create_document(doc_id);
+            match loaded {
                 Ok(document) => {
                     let session = EditorSession::new(document);
-                    self.editor_text = session.plain_text();
+                    self.sync_editor_from_session(&session);
                     self.session = Some(session);
                 }
                 Err(err) => self.status = format!("Could not load document: {err}"),
@@ -177,13 +182,31 @@ impl StudioState {
         } else {
             self.session = None;
             self.editor_text.clear();
+            self.editor_html.clear();
+            self.editor_epoch += 1;
         }
+    }
+
+    fn sync_editor_from_session(&mut self, session: &EditorSession) {
+        self.editor_text = session.plain_text();
+        self.editor_html = session.html();
+        self.editor_epoch = self.editor_epoch.saturating_add(1);
     }
 
     pub fn apply_editor_text(&mut self, text: String) {
         self.editor_text = text.clone();
         if let Some(session) = &mut self.session {
             session.apply_plain_text(&text);
+            if session.is_dirty() {
+                self.note_edit();
+            }
+        }
+    }
+
+    pub fn apply_editor_html(&mut self, html: String) {
+        if let Some(session) = &mut self.session {
+            session.apply_html(&html);
+            self.editor_text = session.plain_text();
             if session.is_dirty() {
                 self.note_edit();
             }
@@ -304,10 +327,11 @@ impl StudioState {
         let Some(store) = &self.store else {
             return;
         };
-        match store.borrow().restore_snapshot(snapshot_id) {
+        let restored = store.borrow().restore_snapshot(snapshot_id);
+        match restored {
             Ok(document) => {
                 let session = EditorSession::new(document);
-                self.editor_text = session.plain_text();
+                self.sync_editor_from_session(&session);
                 self.session = Some(session);
                 self.status =
                     "Snapshot restored locally. Previous text was saved as a pre-restore snapshot."
@@ -358,6 +382,8 @@ impl StudioState {
                 self.binder = binder;
                 self.session = None;
                 self.editor_text.clear();
+                self.editor_html.clear();
+                self.editor_epoch += 1;
                 self.status = status.into();
                 if let Some(id) = previous.filter(|id| self.binder.get(*id).is_some()) {
                     self.select_node(id);
@@ -380,7 +406,11 @@ impl StudioState {
     pub fn undo(&mut self) {
         if let Some(session) = &mut self.session {
             if session.undo() {
-                self.editor_text = session.plain_text();
+                let html = session.html();
+                let text = session.plain_text();
+                self.editor_html = html;
+                self.editor_text = text;
+                self.editor_epoch = self.editor_epoch.saturating_add(1);
                 self.note_edit();
             }
         }
@@ -389,7 +419,11 @@ impl StudioState {
     pub fn redo(&mut self) {
         if let Some(session) = &mut self.session {
             if session.redo() {
-                self.editor_text = session.plain_text();
+                let html = session.html();
+                let text = session.plain_text();
+                self.editor_html = html;
+                self.editor_text = text;
+                self.editor_epoch = self.editor_epoch.saturating_add(1);
                 self.note_edit();
             }
         }

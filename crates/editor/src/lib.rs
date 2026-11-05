@@ -67,6 +67,21 @@ impl EditorSession {
         self.dirty = true;
     }
 
+    pub fn html(&self) -> String {
+        self.document.to_html()
+    }
+
+    pub fn apply_html(&mut self, html: &str) {
+        let mut next = self.document.clone();
+        next.replace_html(html);
+        if next.to_html() == self.document.to_html() {
+            return;
+        }
+        self.push_undo();
+        self.document = next;
+        self.dirty = true;
+    }
+
     pub fn undo(&mut self) -> bool {
         if let Some(previous) = self.undo.pop() {
             self.redo.push(self.document.clone());
@@ -111,5 +126,14 @@ mod tests {
         assert_eq!(session.plain_text(), "Hello");
         assert!(session.redo());
         assert_eq!(session.plain_text(), "Hello world");
+    }
+
+    #[test]
+    fn html_keeps_bold_mark() {
+        let mut session = EditorSession::empty(Id::new());
+        session.apply_html("<p>Hello <strong>there</strong></p>");
+        let html = session.html();
+        assert!(html.contains("<strong>there</strong>"));
+        assert_eq!(session.plain_text(), "Hello there");
     }
 }

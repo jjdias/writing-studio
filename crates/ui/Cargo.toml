@@ -8,6 +8,7 @@ description = "Dioxus workspace UI for Writing Studio"
 [dependencies]
 dioxus.workspace = true
 rfd.workspace = true
+serde_json.workspace = true
 tokio.workspace = true
 writing-studio-core.workspace = true
 writing-studio-corkboard.workspace = true

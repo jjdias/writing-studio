@@ -57,7 +57,7 @@ These pieces exist and are used by the desktop app.
 ### Editor
 
 - Structured document model (blocks, inlines, marks) stored as JSON
-- Phase 1 editor is a plain-text `textarea` mapped onto that model (one paragraph per line)
+- Rich-text editor maps HTML in the desktop view onto that block model (bold, italic, underline, strike, headings, quotes, lists)
 - Undo / redo (Ctrl+Z / Ctrl+Y), dirty tracking, word and character counts
 - Flush on blur, on scene change, and on a local idle timer (`autosave_seconds`, default 2s after the last edit)
 
@@ -102,7 +102,7 @@ These crates exist so module boundaries stay stable. They are **types or stubs**
 | `writing-studio-synchronization` | “optional = true” stub | Optional cloud sync |
 | `writing-studio-security` | Notes that local folders are unencrypted | Optional encryption / credentials when cloud exists |
 
-Also not in the UI yet: rich-text rendering of marks, export commands, binder labels/colors.
+Also not in the UI yet: export commands, binder labels/colors.
 
 ---
 
@@ -112,7 +112,7 @@ Phases below keep **local writing complete**. Anything involving accounts, serve
 
 ### Phase 2 — Writing environment (local)
 
-- True rich-text editing (bold, italic, headings, lists, quotes) on the existing document model
+- Inline links from the toolbar, comments, and more block types
 - Binder labels, colors, and deeper nesting polish
 - Corkboard: reorder scenes, filter/group, card colors
 - Outliner: inline metadata edit and word counts per row
@@ -185,7 +185,6 @@ When cloud work starts, the source of truth for a disconnected writer remains th
 
 Highest value after Phase 1, still fully local:
 
-1. Rich-text editing on the existing block model
-2. Compile to Markdown / DOCX from the current export crate
+1. Compile to Markdown / DOCX from the current export crate
 
 Cloud sync and collaboration stay off this near-term list on purpose.

@@ -129,6 +129,13 @@ button.primary, button.mode.active, .binder-item.selected {
 .editor-pane { height: 100%; display: flex; flex-direction: column; }
 .editor-meta { padding: 20px 8% 0; }
 .editor-meta h2 { font-family: var(--font); margin: 0 0 12px; font-size: 32px; }
+.format-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 8% 12px;
+}
+.format-toolbar button { font-size: 12px; padding: 6px 10px; }
 .manuscript {
   flex: 1;
   margin: 0 8% 24px;
@@ -141,6 +148,20 @@ button.primary, button.mode.active, .binder-item.selected {
   border: 0;
   resize: none;
   padding: 28px;
+  overflow: auto;
+  outline: none;
+}
+.manuscript.rich h1, .manuscript.rich h2, .manuscript.rich h3 {
+  font-family: var(--font);
+  margin: 0 0 12px;
+}
+.manuscript.rich p, .manuscript.rich blockquote, .manuscript.rich ul, .manuscript.rich ol {
+  margin: 0 0 12px;
+}
+.manuscript.rich blockquote {
+  border-left: 3px solid var(--gold);
+  padding-left: 16px;
+  color: #5c5348;
 }
 .synopsis { min-height: 120px; resize: vertical; }
 
