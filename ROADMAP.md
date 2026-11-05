@@ -112,10 +112,15 @@ Later phases keep **local writing complete**. Anything involving accounts, serve
 
 ### Phase 2 — Writing environment (local)
 
+Done on `phase-2`:
+
 - Inline links from the toolbar, comments, and more block types
+- Outliner: inline metadata edit and word counts per row
+
+Still in this phase:
+
 - Binder labels, colors, and deeper nesting polish
 - Corkboard: reorder scenes, filter/group, card colors
-- Outliner: inline metadata edit and word counts per row
 - Keyboard shortcuts beyond save / undo / redo
 - Full-text search of manuscript content (Tantivy), not only binder titles
 - Daily writing targets and session statistics stored in the local project
@@ -182,4 +187,13 @@ When optional cloud work starts, the source of truth for a disconnected writer r
 
 ## Immediate next steps
 
-Phase 1 is documented and feature-complete for the list above. Next: Phase 2 polish (binder labels/colors, corkboard grouping, richer shortcuts). Optional cloud stays later.
+Phase 2 is in progress on `phase-2`. Links, comments, extra block types, and the outliner (inline title, status, and synopsis, plus a word count on each row) are in. Still to implement, all local:
+
+- Binder labels, colors, and deeper nesting polish
+- Corkboard: reorder scenes, filter/group, card colors
+- Keyboard shortcuts beyond save / undo / redo
+- Full-text search of manuscript content (Tantivy), not only binder titles
+- Daily writing targets and session statistics stored in the local project
+- Customizable panel layout and themes
+
+Optional cloud stays later.

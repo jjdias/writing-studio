@@ -225,8 +225,22 @@ button.primary, button.mode.active, .binder-item.selected {
 
 .outliner { padding: 24px; }
 .outliner table { width: 100%; border-collapse: collapse; }
-.outliner th, .outliner td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); }
-.outliner tr { cursor: pointer; }
+.outliner th, .outliner td { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.outliner .cell-input {
+  width: 100%;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font: inherit;
+}
+.outliner .cell-input:focus {
+  border-color: var(--line);
+  background: #0f0d0b;
+  outline: none;
+}
+.outliner .words { color: var(--muted); text-align: right; white-space: nowrap; }
 
 .history-pane { padding: 24px 8%; display: flex; flex-direction: column; gap: 28px; }
 .history-pane h2 { font-family: var(--font); margin: 0 0 8px; }

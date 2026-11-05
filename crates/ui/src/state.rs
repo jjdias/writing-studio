@@ -235,13 +235,8 @@ impl StudioState {
 
     pub fn save_all(&mut self) {
         self.flush_editor();
-        if let Some(node) = self.selected.and_then(|id| self.binder.get(id).cloned()) {
-            if let Some(store) = &self.store {
-                if let Err(err) = store.borrow().upsert_node(&node) {
-                    self.status = format!("Could not save binder: {err}");
-                    return;
-                }
-            }
+        if self.binder_dirty && self.store.is_some() && !self.persist_binder() {
+            return;
         }
         if let Some(meta) = &self.meta {
             if let Some(store) = &self.store {
@@ -714,35 +709,42 @@ impl StudioState {
 
     pub fn update_selected_title(&mut self, title: String) {
         if let Some(id) = self.selected {
-            if let Some(node) = self.binder.get_mut(id) {
-                node.title = title;
-                node.updated_at = writing_studio_core::Timestamp::now();
-            }
-            self.binder_dirty = true;
-            self.note_edit();
+            self.update_node_title(id, title);
         }
     }
 
     pub fn update_selected_synopsis(&mut self, synopsis: String) {
         if let Some(id) = self.selected {
-            if let Some(node) = self.binder.get_mut(id) {
-                node.synopsis = synopsis;
-                node.updated_at = writing_studio_core::Timestamp::now();
-            }
-            self.binder_dirty = true;
-            self.note_edit();
+            self.update_node_synopsis(id, synopsis);
         }
     }
 
     pub fn update_selected_status(&mut self, status: String) {
         if let Some(id) = self.selected {
-            if let Some(node) = self.binder.get_mut(id) {
-                node.status = status;
-                node.updated_at = writing_studio_core::Timestamp::now();
-            }
-            self.binder_dirty = true;
-            self.note_edit();
+            self.update_node_status(id, status);
         }
+    }
+
+    pub fn update_node_title(&mut self, id: Id, title: String) {
+        self.edit_node(id, |node| node.title = title);
+    }
+
+    pub fn update_node_synopsis(&mut self, id: Id, synopsis: String) {
+        self.edit_node(id, |node| node.synopsis = synopsis);
+    }
+
+    pub fn update_node_status(&mut self, id: Id, status: String) {
+        self.edit_node(id, |node| node.status = status);
+    }
+
+    fn edit_node(&mut self, id: Id, apply: impl FnOnce(&mut BinderNode)) {
+        let Some(node) = self.binder.get_mut(id) else {
+            return;
+        };
+        apply(node);
+        node.updated_at = writing_studio_core::Timestamp::now();
+        self.binder_dirty = true;
+        self.note_edit();
     }
 }
 

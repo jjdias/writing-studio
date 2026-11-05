@@ -2,7 +2,8 @@ use dioxus::prelude::*;
 use writing_studio_core::Id;
 use writing_studio_corkboard::cards_from_binder;
 use writing_studio_document::InlineNote;
-use writing_studio_manuscript::build_outline;
+use writing_studio_editor::EditorSession;
+use writing_studio_manuscript::{outline_rows, row_word_count};
 use writing_studio_project::{BinderNode, NodeKind};
 use writing_studio_search::matches_query;
 
@@ -657,45 +658,44 @@ fn CorkboardPane() -> Element {
 fn OutlinerPane() -> Element {
     let mut state = use_context::<Signal<StudioState>>();
     let snapshot = state.read().clone();
-    let outline = build_outline(&snapshot.binder);
-    let books: Vec<OwnedOutlineBook> = outline
-        .books
-        .iter()
-        .map(|book| OwnedOutlineBook {
-            title: book.node.title.clone(),
-            rows: book
-                .chapters
-                .iter()
-                .flat_map(|chapter| {
-                    if chapter.scenes.is_empty() {
-                        vec![OwnedOutlineRow {
-                            select_id: chapter.node.id,
-                            open_writing: false,
-                            chapter_title: chapter.node.title.clone(),
-                            scene_title: "—".into(),
-                            status: chapter.node.status.clone(),
-                            synopsis: chapter.node.synopsis.clone(),
-                        }]
-                    } else {
-                        chapter
-                            .scenes
-                            .iter()
-                            .map(|scene| OwnedOutlineRow {
-                                select_id: scene.id,
-                                open_writing: true,
-                                chapter_title: chapter.node.title.clone(),
-                                scene_title: scene.title.clone(),
-                                status: scene.status.clone(),
-                                synopsis: scene.synopsis.clone(),
-                            })
-                            .collect()
-                    }
-                })
-                .collect(),
-        })
-        .collect();
+    let mut books: Vec<OwnedOutlineBook> = Vec::new();
+    for line in outline_rows(&snapshot.binder) {
+        let Some(chapter) = snapshot.binder.get(line.chapter_id) else {
+            continue;
+        };
+        let scene = line.scene_id.and_then(|id| snapshot.binder.get(id));
+        let meta = scene.unwrap_or(chapter);
+        let row = OwnedOutlineRow {
+            chapter_id: line.chapter_id,
+            scene_id: line.scene_id,
+            open_id: meta.id,
+            chapter_title: chapter.title.clone(),
+            scene_title: scene.map(|node| node.title.clone()).unwrap_or_default(),
+            status: meta.status.clone(),
+            synopsis: meta.synopsis.clone(),
+            words: row_word_count(line.document_id, |id| words_for_document(&snapshot, id)),
+        };
+        if books.last().map(|book| book.id) != Some(line.book_id) {
+            let title = snapshot
+                .binder
+                .get(line.book_id)
+                .map(|node| node.title.clone())
+                .unwrap_or_default();
+            books.push(OwnedOutlineBook {
+                id: line.book_id,
+                title,
+                rows: Vec::new(),
+            });
+        }
+        if let Some(book) = books.last_mut() {
+            book.rows.push(row);
+        }
+    }
     rsx! {
         div { class: "outliner",
+            if books.is_empty() {
+                p { class: "hint", "Add a chapter in the binder to outline it here." }
+            }
             for book in books {
                 h3 { "{book.title}" }
                 table {
@@ -705,21 +705,63 @@ fn OutlinerPane() -> Element {
                             th { "Scene" }
                             th { "Status" }
                             th { "Synopsis" }
+                            th { "Words" }
+                            th {}
                         }
                     }
                     tbody {
                         for row in book.rows {
                             tr {
-                                onclick: move |_| {
-                                    if row.open_writing {
-                                        state.write().mode = WorkspaceMode::Writing;
+                                td {
+                                    input {
+                                        class: "cell-input",
+                                        value: "{row.chapter_title}",
+                                        oninput: move |event| {
+                                            state.write().update_node_title(row.chapter_id, event.value());
+                                        },
                                     }
-                                    state.write().select_node(row.select_id);
-                                },
-                                td { "{row.chapter_title}" }
-                                td { "{row.scene_title}" }
-                                td { "{row.status}" }
-                                td { "{row.synopsis}" }
+                                }
+                                td {
+                                    if let Some(scene_id) = row.scene_id {
+                                        input {
+                                            class: "cell-input",
+                                            value: "{row.scene_title}",
+                                            oninput: move |event| {
+                                                state.write().update_node_title(scene_id, event.value());
+                                            },
+                                        }
+                                    } else {
+                                        span { class: "hint", "—" }
+                                    }
+                                }
+                                td {
+                                    input {
+                                        class: "cell-input",
+                                        value: "{row.status}",
+                                        oninput: move |event| {
+                                            state.write().update_node_status(row.open_id, event.value());
+                                        },
+                                    }
+                                }
+                                td {
+                                    input {
+                                        class: "cell-input",
+                                        value: "{row.synopsis}",
+                                        oninput: move |event| {
+                                            state.write().update_node_synopsis(row.open_id, event.value());
+                                        },
+                                    }
+                                }
+                                td { class: "words", "{row.words}" }
+                                td {
+                                    button {
+                                        onclick: move |_| {
+                                            state.write().select_node(row.open_id);
+                                            state.write().mode = WorkspaceMode::Writing;
+                                        },
+                                        "Open"
+                                    }
+                                }
                             }
                         }
                     }
@@ -727,6 +769,21 @@ fn OutlinerPane() -> Element {
             }
         }
     }
+}
+
+fn words_for_document(snapshot: &StudioState, id: Id) -> u32 {
+    if snapshot
+        .session
+        .as_ref()
+        .is_some_and(|session| session.document_id() == id)
+    {
+        return snapshot.session.as_ref().map(EditorSession::word_count).unwrap_or(0);
+    }
+    snapshot
+        .store
+        .as_ref()
+        .map(|store| store.borrow().document_word_count(id))
+        .unwrap_or(0)
 }
 
 fn binder_item_class(selected: bool, dragging: bool, drop_target: bool, trashed: bool) -> String {
@@ -747,15 +804,18 @@ fn binder_item_class(selected: bool, dragging: bool, drop_target: bool, trashed:
 }
 
 struct OwnedOutlineBook {
+    id: Id,
     title: String,
     rows: Vec<OwnedOutlineRow>,
 }
 
 struct OwnedOutlineRow {
-    select_id: Id,
-    open_writing: bool,
+    chapter_id: Id,
+    scene_id: Option<Id>,
+    open_id: Id,
     chapter_title: String,
     scene_title: String,
     status: String,
     synopsis: String,
+    words: u32,
 }
