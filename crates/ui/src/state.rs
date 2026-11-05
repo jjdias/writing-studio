@@ -7,7 +7,7 @@ use std::time::Instant;
 use writing_studio_core::{autosave_due, autosave_wait, Id, PRODUCT_NAME};
 use writing_studio_editor::EditorSession;
 use writing_studio_export::{compile_docx, compile_markdown, CompileInput};
-use writing_studio_project::{BinderNode, BinderTree, NodeKind, ProjectMeta};
+use writing_studio_project::{normalize_binder_color, BinderNode, BinderTree, NodeKind, ProjectMeta};
 use writing_studio_storage::{BackupInfo, ProjectStore, SnapshotInfo};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -525,6 +525,7 @@ impl StudioState {
             ),
             NodeKind::Note => "New note".into(),
             NodeKind::Folder => "New folder".into(),
+            NodeKind::Part => "New part".into(),
             other => other.icon_label().to_string(),
         };
         let node = BinderNode::new(kind, title, parent_id, sort);
@@ -678,33 +679,10 @@ impl StudioState {
     }
 
     fn infer_parent(&self, kind: NodeKind) -> Option<Id> {
-        let selected = self.selected.and_then(|id| self.binder.get(id));
-        match kind {
-            NodeKind::Note => self.binder.research_root().map(|node| node.id),
-            NodeKind::Scene => selected.and_then(|node| match node.kind {
-                NodeKind::Chapter => Some(node.id),
-                NodeKind::Scene => node.parent_id,
-                _ => self
-                    .binder
-                    .nodes
-                    .iter()
-                    .rev()
-                    .find(|node| node.kind == NodeKind::Chapter && !self.binder.is_in_trash(node.id))
-                    .map(|node| node.id),
-            }),
-            NodeKind::Chapter => selected.and_then(|node| match node.kind {
-                NodeKind::Book | NodeKind::Part => Some(node.id),
-                NodeKind::Chapter | NodeKind::Scene => self
-                    .binder
-                    .nodes
-                    .iter()
-                    .find(|candidate| candidate.kind == NodeKind::Book)
-                    .map(|book| book.id),
-                _ => self.binder.draft_root().map(|node| node.id),
-            }),
-            NodeKind::Folder => selected.map(|node| node.id),
-            _ => self.binder.draft_root().map(|node| node.id),
+        if let Some(id) = self.selected.and_then(|id| self.binder.container_for(id, kind)) {
+            return Some(id);
         }
+        self.binder.default_parent(kind)
     }
 
     pub fn update_selected_title(&mut self, title: String) {
@@ -735,6 +713,20 @@ impl StudioState {
 
     pub fn update_node_status(&mut self, id: Id, status: String) {
         self.edit_node(id, |node| node.status = status);
+    }
+
+    pub fn update_selected_label(&mut self, label: String) {
+        let label: String = label.chars().take(80).collect();
+        if let Some(id) = self.selected {
+            self.edit_node(id, |node| node.label = label);
+        }
+    }
+
+    pub fn update_selected_color(&mut self, color: String) {
+        let color = normalize_binder_color(&color);
+        if let Some(id) = self.selected {
+            self.edit_node(id, |node| node.color = color);
+        }
     }
 
     fn edit_node(&mut self, id: Id, apply: impl FnOnce(&mut BinderNode)) {

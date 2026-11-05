@@ -110,6 +110,7 @@ button.primary, button.mode.active, .binder-item.selected {
 
 .binder-item.dragging { opacity: 0.45; }
 .binder-item.drop-target { outline: 1px solid var(--gold); }
+.binder-item.drop-invalid { outline: 1px dashed var(--danger); }
 .binder-item.trashed { opacity: 0.7; font-style: italic; }
 
 .binder-item {
@@ -123,7 +124,23 @@ button.primary, button.mode.active, .binder-item.selected {
   border-radius: 6px;
   margin: 2px 0;
 }
-.binder-item .kind { color: var(--muted); font-size: 11px; min-width: 72px; }
+.binder-item .kind { color: var(--muted); font-size: 11px; min-width: 64px; }
+.binder-item .swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  align-self: center;
+}
+.binder-item .binder-title { flex: 1; min-width: 0; }
+.binder-item .binder-label {
+  color: var(--gold);
+  font-size: 11px;
+  margin-left: auto;
+}
+.swatch-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.swatch-btn { font-size: 12px; padding: 6px 8px; }
+.swatch-btn.active { outline: 2px solid var(--text); }
 
 .center { min-width: 0; background: #0c0b09; overflow: auto; }
 .editor-pane { height: 100%; display: flex; flex-direction: column; }

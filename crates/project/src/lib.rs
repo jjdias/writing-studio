@@ -6,7 +6,7 @@
 mod binder;
 mod settings;
 
-pub use binder::{BinderNode, BinderTree, NodeKind};
+pub use binder::{binder_color_hex, normalize_binder_color, BinderColor, BinderNode, BinderTree, NodeKind, BINDER_COLORS};
 pub use settings::ProjectSettings;
 pub use writing_studio_core::PROJECT_FORMAT_VERSION;
 

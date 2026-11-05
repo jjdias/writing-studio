@@ -59,11 +59,15 @@ impl NodeKind {
     pub fn can_contain(self, child: NodeKind) -> bool {
         match self {
             Self::DraftRoot => matches!(child, Self::Book | Self::Folder),
-            Self::Book => matches!(child, Self::Part | Self::Chapter | Self::Folder),
-            Self::Part => matches!(child, Self::Chapter | Self::Folder),
-            Self::Chapter => matches!(child, Self::Scene),
+            Self::Book => matches!(child, Self::Part | Self::Chapter | Self::Folder | Self::Scene),
+            Self::Part => matches!(child, Self::Part | Self::Chapter | Self::Folder | Self::Scene),
+            Self::Chapter => matches!(child, Self::Scene | Self::Folder),
             Self::ResearchRoot => matches!(child, Self::Note | Self::Folder),
-            Self::Folder => matches!(child, Self::Note | Self::Folder),
+            // Location decides whether a folder holds notes or manuscript items.
+            Self::Folder => matches!(
+                child,
+                Self::Folder | Self::Note | Self::Part | Self::Chapter | Self::Scene
+            ),
             Self::TrashRoot => !child.is_root(),
             Self::Scene | Self::Note => false,
         }
@@ -191,10 +195,18 @@ impl BinderTree {
     }
 
     pub fn is_in_trash(&self, id: Id) -> bool {
+        self.ancestor_is(id, NodeKind::TrashRoot)
+    }
+
+    pub fn is_in_research(&self, id: Id) -> bool {
+        self.ancestor_is(id, NodeKind::ResearchRoot)
+    }
+
+    fn ancestor_is(&self, id: Id, kind: NodeKind) -> bool {
         let mut current = Some(id);
         let mut guard = 0;
         while let Some(cid) = current {
-            if self.get(cid).is_some_and(|node| node.kind == NodeKind::TrashRoot) {
+            if self.get(cid).is_some_and(|node| node.kind == kind) {
                 return true;
             }
             current = self.get(cid).and_then(|node| node.parent_id);
@@ -204,6 +216,67 @@ impl BinderTree {
             }
         }
         false
+    }
+
+    /// Whether `parent` may hold a new child of `child`, including folder context.
+    pub fn accepts(&self, parent: Id, child: NodeKind) -> bool {
+        let Some(node) = self.get(parent) else {
+            return false;
+        };
+        if node.deleted_at.is_some() || (self.is_in_trash(parent) && node.kind != NodeKind::TrashRoot) {
+            return false;
+        }
+        if node.kind == NodeKind::Folder && self.is_in_research(parent) {
+            return matches!(child, NodeKind::Note | NodeKind::Folder);
+        }
+        if node.kind == NodeKind::Folder {
+            return matches!(
+                child,
+                NodeKind::Folder | NodeKind::Part | NodeKind::Chapter | NodeKind::Scene
+            );
+        }
+        node.kind.can_contain(child)
+    }
+
+    /// Nearest container at or above `start` that can hold `child`.
+    pub fn container_for(&self, start: Id, child: NodeKind) -> Option<Id> {
+        let mut current = Some(start);
+        let mut guard = 0;
+        while let Some(id) = current {
+            if self.accepts(id, child) {
+                return Some(id);
+            }
+            current = self.get(id).and_then(|node| node.parent_id);
+            guard += 1;
+            if guard > 10_000 {
+                break;
+            }
+        }
+        None
+    }
+
+    pub fn drop_allowed(&self, dragged: Id, target: Id) -> bool {
+        if dragged == target || self.is_under(target, dragged) {
+            return false;
+        }
+        let Some(drag_kind) = self.get(dragged).map(|node| node.kind) else {
+            return false;
+        };
+        if drag_kind.is_root() {
+            return false;
+        }
+        let Some(target_node) = self.get(target) else {
+            return false;
+        };
+        if target_node.kind == NodeKind::TrashRoot {
+            return true;
+        }
+        if self.accepts(target, drag_kind) {
+            return true;
+        }
+        target_node
+            .parent_id
+            .is_some_and(|parent| self.accepts(parent, drag_kind))
     }
 
     fn is_under(&self, node: Id, ancestor: Id) -> bool {
@@ -245,13 +318,12 @@ impl BinderTree {
         if target_node.kind == NodeKind::TrashRoot {
             return self.trash(dragged);
         }
-        if target_node.kind.can_contain(drag_kind) {
+        if self.accepts(target, drag_kind) {
             return self.place(dragged, Some(target), None);
         }
         if target_node
             .parent_id
-            .and_then(|parent| self.get(parent).map(|node| node.kind))
-            .is_some_and(|kind| kind.can_contain(drag_kind))
+            .is_some_and(|parent| self.accepts(parent, drag_kind))
         {
             return self.place(dragged, target_node.parent_id, Some(target));
         }
@@ -300,7 +372,7 @@ impl BinderTree {
                     .is_some_and(|candidate| {
                         candidate.deleted_at.is_none()
                             && !self.is_in_trash(*parent)
-                            && candidate.kind.can_contain(node.kind)
+                            && self.accepts(*parent, node.kind)
                     })
             })
             .or_else(|| self.default_parent(node.kind));
@@ -314,7 +386,12 @@ impl BinderTree {
                 .nodes
                 .iter()
                 .rev()
-                .find(|node| node.kind == NodeKind::Chapter && node.deleted_at.is_none())
+                .find(|node| {
+                    node.deleted_at.is_none()
+                        && !self.is_in_trash(node.id)
+                        && !self.is_in_research(node.id)
+                        && self.accepts(node.id, NodeKind::Scene)
+                })
                 .map(|node| node.id),
             NodeKind::Chapter | NodeKind::Part => self
                 .nodes
@@ -478,4 +555,77 @@ mod tests {
         assert!(docs.contains(&doc));
         assert!(binder.get(a).is_none());
     }
+
+    #[test]
+    fn manuscript_folder_nests_chapters_and_scenes() {
+        let (mut binder, chapter, scene, _, _) = tree();
+        let book = binder.get(chapter).unwrap().parent_id.unwrap();
+        let mut folder = BinderNode::new(NodeKind::Folder, "Act folder", Some(book), 1);
+        let folder_id = folder.id;
+        folder.parent_id = Some(book);
+        binder.nodes.push(folder);
+        binder.drop_on(chapter, folder_id).unwrap();
+        assert_eq!(binder.get(chapter).unwrap().parent_id, Some(folder_id));
+        let nested = BinderNode::new(NodeKind::Folder, "Scene group", Some(chapter), 2);
+        let nested_id = nested.id;
+        binder.nodes.push(nested);
+        binder.drop_on(scene, nested_id).unwrap();
+        assert_eq!(binder.get(scene).unwrap().parent_id, Some(nested_id));
+        let research = binder.research_root().unwrap().id;
+        let notes = BinderNode::new(NodeKind::Folder, "Clippings", Some(research), 0);
+        let notes_id = notes.id;
+        binder.nodes.push(notes);
+        let err = binder.drop_on(chapter, notes_id).unwrap_err();
+        assert!(err.to_string().contains("cannot hold"));
+    }
+
+    #[test]
+    fn parts_can_nest() {
+        let (mut binder, chapter, _, _, _) = tree();
+        let book = binder.get(chapter).unwrap().parent_id.unwrap();
+        let outer = BinderNode::new(NodeKind::Part, "Part 1", Some(book), 1);
+        let outer_id = outer.id;
+        binder.nodes.push(outer);
+        let inner = BinderNode::new(NodeKind::Part, "Part 1a", Some(book), 2);
+        let inner_id = inner.id;
+        binder.nodes.push(inner);
+        assert!(binder.drop_allowed(inner_id, outer_id));
+        binder.drop_on(inner_id, outer_id).unwrap();
+        assert_eq!(binder.get(inner_id).unwrap().parent_id, Some(outer_id));
+        assert_eq!(binder.container_for(inner_id, NodeKind::Chapter), Some(inner_id));
+    }
+}
+
+/// Named binder colors. `id` is what projects store; `hex` is only for display.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BinderColor {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub hex: &'static str,
+}
+
+pub const BINDER_COLORS: &[BinderColor] = &[
+    BinderColor { id: "", name: "None", hex: "" },
+    BinderColor { id: "gold", name: "Gold", hex: "#c4a265" },
+    BinderColor { id: "green", name: "Green", hex: "#6f8f72" },
+    BinderColor { id: "red", name: "Red", hex: "#b85c38" },
+    BinderColor { id: "blue", name: "Blue", hex: "#3d6b8a" },
+    BinderColor { id: "violet", name: "Violet", hex: "#7a6a9a" },
+];
+
+pub fn normalize_binder_color(value: &str) -> String {
+    let value = value.trim();
+    if BINDER_COLORS.iter().any(|swatch| swatch.id == value) {
+        value.to_string()
+    } else {
+        String::new()
+    }
+}
+
+pub fn binder_color_hex(value: &str) -> &'static str {
+    BINDER_COLORS
+        .iter()
+        .find(|swatch| swatch.id == value.trim())
+        .map(|swatch| swatch.hex)
+        .unwrap_or("")
 }

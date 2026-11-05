@@ -37,17 +37,39 @@ fn collect_chapters(tree: &BinderTree, parent: Id) -> Vec<OutlineChapter<'_>> {
         match child.kind {
             NodeKind::Chapter => chapters.push(OutlineChapter {
                 node: child,
-                scenes: tree
-                    .children(Some(child.id))
-                    .into_iter()
-                    .filter(|scene| scene.kind == NodeKind::Scene)
-                    .collect(),
+                scenes: collect_scenes(tree, child.id),
             }),
             NodeKind::Part => chapters.extend(collect_chapters(tree, child.id)),
+            NodeKind::Folder => {
+                chapters.extend(collect_chapters(tree, child.id));
+                let scenes: Vec<&BinderNode> = tree
+                    .children(Some(child.id))
+                    .into_iter()
+                    .filter(|node| node.kind == NodeKind::Scene)
+                    .collect();
+                if !scenes.is_empty() {
+                    chapters.push(OutlineChapter {
+                        node: child,
+                        scenes,
+                    });
+                }
+            }
             _ => {}
         }
     }
     chapters
+}
+
+fn collect_scenes<'a>(tree: &'a BinderTree, parent: Id) -> Vec<&'a BinderNode> {
+    let mut scenes = Vec::new();
+    for child in tree.children(Some(parent)) {
+        match child.kind {
+            NodeKind::Scene => scenes.push(child),
+            NodeKind::Folder => scenes.extend(collect_scenes(tree, child.id)),
+            _ => {}
+        }
+    }
+    scenes
 }
 
 pub fn default_scene_title(index: usize) -> String {
@@ -132,5 +154,20 @@ mod tests {
         assert_eq!(row_word_count(rows[1].document_id, words), 4);
         assert_eq!(row_word_count(rows[2].document_id, words), 2);
         assert_eq!(row_word_count(None, words), 0);
+    }
+
+    #[test]
+    fn scenes_inside_folders_stay_on_the_outline() {
+        let draft = BinderNode::new(NodeKind::DraftRoot, "Manuscript", None, 0);
+        let book = BinderNode::new(NodeKind::Book, "Book", Some(draft.id), 0);
+        let chapter = BinderNode::new(NodeKind::Chapter, "Chapter 1", Some(book.id), 0);
+        let group = BinderNode::new(NodeKind::Folder, "Group", Some(chapter.id), 0);
+        let scene = BinderNode::new(NodeKind::Scene, "Nested", Some(group.id), 0);
+        let scene_id = scene.id;
+        let tree = BinderTree::new(vec![draft, book, chapter, group, scene]);
+        let rows = outline_rows(&tree);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].scene_id, Some(scene_id));
+        assert_eq!(rows[0].chapter_id, tree.nodes[2].id);
     }
 }

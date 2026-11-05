@@ -4,7 +4,7 @@ use writing_studio_corkboard::cards_from_binder;
 use writing_studio_document::InlineNote;
 use writing_studio_editor::EditorSession;
 use writing_studio_manuscript::{outline_rows, row_word_count};
-use writing_studio_project::{BinderNode, NodeKind};
+use writing_studio_project::{binder_color_hex, BinderNode, NodeKind, BINDER_COLORS};
 use writing_studio_search::matches_query;
 
 use crate::state::{StudioState, WorkspaceMode};
@@ -145,8 +145,10 @@ fn Workspace() -> Element {
                 aside { class: "binder-pane",
                     div { class: "pane-title", "Binder" }
                     div { class: "binder-tools",
+                        button { onclick: move |_| state.write().add_node(NodeKind::Part), "Part" }
                         button { onclick: move |_| state.write().add_node(NodeKind::Chapter), "Chapter" }
                         button { onclick: move |_| state.write().add_node(NodeKind::Scene), "Scene" }
+                        button { onclick: move |_| state.write().add_node(NodeKind::Folder), "Folder" }
                         button { onclick: move |_| state.write().add_node(NodeKind::Note), "Note" }
                     }
                     div { class: "binder-tools",
@@ -160,7 +162,7 @@ fn Workspace() -> Element {
                             if confirm_empty { "Confirm empty" } else { "Empty trash" }
                         }
                     }
-                    p { class: "hint binder-hint", "Drag items to reorder, nest, or drop on Trash." }
+                    p { class: "hint binder-hint", "Drag onto a container to nest. Drag onto a sibling to reorder. Drop on Trash to discard." }
                     BinderTreeView {}
                 }
             }
@@ -218,17 +220,15 @@ fn BinderNodeView(id: Id, depth: u32) -> Element {
     let Some(node) = snapshot.binder.get(id).cloned() else {
         return rsx! {};
     };
-    if !matches_query(&node.title, &snapshot.search) && snapshot.search.trim().len() > 0 {
-        let child_match = snapshot.binder.children(Some(id)).iter().any(|child| {
-            matches_query(&child.title, &snapshot.search)
-        });
-        if !child_match {
-            return rsx! {};
-        }
+    if !binder_matches(&snapshot.binder, id, &snapshot.search) {
+        return rsx! {};
     }
     let selected = snapshot.selected == Some(id);
     let dragging = snapshot.dragging == Some(id);
     let drop_target = snapshot.drop_target == Some(id);
+    let drop_ok = snapshot
+        .dragging
+        .is_some_and(|dragged| snapshot.binder.drop_allowed(dragged, id));
     let trashed = snapshot.binder.is_in_trash(id) && node.kind != NodeKind::TrashRoot;
     let can_drag = !node.kind.is_root();
     let children: Vec<Id> = snapshot
@@ -237,8 +237,10 @@ fn BinderNodeView(id: Id, depth: u32) -> Element {
         .into_iter()
         .map(|child| child.id)
         .collect();
-    let pad = 8 + depth * 14;
-    let class = binder_item_class(selected, dragging, drop_target, trashed);
+    let pad = 8 + depth * 16;
+    let class = binder_item_class(selected, dragging, drop_target, drop_ok, trashed);
+    let color = binder_color_hex(&node.color);
+    let label = node.label.clone();
 
     rsx! {
         button {
@@ -261,8 +263,14 @@ fn BinderNodeView(id: Id, depth: u32) -> Element {
                 state.write().drop_on(id);
             },
             ondragend: move |_| state.write().end_drag(),
+            if !color.is_empty() {
+                span { class: "swatch", style: "background: {color}", title: "{label}" }
+            }
             span { class: "kind", "{node.kind.icon_label()}" }
-            span { "{node.title}" }
+            span { class: "binder-title", "{node.title}" }
+            if !label.is_empty() {
+                span { class: "binder-label", "{label}" }
+            }
         }
         for child in children {
             BinderNodeView { id: child, depth: depth + 1 }
@@ -508,6 +516,29 @@ fn Inspector() -> Element {
                 value: "{node.status}",
                 oninput: move |event| state.write().update_selected_status(event.value()),
                 onblur: move |_| state.write().save_all(),
+            }
+            if !node.kind.is_root() {
+                label { "Label" }
+                input {
+                    value: "{node.label}",
+                    placeholder: "Short tag, such as subplot",
+                    oninput: move |event| state.write().update_selected_label(event.value()),
+                    onblur: move |_| state.write().save_all(),
+                }
+                label { "Color" }
+                div { class: "swatch-row",
+                    for swatch in BINDER_COLORS {
+                        button {
+                            class: if node.color == swatch.id { "swatch-btn active" } else { "swatch-btn" },
+                            style: if swatch.hex.is_empty() { String::new() } else { format!("background: {}; color: #1c1915", swatch.hex) },
+                            onclick: move |_| {
+                                state.write().update_selected_color(swatch.id.to_string());
+                                state.write().save_all();
+                            },
+                            "{swatch.name}"
+                        }
+                    }
+                }
             }
             if state.read().binder.is_in_trash(node.id) && node.kind != NodeKind::TrashRoot {
                 button { class: "primary", onclick: move |_| state.write().restore_selected(), "Restore from trash" }
@@ -786,7 +817,28 @@ fn words_for_document(snapshot: &StudioState, id: Id) -> u32 {
         .unwrap_or(0)
 }
 
-fn binder_item_class(selected: bool, dragging: bool, drop_target: bool, trashed: bool) -> String {
+fn binder_matches(tree: &writing_studio_project::BinderTree, id: Id, query: &str) -> bool {
+    if query.trim().is_empty() {
+        return true;
+    }
+    let Some(node) = tree.get(id) else {
+        return false;
+    };
+    if matches_query(&node.title, query) || matches_query(&node.label, query) {
+        return true;
+    }
+    tree.children(Some(id))
+        .iter()
+        .any(|child| binder_matches(tree, child.id, query))
+}
+
+fn binder_item_class(
+    selected: bool,
+    dragging: bool,
+    drop_target: bool,
+    drop_ok: bool,
+    trashed: bool,
+) -> String {
     let mut class = String::from("binder-item");
     if selected {
         class.push_str(" selected");
@@ -794,8 +846,11 @@ fn binder_item_class(selected: bool, dragging: bool, drop_target: bool, trashed:
     if dragging {
         class.push_str(" dragging");
     }
-    if drop_target {
+    if drop_target && drop_ok {
         class.push_str(" drop-target");
+    }
+    if drop_target && !drop_ok {
+        class.push_str(" drop-invalid");
     }
     if trashed {
         class.push_str(" trashed");
