@@ -127,6 +127,8 @@ fn Workspace() -> Element {
             div { class: "top-actions",
                 button { onclick: move |_| state.write().save_all(), "Save" }
                 button { onclick: move |_| state.write().backup(), "Backup" }
+                button { onclick: move |_| state.write().export_markdown(), "Markdown" }
+                button { onclick: move |_| state.write().export_docx(), "DOCX" }
                 button {
                     onclick: move |_| {
                         let next = !state.read().focus_mode;

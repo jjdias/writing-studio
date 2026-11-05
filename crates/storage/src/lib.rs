@@ -219,6 +219,22 @@ impl ProjectStore {
         }
     }
 
+    pub fn load_all_documents(&self) -> Result<Vec<Document>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT content_json FROM documents")
+            .map_err(sqlite)?;
+        let rows = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(sqlite)?;
+        let mut documents = Vec::new();
+        for json in rows {
+            let json = json.map_err(sqlite)?;
+            documents.push(Document::from_json(&json).map_err(|err| Error::message(err.to_string()))?);
+        }
+        Ok(documents)
+    }
+
     pub fn load_or_create_document(&self, id: Id) -> Result<Document> {
         match self.load_document(id) {
             Ok(doc) => Ok(doc),

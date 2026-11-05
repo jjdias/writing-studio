@@ -10,6 +10,7 @@ Local-first writing environment in Rust: manuscript binder, scene documents, cor
 - Structured documents stored per scene, edited as rich text mapped onto the block model
 - Undo/redo, word counts, snapshots, folder backups, timed local autosave
 - Writing, corkboard, and outliner workspace modes
+- Compile the manuscript to local Markdown or DOCX
 
 ## Requirements
 

@@ -1,10 +1,12 @@
 use std::cell::RefCell;
+use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Instant;
 
 use writing_studio_core::{autosave_due, autosave_wait, Id, PRODUCT_NAME};
 use writing_studio_editor::EditorSession;
+use writing_studio_export::{compile_docx, compile_markdown, CompileInput};
 use writing_studio_project::{BinderNode, BinderTree, NodeKind, ProjectMeta};
 use writing_studio_storage::{BackupInfo, ProjectStore, SnapshotInfo};
 
@@ -291,6 +293,80 @@ impl StudioState {
             match store.borrow().backup() {
                 Ok(path) => self.status = format!("Backup written to {}", path.display()),
                 Err(err) => self.status = format!("Backup failed: {err}"),
+            }
+        }
+    }
+
+    pub fn export_markdown(&mut self) {
+        self.export_compiled(CompiledFormat::Markdown);
+    }
+
+    pub fn export_docx(&mut self) {
+        self.export_compiled(CompiledFormat::Docx);
+    }
+
+    fn export_compiled(&mut self, format: CompiledFormat) {
+        self.save_all();
+        let Some(store) = self.store.clone() else {
+            self.status = "Open a project to compile.".into();
+            return;
+        };
+        let documents = match store.borrow().load_all_documents() {
+            Ok(documents) => documents,
+            Err(err) => {
+                self.status = format!("Could not load manuscript for compile: {err}");
+                return;
+            }
+        };
+        let title = self.project_title();
+        let include_title_page = self
+            .meta
+            .as_ref()
+            .map(|meta| meta.settings.compile_title_page)
+            .unwrap_or(true);
+        let input = CompileInput {
+            title: &title,
+            include_title_page,
+            tree: &self.binder,
+            documents: &documents,
+        };
+        let file_stem = sanitize(&title);
+        match format {
+            CompiledFormat::Markdown => {
+                let markdown = compile_markdown(&input);
+                let Some(path) = rfd::FileDialog::new()
+                    .set_title("Compile Markdown")
+                    .add_filter("Markdown", &["md"])
+                    .set_file_name(format!("{file_stem}.md"))
+                    .save_file()
+                else {
+                    return;
+                };
+                match fs::write(&path, markdown) {
+                    Ok(()) => self.status = format!("Compiled Markdown to {}", path.display()),
+                    Err(err) => self.status = format!("Could not write Markdown: {err}"),
+                }
+            }
+            CompiledFormat::Docx => {
+                let bytes = match compile_docx(&input) {
+                    Ok(bytes) => bytes,
+                    Err(err) => {
+                        self.status = format!("Could not compile DOCX: {err}");
+                        return;
+                    }
+                };
+                let Some(path) = rfd::FileDialog::new()
+                    .set_title("Compile Word document")
+                    .add_filter("Word", &["docx"])
+                    .set_file_name(format!("{file_stem}.docx"))
+                    .save_file()
+                else {
+                    return;
+                };
+                match fs::write(&path, bytes) {
+                    Ok(()) => self.status = format!("Compiled DOCX to {}", path.display()),
+                    Err(err) => self.status = format!("Could not write DOCX: {err}"),
+                }
             }
         }
     }
@@ -668,6 +744,11 @@ impl StudioState {
             self.note_edit();
         }
     }
+}
+
+enum CompiledFormat {
+    Markdown,
+    Docx,
 }
 
 fn sanitize(title: &str) -> String {

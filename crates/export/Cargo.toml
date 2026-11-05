@@ -3,9 +3,13 @@ name = "writing-studio-export"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Independent compile/export pipeline (Phase 6)"
+description = "Independent compile/export pipeline for Markdown and DOCX"
 
 [dependencies]
+docx-rs.workspace = true
 writing-studio-core.workspace = true
 writing-studio-document.workspace = true
 writing-studio-project.workspace = true
+
+[dev-dependencies]
+writing-studio-templates.workspace = true

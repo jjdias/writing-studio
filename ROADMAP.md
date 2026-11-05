@@ -53,6 +53,7 @@ These pieces exist and are used by the desktop app.
 - Trash, restore to the previous parent, and empty-trash with a second-click confirm
 - Inspector: title, synopsis, status
 - Word counts for the current document and the whole project; project word goal is stored in settings (default 80,000)
+- Compile the manuscript (draft binder only) to local Markdown or DOCX files
 
 ### Editor
 
@@ -81,7 +82,7 @@ These pieces exist and are used by the desktop app.
 | `writing-studio-templates` | Blank novel seed |
 | `writing-studio-storage` | Local SQLite, save, snapshots, backups |
 | `writing-studio-corkboard` | Scene cards from the binder |
-| `writing-studio-export` | Plain-text manuscript concatenation (library only, no UI) |
+| `writing-studio-export` | Local Markdown and DOCX compile from binder + documents |
 | `writing-studio-search` | Binder title filter |
 | `writing-studio-ui` | Desktop workspace |
 | `writing-studio-desktop` | Native window |
@@ -102,7 +103,7 @@ These crates exist so module boundaries stay stable. They are **types or stubs**
 | `writing-studio-synchronization` | “optional = true” stub | Optional cloud sync |
 | `writing-studio-security` | Notes that local folders are unencrypted | Optional encryption / credentials when cloud exists |
 
-Also not in the UI yet: export commands, binder labels/colors.
+Also not in the UI yet: binder labels/colors.
 
 ---
 
@@ -154,7 +155,7 @@ Do this only after local save/backup/restore is trustworthy.
 ### Phase 6 — Publishing (local)
 
 - Export profiles independent of the editor widget
-- DOCX, PDF, EPUB, HTML, Markdown
+- PDF, EPUB, HTML, and richer compile templates (Markdown and DOCX already ship)
 - Front matter, compile order, formatting templates
 - Manuscript validation before compile
 
@@ -183,8 +184,6 @@ When cloud work starts, the source of truth for a disconnected writer remains th
 
 ## Immediate next steps
 
-Highest value after Phase 1, still fully local:
+Phase 1 immediate list is complete. Next work is Phase 2 polish (binder labels/colors, corkboard grouping, richer shortcuts) and later optional cloud.
 
-1. Compile to Markdown / DOCX from the current export crate
-
-Cloud sync and collaboration stay off this near-term list on purpose.
+Cloud sync and collaboration stay off the near-term list on purpose.
