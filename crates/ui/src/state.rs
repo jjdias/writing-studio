@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Instant;
 
+use writing_studio_corkboard::CorkGroup;
 use writing_studio_core::{autosave_due, autosave_wait, Id, PRODUCT_NAME};
 use writing_studio_editor::EditorSession;
 use writing_studio_export::{compile_docx, compile_markdown, CompileInput};
@@ -41,6 +42,8 @@ pub struct StudioState {
     pub editor_html: String,
     pub editor_epoch: u64,
     pub search: String,
+    pub cork_query: String,
+    pub cork_group: CorkGroup,
     pub mode: WorkspaceMode,
     pub focus_mode: bool,
     pub status: String,
@@ -50,6 +53,7 @@ pub struct StudioState {
     pub last_edit: Option<Instant>,
     pub dragging: Option<Id>,
     pub drop_target: Option<Id>,
+    pub ignore_next_click: bool,
     pub confirm_empty_trash: bool,
 }
 
@@ -66,6 +70,8 @@ impl Default for StudioState {
             editor_html: String::new(),
             editor_epoch: 0,
             search: String::new(),
+            cork_query: String::new(),
+            cork_group: CorkGroup::Manuscript,
             mode: WorkspaceMode::Writing,
             focus_mode: false,
             status: "Offline · Local-first".into(),
@@ -75,6 +81,7 @@ impl Default for StudioState {
             last_edit: None,
             dragging: None,
             drop_target: None,
+            ignore_next_click: false,
             confirm_empty_trash: false,
         }
     }

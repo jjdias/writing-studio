@@ -223,11 +223,23 @@ button.primary, button.mode.active, .binder-item.selected {
 }
 .synopsis { min-height: 120px; resize: vertical; }
 
+.cork-pane { padding: 24px; overflow: auto; height: 100%; }
+.cork-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+.cork-filter {
+  width: min(280px, 100%);
+  border: 1px solid var(--line);
+  background: #0f0d0b;
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font: inherit;
+}
+.cork-section { margin-top: 18px; }
+.cork-section h3 { font-family: var(--font); margin: 0 0 12px; }
 .corkboard {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 16px;
-  padding: 24px;
 }
 .card {
   text-align: left;
@@ -237,8 +249,12 @@ button.primary, button.mode.active, .binder-item.selected {
   border: 0;
   box-shadow: 0 10px 24px rgba(0,0,0,0.25);
 }
+.card.dragging { opacity: 0.45; }
+.card.drop-target { outline: 2px solid var(--gold); }
+.card.drop-invalid { outline: 2px dashed var(--danger); }
 .card h3 { margin: 0 0 8px; font-family: var(--font); }
-.card-meta { color: #6d6458; font-size: 12px; }
+.card-meta, .card-label { color: #6d6458; font-size: 12px; }
+.card-label { display: block; margin-top: 8px; color: #8a6a22; }
 
 .outliner { padding: 24px; }
 .outliner table { width: 100%; border-collapse: collapse; }
