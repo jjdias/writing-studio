@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -9,6 +10,7 @@ use writing_studio_core::{autosave_due, autosave_wait, Id, PRODUCT_NAME};
 use writing_studio_editor::EditorSession;
 use writing_studio_export::{compile_docx, compile_markdown, CompileInput};
 use writing_studio_project::{normalize_binder_color, BinderNode, BinderTree, NodeKind, ProjectMeta};
+use writing_studio_search::ManuscriptIndex;
 use writing_studio_storage::{BackupInfo, ProjectStore, SnapshotInfo};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -42,6 +44,7 @@ pub struct StudioState {
     pub editor_html: String,
     pub editor_epoch: u64,
     pub search: String,
+    pub manuscript_index: Rc<RefCell<ManuscriptIndex>>,
     pub cork_query: String,
     pub cork_group: CorkGroup,
     pub mode: WorkspaceMode,
@@ -70,6 +73,7 @@ impl Default for StudioState {
             editor_html: String::new(),
             editor_epoch: 0,
             search: String::new(),
+            manuscript_index: Rc::new(RefCell::new(ManuscriptIndex::new())),
             cork_query: String::new(),
             cork_group: CorkGroup::Manuscript,
             mode: WorkspaceMode::Writing,
@@ -167,6 +171,7 @@ impl StudioState {
                     let id = scene.id;
                     self.select_node(id);
                 }
+                self.reindex_manuscript();
             }
             (Err(err), _) | (_, Err(err)) => {
                 self.status = format!("Project load failed: {err}");
@@ -218,6 +223,7 @@ impl StudioState {
             self.editor_text = session.plain_text();
             if session.is_dirty() {
                 self.note_edit();
+                self.note_session_for_search();
             }
         }
     }
@@ -232,8 +238,13 @@ impl StudioState {
             }
             match store.borrow().save_document(session.document()) {
                 Ok(()) => {
+                    let id = session.document_id();
+                    let text = session.plain_text();
                     session.mark_clean();
-                    self.status = "Saved".into();
+                    match self.manuscript_index.borrow_mut().upsert(id, &text) {
+                        Ok(()) => self.status = "Saved".into(),
+                        Err(err) => self.status = format!("Saved, but search index failed: {err}"),
+                    }
                 }
                 Err(err) => self.status = format!("Save failed: {err}"),
             }
@@ -287,6 +298,39 @@ impl StudioState {
 
     fn note_edit(&mut self) {
         self.last_edit = Some(Instant::now());
+    }
+
+    pub fn content_hits(&self) -> HashSet<Id> {
+        self.manuscript_index.borrow().search(&self.search)
+    }
+
+    fn reindex_manuscript(&mut self) {
+        let Some(store) = self.store.clone() else {
+            return;
+        };
+        let Ok(documents) = store.borrow().load_all_documents() else {
+            return;
+        };
+        let owned: Vec<(Id, String)> = documents
+            .iter()
+            .map(|document| (document.id, document.to_plain_text()))
+            .collect();
+        let pairs: Vec<(Id, &str)> = owned.iter().map(|(id, text)| (*id, text.as_str())).collect();
+        if let Err(err) = self.manuscript_index.borrow_mut().replace_all(&pairs) {
+            self.status = format!("Search index failed: {err}");
+        }
+    }
+
+    fn note_session_for_search(&mut self) {
+        let Some(session) = &self.session else {
+            return;
+        };
+        if !session.is_dirty() {
+            return;
+        }
+        let id = session.document_id();
+        let text = session.plain_text();
+        self.manuscript_index.borrow_mut().set_pending(id, text);
     }
 
     pub fn backup(&mut self) {
@@ -408,12 +452,16 @@ impl StudioState {
         let restored = store.borrow().restore_snapshot(snapshot_id);
         match restored {
             Ok(document) => {
+                let id = document.id;
+                let text = document.to_plain_text();
+                let indexed = self.manuscript_index.borrow_mut().upsert(id, &text);
                 let session = EditorSession::new(document);
                 self.sync_editor_from_session(&session);
                 self.session = Some(session);
-                self.status =
-                    "Snapshot restored locally. Previous text was saved as a pre-restore snapshot."
-                        .into();
+                self.status = match indexed {
+                    Ok(()) => "Snapshot restored locally. Previous text was saved as a pre-restore snapshot.".into(),
+                    Err(err) => format!("Snapshot restored, but search index failed: {err}"),
+                };
             }
             Err(err) => self.status = format!("Could not restore snapshot: {err}"),
         }
@@ -474,6 +522,7 @@ impl StudioState {
                     let id = scene.id;
                     self.select_node(id);
                 }
+                self.reindex_manuscript();
             }
             (Err(err), _) | (_, Err(err)) => {
                 self.status = format!("Backup restored, but reload failed: {err}");
@@ -490,6 +539,7 @@ impl StudioState {
                 self.editor_text = text;
                 self.editor_epoch = self.editor_epoch.saturating_add(1);
                 self.note_edit();
+                self.note_session_for_search();
             }
         }
     }
@@ -503,6 +553,7 @@ impl StudioState {
                 self.editor_text = text;
                 self.editor_epoch = self.editor_epoch.saturating_add(1);
                 self.note_edit();
+                self.note_session_for_search();
             }
         }
     }
@@ -665,6 +716,7 @@ impl StudioState {
                     self.status = format!("Could not delete document: {err}");
                     return;
                 }
+                let _ = self.manuscript_index.borrow_mut().remove(*id);
             }
             for id in &nodes {
                 if let Err(err) = store.delete_node(*id) {

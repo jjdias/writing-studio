@@ -6,4 +6,5 @@ license.workspace = true
 description = "Full-text search (Phase 2, Tantivy)"
 
 [dependencies]
+tantivy.workspace = true
 writing-studio-core.workspace = true

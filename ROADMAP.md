@@ -119,10 +119,10 @@ Done on `phase-2`:
 - Binder labels, colors, and deeper nesting polish
 - Corkboard: reorder scenes, filter/group, card colors
 - Keyboard shortcuts beyond save / undo / redo
+- Full-text search of manuscript content (Tantivy), not only binder titles
 
 Still in this phase:
 
-- Full-text search of manuscript content (Tantivy), not only binder titles
 - Daily writing targets and session statistics stored in the local project
 - Customizable panel layout and themes
 
@@ -187,9 +187,8 @@ When optional cloud work starts, the source of truth for a disconnected writer r
 
 ## Immediate next steps
 
-Phase 2 is in progress on `phase-2`. Links, comments, extra block types, the outliner, binder labels and nesting, the corkboard, and keyboard shortcuts are in. Still to implement, all local:
+Phase 2 is in progress on `phase-2`. Links, comments, extra block types, the outliner, binder labels and nesting, the corkboard, keyboard shortcuts, and Tantivy full-text search are in. Still to implement, all local:
 
-- Full-text search of manuscript content (Tantivy), not only binder titles
 - Daily writing targets and session statistics stored in the local project
 - Customizable panel layout and themes
 

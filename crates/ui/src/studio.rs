@@ -1,3 +1,6 @@
+use std::collections::HashSet;
+use std::rc::Rc;
+
 use dioxus::prelude::*;
 use writing_studio_core::Id;
 use writing_studio_corkboard::{card_matches, cards_from_binder, group_cards, CorkGroup};
@@ -109,7 +112,7 @@ fn Workspace() -> Element {
             input {
                 id: "binder-search",
                 class: "search",
-                placeholder: "Filter binder…",
+                placeholder: "Search titles and text…",
                 title: "Ctrl+F",
                 value: "{search}",
                 oninput: move |event| state.write().search = event.value(),
@@ -201,30 +204,31 @@ fn Workspace() -> Element {
 #[component]
 fn BinderTreeView() -> Element {
     let state = use_context::<Signal<StudioState>>();
-    let roots: Vec<Id> = state
-        .read()
+    let snapshot = state.read().clone();
+    let roots: Vec<Id> = snapshot
         .binder
         .children(None)
         .into_iter()
         .map(|node| node.id)
         .collect();
+    let hits = Rc::new(snapshot.content_hits());
     rsx! {
         div { class: "binder",
             for id in roots {
-                BinderNodeView { id, depth: 0 }
+                BinderNodeView { id, depth: 0, hits: hits.clone() }
             }
         }
     }
 }
 
 #[component]
-fn BinderNodeView(id: Id, depth: u32) -> Element {
+fn BinderNodeView(id: Id, depth: u32, hits: Rc<HashSet<Id>>) -> Element {
     let mut state = use_context::<Signal<StudioState>>();
     let snapshot = state.read().clone();
     let Some(node) = snapshot.binder.get(id).cloned() else {
         return rsx! {};
     };
-    if !binder_matches(&snapshot.binder, id, &snapshot.search) {
+    if !binder_matches(&snapshot.binder, id, &snapshot.search, &hits) {
         return rsx! {};
     }
     let selected = snapshot.selected == Some(id);
@@ -277,7 +281,7 @@ fn BinderNodeView(id: Id, depth: u32) -> Element {
             }
         }
         for child in children {
-            BinderNodeView { id: child, depth: depth + 1 }
+            BinderNodeView { id: child, depth: depth + 1, hits: hits.clone() }
         }
     }
 }
@@ -1007,7 +1011,12 @@ fn words_for_document(snapshot: &StudioState, id: Id) -> u32 {
         .unwrap_or(0)
 }
 
-fn binder_matches(tree: &writing_studio_project::BinderTree, id: Id, query: &str) -> bool {
+fn binder_matches(
+    tree: &writing_studio_project::BinderTree,
+    id: Id,
+    query: &str,
+    hits: &HashSet<Id>,
+) -> bool {
     if query.trim().is_empty() {
         return true;
     }
@@ -1017,9 +1026,12 @@ fn binder_matches(tree: &writing_studio_project::BinderTree, id: Id, query: &str
     if matches_query(&node.title, query) || matches_query(&node.label, query) {
         return true;
     }
+    if node.document_id.is_some_and(|document_id| hits.contains(&document_id)) {
+        return true;
+    }
     tree.children(Some(id))
         .iter()
-        .any(|child| binder_matches(tree, child.id, query))
+        .any(|child| binder_matches(tree, child.id, query, hits))
 }
 
 fn binder_item_class(

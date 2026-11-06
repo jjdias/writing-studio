@@ -60,3 +60,4 @@ rfd = "0.15"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tokio = { version = "1", features = ["time", "rt"] }
 docx-rs = "0.4"
+tantivy = "0.22"
