@@ -1,5 +1,6 @@
 #![allow(non_snake_case)]
 
+mod shortcuts;
 mod state;
 mod studio;
 

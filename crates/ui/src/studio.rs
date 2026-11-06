@@ -7,6 +7,7 @@ use writing_studio_manuscript::{outline_rows, row_word_count};
 use writing_studio_project::{binder_color_hex, BinderNode, NodeKind, BINDER_COLORS};
 use writing_studio_search::matches_query;
 
+use crate::shortcuts::{app_shortcut, AppShortcut};
 use crate::state::{StudioState, WorkspaceMode};
 
 const STYLES: &str = include_str!("../assets/style.css");
@@ -36,18 +37,17 @@ fn Studio() -> Element {
             class: "shell",
             tabindex: 0,
             onkeydown: move |event| {
+                let key = match event.key() {
+                    Key::Character(value) => value,
+                    Key::Escape => "escape".into(),
+                    _ => return,
+                };
                 let ctrl = event.modifiers().ctrl() || event.modifiers().meta();
-                if ctrl && event.key() == Key::Character("s".into()) {
+                let Some(action) = app_shortcut(&key, ctrl, event.modifiers().shift()) else {
+                    return;
+                };
+                if apply_shortcut(state, action) {
                     event.prevent_default();
-                    state.write().save_all();
-                }
-                if ctrl && event.key() == Key::Character("z".into()) {
-                    event.prevent_default();
-                    state.write().undo();
-                }
-                if ctrl && event.key() == Key::Character("y".into()) {
-                    event.prevent_default();
-                    state.write().redo();
                 }
             },
             if open { Workspace {} } else { Welcome {} }
@@ -107,8 +107,10 @@ fn Workspace() -> Element {
                 strong { "{title}" }
             }
             input {
+                id: "binder-search",
                 class: "search",
                 placeholder: "Filter binder…",
+                title: "Ctrl+F",
                 value: "{search}",
                 oninput: move |event| state.write().search = event.value(),
             }
@@ -121,17 +123,19 @@ fn Workspace() -> Element {
                 ] {
                     button {
                         class: if mode == candidate { "mode active" } else { "mode" },
+                        title: mode_shortcut(candidate),
                         onclick: move |_| state.write().mode = candidate,
                         "{candidate.label()}"
                     }
                 }
             }
             div { class: "top-actions",
-                button { onclick: move |_| state.write().save_all(), "Save" }
+                button { title: "Ctrl+S", onclick: move |_| state.write().save_all(), "Save" }
                 button { onclick: move |_| state.write().backup(), "Backup" }
                 button { onclick: move |_| state.write().export_markdown(), "Markdown" }
                 button { onclick: move |_| state.write().export_docx(), "DOCX" }
                 button {
+                    title: "Ctrl+Shift+F",
                     onclick: move |_| {
                         let next = !state.read().focus_mode;
                         state.write().focus_mode = next;
@@ -146,8 +150,8 @@ fn Workspace() -> Element {
                     div { class: "pane-title", "Binder" }
                     div { class: "binder-tools",
                         button { onclick: move |_| state.write().add_node(NodeKind::Part), "Part" }
-                        button { onclick: move |_| state.write().add_node(NodeKind::Chapter), "Chapter" }
-                        button { onclick: move |_| state.write().add_node(NodeKind::Scene), "Scene" }
+                        button { title: "Ctrl+Shift+N", onclick: move |_| state.write().add_node(NodeKind::Chapter), "Chapter" }
+                        button { title: "Ctrl+N", onclick: move |_| state.write().add_node(NodeKind::Scene), "Scene" }
                         button { onclick: move |_| state.write().add_node(NodeKind::Folder), "Folder" }
                         button { onclick: move |_| state.write().add_node(NodeKind::Note), "Note" }
                     }
@@ -348,6 +352,112 @@ fn read_manuscript_html(mut state: Signal<StudioState>) {
         if let Ok(html) = eval.recv::<String>().await {
             state.write().apply_editor_html(html);
         }
+    });
+}
+
+fn mode_shortcut(mode: WorkspaceMode) -> &'static str {
+    match mode {
+        WorkspaceMode::Writing => "Ctrl+1",
+        WorkspaceMode::Corkboard => "Ctrl+2",
+        WorkspaceMode::Outliner => "Ctrl+3",
+        WorkspaceMode::History => "Ctrl+4",
+    }
+}
+
+fn apply_shortcut(mut state: Signal<StudioState>, action: AppShortcut) -> bool {
+    let open = state.read().is_open();
+    match action {
+        AppShortcut::Save => {
+            if open {
+                state.write().save_all();
+            }
+        }
+        AppShortcut::Undo => state.write().undo(),
+        AppShortcut::Redo => state.write().redo(),
+        AppShortcut::Snapshot => {
+            if !open {
+                return false;
+            }
+            state.write().snapshot();
+        }
+        AppShortcut::Find => focus_find(state),
+        AppShortcut::ToggleFocus => {
+            if !open {
+                return false;
+            }
+            let next = !state.read().focus_mode;
+            state.write().focus_mode = next;
+        }
+        AppShortcut::Writing => return set_mode(state, WorkspaceMode::Writing),
+        AppShortcut::Corkboard => return set_mode(state, WorkspaceMode::Corkboard),
+        AppShortcut::Outliner => return set_mode(state, WorkspaceMode::Outliner),
+        AppShortcut::History => return set_mode(state, WorkspaceMode::History),
+        AppShortcut::NewScene => {
+            if open {
+                state.write().add_node(NodeKind::Scene);
+            } else {
+                state.write().create_project();
+            }
+        }
+        AppShortcut::NewChapter => {
+            if !open {
+                return false;
+            }
+            state.write().add_node(NodeKind::Chapter);
+        }
+        AppShortcut::OpenProject => state.write().open_project(),
+        AppShortcut::ClearOrExitFocus => return clear_or_exit_focus(state),
+    }
+    true
+}
+
+fn set_mode(mut state: Signal<StudioState>, mode: WorkspaceMode) -> bool {
+    if !state.read().is_open() {
+        return false;
+    }
+    state.write().mode = mode;
+    true
+}
+
+fn clear_or_exit_focus(mut state: Signal<StudioState>) -> bool {
+    if state.read().focus_mode {
+        state.write().focus_mode = false;
+        return true;
+    }
+    if state.read().mode == WorkspaceMode::Corkboard && !state.read().cork_query.is_empty() {
+        state.write().cork_query.clear();
+        return true;
+    }
+    if !state.read().search.is_empty() {
+        state.write().search.clear();
+        return true;
+    }
+    false
+}
+
+fn focus_find(mut state: Signal<StudioState>) {
+    if !state.read().is_open() {
+        return;
+    }
+    if state.read().mode == WorkspaceMode::Corkboard {
+        focus_dom("cork-filter", false);
+        return;
+    }
+    let hidden = state.read().focus_mode;
+    if hidden {
+        state.write().focus_mode = false;
+    }
+    focus_dom("binder-search", hidden);
+}
+
+fn focus_dom(id: &'static str, wait_for_layout: bool) {
+    spawn(async move {
+        if wait_for_layout {
+            tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+        }
+        let script = format!("document.getElementById('{id}')?.focus(); dioxus.send(true);");
+        let mut eval = document::eval(&script);
+        let _ = eval.recv::<bool>().await;
     });
 }
 
@@ -662,8 +772,10 @@ fn CorkboardPane() -> Element {
         div { class: "cork-pane",
             div { class: "cork-tools",
                 input {
+                    id: "cork-filter",
                     class: "cork-filter",
                     placeholder: "Filter scenes…",
+                    title: "Ctrl+F",
                     value: "{query}",
                     oninput: move |event| state.write().cork_query = event.value(),
                 }
