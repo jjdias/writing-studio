@@ -29,3 +29,8 @@ impl Default for Timestamp {
         Self::now()
     }
 }
+
+/// Local calendar day as `YYYY-MM-DD`.
+pub fn local_day() -> String {
+    chrono::Local::now().format("%Y-%m-%d").to_string()
+}

@@ -38,9 +38,19 @@ Existing databases created before `restore_parent_id` gain that column on open (
   "daily_word_goal": 500,
   "project_word_goal": 80000,
   "compile_title_page": true,
-  "autosave_seconds": 2
+  "autosave_seconds": 2,
+  "writing": {
+    "day": "2026-11-06",
+    "day_baseline": 1200,
+    "session_started_at": "2026-11-06T18:00:00Z",
+    "session_active_at": "2026-11-06T18:20:00Z",
+    "session_baseline": 1200,
+    "sessions": []
+  }
 }
 ```
+
+`writing` is optional for older projects. `day_baseline` is the manuscript word count at the start of that local day. The open sitting records its start count and last activity. Completed sittings that added words are appended to `sessions` (newest at the end, capped) the next time the project is opened. A new local day sets `day_baseline` to the current count.
 
 ## Document JSON
 

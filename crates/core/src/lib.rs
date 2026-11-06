@@ -13,7 +13,7 @@ pub use autosave::{autosave_due, autosave_wait};
 pub use error::{Error, Result};
 pub use event::StudioEvent;
 pub use id::{Id, NodeId};
-pub use time::Timestamp;
+pub use time::{local_day, Timestamp};
 
 /// Current on-disk project format. Bump only with a documented migration.
 pub const PROJECT_FORMAT_VERSION: u32 = 1;

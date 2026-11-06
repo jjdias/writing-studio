@@ -31,6 +31,10 @@ Free, open-source, local-first. Your writing stays in a folder on your machine.
 - **Markdown** or **DOCX** in the top bar. Choose where to save.
 - Only the manuscript (not research, not trash) is included.
 
+## Targets
+
+The status bar shows this document, this sitting, words added today, and the manuscript total. The daily and project targets are editable there and saved in the project. **History** lists completed sittings. A sitting is stored the next time you open the project, when it added words. Today’s count starts again on the next local day.
+
 ## Modes
 
 Writing, Corkboard, Outliner, History. **Focus** hides the binder and inspector.

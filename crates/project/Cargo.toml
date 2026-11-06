@@ -8,3 +8,6 @@ description = "Project metadata, binder hierarchy, and settings"
 [dependencies]
 serde.workspace = true
 writing-studio-core.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

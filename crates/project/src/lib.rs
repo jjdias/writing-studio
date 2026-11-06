@@ -5,9 +5,11 @@
 
 mod binder;
 mod settings;
+mod writing;
 
 pub use binder::{binder_color_hex, normalize_binder_color, BinderColor, BinderNode, BinderTree, NodeKind, BINDER_COLORS};
 pub use settings::ProjectSettings;
+pub use writing::{format_elapsed, StoredSession, WritingLog};
 pub use writing_studio_core::PROJECT_FORMAT_VERSION;
 
 use serde::{Deserialize, Serialize};

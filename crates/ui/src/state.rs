@@ -6,10 +6,12 @@ use std::rc::Rc;
 use std::time::Instant;
 
 use writing_studio_corkboard::CorkGroup;
-use writing_studio_core::{autosave_due, autosave_wait, Id, PRODUCT_NAME};
+use writing_studio_core::{autosave_due, autosave_wait, local_day, Id, Timestamp, PRODUCT_NAME};
 use writing_studio_editor::EditorSession;
 use writing_studio_export::{compile_docx, compile_markdown, CompileInput};
-use writing_studio_project::{normalize_binder_color, BinderNode, BinderTree, NodeKind, ProjectMeta};
+use writing_studio_project::{
+    normalize_binder_color, BinderNode, BinderTree, NodeKind, ProjectMeta, StoredSession,
+};
 use writing_studio_search::ManuscriptIndex;
 use writing_studio_storage::{BackupInfo, ProjectStore, SnapshotInfo};
 
@@ -54,6 +56,9 @@ pub struct StudioState {
     pub confirm_backup: Option<PathBuf>,
     pub binder_dirty: bool,
     pub last_edit: Option<Instant>,
+    pub session_started: Option<Instant>,
+    pub session_baseline: u32,
+    pub settings_dirty: bool,
     pub dragging: Option<Id>,
     pub drop_target: Option<Id>,
     pub ignore_next_click: bool,
@@ -83,6 +88,9 @@ impl Default for StudioState {
             confirm_backup: None,
             binder_dirty: false,
             last_edit: None,
+            session_started: None,
+            session_baseline: 0,
+            settings_dirty: false,
             dragging: None,
             drop_target: None,
             ignore_next_click: false,
@@ -108,11 +116,29 @@ impl StudioState {
     }
 
     pub fn project_word_count(&self) -> u32 {
-        let store = match &self.store {
-            Some(store) => store.borrow(),
-            None => return 0,
+        self.manuscript_words(true)
+    }
+
+    fn saved_manuscript_words(&self) -> u32 {
+        self.manuscript_words(false)
+    }
+
+    fn manuscript_words(&self, include_open_edits: bool) -> u32 {
+        let Some(store) = &self.store else {
+            return 0;
         };
-        self.binder.total_word_count(|id| store.document_word_count(id))
+        let store = store.borrow();
+        let open = if include_open_edits {
+            self.session
+                .as_ref()
+                .map(|session| (session.document_id(), session.word_count()))
+        } else {
+            None
+        };
+        self.binder.total_word_count(|id| match open {
+            Some((open_id, words)) if open_id == id => words,
+            _ => store.document_word_count(id),
+        })
     }
 
     pub fn goal(&self) -> u32 {
@@ -120,6 +146,74 @@ impl StudioState {
             .as_ref()
             .map(|meta| meta.settings.project_word_goal)
             .unwrap_or(80_000)
+    }
+
+    pub fn daily_goal(&self) -> u32 {
+        self.meta
+            .as_ref()
+            .map(|meta| meta.settings.daily_word_goal)
+            .unwrap_or(500)
+    }
+
+    pub fn words_today(&self) -> u32 {
+        let current = self.project_word_count();
+        self.meta
+            .as_ref()
+            .map(|meta| meta.settings.writing.words_today(current))
+            .unwrap_or(0)
+    }
+
+    pub fn words_this_session(&self) -> u32 {
+        if self.session_started.is_none() {
+            return 0;
+        }
+        self.project_word_count().saturating_sub(self.session_baseline)
+    }
+
+    pub fn session_elapsed_secs(&self) -> u64 {
+        self.session_started
+            .map(|start| start.elapsed().as_secs())
+            .unwrap_or(0)
+    }
+
+    pub fn stored_sessions(&self) -> Vec<StoredSession> {
+        let mut sessions = self
+            .meta
+            .as_ref()
+            .map(|meta| meta.settings.writing.sessions.clone())
+            .unwrap_or_default();
+        sessions.reverse();
+        sessions
+    }
+
+    pub fn set_daily_goal(&mut self, goal: u32) {
+        let changed = self.meta.as_mut().is_some_and(|meta| {
+            if meta.settings.daily_word_goal == goal {
+                return false;
+            }
+            meta.settings.daily_word_goal = goal;
+            meta.touch();
+            true
+        });
+        if changed {
+            self.settings_dirty = true;
+            self.note_edit();
+        }
+    }
+
+    pub fn set_project_goal(&mut self, goal: u32) {
+        let changed = self.meta.as_mut().is_some_and(|meta| {
+            if meta.settings.project_word_goal == goal {
+                return false;
+            }
+            meta.settings.project_word_goal = goal;
+            meta.touch();
+            true
+        });
+        if changed {
+            self.settings_dirty = true;
+            self.note_edit();
+        }
     }
 
     pub fn selected_node(&self) -> Option<&BinderNode> {
@@ -172,6 +266,7 @@ impl StudioState {
                     self.select_node(id);
                 }
                 self.reindex_manuscript();
+                self.begin_writing_session();
             }
             (Err(err), _) | (_, Err(err)) => {
                 self.status = format!("Project load failed: {err}");
@@ -256,6 +351,7 @@ impl StudioState {
         if self.binder_dirty && self.store.is_some() && !self.persist_binder() {
             return;
         }
+        self.note_writing_activity();
         if let Some(meta) = &self.meta {
             if let Some(store) = &self.store {
                 if let Err(err) = store.borrow().persist_meta(meta) {
@@ -268,6 +364,7 @@ impl StudioState {
             return;
         }
         self.binder_dirty = false;
+        self.settings_dirty = false;
         self.last_edit = None;
         self.status = "All changes saved locally.".into();
     }
@@ -292,12 +389,60 @@ impl StudioState {
         self.status = "Autosaved locally.".into();
     }
 
+    pub fn writing_clock_tick(&mut self) {
+        if !self.is_open() {
+            return;
+        }
+        let today = local_day();
+        let needs_roll = self.meta.as_ref().is_some_and(|meta| {
+            !meta.settings.writing.day.is_empty() && meta.settings.writing.day != today
+        });
+        if needs_roll {
+            self.begin_writing_session();
+        }
+    }
+
     pub fn has_unsaved(&self) -> bool {
-        self.binder_dirty || self.session.as_ref().is_some_and(EditorSession::is_dirty)
+        self.settings_dirty
+            || self.binder_dirty
+            || self.session.as_ref().is_some_and(EditorSession::is_dirty)
     }
 
     fn note_edit(&mut self) {
         self.last_edit = Some(Instant::now());
+    }
+
+    fn begin_writing_session(&mut self) {
+        if self.session.as_ref().is_some_and(EditorSession::is_dirty) {
+            self.flush_editor();
+        }
+        let words = self.saved_manuscript_words();
+        let now = Timestamp::now().to_rfc3339();
+        let today = local_day();
+        let Some(meta) = &mut self.meta else {
+            return;
+        };
+        meta.settings.writing.open_session(&today, &now, words);
+        meta.touch();
+        let meta = meta.clone();
+        self.session_baseline = words;
+        self.session_started = Some(Instant::now());
+        let Some(store) = &self.store else {
+            return;
+        };
+        if let Err(err) = store.borrow().persist_meta(&meta) {
+            self.status = format!("Could not save writing statistics: {err}");
+        }
+    }
+
+    fn note_writing_activity(&mut self) {
+        let Some(meta) = &mut self.meta else {
+            return;
+        };
+        if meta.settings.writing.session_started_at.is_empty() {
+            return;
+        }
+        meta.settings.writing.note_activity(&Timestamp::now().to_rfc3339());
     }
 
     pub fn content_hits(&self) -> HashSet<Id> {
@@ -523,6 +668,7 @@ impl StudioState {
                     self.select_node(id);
                 }
                 self.reindex_manuscript();
+                self.begin_writing_session();
             }
             (Err(err), _) | (_, Err(err)) => {
                 self.status = format!("Backup restored, but reload failed: {err}");

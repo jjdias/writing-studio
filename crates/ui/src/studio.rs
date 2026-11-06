@@ -7,7 +7,7 @@ use writing_studio_corkboard::{card_matches, cards_from_binder, group_cards, Cor
 use writing_studio_document::InlineNote;
 use writing_studio_editor::EditorSession;
 use writing_studio_manuscript::{outline_rows, row_word_count};
-use writing_studio_project::{binder_color_hex, BinderNode, NodeKind, BINDER_COLORS};
+use writing_studio_project::{binder_color_hex, format_elapsed, BinderNode, NodeKind, BINDER_COLORS};
 use writing_studio_search::matches_query;
 
 use crate::shortcuts::{app_shortcut, AppShortcut};
@@ -30,7 +30,9 @@ fn Studio() -> Element {
     use_future(move || async move {
         loop {
             tokio::time::sleep(std::time::Duration::from_millis(400)).await;
-            state.write().autosave_tick();
+            let mut current = state.write();
+            current.autosave_tick();
+            current.writing_clock_tick();
         }
     });
     let open = state.read().is_open();
@@ -95,6 +97,10 @@ fn Workspace() -> Element {
     let words = state.read().word_count();
     let project_words = state.read().project_word_count();
     let goal = state.read().goal();
+    let daily_goal = state.read().daily_goal();
+    let today_words = state.read().words_today();
+    let session_words = state.read().words_this_session();
+    let session_time = format_elapsed(state.read().session_elapsed_secs());
     let search = state.read().search.clone();
     let unsaved = state.read().has_unsaved();
     let selected_in_trash = state
@@ -188,8 +194,30 @@ fn Workspace() -> Element {
             }
         }
         footer { class: "status",
-            span { "Words: {words}" }
-            span { "Project: {project_words} / {goal}" }
+            div { class: "status-stats",
+                span { "Words: {words}" }
+                span { "Session: {session_words} · {session_time}" }
+                span { class: "goal-stat",
+                    "Today: {today_words} / "
+                    input {
+                        class: "goal-input",
+                        title: "Daily word target",
+                        value: "{daily_goal}",
+                        oninput: move |event| apply_goal(event.value(), |goal| state.write().set_daily_goal(goal)),
+                        onblur: move |_| state.write().save_all(),
+                    }
+                }
+                span { class: "goal-stat",
+                    "Project: {project_words} / "
+                    input {
+                        class: "goal-input",
+                        title: "Manuscript word target",
+                        value: "{goal}",
+                        oninput: move |event| apply_goal(event.value(), |goal| state.write().set_project_goal(goal)),
+                        onblur: move |_| state.write().save_all(),
+                    }
+                }
+            }
             span {
                 if unsaved {
                     "Unsaved · {status}"
@@ -732,6 +760,11 @@ fn HistoryPane() -> Element {
                 }
             }
             section {
+                h2 { "Writing sessions" }
+                p { class: "hint", "Sittings saved in this project. Today’s count starts again each local day." }
+                WritingSessions {}
+            }
+            section {
                 h2 { "Project backups" }
                 p { class: "hint", "SQLite copies in this project’s backups folder. Restore is local only and asks for a second click." }
                 div { class: "binder-tools",
@@ -758,6 +791,33 @@ fn HistoryPane() -> Element {
                 }
             }
         }
+    }
+}
+
+#[component]
+fn WritingSessions() -> Element {
+    let sessions = use_context::<Signal<StudioState>>().read().stored_sessions();
+    rsx! {
+        if sessions.is_empty() {
+            p { class: "hint", "None yet. This sitting and today’s words stay on the status bar. A sitting is stored here the next time you open the project, if it added words." }
+        } else {
+            ul { class: "history-list wide",
+                for item in sessions {
+                    li { class: "history-item",
+                        div {
+                            strong { "{item.day}" }
+                            span { class: "card-meta", "{item.words} words · {format_elapsed(item.seconds)}" }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn apply_goal(value: String, set: impl FnOnce(u32)) {
+    if let Ok(goal) = value.parse::<u32>() {
+        set(goal);
     }
 }
 

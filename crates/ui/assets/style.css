@@ -296,8 +296,21 @@ button.primary, button.mode.active, .binder-item.selected {
 .status {
   display: flex;
   justify-content: space-between;
+  align-items: center;
+  gap: 12px;
   padding: 8px 16px;
   font-size: 12px;
   color: var(--muted);
   border-top: 1px solid var(--line);
+}
+.status-stats { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; }
+.goal-stat { display: inline-flex; align-items: center; gap: 6px; }
+.goal-input {
+  width: 5.5rem;
+  border: 1px solid var(--line);
+  background: #0f0d0b;
+  color: var(--text);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font: inherit;
 }
