@@ -154,7 +154,13 @@ fn parse_html(html: &str) -> Vec<Block> {
                         kind: BlockKind::SceneBreak,
                     });
                 }
-                "br" => push_text(&mut current_inlines, "\n", &marks),
+                "br" => {
+                    // An empty contenteditable paragraph is `<p><br></p>`. That break is a
+                    // caret placeholder, not a line the writer typed.
+                    if current_inlines.iter().any(|inline| !inline.text.trim().is_empty()) {
+                        push_text(&mut current_inlines, "\n", &marks);
+                    }
+                }
                 "strong" | "b" => marks.bold = true,
                 "em" | "i" => marks.italic = true,
                 "u" => marks.underline = true,
@@ -469,6 +475,16 @@ mod tests {
             }
             _ => panic!("expected paragraph"),
         }
+    }
+
+    #[test]
+    fn empty_browser_paragraph_stays_empty() {
+        let mut doc = Document::new(Id::new());
+        let before = doc.to_html();
+        doc.replace_html("<p><br></p>");
+        assert_eq!(doc.to_html(), before);
+        doc.replace_html("<p>one<br>two</p>");
+        assert_eq!(doc.to_plain_text(), "one\ntwo");
     }
 
     #[test]

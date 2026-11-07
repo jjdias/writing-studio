@@ -10,7 +10,7 @@ use tantivy::collector::TopDocs;
 use tantivy::query::QueryParser;
 use tantivy::schema::{Schema, Value, STORED, STRING, TEXT};
 use tantivy::indexer::IndexWriter;
-use tantivy::{doc, Index, IndexReader, TantivyDocument, Term};
+use tantivy::{doc, Index, IndexReader, ReloadPolicy, TantivyDocument, Term};
 use writing_studio_core::Id;
 
 const SEARCH_LIMIT: usize = 10_000;
@@ -46,8 +46,12 @@ impl ManuscriptIndex {
         let body_field = builder.add_text_field("body", TEXT);
         let schema = builder.build();
         let index = Index::create_in_ram(schema);
+        // Manual reload keeps commit off a background thread. That thread was
+        // taking the index lock while the UI thread also committed, which froze the window.
         let reader = index
-            .reader()
+            .reader_builder()
+            .reload_policy(ReloadPolicy::Manual)
+            .try_into()
             .map_err(|err| SearchError(err.to_string()))?;
         Ok(Self {
             index,
@@ -61,16 +65,18 @@ impl ManuscriptIndex {
     pub fn replace_all(&mut self, documents: &[(Id, &str)]) -> Result<(), SearchError> {
         let fresh = Self::empty()?;
         if !documents.is_empty() {
-            let mut writer = fresh.writer(WRITER_MEMORY)?;
-            for (id, text) in documents {
-                writer
-                    .add_document(doc!(
-                        fresh.id_field => id.to_string(),
-                        fresh.body_field => *text,
-                    ))
-                    .map_err(|err| SearchError(err.to_string()))?;
+            {
+                let mut writer = fresh.writer()?;
+                for (id, text) in documents {
+                    writer
+                        .add_document(doc!(
+                            fresh.id_field => id.to_string(),
+                            fresh.body_field => *text,
+                        ))
+                        .map_err(|err| SearchError(err.to_string()))?;
+                }
+                writer.commit().map_err(|err| SearchError(err.to_string()))?;
             }
-            writer.commit().map_err(|err| SearchError(err.to_string()))?;
             fresh
                 .reader
                 .reload()
@@ -84,15 +90,17 @@ impl ManuscriptIndex {
         if self.pending.as_ref().is_some_and(|(pending_id, _)| *pending_id == id) {
             self.pending = None;
         }
-        let mut writer = self.writer(WRITER_MEMORY)?;
-        writer.delete_term(Term::from_field_text(self.id_field, &id.to_string()));
-        writer
-            .add_document(doc!(
-                self.id_field => id.to_string(),
-                self.body_field => text,
-            ))
-            .map_err(|err| SearchError(err.to_string()))?;
-        writer.commit().map_err(|err| SearchError(err.to_string()))?;
+        {
+            let mut writer = self.writer()?;
+            writer.delete_term(Term::from_field_text(self.id_field, &id.to_string()));
+            writer
+                .add_document(doc!(
+                    self.id_field => id.to_string(),
+                    self.body_field => text,
+                ))
+                .map_err(|err| SearchError(err.to_string()))?;
+            writer.commit().map_err(|err| SearchError(err.to_string()))?;
+        }
         self.reader.reload().map_err(|err| SearchError(err.to_string()))?;
         Ok(())
     }
@@ -101,16 +109,18 @@ impl ManuscriptIndex {
         if self.pending.as_ref().is_some_and(|(pending_id, _)| *pending_id == id) {
             self.pending = None;
         }
-        let mut writer = self.writer(WRITER_MEMORY)?;
-        writer.delete_term(Term::from_field_text(self.id_field, &id.to_string()));
-        writer.commit().map_err(|err| SearchError(err.to_string()))?;
+        {
+            let mut writer = self.writer()?;
+            writer.delete_term(Term::from_field_text(self.id_field, &id.to_string()));
+            writer.commit().map_err(|err| SearchError(err.to_string()))?;
+        }
         self.reader.reload().map_err(|err| SearchError(err.to_string()))?;
         Ok(())
     }
 
-    fn writer(&self, memory: usize) -> Result<IndexWriter<TantivyDocument>, SearchError> {
+    fn writer(&self) -> Result<IndexWriter<TantivyDocument>, SearchError> {
         self.index
-            .writer(memory)
+            .writer_with_num_threads(1, WRITER_MEMORY)
             .map_err(|err| SearchError(err.to_string()))
     }
 
@@ -159,38 +169,24 @@ impl ManuscriptIndex {
     }
 }
 
+/// Word check for text that is not committed yet.
+///
+/// Building a second Tantivy index here ran on the UI thread on every redraw.
 fn text_matches(query: &str, text: &str) -> bool {
-    let Ok(index) = one_document_index(text) else {
+    let terms = query_terms(query);
+    if terms.is_empty() {
         return false;
-    };
-    let Ok(body) = index.schema().get_field("body") else {
-        return false;
-    };
-    let Ok(parsed) = parse_query(&index, body, query) else {
-        return false;
-    };
-    let Ok(reader) = index.reader() else {
-        return false;
-    };
-    let searcher = reader.searcher();
-    searcher
-        .search(&parsed, &TopDocs::with_limit(1))
-        .map(|docs| !docs.is_empty())
-        .unwrap_or(false)
+    }
+    let words: HashSet<String> = query_terms(text).into_iter().collect();
+    terms.iter().all(|term| words.contains(term))
 }
 
-fn one_document_index(text: &str) -> Result<Index, SearchError> {
-    let mut builder = Schema::builder();
-    let body_field = builder.add_text_field("body", TEXT);
-    let index = Index::create_in_ram(builder.build());
-    let mut writer: IndexWriter<TantivyDocument> = index
-        .writer(WRITER_MEMORY)
-        .map_err(|err| SearchError(err.to_string()))?;
-    writer
-        .add_document(doc!(body_field => text))
-        .map_err(|err| SearchError(err.to_string()))?;
-    writer.commit().map_err(|err| SearchError(err.to_string()))?;
-    Ok(index)
+fn query_terms(query: &str) -> Vec<String> {
+    plain_terms(query)
+        .split_whitespace()
+        .map(|term| term.to_lowercase())
+        .filter(|term| !term.is_empty())
+        .collect()
 }
 
 fn parse_query(

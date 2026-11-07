@@ -11,7 +11,7 @@ use writing_studio_project::{binder_color_hex, format_elapsed, BinderNode, NodeK
 use writing_studio_search::matches_query;
 
 use crate::shortcuts::{app_shortcut, AppShortcut};
-use crate::state::{StudioState, WorkspaceMode};
+use crate::state::{CompiledFormat, StudioState, WorkspaceMode};
 
 const STYLES: &str = include_str!("../assets/style.css");
 
@@ -30,9 +30,27 @@ fn Studio() -> Element {
     use_future(move || async move {
         loop {
             tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+            let (save, roll, label) = {
+                let current = state.peek();
+                (
+                    current.autosave_ready(),
+                    current.writing_day_needs_roll(),
+                    current.session_label_due(),
+                )
+            };
+            if !(save || roll || label) {
+                continue;
+            }
             let mut current = state.write();
-            current.autosave_tick();
-            current.writing_clock_tick();
+            if save {
+                current.autosave_tick();
+            }
+            if roll {
+                current.writing_clock_tick();
+            }
+            if label {
+                current.note_session_label();
+            }
         }
     });
     let open = state.read().is_open();
@@ -78,8 +96,8 @@ fn Welcome() -> Element {
                     oninput: move |event| state.write().new_title = event.value(),
                 }
                 div { class: "welcome-actions",
-                    button { class: "primary", onclick: move |_| state.write().create_project(), "New project" }
-                    button { onclick: move |_| state.write().open_project(), "Open project" }
+                    button { class: "primary", onclick: move |_| create_project(state), "New project" }
+                    button { onclick: move |_| open_project(state), "Open project" }
                 }
                 p { class: "hint", "Projects are folders with a SQLite database. Everything works offline." }
             }
@@ -98,15 +116,13 @@ fn Workspace() -> Element {
     let project_words = state.read().project_word_count();
     let goal = state.read().goal();
     let daily_goal = state.read().daily_goal();
-    let today_words = state.read().words_today();
-    let session_words = state.read().words_this_session();
-    let session_time = format_elapsed(state.read().session_elapsed_secs());
+    let today_words = state.read().words_today_at(project_words);
+    let session_words = state.read().words_this_session_at(project_words);
+    let session_time = format_elapsed(state.read().session_shown_secs);
     let search = state.read().search.clone();
     let unsaved = state.read().has_unsaved();
-    let selected_in_trash = state
-        .read()
-        .selected
-        .is_some_and(|id| state.read().binder.is_in_trash(id));
+    let selected = state.read().selected;
+    let selected_in_trash = selected.is_some_and(|id| state.read().binder.is_in_trash(id));
     let confirm_empty = state.read().confirm_empty_trash;
 
     rsx! {
@@ -141,8 +157,8 @@ fn Workspace() -> Element {
             div { class: "top-actions",
                 button { title: "Ctrl+S", onclick: move |_| state.write().save_all(), "Save" }
                 button { onclick: move |_| state.write().backup(), "Backup" }
-                button { onclick: move |_| state.write().export_markdown(), "Markdown" }
-                button { onclick: move |_| state.write().export_docx(), "DOCX" }
+                button { onclick: move |_| export_project(state, CompiledFormat::Markdown), "Markdown" }
+                button { onclick: move |_| export_project(state, CompiledFormat::Docx), "DOCX" }
                 button {
                     title: "Ctrl+Shift+F",
                     onclick: move |_| {
@@ -203,7 +219,7 @@ fn Workspace() -> Element {
                         class: "goal-input",
                         title: "Daily word target",
                         value: "{daily_goal}",
-                        oninput: move |event| apply_goal(event.value(), |goal| state.write().set_daily_goal(goal)),
+                        oninput: move |event| apply_goal(state, event.value(), true),
                         onblur: move |_| state.write().save_all(),
                     }
                 }
@@ -213,7 +229,7 @@ fn Workspace() -> Element {
                         class: "goal-input",
                         title: "Manuscript word target",
                         value: "{goal}",
-                        oninput: move |event| apply_goal(event.value(), |goal| state.write().set_project_goal(goal)),
+                        oninput: move |event| apply_goal(state, event.value(), false),
                         onblur: move |_| state.write().save_all(),
                     }
                 }
@@ -373,8 +389,11 @@ fn EditorPane() -> Element {
     }
 }
 
-fn read_manuscript_html(mut state: Signal<StudioState>) {
+fn read_manuscript_html(state: Signal<StudioState>) {
     spawn(async move {
+        // Leave the webview event before running script. Evaluating script
+        // inside the input callback deadlocks WebView2 and the window stops.
+        tokio::time::sleep(std::time::Duration::from_millis(16)).await;
         let mut eval = document::eval(
             r#"
             const el = document.querySelector('[data-manuscript]');
@@ -382,9 +401,16 @@ fn read_manuscript_html(mut state: Signal<StudioState>) {
             "#,
         );
         if let Ok(html) = eval.recv::<String>().await {
-            state.write().apply_editor_html(html);
+            commit_editor_html(state, html);
         }
     });
+}
+
+fn commit_editor_html(mut state: Signal<StudioState>, html: String) {
+    if state.read().same_editor_html(&html) {
+        return;
+    }
+    state.write().apply_editor_html(html);
 }
 
 fn mode_shortcut(mode: WorkspaceMode) -> &'static str {
@@ -428,7 +454,7 @@ fn apply_shortcut(mut state: Signal<StudioState>, action: AppShortcut) -> bool {
             if open {
                 state.write().add_node(NodeKind::Scene);
             } else {
-                state.write().create_project();
+                create_project(state);
             }
         }
         AppShortcut::NewChapter => {
@@ -437,7 +463,7 @@ fn apply_shortcut(mut state: Signal<StudioState>, action: AppShortcut) -> bool {
             }
             state.write().add_node(NodeKind::Chapter);
         }
-        AppShortcut::OpenProject => state.write().open_project(),
+        AppShortcut::OpenProject => open_project(state),
         AppShortcut::ClearOrExitFocus => return clear_or_exit_focus(state),
     }
     true
@@ -504,8 +530,9 @@ fn comment_anchor(note: &InlineNote) -> String {
     }
 }
 
-fn run_format_command(mut state: Signal<StudioState>, command: &'static str, argument: &'static str) {
+fn run_format_command(state: Signal<StudioState>, command: &'static str, argument: &'static str) {
     spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(16)).await;
         let script = format!(
             r#"
             const el = document.querySelector('[data-manuscript]');
@@ -522,13 +549,14 @@ fn run_format_command(mut state: Signal<StudioState>, command: &'static str, arg
         );
         let mut eval = document::eval(&script);
         if let Ok(html) = eval.recv::<String>().await {
-            state.write().apply_editor_html(html);
+            commit_editor_html(state, html);
         }
     });
 }
 
-fn run_editor_script(mut state: Signal<StudioState>, body: &'static str) {
+fn run_editor_script(state: Signal<StudioState>, body: &'static str) {
     spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(16)).await;
         let script = format!(
             r#"
             const el = document.querySelector('[data-manuscript]');
@@ -539,7 +567,7 @@ fn run_editor_script(mut state: Signal<StudioState>, body: &'static str) {
         );
         let mut eval = document::eval(&script);
         if let Ok(html) = eval.recv::<String>().await {
-            state.write().apply_editor_html(html);
+            commit_editor_html(state, html);
         }
     });
 }
@@ -815,9 +843,77 @@ fn WritingSessions() -> Element {
     }
 }
 
-fn apply_goal(value: String, set: impl FnOnce(u32)) {
-    if let Ok(goal) = value.parse::<u32>() {
-        set(goal);
+fn create_project(mut state: Signal<StudioState>) {
+    let Some(folder) = pick_folder("Choose a folder for the new project") else {
+        return;
+    };
+    state.write().create_project_in(folder);
+}
+
+fn open_project(mut state: Signal<StudioState>) {
+    let Some(folder) = pick_folder("Open a Writing Studio project folder") else {
+        return;
+    };
+    state.write().open_project_at(folder);
+}
+
+fn export_project(mut state: Signal<StudioState>, format: CompiledFormat) {
+    let Some(export) = state.write().prepare_export(format) else {
+        return;
+    };
+    let Some(path) = pick_save_file(export.filter_name, export.extension, export.file_name.clone()) else {
+        return;
+    };
+    match std::fs::write(&path, export.bytes) {
+        Ok(()) => {
+            state.write().status = format!("Compiled {} to {}", export.kind_label, path.display());
+        }
+        Err(err) => state.write().status = format!("Could not write {}: {err}", export.kind_label),
+    }
+}
+
+fn pick_folder(title: &str) -> Option<std::path::PathBuf> {
+    let title = title.to_string();
+    // The dialog runs on its own thread so the webview thread is not inside
+    // the Windows file-dialog message loop. That loop was freezing the window.
+    std::thread::spawn(move || rfd::FileDialog::new().set_title(title).pick_folder())
+        .join()
+        .ok()
+        .flatten()
+}
+
+fn pick_save_file(filter_name: &str, extension: &str, file_name: String) -> Option<std::path::PathBuf> {
+    let filter_name = filter_name.to_string();
+    let extension = extension.to_string();
+    let title = format!("Compile {filter_name}");
+    std::thread::spawn(move || {
+        rfd::FileDialog::new()
+            .set_title(title)
+            .add_filter(filter_name, &[extension])
+            .set_file_name(file_name)
+            .save_file()
+    })
+    .join()
+    .ok()
+    .flatten()
+}
+
+fn apply_goal(mut state: Signal<StudioState>, value: String, daily: bool) {
+    let Ok(goal) = value.parse::<u32>() else {
+        return;
+    };
+    let unchanged = if daily {
+        state.read().daily_goal() == goal
+    } else {
+        state.read().goal() == goal
+    };
+    if unchanged {
+        return;
+    }
+    if daily {
+        state.write().set_daily_goal(goal);
+    } else {
+        state.write().set_project_goal(goal);
     }
 }
 

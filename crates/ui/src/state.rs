@@ -1,6 +1,5 @@
 use std::cell::RefCell;
 use std::collections::HashSet;
-use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Instant;
@@ -10,7 +9,8 @@ use writing_studio_core::{autosave_due, autosave_wait, local_day, Id, Timestamp,
 use writing_studio_editor::EditorSession;
 use writing_studio_export::{compile_docx, compile_markdown, CompileInput};
 use writing_studio_project::{
-    normalize_binder_color, BinderNode, BinderTree, NodeKind, ProjectMeta, StoredSession,
+    format_elapsed, normalize_binder_color, BinderNode, BinderTree, NodeKind, ProjectMeta,
+    StoredSession,
 };
 use writing_studio_search::ManuscriptIndex;
 use writing_studio_storage::{BackupInfo, ProjectStore, SnapshotInfo};
@@ -58,6 +58,7 @@ pub struct StudioState {
     pub last_edit: Option<Instant>,
     pub session_started: Option<Instant>,
     pub session_baseline: u32,
+    pub session_shown_secs: u64,
     pub settings_dirty: bool,
     pub dragging: Option<Id>,
     pub drop_target: Option<Id>,
@@ -90,6 +91,7 @@ impl Default for StudioState {
             last_edit: None,
             session_started: None,
             session_baseline: 0,
+            session_shown_secs: 0,
             settings_dirty: false,
             dragging: None,
             drop_target: None,
@@ -155,19 +157,18 @@ impl StudioState {
             .unwrap_or(500)
     }
 
-    pub fn words_today(&self) -> u32 {
-        let current = self.project_word_count();
+    pub fn words_today_at(&self, current: u32) -> u32 {
         self.meta
             .as_ref()
             .map(|meta| meta.settings.writing.words_today(current))
             .unwrap_or(0)
     }
 
-    pub fn words_this_session(&self) -> u32 {
+    pub fn words_this_session_at(&self, current: u32) -> u32 {
         if self.session_started.is_none() {
             return 0;
         }
-        self.project_word_count().saturating_sub(self.session_baseline)
+        current.saturating_sub(self.session_baseline)
     }
 
     pub fn session_elapsed_secs(&self) -> u64 {
@@ -220,13 +221,7 @@ impl StudioState {
         self.selected.and_then(|id| self.binder.get(id))
     }
 
-    pub fn create_project(&mut self) {
-        let Some(folder) = rfd::FileDialog::new()
-            .set_title("Choose a folder for the new project")
-            .pick_folder()
-        else {
-            return;
-        };
+    pub fn create_project_in(&mut self, folder: PathBuf) {
         let title = self.new_title.trim();
         let title = if title.is_empty() { "Untitled Novel" } else { title };
         let root: PathBuf = folder.join(format!("{}.writingstudio", sanitize(title)));
@@ -236,13 +231,7 @@ impl StudioState {
         }
     }
 
-    pub fn open_project(&mut self) {
-        let Some(folder) = rfd::FileDialog::new()
-            .set_title("Open a Writing Studio project folder")
-            .pick_folder()
-        else {
-            return;
-        };
+    pub fn open_project_at(&mut self, folder: PathBuf) {
         match ProjectStore::open(&folder) {
             Ok(store) => self.attach_store(store, "Opened local project."),
             Err(err) => self.status = format!("Could not open project: {err}"),
@@ -312,7 +301,19 @@ impl StudioState {
         }
     }
 
+    pub fn same_editor_html(&self, html: &str) -> bool {
+        let Some(session) = &self.session else {
+            return true;
+        };
+        let mut next = session.document().clone();
+        next.replace_html(html);
+        next.to_html() == session.html()
+    }
+
     pub fn apply_editor_html(&mut self, html: String) {
+        if self.same_editor_html(&html) {
+            return;
+        }
         if let Some(session) = &mut self.session {
             session.apply_html(&html);
             self.editor_text = session.plain_text();
@@ -369,6 +370,38 @@ impl StudioState {
         self.status = "All changes saved locally.".into();
     }
 
+    pub fn autosave_ready(&self) -> bool {
+        if !self.is_open() {
+            return false;
+        }
+        let wait = autosave_wait(
+            self.meta
+                .as_ref()
+                .map(|meta| meta.settings.autosave_seconds)
+                .unwrap_or(2),
+        );
+        autosave_due(self.has_unsaved(), self.last_edit, Instant::now(), wait)
+    }
+
+    pub fn writing_day_needs_roll(&self) -> bool {
+        if !self.is_open() {
+            return false;
+        }
+        let today = local_day();
+        self.meta.as_ref().is_some_and(|meta| {
+            !meta.settings.writing.day.is_empty() && meta.settings.writing.day != today
+        })
+    }
+
+    pub fn session_label_due(&self) -> bool {
+        self.is_open()
+            && format_elapsed(self.session_elapsed_secs()) != format_elapsed(self.session_shown_secs)
+    }
+
+    pub fn note_session_label(&mut self) {
+        self.session_shown_secs = self.session_elapsed_secs();
+    }
+
     pub fn autosave_tick(&mut self) {
         if !self.is_open() {
             return;
@@ -390,14 +423,7 @@ impl StudioState {
     }
 
     pub fn writing_clock_tick(&mut self) {
-        if !self.is_open() {
-            return;
-        }
-        let today = local_day();
-        let needs_roll = self.meta.as_ref().is_some_and(|meta| {
-            !meta.settings.writing.day.is_empty() && meta.settings.writing.day != today
-        });
-        if needs_roll {
+        if self.writing_day_needs_roll() {
             self.begin_writing_session();
         }
     }
@@ -427,6 +453,7 @@ impl StudioState {
         let meta = meta.clone();
         self.session_baseline = words;
         self.session_started = Some(Instant::now());
+        self.session_shown_secs = 0;
         let Some(store) = &self.store else {
             return;
         };
@@ -488,25 +515,17 @@ impl StudioState {
         }
     }
 
-    pub fn export_markdown(&mut self) {
-        self.export_compiled(CompiledFormat::Markdown);
-    }
-
-    pub fn export_docx(&mut self) {
-        self.export_compiled(CompiledFormat::Docx);
-    }
-
-    fn export_compiled(&mut self, format: CompiledFormat) {
+    pub fn prepare_export(&mut self, format: CompiledFormat) -> Option<ExportFile> {
         self.save_all();
         let Some(store) = self.store.clone() else {
             self.status = "Open a project to compile.".into();
-            return;
+            return None;
         };
         let documents = match store.borrow().load_all_documents() {
             Ok(documents) => documents,
             Err(err) => {
                 self.status = format!("Could not load manuscript for compile: {err}");
-                return;
+                return None;
             }
         };
         let title = self.project_title();
@@ -523,42 +542,26 @@ impl StudioState {
         };
         let file_stem = sanitize(&title);
         match format {
-            CompiledFormat::Markdown => {
-                let markdown = compile_markdown(&input);
-                let Some(path) = rfd::FileDialog::new()
-                    .set_title("Compile Markdown")
-                    .add_filter("Markdown", &["md"])
-                    .set_file_name(format!("{file_stem}.md"))
-                    .save_file()
-                else {
-                    return;
-                };
-                match fs::write(&path, markdown) {
-                    Ok(()) => self.status = format!("Compiled Markdown to {}", path.display()),
-                    Err(err) => self.status = format!("Could not write Markdown: {err}"),
+            CompiledFormat::Markdown => Some(ExportFile {
+                bytes: compile_markdown(&input).into_bytes(),
+                file_name: format!("{file_stem}.md"),
+                filter_name: "Markdown",
+                extension: "md",
+                kind_label: "Markdown",
+            }),
+            CompiledFormat::Docx => match compile_docx(&input) {
+                Ok(bytes) => Some(ExportFile {
+                    bytes,
+                    file_name: format!("{file_stem}.docx"),
+                    filter_name: "Word",
+                    extension: "docx",
+                    kind_label: "DOCX",
+                }),
+                Err(err) => {
+                    self.status = format!("Could not compile DOCX: {err}");
+                    None
                 }
-            }
-            CompiledFormat::Docx => {
-                let bytes = match compile_docx(&input) {
-                    Ok(bytes) => bytes,
-                    Err(err) => {
-                        self.status = format!("Could not compile DOCX: {err}");
-                        return;
-                    }
-                };
-                let Some(path) = rfd::FileDialog::new()
-                    .set_title("Compile Word document")
-                    .add_filter("Word", &["docx"])
-                    .set_file_name(format!("{file_stem}.docx"))
-                    .save_file()
-                else {
-                    return;
-                };
-                match fs::write(&path, bytes) {
-                    Ok(()) => self.status = format!("Compiled DOCX to {}", path.display()),
-                    Err(err) => self.status = format!("Could not write DOCX: {err}"),
-                }
-            }
+            },
         }
     }
 
@@ -945,9 +948,17 @@ impl StudioState {
     }
 }
 
-enum CompiledFormat {
+pub enum CompiledFormat {
     Markdown,
     Docx,
+}
+
+pub struct ExportFile {
+    pub bytes: Vec<u8>,
+    pub file_name: String,
+    pub filter_name: &'static str,
+    pub extension: &'static str,
+    pub kind_label: &'static str,
 }
 
 fn sanitize(title: &str) -> String {
