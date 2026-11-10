@@ -154,6 +154,14 @@ pub fn install(conn: &Connection) -> rusqlite::Result<()> {
             stored_name TEXT NOT NULL,
             created_at TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS bible_scene_links (
+            owner_kind TEXT NOT NULL,
+            owner_id TEXT NOT NULL,
+            scene_id TEXT NOT NULL,
+            sort_index INTEGER NOT NULL,
+            PRIMARY KEY (owner_kind, owner_id, scene_id)
+        );
         "#,
     )?;
     let _ = conn.execute(

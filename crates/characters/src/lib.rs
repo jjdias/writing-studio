@@ -13,6 +13,9 @@ pub struct Character {
     pub role: String,
     pub summary: String,
     pub sort_index: i64,
+    /// Manuscript scenes this character appears in. The scenes are not copied.
+    #[serde(default)]
+    pub scene_ids: Vec<Id>,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
 }
@@ -26,6 +29,7 @@ impl Character {
             role: String::new(),
             summary: String::new(),
             sort_index,
+            scene_ids: Vec::new(),
             created_at: now,
             updated_at: now,
         }
@@ -173,6 +177,38 @@ impl Cast {
             character.touch();
             true
         })
+    }
+
+    pub fn link_scene(&mut self, id: Id, scene_id: Id) -> bool {
+        self.edit_character(id, |character| {
+            if !link_id(&mut character.scene_ids, scene_id) {
+                return false;
+            }
+            character.touch();
+            true
+        })
+    }
+
+    pub fn unlink_scene(&mut self, id: Id, scene_id: Id) -> bool {
+        self.edit_character(id, |character| {
+            if !unlink_id(&mut character.scene_ids, scene_id) {
+                return false;
+            }
+            character.touch();
+            true
+        })
+    }
+
+    pub fn detach_scenes(&mut self, scene_ids: &[Id]) -> bool {
+        let gone: std::collections::HashSet<Id> = scene_ids.iter().copied().collect();
+        let mut changed = false;
+        for character in &mut self.characters {
+            if detach_ids(&mut character.scene_ids, &gone) {
+                character.touch();
+                changed = true;
+            }
+        }
+        changed
     }
 
     pub fn remove_character(&mut self, id: Id) -> bool {
@@ -332,6 +368,26 @@ impl Cast {
     }
 }
 
+fn link_id(scenes: &mut Vec<Id>, scene_id: Id) -> bool {
+    if scenes.contains(&scene_id) {
+        return false;
+    }
+    scenes.push(scene_id);
+    true
+}
+
+fn unlink_id(scenes: &mut Vec<Id>, scene_id: Id) -> bool {
+    let before = scenes.len();
+    scenes.retain(|id| *id != scene_id);
+    scenes.len() != before
+}
+
+fn detach_ids(scenes: &mut Vec<Id>, gone: &std::collections::HashSet<Id>) -> bool {
+    let before = scenes.len();
+    scenes.retain(|id| !gone.contains(id));
+    scenes.len() != before
+}
+
 fn shift_id(order: &mut [Id], id: Id, earlier: bool) -> bool {
     let Some(index) = order.iter().position(|item| *item == id) else {
         return false;
@@ -377,6 +433,14 @@ mod tests {
         assert!(cast.set_relationship_kind(link, "rival".into()));
         assert_eq!(cast.relationships_from(hero)[0].to_id, rival);
         assert!(cast.add_relationship(hero, hero).is_none());
+        let scene = Id::new();
+        let other_scene = Id::new();
+        assert!(cast.link_scene(hero, scene));
+        assert!(!cast.link_scene(hero, scene));
+        assert!(cast.link_scene(hero, other_scene));
+        assert!(cast.detach_scenes(&[scene]));
+        assert_eq!(cast.characters.iter().find(|c| c.id == hero).unwrap().scene_ids, vec![other_scene]);
+        assert!(cast.unlink_scene(hero, other_scene));
     }
 
     #[test]

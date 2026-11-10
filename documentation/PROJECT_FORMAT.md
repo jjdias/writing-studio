@@ -39,8 +39,9 @@ MyNovel.writingstudio/
 - `timeline_events` — title, `when_label`, summary, optional `location_id`, sort_index, timestamps
 - `research_items` — title, notes, sort_index, timestamps
 - `research_files` — item_id, display `file_name`, `stored_name` relative to `attachments/`
+- `bible_scene_links` — owner_kind, owner_id, scene_id, sort_index. A character, location, culture, lore entry, timeline event, or research note can point at several manuscript scenes. The records stay in the project; the scene text is not copied.
 
-Existing databases gain the plot, character, world, and research tables on open (`CREATE TABLE IF NOT EXISTS`). Databases created before `restore_parent_id` gain that column on open (`ALTER TABLE`). Format version stays **1** because these tables are additive.
+Existing databases gain the plot, character, world, research, and `bible_scene_links` tables on open (`CREATE TABLE IF NOT EXISTS`). Databases created before `restore_parent_id` gain that column on open (`ALTER TABLE`). Format version stays **1** because these tables are additive.
 
 A research file is stored as `attachments/{note-id}/{file-id}` plus a short extension. The sqlite backup does not include `attachments/`. Copy the project folder when you want the files and the database together.
 

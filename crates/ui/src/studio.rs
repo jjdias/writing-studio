@@ -15,7 +15,7 @@ use writing_studio_project::{
 use writing_studio_search::matches_query;
 
 use crate::shortcuts::{app_shortcut, AppShortcut};
-use crate::state::{CompiledFormat, StudioState, WorkspaceMode, WorldSection};
+use crate::state::{BibleLink, CompiledFormat, StudioState, WorkspaceMode, WorldSection};
 
 const STYLES: &str = include_str!("../assets/style.css");
 
@@ -1518,6 +1518,7 @@ fn ResearchNote(note: ResearchNoteView, confirm: Option<Id>) -> Element {
             value: "{notes}",
             oninput: move |event| state.write().set_research_notes(id, event.value()),
         }
+        SceneLinks { owner: id, kind: BibleLink::Research }
         section { class: "cast-block",
             h3 { "Files" }
             p { class: "hint", "A copy is stored in this project's attachments folder." }
@@ -1770,6 +1771,12 @@ fn WorldEditor(form: WorldForm, places: Vec<NamedId>, cultures: Vec<NamedId>, co
         | WorldForm::Event { id, .. } => *id,
     };
     let delete_label = if confirm == Some(id) { "Delete entry" } else { "Delete" };
+    let link = match &form {
+        WorldForm::Location { .. } => BibleLink::Location,
+        WorldForm::Culture { .. } => BibleLink::Culture,
+        WorldForm::Lore { .. } => BibleLink::Lore,
+        WorldForm::Event { .. } => BibleLink::Timeline,
+    };
     rsx! {
         match form {
             WorldForm::Location { id, name, summary, culture_id } => rsx! {
@@ -1873,6 +1880,7 @@ fn WorldEditor(form: WorldForm, places: Vec<NamedId>, cultures: Vec<NamedId>, co
                 }
             },
         }
+        SceneLinks { owner: id, kind: link }
         div { class: "cast-actions",
             button {
                 onclick: move |_| state.write().remove_world_item(id),
@@ -2117,6 +2125,7 @@ fn CharacterProfile(profile: ProfileView, others: Vec<CastListItem>, confirm: Op
                 }
             }
         }
+        SceneLinks { owner: id, kind: BibleLink::Character }
         div { class: "cast-actions",
             button {
                 onclick: move |_| state.write().remove_character(id),
@@ -2334,6 +2343,59 @@ fn PlotPointCard(point: PlotPointView, scenes: Vec<(Id, String)>, border: String
                 button {
                     onclick: move |_| state.write().remove_plot_point(point_id),
                     "Remove"
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn SceneLinks(owner: Id, kind: BibleLink) -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let snapshot = state.read().clone();
+    let linked = snapshot.bible_scene_ids(kind, owner);
+    let choices = scene_choices(&snapshot.binder)
+        .into_iter()
+        .filter(|(id, _)| !linked.contains(id))
+        .collect::<Vec<_>>();
+    rsx! {
+        section { class: "cast-block",
+            h3 { "Scenes" }
+            p { class: "hint", "Links point at scenes in this project. The scene text stays in the manuscript." }
+            if linked.is_empty() {
+                p { class: "hint", "No scenes linked." }
+            }
+            for scene_id in linked {
+                {
+                    let label = scene_caption(&snapshot.binder, scene_id);
+                    rsx! {
+                        div { class: "cast-row", key: "{scene_id}",
+                            span { "{label}" }
+                            button {
+                                onclick: move |_| state.write().open_linked_scene(scene_id),
+                                "Open"
+                            }
+                            button {
+                                onclick: move |_| state.write().unlink_bible_scene(kind, owner, scene_id),
+                                "Remove"
+                            }
+                        }
+                    }
+                }
+            }
+            if !choices.is_empty() {
+                select {
+                    title: "Link a manuscript scene",
+                    value: "",
+                    onchange: move |event| {
+                        if let Some(scene_id) = parse_scene_id(&event.value()) {
+                            state.write().link_bible_scene(kind, owner, scene_id);
+                        }
+                    },
+                    option { value: "", "Link a scene…" }
+                    for (scene_id, label) in choices {
+                        option { value: "{scene_id}", "{label}" }
+                    }
                 }
             }
         }

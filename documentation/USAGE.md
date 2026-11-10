@@ -47,15 +47,15 @@ Writing, Corkboard, Outliner, Plot, Characters, World, Research, History. **Ctrl
 
 ## Characters
 
-**Characters** keeps a local cast. Each profile has a name, a role, and a longer description. Motivations are a list on that character. A relationship names another character and how they are connected. Deleting a character asks for a second click and also removes their motivations and relationships. The cast is saved in the project folder.
+**Characters** keeps a local cast. Each profile has a name, a role, and a longer description. Motivations are a list on that character. A relationship names another character and how they are connected. Deleting a character asks for a second click and also removes their motivations and relationships. The cast is saved in the project folder. Each profile can link one or more manuscript scenes, labeled book / chapter / scene. Emptying trash drops those links.
 
 ## World
 
-**World** keeps locations, cultures, lore, and a timeline in the project. A location can name a culture. A lore entry can name a location and a culture. A timeline event has a when-label, a title, what happened, and an optional location. **Earlier** and **Later** change event order. Deleting an entry asks for a second click and clears links that pointed at it.
+**World** keeps locations, cultures, lore, and a timeline in the project. A location can name a culture. A lore entry can name a location and a culture. A timeline event has a when-label, a title, what happened, and an optional location. **Earlier** and **Later** change event order. Deleting an entry asks for a second click and clears links that pointed at it. Each entry can also link manuscript scenes, labeled book / chapter / scene. Emptying trash drops those scene links.
 
 ## Research
 
-**Research** is a local library of notes. Each note has a title, notes, and files. **Attach file** copies the file into `attachments/` inside the project folder. **Open** launches it with the usual app for that file type. Removing a file or a note asks for a second click and deletes the copy in `attachments/`. A sqlite backup does not include those files; copy the whole project folder to keep them.
+**Research** is a local library of notes. Each note has a title, notes, and files. **Attach file** copies the file into `attachments/` inside the project folder. **Open** launches it with the usual app for that file type. Removing a file or a note asks for a second click and deletes the copy in `attachments/`. A sqlite backup does not include those files; copy the whole project folder to keep them. A note can link manuscript scenes, labeled book / chapter / scene. Emptying trash drops those links.
 
 ## Layout
 

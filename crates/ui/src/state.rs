@@ -95,6 +95,17 @@ impl WorldSection {
     }
 }
 
+/// Which project-level bible record a scene link belongs to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BibleLink {
+    Character,
+    Location,
+    Culture,
+    Lore,
+    Timeline,
+    Research,
+}
+
 #[derive(Clone)]
 pub struct StudioState {
     pub product_name: &'static str,
@@ -1390,6 +1401,135 @@ impl StudioState {
         }
     }
 
+    pub fn link_bible_scene(&mut self, kind: BibleLink, owner: Id, scene_id: Id) {
+        match kind {
+            BibleLink::Character => {
+                let mut cast = self.cast.clone();
+                if cast.link_scene(owner, scene_id) {
+                    self.store_cast(cast, true);
+                }
+            }
+            BibleLink::Location => {
+                let mut world = self.world.clone();
+                if world.link_location_scene(owner, scene_id) {
+                    self.store_world(world, true);
+                }
+            }
+            BibleLink::Culture => {
+                let mut world = self.world.clone();
+                if world.link_culture_scene(owner, scene_id) {
+                    self.store_world(world, true);
+                }
+            }
+            BibleLink::Lore => {
+                let mut world = self.world.clone();
+                if world.link_lore_scene(owner, scene_id) {
+                    self.store_world(world, true);
+                }
+            }
+            BibleLink::Timeline => {
+                let mut world = self.world.clone();
+                if world.link_event_scene(owner, scene_id) {
+                    self.store_world(world, true);
+                }
+            }
+            BibleLink::Research => {
+                let mut library = self.library.clone();
+                if library.link_scene(owner, scene_id) {
+                    self.store_library(library, true);
+                }
+            }
+        }
+    }
+
+    pub fn unlink_bible_scene(&mut self, kind: BibleLink, owner: Id, scene_id: Id) {
+        match kind {
+            BibleLink::Character => {
+                let mut cast = self.cast.clone();
+                if cast.unlink_scene(owner, scene_id) {
+                    self.store_cast(cast, true);
+                }
+            }
+            BibleLink::Location => {
+                let mut world = self.world.clone();
+                if world.unlink_location_scene(owner, scene_id) {
+                    self.store_world(world, true);
+                }
+            }
+            BibleLink::Culture => {
+                let mut world = self.world.clone();
+                if world.unlink_culture_scene(owner, scene_id) {
+                    self.store_world(world, true);
+                }
+            }
+            BibleLink::Lore => {
+                let mut world = self.world.clone();
+                if world.unlink_lore_scene(owner, scene_id) {
+                    self.store_world(world, true);
+                }
+            }
+            BibleLink::Timeline => {
+                let mut world = self.world.clone();
+                if world.unlink_event_scene(owner, scene_id) {
+                    self.store_world(world, true);
+                }
+            }
+            BibleLink::Research => {
+                let mut library = self.library.clone();
+                if library.unlink_scene(owner, scene_id) {
+                    self.store_library(library, true);
+                }
+            }
+        }
+    }
+
+    pub fn bible_scene_ids(&self, kind: BibleLink, owner: Id) -> Vec<Id> {
+        match kind {
+            BibleLink::Character => self
+                .cast
+                .characters
+                .iter()
+                .find(|item| item.id == owner)
+                .map(|item| item.scene_ids.clone())
+                .unwrap_or_default(),
+            BibleLink::Location => self
+                .world
+                .locations
+                .iter()
+                .find(|item| item.id == owner)
+                .map(|item| item.scene_ids.clone())
+                .unwrap_or_default(),
+            BibleLink::Culture => self
+                .world
+                .cultures
+                .iter()
+                .find(|item| item.id == owner)
+                .map(|item| item.scene_ids.clone())
+                .unwrap_or_default(),
+            BibleLink::Lore => self
+                .world
+                .lore
+                .iter()
+                .find(|item| item.id == owner)
+                .map(|item| item.scene_ids.clone())
+                .unwrap_or_default(),
+            BibleLink::Timeline => self
+                .world
+                .events
+                .iter()
+                .find(|item| item.id == owner)
+                .map(|item| item.scene_ids.clone())
+                .unwrap_or_default(),
+            BibleLink::Research => self
+                .library
+                .items
+                .iter()
+                .find(|item| item.id == owner)
+                .map(|item| item.scene_ids.clone())
+                .unwrap_or_default(),
+        }
+    }
+
     pub fn remove_relationship(&mut self, id: Id) {
         self.confirm_character = None;
         let mut cast = self.cast.clone();
@@ -1886,6 +2026,21 @@ impl StudioState {
         }
         if self.plot.detach_scenes(&nodes) && !self.persist_plot_now() {
             self.plot_dirty = true;
+            self.note_edit();
+            return;
+        }
+        if self.cast.detach_scenes(&nodes) && !self.persist_cast_now() {
+            self.cast_dirty = true;
+            self.note_edit();
+            return;
+        }
+        if self.world.detach_scenes(&nodes) && !self.persist_world_now() {
+            self.world_dirty = true;
+            self.note_edit();
+            return;
+        }
+        if self.library.detach_scenes(&nodes) && !self.persist_library_now() {
+            self.library_dirty = true;
             self.note_edit();
             return;
         }

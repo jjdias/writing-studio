@@ -134,6 +134,7 @@ Done on `phase-3`:
 - New chapters, parts, scenes, and manuscript folders land in the book on screen. With one book filtered, they stay inside that book. With the whole series showing, they follow the selection.
 - One current book: the filter, the compile menu, and the status bar share it, and the project remembers whether the whole series is showing. Selecting a scene points compile and the status bar at that scene's book.
 - Scene lists name the book, the chapter, and the scene. The plot scene picker uses that caption.
+- Characters, locations, cultures, lore, timeline events, and research notes can point at scenes. Those records stay with the project. Emptying trash drops the links.
 
 ### Phase 4 — Professional editing (local)
 
@@ -202,15 +203,6 @@ When optional cloud work starts, the source of truth for a disconnected writer r
 Phase 2 is complete on `phase-2`. Phase 3 is in progress on `phase-3`. The plot grid, character profiles, world notes, research library, and one project that holds the bible and every related book are in the desktop app.
 
 That folder is the series. Characters, world notes, plot, and research are the bible, stored once beside the books. The work left in this phase is to make that series behave as one book at a time when the writer is looking at one book. Richer front matter than the book title stays in Phase 6. A separate bible project beside each book is a bonus phase, not current work.
-
-### Let the bible point at scenes
-
-Characters, locations, cultures, lore, timeline events, and research notes stay with the project, and only a plot point can point at a scene. The writer cannot see which scenes a character, place, or note belongs to.
-
-- Let a character, location, culture, lore entry, timeline event, and research note point at one or more scenes.
-- Keep those records at project level. Do not copy them into a book.
-- Label each linked scene as book / chapter / scene.
-- Clearing trash drops links to deleted scenes, as plot points already do.
 
 ### Make the word counts agree
 
