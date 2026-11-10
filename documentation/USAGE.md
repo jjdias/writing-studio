@@ -16,8 +16,8 @@ Free, open-source, local-first. Your writing stays in a folder on your machine.
 
 ## Organize
 
-- **Book**, **Chapter**, **Scene**, **Note** add items. **Book** adds another novel under the same manuscript. Characters, world notes, plot, and research stay with the project.
-- **Whole series** in the binder, corkboard, and outliner shows every book. Pick a book there, or in the compile menu, to make that book the one on screen, the one compiled, and the one in the status bar. The project remembers that choice. **Whole series** shows every book again and leaves compile and the status bar on the last book. Selecting a scene points compile and the status bar at that scene's book. New chapters, parts, scenes, and manuscript folders are added inside the book on screen. A scene with nothing selected goes in its last chapter. Notes still go under Research.
+- **Book**, **Chapter**, and **Scene** add manuscript items. **Book** adds another novel under the same manuscript. Characters, world notes, plot, and research stay with the project. Research notes are edited in **Research**, not in the binder.
+- **Whole series** in the binder, corkboard, and outliner shows every book. Pick a book there, or in the compile menu, to make that book the one on screen, the one compiled, and the one in the status bar. The project remembers that choice. **Whole series** shows every book again and leaves compile and the status bar on the last book. Selecting a scene points compile and the status bar at that scene's book. New chapters, parts, scenes, and manuscript folders are added inside the book on screen. A scene with nothing selected goes in its last chapter. New folders go in the book on screen.
 - Drag items to reorder or nest. Drop on **Trash** to discard.
 - **Restore** returns a trashed item to its previous parent when that parent still exists.
 - **Empty trash** asks for a second click, then deletes those items from the local database.
@@ -55,7 +55,7 @@ Writing, Corkboard, Outliner, Plot, Characters, World, Research, History. **Ctrl
 
 ## Research
 
-**Research** is a local library of notes. Each note has a title, notes, and files. **Attach file** copies the file into `attachments/` inside the project folder. **Open** launches it with the usual app for that file type. Removing a file or a note asks for a second click and deletes the copy in `attachments/`. A sqlite backup does not include those files; copy the whole project folder to keep them. A note can link manuscript scenes, labeled book / chapter / scene. Emptying trash drops those links.
+**Research** is the only editor for research notes and their files. Each note has a title, notes, and files. **Attach file** copies the file into `attachments/` inside the project folder. **Open** launches it with the usual app for that file type. Removing a file or a note asks for a second click and deletes the copy in `attachments/`. A sqlite backup does not include those files; copy the whole project folder to keep them. Opening a project copies notes that still sit under the binder Research section into this library, then removes those notes and research folders from the binder. Characters, world notes, plot, and the manuscript stay where they are. A note can link manuscript scenes, labeled book / chapter / scene. Emptying trash drops those links.
 
 ## Layout
 

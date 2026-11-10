@@ -136,6 +136,7 @@ Done on `phase-3`:
 - Scene lists name the book, the chapter, and the scene. The plot scene picker uses that caption.
 - Characters, locations, cultures, lore, timeline events, and research notes can point at scenes. Those records stay with the project. Emptying trash drops the links.
 - The compile book's word count matches the outliner. Today and the sitting use a baseline stored for that book.
+- Research is the only editor for research notes and files. Notes that still sat under the binder Research section are copied into that library on open, then removed from the binder.
 
 ### Phase 4 — Professional editing (local)
 
@@ -212,14 +213,6 @@ That folder is the series. Characters, world notes, plot, and research are the b
 - Include `attachments/` in a project backup, beside the SQLite copy.
 - Restore the database and those files together.
 - After restore, every research file row has its file on disk, and files that belonged only to the replaced library are not left behind as the current library.
-
-### Keep one research library
-
-The binder still has a Research section, and Research mode has a separate library of notes and files. The same kind of note can exist in both, and they do not share records.
-
-- Make the Research activity the only editor for research notes and attached files.
-- On open, import notes that already sit under the binder Research root into that library once, then remove them from the binder so the project does not keep a second copy.
-- Leave characters, world notes, plot, and the manuscript where they are.
 
 ### Drop a book's target when the book is gone
 

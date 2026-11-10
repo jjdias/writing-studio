@@ -467,7 +467,12 @@ impl BinderTree {
 
     pub fn default_parent(&self, kind: NodeKind) -> Option<Id> {
         match kind {
-            NodeKind::Note | NodeKind::Folder => self.research_root().map(|node| node.id),
+            NodeKind::Note => self.research_root().map(|node| node.id),
+            NodeKind::Folder => self
+                .manuscript_books()
+                .first()
+                .map(|book| book.id)
+                .or_else(|| self.draft_root().map(|node| node.id)),
             NodeKind::Scene => self
                 .nodes
                 .iter()
@@ -486,6 +491,37 @@ impl BinderTree {
                 .map(|node| node.id),
             NodeKind::Book => self.draft_root().map(|node| node.id),
             _ => self.draft_root().map(|node| node.id),
+        }
+    }
+
+    /// Notes under the research root, outside the trash, parents before nested notes.
+    pub fn research_notes(&self) -> Vec<Id> {
+        let Some(root) = self.research_root() else {
+            return Vec::new();
+        };
+        let mut notes = Vec::new();
+        self.collect_research(root.id, NodeKind::Note, &mut notes);
+        notes
+    }
+
+    /// Folders under the research root, outside the trash, children before parents.
+    pub fn research_folders(&self) -> Vec<Id> {
+        let Some(root) = self.research_root() else {
+            return Vec::new();
+        };
+        let mut folders = Vec::new();
+        self.collect_research(root.id, NodeKind::Folder, &mut folders);
+        folders
+    }
+
+    fn collect_research(&self, parent: Id, kind: NodeKind, found: &mut Vec<Id>) {
+        for child in self.children(Some(parent)) {
+            if child.kind == NodeKind::Folder {
+                self.collect_research(child.id, kind, found);
+            }
+            if child.kind == kind {
+                found.push(child.id);
+            }
         }
     }
 
@@ -843,6 +879,23 @@ mod tests {
             binder.parent_for_new_item(NodeKind::Note, Some(later_id), Some(second_id)),
             binder.research_root().map(|node| node.id)
         );
+        assert_eq!(
+            binder.parent_for_new_item(NodeKind::Folder, None, None),
+            Some(first)
+        );
+        let research = binder.research_root().unwrap().id;
+        let clippings = BinderNode::new(NodeKind::Folder, "Clippings", Some(research), 0);
+        let clippings_id = clippings.id;
+        let map = BinderNode::new(NodeKind::Note, "Map", Some(clippings_id), 0);
+        let map_id = map.id;
+        let loose = BinderNode::new(NodeKind::Note, "Loose", Some(research), 1);
+        let loose_id = loose.id;
+        binder.nodes.push(clippings);
+        binder.nodes.push(map);
+        binder.nodes.push(loose);
+        binder.trash(loose_id).unwrap();
+        assert_eq!(binder.research_notes(), vec![map_id]);
+        assert_eq!(binder.research_folders(), vec![clippings_id]);
         assert_eq!(
             binder.parent_for_new_item(NodeKind::Book, None, Some(second_id)),
             Some(draft)

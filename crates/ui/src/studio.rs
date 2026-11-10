@@ -508,7 +508,6 @@ fn Explorer() -> Element {
                 button { title: "New chapter (Ctrl+Shift+N)", onclick: move |_| state.write().add_node(NodeKind::Chapter), "Chapter" }
                 button { title: "New scene (Ctrl+N)", onclick: move |_| state.write().add_node(NodeKind::Scene), "Scene" }
                 button { title: "New folder", onclick: move |_| state.write().add_node(NodeKind::Folder), "Folder" }
-                button { title: "New note", onclick: move |_| state.write().add_node(NodeKind::Note), "Note" }
             }
             div { class: "binder-tools",
                 button { onclick: move |_| state.write().trash_selected(), "Trash" }
@@ -548,6 +547,7 @@ fn BinderTreeView() -> Element {
         .binder
         .children(None)
         .into_iter()
+        .filter(|node| node.kind != NodeKind::ResearchRoot)
         .map(|node| node.id)
         .collect();
     let hits = Rc::new(snapshot.content_hits());

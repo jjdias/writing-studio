@@ -127,6 +127,32 @@ impl ResearchLibrary {
         files
     }
 
+    /// Copy a binder research note into this library once.
+    ///
+    /// A note with the same title and text is already here, so the caller can drop the binder copy.
+    pub fn import_note(&mut self, title: impl Into<String>, notes: impl Into<String>) -> bool {
+        let title = title.into();
+        let notes = notes.into();
+        if self
+            .items
+            .iter()
+            .any(|item| item.title == title && item.notes == notes)
+        {
+            return false;
+        }
+        let sort_index = self
+            .items
+            .iter()
+            .map(|item| item.sort_index)
+            .max()
+            .map(|index| index + 1)
+            .unwrap_or(0);
+        let mut item = ResearchItem::new(title, sort_index);
+        item.notes = notes;
+        self.items.push(item);
+        true
+    }
+
     pub fn add_item(&mut self) -> Id {
         let sort_index = self
             .items
@@ -245,6 +271,9 @@ mod tests {
         assert_eq!(library.remove_item(item), Some(vec![stored]));
         assert!(library.files.is_empty());
         assert!(!library.add_file(ResearchFile::new(Id::new(), "x", "x")));
+        assert!(library.import_note("Harbor", "Tide tables."));
+        assert!(!library.import_note("Harbor", "Tide tables."));
+        assert_eq!(library.items.len(), 1);
     }
 
     #[test]
