@@ -122,10 +122,9 @@ Done on `phase-2`:
 - Full-text search of manuscript content (Tantivy), not only binder titles
 - Daily writing targets and session statistics stored in the local project
 - Customizable panel layout, stored in the project: binder side, drag widths, and showing or hiding the binder and inspector
+- Themes stored in the project: Dark, Light, and Paper
 
-Still in this phase:
-
-- Themes
+Phase 2 is complete.
 
 ### Phase 3 — Story development (local)
 
@@ -188,8 +187,6 @@ When optional cloud work starts, the source of truth for a disconnected writer r
 
 ## Immediate next steps
 
-Phase 2 is in progress on `phase-2`. Links, comments, extra block types, the outliner, binder labels and nesting, the corkboard, keyboard shortcuts, Tantivy full-text search, daily writing targets with session statistics, and a customizable panel layout are in. Still to implement, all local:
-
-- Themes
+Phase 2 is complete on `phase-2`. Next is Phase 3, local story development, starting with the plot grid.
 
 Optional cloud stays later.

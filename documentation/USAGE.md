@@ -44,3 +44,7 @@ Writing, Corkboard, Outliner, History. **Focus** hides the binder and inspector.
 The arrangement is saved in the project. Drag the edge of the binder or the inspector to resize it. Double-click that edge to reset the width. The arrow in the binder header moves the binder to the other side; the inspector stays on the opposite side.
 
 Click the active activity-bar icon again to hide the binder, or press **Ctrl+Alt+B**. **Ctrl+Alt+I** shows or hides the inspector. **Ctrl+B** still bolds the selection in the manuscript.
+
+## Themes
+
+The status bar theme list saves **Dark**, **Light**, or **Paper** in the project. Dark matches VS Code Dark+. Light matches VS Code Light+. Paper keeps the warm chrome and sets the manuscript on a cream page.

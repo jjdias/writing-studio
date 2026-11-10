@@ -39,6 +39,7 @@ Existing databases created before `restore_parent_id` gain that column on open (
   "project_word_goal": 80000,
   "compile_title_page": true,
   "autosave_seconds": 2,
+  "theme": "dark",
   "layout": {
     "sidebar_side": "left",
     "sidebar_width": 260,
@@ -57,7 +58,7 @@ Existing databases created before `restore_parent_id` gain that column on open (
 }
 ```
 
-`writing` and `layout` are optional for older projects. `sidebar_side` is `left` or `right`. Widths are pixels and are clamped when the project opens. `day_baseline` is the manuscript word count at the start of that local day. The open sitting records its start count and last activity. Completed sittings that added words are appended to `sessions` (newest at the end, capped) the next time the project is opened. A new local day sets `day_baseline` to the current count.
+`writing`, `layout`, and `theme` are optional for older projects. `theme` is `dark`, `light`, or `paper`. `sidebar_side` is `left` or `right`. Widths are pixels and are clamped when the project opens. `day_baseline` is the manuscript word count at the start of that local day. The open sitting records its start count and last activity. Completed sittings that added words are appended to `sessions` (newest at the end, capped) the next time the project is opened. A new local day sets `day_baseline` to the current count.
 
 ## Document JSON
 

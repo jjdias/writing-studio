@@ -10,7 +10,7 @@ use writing_studio_editor::EditorSession;
 use writing_studio_export::{compile_docx, compile_markdown, CompileInput};
 use writing_studio_project::{
     format_elapsed, normalize_binder_color, BinderNode, BinderTree, NodeKind, PanelLayout,
-    ProjectMeta, StoredSession,
+    ProjectMeta, StoredSession, Theme,
 };
 use writing_studio_search::ManuscriptIndex;
 use writing_studio_storage::{BackupInfo, ProjectStore, SnapshotInfo};
@@ -225,6 +225,28 @@ impl StudioState {
                 return false;
             }
             meta.settings.layout = layout;
+            meta.touch();
+            true
+        });
+        if changed {
+            self.settings_dirty = true;
+            self.note_edit();
+        }
+    }
+
+    pub fn theme(&self) -> Theme {
+        self.meta
+            .as_ref()
+            .map(|meta| meta.settings.theme)
+            .unwrap_or_default()
+    }
+
+    pub fn set_theme(&mut self, theme: Theme) {
+        let changed = self.meta.as_mut().is_some_and(|meta| {
+            if meta.settings.theme == theme {
+                return false;
+            }
+            meta.settings.theme = theme;
             meta.touch();
             true
         });

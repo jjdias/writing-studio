@@ -9,7 +9,7 @@ use writing_studio_editor::EditorSession;
 use writing_studio_manuscript::{outline_rows, row_word_count};
 use writing_studio_project::{
     binder_color_hex, drag_width, format_elapsed, BinderNode, NodeKind, PanelChrome, PanelLayout,
-    PanelWidths, SidebarSide, BINDER_COLORS, INSPECTOR_WIDTH_DEFAULT, INSPECTOR_WIDTH_MAX,
+    PanelWidths, SidebarSide, Theme, BINDER_COLORS, INSPECTOR_WIDTH_DEFAULT, INSPECTOR_WIDTH_MAX,
     INSPECTOR_WIDTH_MIN, SIDEBAR_WIDTH_DEFAULT, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN,
 };
 use writing_studio_search::matches_query;
@@ -64,10 +64,15 @@ fn Studio() -> Element {
         }
     });
     let open = state.read().is_open();
+    let theme = state.read().theme();
 
     rsx! {
         div {
-            class: "shell",
+            class: match theme {
+                Theme::Dark => "shell theme-dark",
+                Theme::Light => "shell theme-light",
+                Theme::Paper => "shell theme-paper",
+            },
             tabindex: 0,
             onmousemove: move |event| {
                 let Some(drag) = *resize.peek() else {
@@ -160,6 +165,7 @@ fn Workspace() -> Element {
     let session_words = state.read().words_this_session_at(project_words);
     let session_time = format_elapsed(state.read().session_shown_secs);
     let unsaved = state.read().has_unsaved();
+    let theme = state.read().theme();
     let chrome = use_context::<Signal<PanelChrome>>();
     let arrangement = chrome.read();
     let sidebar_left = arrangement.sidebar_side == SidebarSide::Left;
@@ -280,6 +286,19 @@ fn Workspace() -> Element {
                         oninput: move |event| apply_goal(state, event.value(), false),
                         onblur: move |_| state.write().save_all(),
                     }
+                }
+            }
+            select {
+                class: "theme-select",
+                title: "Color theme, saved in this project",
+                value: "{theme.as_str()}",
+                onchange: move |event| {
+                    if let Some(next) = Theme::from_id(&event.value()) {
+                        state.write().set_theme(next);
+                    }
+                },
+                for item in [Theme::Dark, Theme::Light, Theme::Paper] {
+                    option { value: "{item.as_str()}", "{item.label()}" }
                 }
             }
             span {

@@ -128,6 +128,48 @@ impl PanelLayout {
     }
 }
 
+/// Workbench color theme stored with the project. Missing on older projects.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Theme {
+    Dark,
+    Light,
+    Paper,
+}
+
+impl Default for Theme {
+    fn default() -> Self {
+        Self::Dark
+    }
+}
+
+impl Theme {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Dark => "dark",
+            Self::Light => "light",
+            Self::Paper => "paper",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Dark => "Dark",
+            Self::Light => "Light",
+            Self::Paper => "Paper",
+        }
+    }
+
+    pub fn from_id(value: &str) -> Option<Self> {
+        match value {
+            "dark" => Some(Self::Dark),
+            "light" => Some(Self::Light),
+            "paper" => Some(Self::Paper),
+            _ => None,
+        }
+    }
+}
+
 /// Width after a horizontal drag. `positive` means moving the pointer right grows the panel.
 pub fn drag_width(origin: u32, delta_px: i32, positive: bool, min: u32, max: u32) -> u32 {
     let next = if positive {
@@ -150,6 +192,9 @@ pub struct ProjectSettings {
     /// Binder side, panel widths, and which panels are open. Missing on older projects.
     #[serde(default)]
     pub layout: PanelLayout,
+    /// Dark, light, or paper. Missing on older projects.
+    #[serde(default)]
+    pub theme: Theme,
 }
 
 impl Default for ProjectSettings {
@@ -161,6 +206,7 @@ impl Default for ProjectSettings {
             autosave_seconds: 2,
             writing: WritingLog::default(),
             layout: PanelLayout::default(),
+            theme: Theme::Dark,
         }
     }
 }
@@ -186,6 +232,18 @@ mod tests {
         assert_eq!(layout.inspector_width, INSPECTOR_WIDTH_DEFAULT);
         assert!(layout.sidebar_visible);
         assert!(layout.inspector_visible);
+    }
+
+    #[test]
+    fn theme_defaults_to_dark_and_roundtrips() {
+        let json = r#"{"daily_word_goal":1,"project_word_goal":2,"compile_title_page":true,"autosave_seconds":2}"#;
+        let settings: ProjectSettings = serde_json::from_str(json).unwrap();
+        assert_eq!(settings.theme, Theme::Dark);
+        let saved = r#"{"daily_word_goal":1,"project_word_goal":2,"compile_title_page":true,"autosave_seconds":2,"theme":"paper"}"#;
+        let settings: ProjectSettings = serde_json::from_str(saved).unwrap();
+        assert_eq!(settings.theme, Theme::Paper);
+        assert_eq!(Theme::from_id("light"), Some(Theme::Light));
+        assert_eq!(Theme::from_id("sepia"), None);
     }
 
     #[test]
