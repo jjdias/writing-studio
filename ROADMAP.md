@@ -4,7 +4,7 @@ Writing Studio is **open source** (MIT OR Apache-2.0) and **free for the communi
 
 **Local-first, now and later.** Saves, snapshots, backups, and compile live on the writer’s machine. Cloud connections and collaboration, if added, stay **optional**. They must never become a requirement to open a project, write, or keep copies of work.
 
-Status: Phase 1 desktop app is implemented on the `phase-1` branch (`v0.1.0`). Details: [`documentation/PHASE1.md`](documentation/PHASE1.md).
+Status: Phase 1 (`v0.1.0` on `phase-1`) and Phase 2 (`phase-2`) are complete. Current work is Phase 3 on the `phase-3` branch. Details: [`documentation/PHASE1.md`](documentation/PHASE1.md).
 
 ---
 
@@ -128,6 +128,8 @@ Phase 2 is complete.
 
 ### Phase 3 — Story development (local)
 
+In progress on `phase-3`:
+
 - Plot Grid: plotlines, plot points, links to scenes
 - Character profiles, relationships, motivations
 - Locations, cultures, lore, timelines
@@ -187,6 +189,6 @@ When optional cloud work starts, the source of truth for a disconnected writer r
 
 ## Immediate next steps
 
-Phase 2 is complete on `phase-2`. Next is Phase 3, local story development, starting with the plot grid.
+Phase 2 is complete on `phase-2`. Phase 3, local story development, is in progress on `phase-3`, starting with the plot grid.
 
 Optional cloud stays later.
