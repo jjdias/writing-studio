@@ -195,6 +195,7 @@ fn Workspace() -> Element {
                     WorkspaceMode::Plot,
                     WorkspaceMode::Characters,
                     WorkspaceMode::World,
+                    WorkspaceMode::Research,
                     WorkspaceMode::History,
                 ] {
                     button {
@@ -256,6 +257,7 @@ fn Workspace() -> Element {
                         WorkspaceMode::Plot => rsx! { PlotPane {} },
                         WorkspaceMode::Characters => rsx! { CharactersPane {} },
                         WorkspaceMode::World => rsx! { WorldPane {} },
+                        WorkspaceMode::Research => rsx! { ResearchPane {} },
                         WorkspaceMode::History => rsx! { HistoryPane {} },
                     }}
                 }
@@ -735,6 +737,12 @@ fn ModeGlyph(mode: WorkspaceMode) -> Element {
                 path { d: "M8 8.5v4.2M5.2 12.7h5.6", fill: "none", stroke: "currentColor", stroke_width: "1.2" }
             }
         },
+        WorkspaceMode::Research => rsx! {
+            svg { class: "glyph", view_box: "0 0 16 16",
+                path { d: "M3 2.5h7l3 3V13.5H3z", fill: "none", stroke: "currentColor", stroke_width: "1.2" }
+                path { d: "M10 2.7V5.5h2.7M5 8h6M5 10.5h4", fill: "none", stroke: "currentColor", stroke_width: "1.2" }
+            }
+        },
         WorkspaceMode::History => rsx! {
             svg { class: "glyph", view_box: "0 0 16 16",
                 path { d: "M8 2.5a5.5 5.5 0 1 1-4.8 2.8", fill: "none", stroke: "currentColor", stroke_width: "1.2" }
@@ -752,6 +760,7 @@ fn mode_shortcut(mode: WorkspaceMode) -> &'static str {
         WorkspaceMode::Plot => "Ctrl+5",
         WorkspaceMode::Characters => "Ctrl+6",
         WorkspaceMode::World => "Ctrl+7",
+        WorkspaceMode::Research => "Ctrl+8",
         WorkspaceMode::History => "Ctrl+4",
     }
 }
@@ -791,6 +800,7 @@ fn apply_shortcut(
         AppShortcut::Plot => return set_mode(state, WorkspaceMode::Plot),
         AppShortcut::Characters => return set_mode(state, WorkspaceMode::Characters),
         AppShortcut::World => return set_mode(state, WorkspaceMode::World),
+        AppShortcut::Research => return set_mode(state, WorkspaceMode::Research),
         AppShortcut::History => return set_mode(state, WorkspaceMode::History),
         AppShortcut::NewScene => {
             if open {
@@ -1250,6 +1260,14 @@ fn export_project(mut state: Signal<StudioState>, format: CompiledFormat) {
     }
 }
 
+fn pick_file(title: &str) -> Option<std::path::PathBuf> {
+    let title = title.to_string();
+    std::thread::spawn(move || rfd::FileDialog::new().set_title(title).pick_file())
+        .join()
+        .ok()
+        .flatten()
+}
+
 fn pick_folder(title: &str) -> Option<std::path::PathBuf> {
     let title = title.to_string();
     // The dialog runs on its own thread so the webview thread is not inside
@@ -1328,6 +1346,193 @@ enum WorldForm {
         summary: String,
         location_id: String,
     },
+}
+
+#[derive(Clone, PartialEq)]
+struct ResearchNoteView {
+    id: Id,
+    title: String,
+    notes: String,
+    files: Vec<ResearchFileView>,
+}
+
+#[derive(Clone, PartialEq)]
+struct ResearchFileView {
+    id: Id,
+    file_name: String,
+}
+
+#[component]
+fn ResearchPane() -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let snapshot = state.read().clone();
+    let notes: Vec<NamedId> = snapshot
+        .library
+        .items_in_order()
+        .into_iter()
+        .map(|item| NamedId {
+            id: item.id,
+            name: item.title.clone(),
+        })
+        .collect();
+    let shown = snapshot
+        .selected_research
+        .filter(|id| notes.iter().any(|note| note.id == *id))
+        .or_else(|| notes.first().map(|note| note.id));
+    let note = shown.and_then(|id| research_note(&snapshot.library, id));
+    let confirm = snapshot.confirm_research;
+    rsx! {
+        div { class: "cast-pane",
+            aside { class: "cast-list",
+                button {
+                    class: "primary",
+                    onclick: move |_| state.write().add_research_item(),
+                    "Add note"
+                }
+                if notes.is_empty() {
+                    p { class: "hint", "No research notes yet." }
+                }
+                for note in notes {
+                    {
+                        let id = note.id;
+                        let active = shown == Some(id);
+                        let class = if active { "cast-name active" } else { "cast-name" };
+                        rsx! {
+                            button {
+                                class: "{class}",
+                                key: "{id}",
+                                onclick: move |_| state.write().select_research_item(id),
+                                "{note.name}"
+                            }
+                        }
+                    }
+                }
+            }
+            div { class: "cast-profile",
+                if let Some(note) = note {
+                    ResearchNote { note, confirm }
+                } else {
+                    p { class: "hint", "Research notes and their files stay in this project. Files are copied into attachments/." }
+                }
+            }
+        }
+    }
+}
+
+fn research_note(library: &writing_studio_research::ResearchLibrary, id: Id) -> Option<ResearchNoteView> {
+    let item = library.items.iter().find(|item| item.id == id)?;
+    Some(ResearchNoteView {
+        id: item.id,
+        title: item.title.clone(),
+        notes: item.notes.clone(),
+        files: library
+            .files_for(id)
+            .into_iter()
+            .map(|file| ResearchFileView {
+                id: file.id,
+                file_name: file.file_name.clone(),
+            })
+            .collect(),
+    })
+}
+
+#[component]
+fn ResearchNote(note: ResearchNoteView, confirm: Option<Id>) -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let id = note.id;
+    let title = note.title.clone();
+    let notes = note.notes.clone();
+    let files = note.files.clone();
+    let delete_label = if confirm == Some(id) { "Delete note" } else { "Delete" };
+    rsx! {
+        label { "Title" }
+        input {
+            value: "{title}",
+            oninput: move |event| state.write().set_research_title(id, event.value()),
+        }
+        label { "Notes" }
+        textarea {
+            value: "{notes}",
+            oninput: move |event| state.write().set_research_notes(id, event.value()),
+        }
+        section { class: "cast-block",
+            h3 { "Files" }
+            p { class: "hint", "A copy is stored in this project's attachments folder." }
+            button {
+                onclick: move |_| {
+                    let Some(path) = pick_file("Attach a research file") else { return };
+                    state.write().attach_research_file(id, path);
+                },
+                "Attach file"
+            }
+            if files.is_empty() {
+                p { class: "hint", "No files attached." }
+            }
+            for file in files {
+                {
+                    let file_id = file.id;
+                    let name = file.file_name.clone();
+                    let remove_label = if confirm == Some(file_id) { "Remove file" } else { "Remove" };
+                    rsx! {
+                        div { class: "cast-row", key: "{file_id}",
+                            span { "{name}" }
+                            button {
+                                onclick: move |_| open_research_file(state, file_id),
+                                "Open"
+                            }
+                            button {
+                                onclick: move |_| state.write().remove_research_file(file_id),
+                                "{remove_label}"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        div { class: "cast-actions",
+            button {
+                onclick: move |_| state.write().remove_research_item(id),
+                "{delete_label}"
+            }
+        }
+    }
+}
+
+fn open_research_file(mut state: Signal<StudioState>, file_id: Id) {
+    let Some(path) = state.read().research_file_path(file_id) else {
+        state.write().status = "That attachment is missing.".into();
+        return;
+    };
+    if !path.is_file() {
+        state.write().status = format!("File is not in attachments/: {}", path.display());
+        return;
+    }
+    match open_with_default_app(&path) {
+        Ok(()) => state.write().status = format!("Opened {}", path.file_name().and_then(|name| name.to_str()).unwrap_or("file")),
+        Err(err) => state.write().status = format!("Could not open file: {err}"),
+    }
+}
+
+fn open_with_default_app(path: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", &path.display().to_string()])
+            .spawn()?;
+        return Ok(());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open").arg(path).spawn()?;
+        return Ok(());
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        std::process::Command::new("xdg-open").arg(path).spawn()?;
+        return Ok(());
+    }
+    #[allow(unreachable_code)]
+    Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "cannot open files on this system"))
 }
 
 #[component]

@@ -37,7 +37,7 @@ The status bar shows this document, this sitting, words added today, and the man
 
 ## Modes
 
-Writing, Corkboard, Outliner, Plot, Characters, World, History. **Ctrl+5** opens Plot. **Ctrl+6** opens Characters. **Ctrl+7** opens World. **Focus** hides the binder and inspector.
+Writing, Corkboard, Outliner, Plot, Characters, World, Research, History. **Ctrl+5** opens Plot. **Ctrl+6** opens Characters. **Ctrl+7** opens World. **Ctrl+8** opens Research. **Focus** hides the binder and inspector.
 
 ## Plot
 
@@ -50,6 +50,10 @@ Writing, Corkboard, Outliner, Plot, Characters, World, History. **Ctrl+5** opens
 ## World
 
 **World** keeps locations, cultures, lore, and a timeline in the project. A location can name a culture. A lore entry can name a location and a culture. A timeline event has a when-label, a title, what happened, and an optional location. **Earlier** and **Later** change event order. Deleting an entry asks for a second click and clears links that pointed at it.
+
+## Research
+
+**Research** is a local library of notes. Each note has a title, notes, and files. **Attach file** copies the file into `attachments/` inside the project folder. **Open** launches it with the usual app for that file type. Removing a file or a note asks for a second click and deletes the copy in `attachments/`. A sqlite backup does not include those files; copy the whole project folder to keep them.
 
 ## Layout
 

@@ -23,6 +23,7 @@ use writing_studio_plotting::{PlotGrid, PlotPoint, Plotline};
 use writing_studio_project::{BinderNode, BinderTree, NodeKind, ProjectMeta, ProjectSettings};
 use writing_studio_templates::blank_novel;
 use writing_studio_worldbuilding::{Culture, Location, LoreEntry, TimelineEvent, World};
+use writing_studio_research::{ResearchFile, ResearchItem, ResearchLibrary, stored_attachment_name};
 
 pub struct ProjectStore {
     pub root: PathBuf,
@@ -68,6 +69,7 @@ impl ProjectStore {
         read_format_version(&root)?;
         let conn = open_connection(&db_path)?;
         schema::install(&conn).map_err(sqlite)?;
+        fs::create_dir_all(root.join("attachments"))?;
         Ok(Self { root, conn })
     }
 
@@ -457,6 +459,160 @@ impl ProjectStore {
         Ok(())
     }
 
+    pub fn load_library(&self) -> Result<ResearchLibrary> {
+        let items = query_rows(
+            &self.conn,
+            "SELECT id, title, notes, sort_index, created_at, updated_at FROM research_items",
+            row_to_research_item,
+        )?;
+        let files = query_rows(
+            &self.conn,
+            "SELECT id, item_id, file_name, stored_name, created_at FROM research_files",
+            row_to_research_file,
+        )?;
+        Ok(ResearchLibrary { items, files })
+    }
+
+    pub fn persist_library(&self, library: &ResearchLibrary) -> Result<()> {
+        let tx = self.conn.unchecked_transaction().map_err(sqlite)?;
+        tx.execute("DELETE FROM research_files", []).map_err(sqlite)?;
+        tx.execute("DELETE FROM research_items", []).map_err(sqlite)?;
+        for item in &library.items {
+            tx.execute(
+                "INSERT INTO research_items (id, title, notes, sort_index, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    item.id.to_string(),
+                    item.title,
+                    item.notes,
+                    item.sort_index,
+                    item.created_at.to_rfc3339(),
+                    item.updated_at.to_rfc3339(),
+                ],
+            )
+            .map_err(sqlite)?;
+        }
+        for file in &library.files {
+            tx.execute(
+                "INSERT INTO research_files (id, item_id, file_name, stored_name, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![
+                    file.id.to_string(),
+                    file.item_id.to_string(),
+                    file.file_name,
+                    file.stored_name,
+                    file.created_at.to_rfc3339(),
+                ],
+            )
+            .map_err(sqlite)?;
+        }
+        tx.commit().map_err(sqlite)?;
+        Ok(())
+    }
+
+    /// Copy a file into `attachments/` and record it on the note.
+    pub fn import_research_file(
+        &self,
+        library: &ResearchLibrary,
+        item_id: Id,
+        source: &Path,
+    ) -> Result<ResearchLibrary> {
+        if !library.items.iter().any(|item| item.id == item_id) {
+            return Err(Error::message("that research note does not exist"));
+        }
+        if !source.is_file() {
+            return Err(Error::message("choose a file to attach"));
+        }
+        let file_name = source
+            .file_name()
+            .and_then(|name| name.to_str())
+            .filter(|name| !name.is_empty())
+            .unwrap_or("file")
+            .to_string();
+        let file_id = Id::new();
+        let stored_name = stored_attachment_name(item_id, file_id, &file_name);
+        let destination = self.attachment_path(&stored_name)?;
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::copy(source, &destination)?;
+        let mut next = library.clone();
+        let added = next.add_file(ResearchFile {
+            id: file_id,
+            item_id,
+            file_name,
+            stored_name: stored_name.clone(),
+            created_at: Timestamp::now(),
+        });
+        if !added {
+            let _ = fs::remove_file(&destination);
+            return Err(Error::message("could not record the attachment"));
+        }
+        if let Err(err) = self.persist_library(&next) {
+            let _ = fs::remove_file(&destination);
+            return Err(err);
+        }
+        Ok(next)
+    }
+
+    pub fn forget_research_file(
+        &self,
+        library: &ResearchLibrary,
+        file_id: Id,
+    ) -> Result<ResearchLibrary> {
+        let mut next = library.clone();
+        let Some(stored) = next.remove_file(file_id) else {
+            return Err(Error::message("that attachment is not in the library"));
+        };
+        self.persist_library(&next)?;
+        self.remove_stored_file(&stored)?;
+        Ok(next)
+    }
+
+    pub fn forget_research_item(
+        &self,
+        library: &ResearchLibrary,
+        item_id: Id,
+    ) -> Result<ResearchLibrary> {
+        let mut next = library.clone();
+        let Some(stored) = next.remove_item(item_id) else {
+            return Err(Error::message("that research note is not in the library"));
+        };
+        self.persist_library(&next)?;
+        for name in stored {
+            self.remove_stored_file(&name)?;
+        }
+        Ok(next)
+    }
+
+    fn attachment_path(&self, stored_name: &str) -> Result<PathBuf> {
+        let mut parts = stored_name.split('/');
+        let item = parts.next().unwrap_or("");
+        let file = parts.next().unwrap_or("");
+        if parts.next().is_some()
+            || item.is_empty()
+            || file.is_empty()
+            || item.contains('.')
+            || file.contains('/')
+            || stored_name.contains('\\')
+            || stored_name.contains("..")
+        {
+            return Err(Error::message("attachment path is not inside attachments/"));
+        }
+        Ok(self.root.join("attachments").join(item).join(file))
+    }
+
+    fn remove_stored_file(&self, stored_name: &str) -> Result<()> {
+        let path = self.attachment_path(stored_name)?;
+        if path.exists() {
+            fs::remove_file(&path)?;
+        }
+        if let Some(parent) = path.parent() {
+            let _ = fs::remove_dir(parent);
+        }
+        Ok(())
+    }
+
     pub fn delete_node(&self, id: Id) -> Result<()> {
         self.conn
             .execute(
@@ -729,6 +885,27 @@ fn row_to_lore(row: &rusqlite::Row<'_>) -> LoreEntry {
     }
 }
 
+fn row_to_research_item(row: &rusqlite::Row<'_>) -> ResearchItem {
+    ResearchItem {
+        id: parse_id(&row.get::<_, String>(0).unwrap_or_default()),
+        title: row.get(1).unwrap_or_default(),
+        notes: row.get(2).unwrap_or_default(),
+        sort_index: row.get(3).unwrap_or(0),
+        created_at: parse_ts(&row.get::<_, String>(4).unwrap_or_default()),
+        updated_at: parse_ts(&row.get::<_, String>(5).unwrap_or_default()),
+    }
+}
+
+fn row_to_research_file(row: &rusqlite::Row<'_>) -> ResearchFile {
+    ResearchFile {
+        id: parse_id(&row.get::<_, String>(0).unwrap_or_default()),
+        item_id: parse_id(&row.get::<_, String>(1).unwrap_or_default()),
+        file_name: row.get(2).unwrap_or_default(),
+        stored_name: row.get(3).unwrap_or_default(),
+        created_at: parse_ts(&row.get::<_, String>(4).unwrap_or_default()),
+    }
+}
+
 fn row_to_event(row: &rusqlite::Row<'_>) -> TimelineEvent {
     TimelineEvent {
         id: parse_id(&row.get::<_, String>(0).unwrap_or_default()),
@@ -994,6 +1171,42 @@ mod tests {
         assert_eq!(loaded.events.len(), 1);
         assert_eq!(loaded.events[0].when_label, "Year 12");
         assert_eq!(loaded.events[0].location_id, Some(loaded.locations[0].id));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn research_library_copies_a_file_into_attachments_and_removes_it() {
+        let dir = env::temp_dir().join(format!("ws-research-{}", Id::new()));
+        let source = env::temp_dir().join(format!("ws-clip-{}.txt", Id::new()));
+        fs::write(&source, b"coastal charts").unwrap();
+        let store = ProjectStore::create(&dir, "Research Novel").unwrap();
+        let mut library = ResearchLibrary::new();
+        let item = library.add_item();
+        library.set_title(item, "Maps".into());
+        library.set_notes(item, "Coastal charts.".into());
+        store.persist_library(&library).unwrap();
+
+        let library = store
+            .import_research_file(&library, item, &source)
+            .unwrap();
+        let copied = store
+            .root
+            .join("attachments")
+            .join(&library.files[0].stored_name);
+        assert_eq!(fs::read(&copied).unwrap(), b"coastal charts");
+
+        let loaded = ProjectStore::open(&dir).unwrap().load_library().unwrap();
+        assert_eq!(loaded.items[0].title, "Maps");
+        assert_eq!(loaded.items[0].notes, "Coastal charts.");
+        assert_eq!(loaded.files.len(), 1);
+        assert_eq!(loaded.files[0].file_name, source.file_name().unwrap().to_str().unwrap());
+
+        let library = store.forget_research_file(&loaded, loaded.files[0].id).unwrap();
+        assert!(library.files.is_empty());
+        assert!(!copied.exists());
+        let library = store.forget_research_item(&library, item).unwrap();
+        assert!(library.items.is_empty());
+        let _ = fs::remove_file(&source);
         let _ = fs::remove_dir_all(dir);
     }
 }

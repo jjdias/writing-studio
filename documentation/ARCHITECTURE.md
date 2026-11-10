@@ -31,19 +31,20 @@ Binder + stored documents → writing-studio-export → .md / .docx on disk
 | `writing-studio-plotting` | Plotlines, plot points, and scene links |
 | `writing-studio-characters` | Profiles, motivations, and relationships |
 | `writing-studio-worldbuilding` | Locations, cultures, lore, and timelines |
+| `writing-studio-research` | Research notes and files in `attachments/` |
 | `writing-studio-search` | Binder title filter |
 | `writing-studio-export` | Manuscript compile to Markdown and DOCX |
 | `writing-studio-ui` | Workspace UI |
 | `writing-studio-desktop` | Native window |
 
-The plot grid, character cast, and world notes are stored in the same project database as the binder. Remaining crates are typed placeholders (research, collaboration, synchronization, security) so module boundaries stay stable.
+The plot grid, character cast, world notes, and research library are stored in the same project database as the binder. Research files are copied into `attachments/`. Remaining crates are typed placeholders (collaboration, synchronization, security) so module boundaries stay stable.
 
 ## Data flow
 
 1. The UI holds a `StudioState` with an optional `ProjectStore` (SQLite connection in the project folder).
 2. Opening a scene loads JSON into an `EditorSession` wrapping a `Document`.
 3. Typing updates the session; idle autosave, blur, scene change, and Ctrl+S write JSON back through `ProjectStore`.
-4. Binder moves and trash update `binder_nodes` (parent, `sort_index`, `deleted_at`, `restore_parent_id`). Plotlines and plot points live in `plotlines` and `plot_points`. A plot point may store a binder scene id. Emptying trash clears links to deleted scenes. Characters, motivations, and relationships live in `characters`, `character_motivations`, and `character_relationships`. Locations, cultures, lore, and timeline events live in `locations`, `cultures`, `lore_entries`, and `timeline_events`.
+4. Binder moves and trash update `binder_nodes` (parent, `sort_index`, `deleted_at`, `restore_parent_id`). Plotlines and plot points live in `plotlines` and `plot_points`. A plot point may store a binder scene id. Emptying trash clears links to deleted scenes. Characters, motivations, and relationships live in `characters`, `character_motivations`, and `character_relationships`. Locations, cultures, lore, and timeline events live in `locations`, `cultures`, `lore_entries`, and `timeline_events`. Research notes live in `research_items`. Each attached file is a row in `research_files` and a copy under `attachments/`.
 5. History restore either replaces one document from `snapshots` or copies a `backups/*.sqlite` into the live connection.
 6. Compile loads all documents, walks the draft root, and writes a file the user chooses.
 

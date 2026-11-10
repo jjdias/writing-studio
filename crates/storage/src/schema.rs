@@ -137,6 +137,23 @@ pub fn install(conn: &Connection) -> rusqlite::Result<()> {
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS research_items (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            notes TEXT NOT NULL DEFAULT '',
+            sort_index INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS research_files (
+            id TEXT PRIMARY KEY,
+            item_id TEXT NOT NULL,
+            file_name TEXT NOT NULL,
+            stored_name TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
         "#,
     )?;
     let _ = conn.execute(

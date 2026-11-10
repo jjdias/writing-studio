@@ -94,7 +94,6 @@ These crates exist so module boundaries stay stable. They are **types or stubs**
 
 | Crate | Current state | Intended later work |
 | --- | --- | --- |
-| `writing-studio-research` | `ResearchItem` struct | Attachments, PDFs, library UI |
 | `writing-studio-collaboration` | Yrs placeholder constant | Optional CRDT editing |
 | `writing-studio-synchronization` | “optional = true” stub | Optional cloud sync |
 | `writing-studio-security` | Notes that local folders are unencrypted | Optional encryption when sync exists |
@@ -130,10 +129,10 @@ Done on `phase-3`:
 - Plot Grid: plotlines, plot points, and links to scenes
 - Character profiles, relationships, and motivations
 - Locations, cultures, lore, and timelines
+- Research library: notes plus files in `attachments/`
 
 Still in this phase:
 
-- Research library: notes plus files in `attachments/`
 - Series bible shared across local projects (still files on disk)
 
 ### Phase 4 — Professional editing (local)
@@ -189,6 +188,6 @@ When optional cloud work starts, the source of truth for a disconnected writer r
 
 ## Immediate next steps
 
-Phase 2 is complete on `phase-2`. Phase 3 is in progress on `phase-3`. The plot grid, character profiles, and world notes are in the desktop app. Next is the research library: notes plus files in `attachments/`.
+Phase 2 is complete on `phase-2`. Phase 3 is in progress on `phase-3`. The plot grid, character profiles, world notes, and research library are in the desktop app. Next is a series bible shared across local projects, still as files on disk.
 
 Optional cloud stays later.

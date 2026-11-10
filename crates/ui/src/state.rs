@@ -10,6 +10,7 @@ use writing_studio_core::{autosave_due, autosave_wait, local_day, Id, Timestamp,
 use writing_studio_editor::EditorSession;
 use writing_studio_export::{compile_docx, compile_markdown, CompileInput};
 use writing_studio_plotting::PlotGrid;
+use writing_studio_research::ResearchLibrary;
 use writing_studio_project::{
     format_elapsed, normalize_binder_color, BinderNode, BinderTree, NodeKind, PanelLayout,
     ProjectMeta, StoredSession, Theme,
@@ -26,6 +27,7 @@ pub enum WorkspaceMode {
     Plot,
     Characters,
     World,
+    Research,
     History,
 }
 
@@ -38,6 +40,7 @@ impl WorkspaceMode {
             Self::Plot => "Plot",
             Self::Characters => "Characters",
             Self::World => "World",
+            Self::Research => "Research",
             Self::History => "History",
         }
     }
@@ -50,6 +53,7 @@ impl WorkspaceMode {
             Self::Plot => "Plot",
             Self::Characters => "Characters",
             Self::World => "World",
+            Self::Research => "Research",
             Self::History => "History",
         }
     }
@@ -118,6 +122,10 @@ pub struct StudioState {
     pub world_section: WorldSection,
     pub selected_world: Option<Id>,
     pub confirm_world: Option<Id>,
+    pub library: ResearchLibrary,
+    pub library_dirty: bool,
+    pub selected_research: Option<Id>,
+    pub confirm_research: Option<Id>,
     pub mode: WorkspaceMode,
     pub focus_mode: bool,
     pub status: String,
@@ -163,6 +171,10 @@ impl Default for StudioState {
             world_section: WorldSection::Locations,
             selected_world: None,
             confirm_world: None,
+            library: ResearchLibrary::new(),
+            library_dirty: false,
+            selected_research: None,
+            confirm_research: None,
             mode: WorkspaceMode::Writing,
             focus_mode: false,
             status: "Offline · Local-first".into(),
@@ -371,8 +383,9 @@ impl StudioState {
             store.load_plot(),
             store.load_cast(),
             store.load_world(),
+            store.load_library(),
         ) {
-            (Ok(meta), Ok(binder), Ok(plot), Ok(cast), Ok(world)) => {
+            (Ok(meta), Ok(binder), Ok(plot), Ok(cast), Ok(world), Ok(library)) => {
                 self.meta = Some(meta);
                 self.binder = binder;
                 self.plot = plot;
@@ -386,6 +399,10 @@ impl StudioState {
                 self.world_dirty = false;
                 self.selected_world = None;
                 self.confirm_world = None;
+                self.library = library;
+                self.library_dirty = false;
+                self.selected_research = None;
+                self.confirm_research = None;
                 self.store = Some(Rc::new(RefCell::new(store)));
                 self.status = status.into();
                 if let Some(scene) = self
@@ -400,11 +417,12 @@ impl StudioState {
                 self.reindex_manuscript();
                 self.begin_writing_session();
             }
-            (Err(err), _, _, _, _)
-            | (_, Err(err), _, _, _)
-            | (_, _, Err(err), _, _)
-            | (_, _, _, Err(err), _)
-            | (_, _, _, _, Err(err)) => {
+            (Err(err), _, _, _, _, _)
+            | (_, Err(err), _, _, _, _)
+            | (_, _, Err(err), _, _, _)
+            | (_, _, _, Err(err), _, _)
+            | (_, _, _, _, Err(err), _)
+            | (_, _, _, _, _, Err(err)) => {
                 self.status = format!("Project load failed: {err}");
             }
         }
@@ -508,6 +526,9 @@ impl StudioState {
         if self.world_dirty && self.store.is_some() && !self.persist_world_now() {
             return;
         }
+        if self.library_dirty && self.store.is_some() && !self.persist_library_now() {
+            return;
+        }
         self.note_writing_activity();
         if let Some(meta) = &self.meta {
             if let Some(store) = &self.store {
@@ -524,6 +545,7 @@ impl StudioState {
         self.plot_dirty = false;
         self.cast_dirty = false;
         self.world_dirty = false;
+        self.library_dirty = false;
         self.settings_dirty = false;
         self.last_edit = None;
         self.status = "All changes saved locally.".into();
@@ -593,6 +615,7 @@ impl StudioState {
             || self.plot_dirty
             || self.cast_dirty
             || self.world_dirty
+            || self.library_dirty
             || self.session.as_ref().is_some_and(EditorSession::is_dirty)
     }
 
@@ -807,7 +830,7 @@ impl StudioState {
         let Some(store) = self.store.clone() else {
             return;
         };
-        let (meta, binder, plot, cast, world) = {
+        let (meta, binder, plot, cast, world, library) = {
             let store = store.borrow();
             (
                 store.load_meta(),
@@ -815,10 +838,11 @@ impl StudioState {
                 store.load_plot(),
                 store.load_cast(),
                 store.load_world(),
+                store.load_library(),
             )
         };
-        match (meta, binder, plot, cast, world) {
-            (Ok(meta), Ok(binder), Ok(plot), Ok(cast), Ok(world)) => {
+        match (meta, binder, plot, cast, world, library) {
+            (Ok(meta), Ok(binder), Ok(plot), Ok(cast), Ok(world), Ok(library)) => {
                 let previous = self.selected;
                 self.meta = Some(meta);
                 self.binder = binder;
@@ -835,6 +859,12 @@ impl StudioState {
                 self.world_dirty = false;
                 self.selected_world = self.selected_world.filter(|id| self.world_contains(*id));
                 self.confirm_world = None;
+                self.library = library;
+                self.library_dirty = false;
+                self.selected_research = self
+                    .selected_research
+                    .filter(|id| self.library.items.iter().any(|item| item.id == *id));
+                self.confirm_research = None;
                 self.session = None;
                 self.editor_text.clear();
                 self.editor_html.clear();
@@ -854,11 +884,12 @@ impl StudioState {
                 self.reindex_manuscript();
                 self.begin_writing_session();
             }
-            (Err(err), _, _, _, _)
-            | (_, Err(err), _, _, _)
-            | (_, _, Err(err), _, _)
-            | (_, _, _, Err(err), _)
-            | (_, _, _, _, Err(err)) => {
+            (Err(err), _, _, _, _, _)
+            | (_, Err(err), _, _, _, _)
+            | (_, _, Err(err), _, _, _)
+            | (_, _, _, Err(err), _, _)
+            | (_, _, _, _, Err(err), _)
+            | (_, _, _, _, _, Err(err)) => {
                 self.status = format!("Backup restored, but reload failed: {err}");
             }
         }
@@ -1409,6 +1440,144 @@ impl StudioState {
             WorldSection::Cultures => world.cultures_in_order().first().map(|item| item.id),
             WorldSection::Lore => world.lore_in_order().first().map(|item| item.id),
             WorldSection::Timeline => world.events_in_order().first().map(|item| item.id),
+        }
+    }
+
+    pub fn add_research_item(&mut self) {
+        self.confirm_research = None;
+        let mut library = self.library.clone();
+        let id = library.add_item();
+        self.selected_research = Some(id);
+        self.store_library(library, true);
+    }
+
+    pub fn select_research_item(&mut self, id: Id) {
+        if self.library.items.iter().any(|item| item.id == id) {
+            self.confirm_research = None;
+            self.selected_research = Some(id);
+        }
+    }
+
+    pub fn set_research_title(&mut self, id: Id, title: String) {
+        self.edit_library(|library| library.set_title(id, title));
+    }
+
+    pub fn set_research_notes(&mut self, id: Id, notes: String) {
+        self.edit_library(|library| library.set_notes(id, notes));
+    }
+
+    pub fn remove_research_item(&mut self, id: Id) {
+        if self.confirm_research != Some(id) {
+            self.confirm_research = Some(id);
+            self.status = "Click delete again to remove this note and its files from attachments/.".into();
+            return;
+        }
+        self.confirm_research = None;
+        let Some(store) = &self.store else {
+            return;
+        };
+        match store.borrow().forget_research_item(&self.library, id) {
+            Ok(library) => {
+                if self.selected_research == Some(id) {
+                    self.selected_research = library.items_in_order().first().map(|item| item.id);
+                }
+                self.library = library;
+                self.library_dirty = false;
+                self.status = "Research note removed.".into();
+            }
+            Err(err) => self.status = format!("Could not remove research note: {err}"),
+        }
+    }
+
+    pub fn attach_research_file(&mut self, item_id: Id, source: PathBuf) {
+        self.confirm_research = None;
+        let Some(store) = &self.store else {
+            return;
+        };
+        match store.borrow().import_research_file(&self.library, item_id, &source) {
+            Ok(library) => {
+                self.library = library;
+                self.library_dirty = false;
+                self.status = "File copied into attachments/.".into();
+            }
+            Err(err) => self.status = format!("Could not attach file: {err}"),
+        }
+    }
+
+    pub fn remove_research_file(&mut self, id: Id) {
+        if self.confirm_research != Some(id) {
+            self.confirm_research = Some(id);
+            self.status = "Click remove again to delete this file from attachments/.".into();
+            return;
+        }
+        self.confirm_research = None;
+        let Some(store) = &self.store else {
+            return;
+        };
+        match store.borrow().forget_research_file(&self.library, id) {
+            Ok(library) => {
+                self.library = library;
+                self.library_dirty = false;
+                self.status = "Attachment removed.".into();
+            }
+            Err(err) => self.status = format!("Could not remove attachment: {err}"),
+        }
+    }
+
+    pub fn research_file_path(&self, id: Id) -> Option<PathBuf> {
+        let file = self.library.files.iter().find(|file| file.id == id)?;
+        let store = self.store.as_ref()?;
+        let root = store.borrow().root.clone();
+        let relative = PathBuf::from(&file.stored_name);
+        if relative
+            .components()
+            .any(|part| matches!(part, std::path::Component::ParentDir))
+        {
+            return None;
+        }
+        Some(root.join("attachments").join(relative))
+    }
+
+    fn edit_library(&mut self, edit: impl FnOnce(&mut ResearchLibrary) -> bool) {
+        self.confirm_research = None;
+        let mut library = self.library.clone();
+        if edit(&mut library) {
+            self.store_library(library, false);
+        }
+    }
+
+    fn store_library(&mut self, library: ResearchLibrary, immediate: bool) {
+        if !immediate {
+            self.library = library;
+            self.library_dirty = true;
+            self.note_edit();
+            return;
+        }
+        let Some(store) = &self.store else {
+            self.library = library;
+            self.library_dirty = false;
+            return;
+        };
+        match store.borrow().persist_library(&library) {
+            Ok(()) => {
+                self.library = library;
+                self.library_dirty = false;
+                self.status = "Research saved locally.".into();
+            }
+            Err(err) => self.status = format!("Could not save research: {err}"),
+        }
+    }
+
+    fn persist_library_now(&mut self) -> bool {
+        let Some(store) = &self.store else {
+            return false;
+        };
+        match store.borrow().persist_library(&self.library) {
+            Ok(()) => true,
+            Err(err) => {
+                self.status = format!("Could not save research: {err}");
+                false
+            }
         }
     }
 

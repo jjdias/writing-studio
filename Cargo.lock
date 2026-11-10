@@ -6318,6 +6318,7 @@ dependencies = [
  "writing-studio-document",
  "writing-studio-plotting",
  "writing-studio-project",
+ "writing-studio-research",
  "writing-studio-templates",
  "writing-studio-worldbuilding",
 ]
@@ -6355,6 +6356,7 @@ dependencies = [
  "writing-studio-manuscript",
  "writing-studio-plotting",
  "writing-studio-project",
+ "writing-studio-research",
  "writing-studio-search",
  "writing-studio-storage",
  "writing-studio-worldbuilding",

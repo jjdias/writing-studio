@@ -7,9 +7,9 @@ A project is a directory you can copy, back up, and keep offline—not a single 
 ```text
 MyNovel.writingstudio/
   FORMAT                 # `writing-studio-project 1`
-  project.sqlite         # metadata, binder, documents, snapshots, plot, characters, world
+  project.sqlite         # metadata, binder, documents, snapshots, plot, characters, world, research
   backups/               # timestamped SQLite copies
-  attachments/           # reserved for research files (unused in Phase 1)
+  attachments/           # copies of research files, one folder per note
 ```
 
 ## Rules
@@ -37,8 +37,12 @@ MyNovel.writingstudio/
 - `locations` — name, summary, optional `culture_id`, sort_index, timestamps
 - `lore_entries` — title, body, optional `location_id` and `culture_id`, sort_index, timestamps
 - `timeline_events` — title, `when_label`, summary, optional `location_id`, sort_index, timestamps
+- `research_items` — title, notes, sort_index, timestamps
+- `research_files` — item_id, display `file_name`, `stored_name` relative to `attachments/`
 
-Existing databases gain the plot, character, and world tables on open (`CREATE TABLE IF NOT EXISTS`). Databases created before `restore_parent_id` gain that column on open (`ALTER TABLE`). Format version stays **1** because these tables are additive.
+Existing databases gain the plot, character, world, and research tables on open (`CREATE TABLE IF NOT EXISTS`). Databases created before `restore_parent_id` gain that column on open (`ALTER TABLE`). Format version stays **1** because these tables are additive.
+
+A research file is stored as `attachments/{note-id}/{file-id}` plus a short extension. The sqlite backup does not include `attachments/`. Copy the project folder when you want the files and the database together.
 
 ## Settings JSON
 
