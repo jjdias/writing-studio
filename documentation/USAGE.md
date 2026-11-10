@@ -1,4 +1,4 @@
-# Using Writing Studio (Phase 1)
+# Using Writing Studio
 
 Free, open-source, local-first. Your writing stays in a folder on your machine.
 

@@ -113,7 +113,7 @@ See [PROJECT_FORMAT.md](PROJECT_FORMAT.md). Each scene or note is its own docume
 | `writing-studio-ui` | Dioxus workspace |
 | `writing-studio-desktop` | Native window |
 
-Placeholder crates (types/stubs only): plotting, characters, worldbuilding, research, collaboration, synchronization, security.
+At the end of Phase 1, plotting, characters, worldbuilding, and research were still placeholders. Phase 3 built them. Collaboration, synchronization, and security remain stubs.
 
 ---
 
@@ -130,7 +130,7 @@ Placeholder crates (types/stubs only): plotting, characters, worldbuilding, rese
 
 ## Explicitly not in Phase 1
 
-- Plot Grid, character/worldbuilding UIs, research file library
+- Plot Grid, character/worldbuilding UIs, and the research file library (shipped later in Phase 3; see [PHASE3.md](PHASE3.md))
 - Cloud sync, accounts, or real-time collaboration
 - PDF, EPUB, HTML compile (Markdown and DOCX are enough for this phase)
 - Packaged installers for macOS/Linux/mobile

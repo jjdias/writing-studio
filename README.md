@@ -8,13 +8,25 @@ A working desktop app:
 
 - Cargo workspace with a shared core and a Dioxus desktop shell
 - Versioned project folder (`*.writingstudio`) backed by SQLite
-- Binder: manuscript, research, chapters, scenes, notes, drag-and-drop, trash/restore
+- Binder: manuscript, chapters, scenes, drag-and-drop, trash/restore
 - Structured documents per scene, edited as rich text mapped onto the block model
 - Undo/redo, word counts, snapshots, folder backups, timed local autosave
 - Writing, corkboard, outliner, and history workspace modes
-- Compile the manuscript to local Markdown or DOCX
+- Compile one book to local Markdown or DOCX
 
 Full list: [`documentation/PHASE1.md`](documentation/PHASE1.md).
+
+## Phase 3
+
+Story development in the same local project:
+
+- One project holds every book in a series, plus one shared bible
+- Plot grid, character profiles, world notes, and a research library of notes and files
+- Binder, corkboard, outliner, and search can show one book or the whole series
+- Compile, the word target, today, and the sitting follow the current book
+- Bible entries can point at scenes. Research is edited only in Research
+
+Full list: [`documentation/PHASE3.md`](documentation/PHASE3.md).
 
 ## Requirements
 
@@ -41,6 +53,7 @@ Desktop/UI crates need a windowing runtime and are not part of the default libra
 ## Documentation
 
 - [Phase 1 features](documentation/PHASE1.md)
+- [Phase 3 features](documentation/PHASE3.md)
 - [Usage](documentation/USAGE.md)
 - [Architecture](documentation/ARCHITECTURE.md)
 - [Project format](documentation/PROJECT_FORMAT.md)

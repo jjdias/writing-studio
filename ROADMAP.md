@@ -4,7 +4,7 @@ Writing Studio is **open source** (MIT OR Apache-2.0) and **free for the communi
 
 **Local-first, now and later.** Saves, snapshots, backups, and compile live on the writer’s machine. Cloud connections and collaboration, if added, stay **optional**. They must never become a requirement to open a project, write, or keep copies of work.
 
-Status: Phase 1 (`v0.1.0` on `phase-1`) and Phase 2 (`phase-2`) are complete. Current work is Phase 3 on the `phase-3` branch. Details: [`documentation/PHASE1.md`](documentation/PHASE1.md).
+Status: Phase 1 (`v0.1.0` on `phase-1`), Phase 2 (`phase-2`), and Phase 3 (`phase-3`) are complete. Current work is Phase 4. Details: [`documentation/PHASE1.md`](documentation/PHASE1.md) and [`documentation/PHASE3.md`](documentation/PHASE3.md).
 
 ---
 
@@ -82,7 +82,11 @@ These pieces exist and are used by the desktop app. See [`documentation/PHASE1.m
 | `writing-studio-storage` | Local SQLite, save, snapshots, backups |
 | `writing-studio-corkboard` | Scene cards from the binder |
 | `writing-studio-export` | Local Markdown and DOCX compile |
-| `writing-studio-search` | Binder title filter |
+| `writing-studio-plotting` | Plotlines, plot points, and scene links |
+| `writing-studio-characters` | Profiles, motivations, and relationships |
+| `writing-studio-worldbuilding` | Locations, cultures, lore, and timelines |
+| `writing-studio-research` | Research notes and files in `attachments/` |
+| `writing-studio-search` | Full-text manuscript search |
 | `writing-studio-ui` | Desktop workspace |
 | `writing-studio-desktop` | Native window |
 
@@ -138,6 +142,8 @@ Done on `phase-3`:
 - The compile book's word count matches the outliner. Today and the sitting use a baseline stored for that book.
 - Research is the only editor for research notes and files. Notes that still sat under the binder Research section are copied into that library on open, then removed from the binder.
 - Permanently deleting a book drops its word target. If it was the compile book, compile and the status bar move to the first book that remains.
+
+Phase 3 is complete. See [`documentation/PHASE3.md`](documentation/PHASE3.md).
 
 ### Phase 4 — Professional editing (local)
 
@@ -211,8 +217,8 @@ When optional cloud work starts, the source of truth for a disconnected writer r
 
 ## Immediate next steps
 
-Phase 2 is complete on `phase-2`. Phase 3 is in progress on `phase-3`. The plot grid, character profiles, world notes, research library, and one project that holds the bible and every related book are in the desktop app.
+Phase 3 is complete. One project holds the bible and every related book. Characters, world notes, plot, and research stay with that project, stored once. Compile, the word target, today, and the sitting follow one book. The binder, corkboard, outliner, and search can show that book or the whole series. Research notes are edited only in Research.
 
-That folder is the series. Characters, world notes, plot, and research are the bible, stored once beside the books. The series work listed for this phase is in the desktop app. Richer front matter than the book title stays in Phase 6. A separate bible project beside each book, and backups that include research files, are bonus phases, not current work.
+Current work is Phase 4, local professional editing: snapshot comparison, comments and annotations, track changes, spellcheck, and scene diagnostics. Richer front matter than the book title stays in Phase 6. A separate bible project beside each book, and backups that include research files, stay bonus work.
 
 Optional cloud stays later.

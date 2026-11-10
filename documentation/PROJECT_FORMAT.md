@@ -14,7 +14,7 @@ MyNovel.writingstudio/
 
 ## Rules
 
-1. Manuscript text lives in the `documents` table, one row per scene/note.
+1. Manuscript text lives in the `documents` table, one row per scene and per chapter that holds its own text. Research notes live in `research_items`, not as binder documents.
 2. Binder hierarchy lives in `binder_nodes` and references `document_id`.
 3. Never store the whole book as one text field.
 4. Soft deletion uses `deleted_at` tombstones. Trash also sets `parent_id` to the trash root and remembers `restore_parent_id`.
@@ -70,7 +70,8 @@ A research file is stored as `attachments/{note-id}/{file-id}` plus a short exte
     "session_started_at": "2026-11-06T18:00:00Z",
     "session_active_at": "2026-11-06T18:20:00Z",
     "session_baseline": 1200,
-    "sessions": []
+    "sessions": [],
+    "books": []
   }
 }
 ```
@@ -83,4 +84,4 @@ Each document is a list of blocks (paragraph, heading, quote, list) with inline 
 
 ## Compile
 
-Markdown and DOCX compile one book in the **draft/manuscript** tree. The book's title is the front matter. Other books, Research, and Trash are omitted. Output is a normal file on disk chosen by the writer. A project with no chosen book compiles the first book.
+Markdown and DOCX compile one book in the **draft/manuscript** tree. The book's title is the front matter. Other books and Trash are omitted. Research notes are not binder items in that tree. Output is a normal file on disk chosen by the writer. A project with no chosen book compiles the first book.
