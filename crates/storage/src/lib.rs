@@ -22,6 +22,7 @@ use writing_studio_document::Document;
 use writing_studio_plotting::{PlotGrid, PlotPoint, Plotline};
 use writing_studio_project::{BinderNode, BinderTree, NodeKind, ProjectMeta, ProjectSettings};
 use writing_studio_templates::blank_novel;
+use writing_studio_worldbuilding::{Culture, Location, LoreEntry, TimelineEvent, World};
 
 pub struct ProjectStore {
     pub root: PathBuf,
@@ -350,6 +351,112 @@ impl ProjectStore {
         Ok(())
     }
 
+    pub fn load_world(&self) -> Result<World> {
+        let cultures = query_rows(
+            &self.conn,
+            "SELECT id, name, summary, sort_index, created_at, updated_at FROM cultures",
+            row_to_culture,
+        )?;
+        let locations = query_rows(
+            &self.conn,
+            "SELECT id, name, summary, culture_id, sort_index, created_at, updated_at FROM locations",
+            row_to_location,
+        )?;
+        let lore = query_rows(
+            &self.conn,
+            "SELECT id, title, body, location_id, culture_id, sort_index, created_at, updated_at FROM lore_entries",
+            row_to_lore,
+        )?;
+        let events = query_rows(
+            &self.conn,
+            "SELECT id, title, when_label, summary, location_id, sort_index, created_at, updated_at FROM timeline_events",
+            row_to_event,
+        )?;
+        Ok(World {
+            locations,
+            cultures,
+            lore,
+            events,
+        })
+    }
+
+    pub fn persist_world(&self, world: &World) -> Result<()> {
+        let tx = self.conn.unchecked_transaction().map_err(sqlite)?;
+        tx.execute("DELETE FROM timeline_events", []).map_err(sqlite)?;
+        tx.execute("DELETE FROM lore_entries", []).map_err(sqlite)?;
+        tx.execute("DELETE FROM locations", []).map_err(sqlite)?;
+        tx.execute("DELETE FROM cultures", []).map_err(sqlite)?;
+        for culture in &world.cultures {
+            tx.execute(
+                "INSERT INTO cultures (id, name, summary, sort_index, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    culture.id.to_string(),
+                    culture.name,
+                    culture.summary,
+                    culture.sort_index,
+                    culture.created_at.to_rfc3339(),
+                    culture.updated_at.to_rfc3339(),
+                ],
+            )
+            .map_err(sqlite)?;
+        }
+        for place in &world.locations {
+            tx.execute(
+                "INSERT INTO locations (id, name, summary, culture_id, sort_index, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![
+                    place.id.to_string(),
+                    place.name,
+                    place.summary,
+                    place.culture_id.map(|id| id.to_string()),
+                    place.sort_index,
+                    place.created_at.to_rfc3339(),
+                    place.updated_at.to_rfc3339(),
+                ],
+            )
+            .map_err(sqlite)?;
+        }
+        for entry in &world.lore {
+            tx.execute(
+                "INSERT INTO lore_entries (
+                    id, title, body, location_id, culture_id, sort_index, created_at, updated_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    entry.id.to_string(),
+                    entry.title,
+                    entry.body,
+                    entry.location_id.map(|id| id.to_string()),
+                    entry.culture_id.map(|id| id.to_string()),
+                    entry.sort_index,
+                    entry.created_at.to_rfc3339(),
+                    entry.updated_at.to_rfc3339(),
+                ],
+            )
+            .map_err(sqlite)?;
+        }
+        for event in &world.events {
+            tx.execute(
+                "INSERT INTO timeline_events (
+                    id, title, when_label, summary, location_id, sort_index, created_at, updated_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    event.id.to_string(),
+                    event.title,
+                    event.when_label,
+                    event.summary,
+                    event.location_id.map(|id| id.to_string()),
+                    event.sort_index,
+                    event.created_at.to_rfc3339(),
+                    event.updated_at.to_rfc3339(),
+                ],
+            )
+            .map_err(sqlite)?;
+        }
+        tx.commit().map_err(sqlite)?;
+        Ok(())
+    }
+
     pub fn delete_node(&self, id: Id) -> Result<()> {
         self.conn
             .execute(
@@ -575,6 +682,74 @@ fn row_to_plot_point(row: &rusqlite::Row<'_>) -> PlotPoint {
     }
 }
 
+fn query_rows<T>(
+    conn: &Connection,
+    sql: &str,
+    map: fn(&rusqlite::Row<'_>) -> T,
+) -> Result<Vec<T>> {
+    let mut stmt = conn.prepare(sql).map_err(sqlite)?;
+    let rows = stmt.query_map([], |row| Ok(map(row))).map_err(sqlite)?;
+    rows.collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(sqlite)
+}
+
+fn row_to_culture(row: &rusqlite::Row<'_>) -> Culture {
+    Culture {
+        id: parse_id(&row.get::<_, String>(0).unwrap_or_default()),
+        name: row.get(1).unwrap_or_default(),
+        summary: row.get(2).unwrap_or_default(),
+        sort_index: row.get(3).unwrap_or(0),
+        created_at: parse_ts(&row.get::<_, String>(4).unwrap_or_default()),
+        updated_at: parse_ts(&row.get::<_, String>(5).unwrap_or_default()),
+    }
+}
+
+fn row_to_location(row: &rusqlite::Row<'_>) -> Location {
+    Location {
+        id: parse_id(&row.get::<_, String>(0).unwrap_or_default()),
+        name: row.get(1).unwrap_or_default(),
+        summary: row.get(2).unwrap_or_default(),
+        culture_id: optional_id(row, 3),
+        sort_index: row.get(4).unwrap_or(0),
+        created_at: parse_ts(&row.get::<_, String>(5).unwrap_or_default()),
+        updated_at: parse_ts(&row.get::<_, String>(6).unwrap_or_default()),
+    }
+}
+
+fn row_to_lore(row: &rusqlite::Row<'_>) -> LoreEntry {
+    LoreEntry {
+        id: parse_id(&row.get::<_, String>(0).unwrap_or_default()),
+        title: row.get(1).unwrap_or_default(),
+        body: row.get(2).unwrap_or_default(),
+        location_id: optional_id(row, 3),
+        culture_id: optional_id(row, 4),
+        sort_index: row.get(5).unwrap_or(0),
+        created_at: parse_ts(&row.get::<_, String>(6).unwrap_or_default()),
+        updated_at: parse_ts(&row.get::<_, String>(7).unwrap_or_default()),
+    }
+}
+
+fn row_to_event(row: &rusqlite::Row<'_>) -> TimelineEvent {
+    TimelineEvent {
+        id: parse_id(&row.get::<_, String>(0).unwrap_or_default()),
+        title: row.get(1).unwrap_or_default(),
+        when_label: row.get(2).unwrap_or_default(),
+        summary: row.get(3).unwrap_or_default(),
+        location_id: optional_id(row, 4),
+        sort_index: row.get(5).unwrap_or(0),
+        created_at: parse_ts(&row.get::<_, String>(6).unwrap_or_default()),
+        updated_at: parse_ts(&row.get::<_, String>(7).unwrap_or_default()),
+    }
+}
+
+fn optional_id(row: &rusqlite::Row<'_>, index: usize) -> Option<Id> {
+    row.get::<_, Option<String>>(index)
+        .ok()
+        .flatten()
+        .filter(|value| !value.is_empty())
+        .map(|value| parse_id(&value))
+}
+
 fn row_to_character(row: &rusqlite::Row<'_>) -> Character {
     Character {
         id: parse_id(&row.get::<_, String>(0).unwrap_or_default()),
@@ -778,6 +953,47 @@ mod tests {
         assert_eq!(loaded.relationships.len(), 1);
         assert_eq!(loaded.relationships[0].kind, "rival");
         assert_eq!(loaded.relationships[0].from_id, ada.id);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn world_round_trips_places_cultures_lore_and_events() {
+        let dir = env::temp_dir().join(format!("ws-world-{}", Id::new()));
+        let store = ProjectStore::create(&dir, "World Novel").unwrap();
+        assert!(store.load_world().unwrap().locations.is_empty());
+
+        let mut world = World::new();
+        let culture = world.add_culture();
+        world.set_culture_name(culture, "River folk".into());
+        world.set_culture_summary(culture, "They mark floods on stone.".into());
+        let place = world.add_location();
+        world.set_location_name(place, "Mill town".into());
+        world.set_location_summary(place, "A town on the bend.".into());
+        world.set_location_culture(place, Some(culture));
+        let note = world.add_lore();
+        world.set_lore_title(note, "The flood mark".into());
+        world.set_lore_body(note, "A line cut into the mill wall.".into());
+        world.set_lore_location(note, Some(place));
+        world.set_lore_culture(note, Some(culture));
+        let event = world.add_event();
+        world.set_event_title(event, "The high water".into());
+        world.set_event_when(event, "Year 12".into());
+        world.set_event_summary(event, "The river took the lower street.".into());
+        world.set_event_location(event, Some(place));
+        store.persist_world(&world).unwrap();
+
+        let loaded = ProjectStore::open(&dir).unwrap().load_world().unwrap();
+        assert_eq!(loaded.cultures.len(), 1);
+        assert_eq!(loaded.cultures[0].name, "River folk");
+        assert_eq!(loaded.locations.len(), 1);
+        assert_eq!(loaded.locations[0].name, "Mill town");
+        assert_eq!(loaded.locations[0].culture_id, Some(loaded.cultures[0].id));
+        assert_eq!(loaded.lore.len(), 1);
+        assert_eq!(loaded.lore[0].title, "The flood mark");
+        assert_eq!(loaded.lore[0].location_id, Some(loaded.locations[0].id));
+        assert_eq!(loaded.events.len(), 1);
+        assert_eq!(loaded.events[0].when_label, "Year 12");
+        assert_eq!(loaded.events[0].location_id, Some(loaded.locations[0].id));
         let _ = fs::remove_dir_all(dir);
     }
 }

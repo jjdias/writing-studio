@@ -6319,6 +6319,7 @@ dependencies = [
  "writing-studio-plotting",
  "writing-studio-project",
  "writing-studio-templates",
+ "writing-studio-worldbuilding",
 ]
 
 [[package]]
@@ -6356,6 +6357,7 @@ dependencies = [
  "writing-studio-project",
  "writing-studio-search",
  "writing-studio-storage",
+ "writing-studio-worldbuilding",
 ]
 
 [[package]]

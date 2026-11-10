@@ -37,7 +37,7 @@ The status bar shows this document, this sitting, words added today, and the man
 
 ## Modes
 
-Writing, Corkboard, Outliner, Plot, Characters, History. **Ctrl+5** opens Plot. **Ctrl+6** opens Characters. **Focus** hides the binder and inspector.
+Writing, Corkboard, Outliner, Plot, Characters, World, History. **Ctrl+5** opens Plot. **Ctrl+6** opens Characters. **Ctrl+7** opens World. **Focus** hides the binder and inspector.
 
 ## Plot
 
@@ -46,6 +46,10 @@ Writing, Corkboard, Outliner, Plot, Characters, History. **Ctrl+5** opens Plot. 
 ## Characters
 
 **Characters** keeps a local cast. Each profile has a name, a role, and a longer description. Motivations are a list on that character. A relationship names another character and how they are connected. Deleting a character asks for a second click and also removes their motivations and relationships. The cast is saved in the project folder.
+
+## World
+
+**World** keeps locations, cultures, lore, and a timeline in the project. A location can name a culture. A lore entry can name a location and a culture. A timeline event has a when-label, a title, what happened, and an optional location. **Earlier** and **Later** change event order. Deleting an entry asks for a second click and clears links that pointed at it.
 
 ## Layout
 

@@ -16,6 +16,7 @@ use writing_studio_project::{
 };
 use writing_studio_search::ManuscriptIndex;
 use writing_studio_storage::{BackupInfo, ProjectStore, SnapshotInfo};
+use writing_studio_worldbuilding::World;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WorkspaceMode {
@@ -24,6 +25,7 @@ pub enum WorkspaceMode {
     Outliner,
     Plot,
     Characters,
+    World,
     History,
 }
 
@@ -35,6 +37,7 @@ impl WorkspaceMode {
             Self::Outliner => "Outliner",
             Self::Plot => "Plot",
             Self::Characters => "Characters",
+            Self::World => "World",
             Self::History => "History",
         }
     }
@@ -46,7 +49,44 @@ impl WorkspaceMode {
             Self::Outliner => "Outliner",
             Self::Plot => "Plot",
             Self::Characters => "Characters",
+            Self::World => "World",
             Self::History => "History",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum WorldSection {
+    #[default]
+    Locations,
+    Cultures,
+    Lore,
+    Timeline,
+}
+
+impl WorldSection {
+    pub const ALL: [WorldSection; 4] = [
+        WorldSection::Locations,
+        WorldSection::Cultures,
+        WorldSection::Lore,
+        WorldSection::Timeline,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Locations => "Locations",
+            Self::Cultures => "Cultures",
+            Self::Lore => "Lore",
+            Self::Timeline => "Timeline",
+        }
+    }
+
+    pub fn add_label(self) -> &'static str {
+        match self {
+            Self::Locations => "Add location",
+            Self::Cultures => "Add culture",
+            Self::Lore => "Add lore",
+            Self::Timeline => "Add event",
         }
     }
 }
@@ -73,6 +113,11 @@ pub struct StudioState {
     pub cast_dirty: bool,
     pub selected_character: Option<Id>,
     pub confirm_character: Option<Id>,
+    pub world: World,
+    pub world_dirty: bool,
+    pub world_section: WorldSection,
+    pub selected_world: Option<Id>,
+    pub confirm_world: Option<Id>,
     pub mode: WorkspaceMode,
     pub focus_mode: bool,
     pub status: String,
@@ -113,6 +158,11 @@ impl Default for StudioState {
             cast_dirty: false,
             selected_character: None,
             confirm_character: None,
+            world: World::new(),
+            world_dirty: false,
+            world_section: WorldSection::Locations,
+            selected_world: None,
+            confirm_world: None,
             mode: WorkspaceMode::Writing,
             focus_mode: false,
             status: "Offline · Local-first".into(),
@@ -320,8 +370,9 @@ impl StudioState {
             store.load_binder(),
             store.load_plot(),
             store.load_cast(),
+            store.load_world(),
         ) {
-            (Ok(meta), Ok(binder), Ok(plot), Ok(cast)) => {
+            (Ok(meta), Ok(binder), Ok(plot), Ok(cast), Ok(world)) => {
                 self.meta = Some(meta);
                 self.binder = binder;
                 self.plot = plot;
@@ -331,6 +382,10 @@ impl StudioState {
                 self.cast_dirty = false;
                 self.selected_character = None;
                 self.confirm_character = None;
+                self.world = world;
+                self.world_dirty = false;
+                self.selected_world = None;
+                self.confirm_world = None;
                 self.store = Some(Rc::new(RefCell::new(store)));
                 self.status = status.into();
                 if let Some(scene) = self
@@ -345,7 +400,11 @@ impl StudioState {
                 self.reindex_manuscript();
                 self.begin_writing_session();
             }
-            (Err(err), _, _, _) | (_, Err(err), _, _) | (_, _, Err(err), _) | (_, _, _, Err(err)) => {
+            (Err(err), _, _, _, _)
+            | (_, Err(err), _, _, _)
+            | (_, _, Err(err), _, _)
+            | (_, _, _, Err(err), _)
+            | (_, _, _, _, Err(err)) => {
                 self.status = format!("Project load failed: {err}");
             }
         }
@@ -446,6 +505,9 @@ impl StudioState {
         if self.cast_dirty && self.store.is_some() && !self.persist_cast_now() {
             return;
         }
+        if self.world_dirty && self.store.is_some() && !self.persist_world_now() {
+            return;
+        }
         self.note_writing_activity();
         if let Some(meta) = &self.meta {
             if let Some(store) = &self.store {
@@ -461,6 +523,7 @@ impl StudioState {
         self.binder_dirty = false;
         self.plot_dirty = false;
         self.cast_dirty = false;
+        self.world_dirty = false;
         self.settings_dirty = false;
         self.last_edit = None;
         self.status = "All changes saved locally.".into();
@@ -529,6 +592,7 @@ impl StudioState {
             || self.binder_dirty
             || self.plot_dirty
             || self.cast_dirty
+            || self.world_dirty
             || self.session.as_ref().is_some_and(EditorSession::is_dirty)
     }
 
@@ -743,17 +807,18 @@ impl StudioState {
         let Some(store) = self.store.clone() else {
             return;
         };
-        let (meta, binder, plot, cast) = {
+        let (meta, binder, plot, cast, world) = {
             let store = store.borrow();
             (
                 store.load_meta(),
                 store.load_binder(),
                 store.load_plot(),
                 store.load_cast(),
+                store.load_world(),
             )
         };
-        match (meta, binder, plot, cast) {
-            (Ok(meta), Ok(binder), Ok(plot), Ok(cast)) => {
+        match (meta, binder, plot, cast, world) {
+            (Ok(meta), Ok(binder), Ok(plot), Ok(cast), Ok(world)) => {
                 let previous = self.selected;
                 self.meta = Some(meta);
                 self.binder = binder;
@@ -766,6 +831,10 @@ impl StudioState {
                     .selected_character
                     .filter(|id| self.cast.characters.iter().any(|character| character.id == *id));
                 self.confirm_character = None;
+                self.world = world;
+                self.world_dirty = false;
+                self.selected_world = self.selected_world.filter(|id| self.world_contains(*id));
+                self.confirm_world = None;
                 self.session = None;
                 self.editor_text.clear();
                 self.editor_html.clear();
@@ -785,7 +854,11 @@ impl StudioState {
                 self.reindex_manuscript();
                 self.begin_writing_session();
             }
-            (Err(err), _, _, _) | (_, Err(err), _, _) | (_, _, Err(err), _) | (_, _, _, Err(err)) => {
+            (Err(err), _, _, _, _)
+            | (_, Err(err), _, _, _)
+            | (_, _, Err(err), _, _)
+            | (_, _, _, Err(err), _)
+            | (_, _, _, _, Err(err)) => {
                 self.status = format!("Backup restored, but reload failed: {err}");
             }
         }
@@ -1153,6 +1226,189 @@ impl StudioState {
                 self.status = format!("Could not save characters: {err}");
                 false
             }
+        }
+    }
+
+    pub fn set_world_section(&mut self, section: WorldSection) {
+        self.world_section = section;
+        self.confirm_world = None;
+    }
+
+    pub fn select_world_item(&mut self, id: Id) {
+        if self.world_contains(id) {
+            self.confirm_world = None;
+            self.selected_world = Some(id);
+        }
+    }
+
+    pub fn add_world_item(&mut self) {
+        self.confirm_world = None;
+        let mut world = self.world.clone();
+        let id = match self.world_section {
+            WorldSection::Locations => world.add_location(),
+            WorldSection::Cultures => world.add_culture(),
+            WorldSection::Lore => world.add_lore(),
+            WorldSection::Timeline => world.add_event(),
+        };
+        self.selected_world = Some(id);
+        self.store_world(world, true);
+    }
+
+    pub fn remove_world_item(&mut self, id: Id) {
+        if self.confirm_world != Some(id) {
+            self.confirm_world = Some(id);
+            self.status = "Click delete again to remove this entry. Links to it are cleared.".into();
+            return;
+        }
+        self.confirm_world = None;
+        let mut world = self.world.clone();
+        let removed = match self.world_section {
+            WorldSection::Locations => world.remove_location(id),
+            WorldSection::Cultures => world.remove_culture(id),
+            WorldSection::Lore => world.remove_lore(id),
+            WorldSection::Timeline => world.remove_event(id),
+        };
+        if !removed {
+            return;
+        }
+        if self.selected_world == Some(id) {
+            self.selected_world = self.first_world_id(&world);
+        }
+        self.store_world(world, true);
+    }
+
+    pub fn set_location_name(&mut self, id: Id, name: String) {
+        self.edit_world(|world| world.set_location_name(id, name));
+    }
+
+    pub fn set_location_summary(&mut self, id: Id, summary: String) {
+        self.edit_world(|world| world.set_location_summary(id, summary));
+    }
+
+    pub fn set_location_culture(&mut self, id: Id, culture_id: Option<Id>) {
+        self.confirm_world = None;
+        let mut world = self.world.clone();
+        if world.set_location_culture(id, culture_id) {
+            self.store_world(world, true);
+        }
+    }
+
+    pub fn set_culture_name(&mut self, id: Id, name: String) {
+        self.edit_world(|world| world.set_culture_name(id, name));
+    }
+
+    pub fn set_culture_summary(&mut self, id: Id, summary: String) {
+        self.edit_world(|world| world.set_culture_summary(id, summary));
+    }
+
+    pub fn set_lore_title(&mut self, id: Id, title: String) {
+        self.edit_world(|world| world.set_lore_title(id, title));
+    }
+
+    pub fn set_lore_body(&mut self, id: Id, body: String) {
+        self.edit_world(|world| world.set_lore_body(id, body));
+    }
+
+    pub fn set_lore_location(&mut self, id: Id, location_id: Option<Id>) {
+        self.confirm_world = None;
+        let mut world = self.world.clone();
+        if world.set_lore_location(id, location_id) {
+            self.store_world(world, true);
+        }
+    }
+
+    pub fn set_lore_culture(&mut self, id: Id, culture_id: Option<Id>) {
+        self.confirm_world = None;
+        let mut world = self.world.clone();
+        if world.set_lore_culture(id, culture_id) {
+            self.store_world(world, true);
+        }
+    }
+
+    pub fn set_event_title(&mut self, id: Id, title: String) {
+        self.edit_world(|world| world.set_event_title(id, title));
+    }
+
+    pub fn set_event_when(&mut self, id: Id, when_label: String) {
+        self.edit_world(|world| world.set_event_when(id, when_label));
+    }
+
+    pub fn set_event_summary(&mut self, id: Id, summary: String) {
+        self.edit_world(|world| world.set_event_summary(id, summary));
+    }
+
+    pub fn set_event_location(&mut self, id: Id, location_id: Option<Id>) {
+        self.confirm_world = None;
+        let mut world = self.world.clone();
+        if world.set_event_location(id, location_id) {
+            self.store_world(world, true);
+        }
+    }
+
+    pub fn shift_world_event(&mut self, id: Id, earlier: bool) {
+        self.confirm_world = None;
+        let mut world = self.world.clone();
+        if world.shift_event(id, earlier) {
+            self.store_world(world, true);
+        }
+    }
+
+    fn edit_world(&mut self, edit: impl FnOnce(&mut World) -> bool) {
+        self.confirm_world = None;
+        let mut world = self.world.clone();
+        if edit(&mut world) {
+            self.store_world(world, false);
+        }
+    }
+
+    fn store_world(&mut self, world: World, immediate: bool) {
+        if !immediate {
+            self.world = world;
+            self.world_dirty = true;
+            self.note_edit();
+            return;
+        }
+        let Some(store) = &self.store else {
+            self.world = world;
+            self.world_dirty = false;
+            return;
+        };
+        match store.borrow().persist_world(&world) {
+            Ok(()) => {
+                self.world = world;
+                self.world_dirty = false;
+                self.status = "World saved locally.".into();
+            }
+            Err(err) => self.status = format!("Could not save world: {err}"),
+        }
+    }
+
+    fn persist_world_now(&mut self) -> bool {
+        let Some(store) = &self.store else {
+            return false;
+        };
+        match store.borrow().persist_world(&self.world) {
+            Ok(()) => true,
+            Err(err) => {
+                self.status = format!("Could not save world: {err}");
+                false
+            }
+        }
+    }
+
+    fn world_contains(&self, id: Id) -> bool {
+        self.world.locations.iter().any(|item| item.id == id)
+            || self.world.cultures.iter().any(|item| item.id == id)
+            || self.world.lore.iter().any(|item| item.id == id)
+            || self.world.events.iter().any(|item| item.id == id)
+    }
+
+    fn first_world_id(&self, world: &World) -> Option<Id> {
+        match self.world_section {
+            WorldSection::Locations => world.locations_in_order().first().map(|item| item.id),
+            WorldSection::Cultures => world.cultures_in_order().first().map(|item| item.id),
+            WorldSection::Lore => world.lore_in_order().first().map(|item| item.id),
+            WorldSection::Timeline => world.events_in_order().first().map(|item| item.id),
         }
     }
 

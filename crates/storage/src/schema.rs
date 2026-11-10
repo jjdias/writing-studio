@@ -96,6 +96,47 @@ pub fn install(conn: &Connection) -> rusqlite::Result<()> {
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS cultures (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            summary TEXT NOT NULL DEFAULT '',
+            sort_index INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS locations (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            summary TEXT NOT NULL DEFAULT '',
+            culture_id TEXT,
+            sort_index INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS lore_entries (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            body TEXT NOT NULL DEFAULT '',
+            location_id TEXT,
+            culture_id TEXT,
+            sort_index INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS timeline_events (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            when_label TEXT NOT NULL DEFAULT '',
+            summary TEXT NOT NULL DEFAULT '',
+            location_id TEXT,
+            sort_index INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
         "#,
     )?;
     let _ = conn.execute(

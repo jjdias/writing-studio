@@ -7,7 +7,7 @@ A project is a directory you can copy, back up, and keep offline—not a single 
 ```text
 MyNovel.writingstudio/
   FORMAT                 # `writing-studio-project 1`
-  project.sqlite         # metadata, binder, document JSON, snapshots, plot grid, characters
+  project.sqlite         # metadata, binder, documents, snapshots, plot, characters, world
   backups/               # timestamped SQLite copies
   attachments/           # reserved for research files (unused in Phase 1)
 ```
@@ -33,8 +33,12 @@ MyNovel.writingstudio/
 - `characters` — name, role, summary, sort_index, timestamps
 - `character_motivations` — character_id, body, sort_index, timestamps
 - `character_relationships` — from_id, to_id, kind, sort_index, timestamps
+- `cultures` — name, summary, sort_index, timestamps
+- `locations` — name, summary, optional `culture_id`, sort_index, timestamps
+- `lore_entries` — title, body, optional `location_id` and `culture_id`, sort_index, timestamps
+- `timeline_events` — title, `when_label`, summary, optional `location_id`, sort_index, timestamps
 
-Existing databases gain the plot and character tables on open (`CREATE TABLE IF NOT EXISTS`). Databases created before `restore_parent_id` gain that column on open (`ALTER TABLE`). Format version stays **1** because these tables are additive.
+Existing databases gain the plot, character, and world tables on open (`CREATE TABLE IF NOT EXISTS`). Databases created before `restore_parent_id` gain that column on open (`ALTER TABLE`). Format version stays **1** because these tables are additive.
 
 ## Settings JSON
 
