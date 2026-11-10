@@ -185,6 +185,14 @@ The bible is its own `.writingstudio` folder. Each novel stores a path to that f
 - If the bible folder is missing or moved, the book still opens and the manuscript stays writable. The bible panel says the folder is unavailable.
 - Open the bible next to the manuscript. A scene can point at a character, place, or note in the bible.
 
+### Bonus — Keep research files with a backup
+
+Not current work. **Backup** copies the SQLite file and leaves `attachments/` behind. Restoring an older backup can leave research rows pointing at files that are gone, or leave files on disk that the restored library no longer lists.
+
+- Include `attachments/` in a project backup, beside the SQLite copy.
+- Restore the database and those files together.
+- After restore, every research file row has its file on disk, and files that belonged only to the replaced library are not left behind as the current library.
+
 ---
 
 ## Keep local writing unblocked
@@ -205,14 +213,6 @@ When optional cloud work starts, the source of truth for a disconnected writer r
 
 Phase 2 is complete on `phase-2`. Phase 3 is in progress on `phase-3`. The plot grid, character profiles, world notes, research library, and one project that holds the bible and every related book are in the desktop app.
 
-That folder is the series. Characters, world notes, plot, and research are the bible, stored once beside the books. The work left in this phase is to make that series behave as one book at a time when the writer is looking at one book. Richer front matter than the book title stays in Phase 6. A separate bible project beside each book is a bonus phase, not current work.
-
-### Keep research files with a backup
-
-**Backup** copies the SQLite file and leaves `attachments/` behind. Restoring an older backup can leave research rows pointing at files that are gone, or leave files on disk that the restored library no longer lists.
-
-- Include `attachments/` in a project backup, beside the SQLite copy.
-- Restore the database and those files together.
-- After restore, every research file row has its file on disk, and files that belonged only to the replaced library are not left behind as the current library.
+That folder is the series. Characters, world notes, plot, and research are the bible, stored once beside the books. The series work listed for this phase is in the desktop app. Richer front matter than the book title stays in Phase 6. A separate bible project beside each book, and backups that include research files, are bonus phases, not current work.
 
 Optional cloud stays later.
