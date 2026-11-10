@@ -121,10 +121,11 @@ Done on `phase-2`:
 - Keyboard shortcuts beyond save / undo / redo
 - Full-text search of manuscript content (Tantivy), not only binder titles
 - Daily writing targets and session statistics stored in the local project
+- Customizable panel layout, stored in the project: binder side, drag widths, and showing or hiding the binder and inspector
 
 Still in this phase:
 
-- Customizable panel layout and themes
+- Themes
 
 ### Phase 3 — Story development (local)
 
@@ -187,8 +188,8 @@ When optional cloud work starts, the source of truth for a disconnected writer r
 
 ## Immediate next steps
 
-Phase 2 is in progress on `phase-2`. Links, comments, extra block types, the outliner, binder labels and nesting, the corkboard, keyboard shortcuts, Tantivy full-text search, and daily writing targets with session statistics are in. Still to implement, all local:
+Phase 2 is in progress on `phase-2`. Links, comments, extra block types, the outliner, binder labels and nesting, the corkboard, keyboard shortcuts, Tantivy full-text search, daily writing targets with session statistics, and a customizable panel layout are in. Still to implement, all local:
 
-- Customizable panel layout and themes
+- Themes
 
 Optional cloud stays later.

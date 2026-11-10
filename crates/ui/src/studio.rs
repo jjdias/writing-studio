@@ -7,7 +7,11 @@ use writing_studio_corkboard::{card_matches, cards_from_binder, group_cards, Cor
 use writing_studio_document::InlineNote;
 use writing_studio_editor::EditorSession;
 use writing_studio_manuscript::{outline_rows, row_word_count};
-use writing_studio_project::{binder_color_hex, format_elapsed, BinderNode, NodeKind, BINDER_COLORS};
+use writing_studio_project::{
+    binder_color_hex, drag_width, format_elapsed, BinderNode, NodeKind, PanelChrome, PanelLayout,
+    PanelWidths, SidebarSide, BINDER_COLORS, INSPECTOR_WIDTH_DEFAULT, INSPECTOR_WIDTH_MAX,
+    INSPECTOR_WIDTH_MIN, SIDEBAR_WIDTH_DEFAULT, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN,
+};
 use writing_studio_search::matches_query;
 
 use crate::shortcuts::{app_shortcut, AppShortcut};
@@ -18,6 +22,9 @@ const STYLES: &str = include_str!("../assets/style.css");
 #[component]
 pub fn App() -> Element {
     use_context_provider(|| Signal::new(StudioState::default()));
+    use_context_provider(|| Signal::new(PanelChrome::default()));
+    use_context_provider(|| Signal::new(PanelWidths::default()));
+    use_context_provider(|| Signal::new(None::<ResizeDrag>));
     rsx! {
         style { "{STYLES}" }
         Studio {}
@@ -27,6 +34,9 @@ pub fn App() -> Element {
 #[component]
 fn Studio() -> Element {
     let mut state = use_context::<Signal<StudioState>>();
+    let chrome = use_context::<Signal<PanelChrome>>();
+    let widths = use_context::<Signal<PanelWidths>>();
+    let resize = use_context::<Signal<Option<ResizeDrag>>>();
     use_future(move || async move {
         loop {
             tokio::time::sleep(std::time::Duration::from_millis(400)).await;
@@ -59,6 +69,30 @@ fn Studio() -> Element {
         div {
             class: "shell",
             tabindex: 0,
+            onmousemove: move |event| {
+                let Some(drag) = *resize.peek() else {
+                    return;
+                };
+                let delta = (event.client_coordinates().x - drag.origin_x).round() as i32;
+                let (min, max) = resize_limits(drag.kind);
+                let width = drag_width(drag.origin_width, delta, drag.positive, min, max);
+                let mut next = *widths.peek();
+                let unchanged = match drag.kind {
+                    ResizeKind::Sidebar => next.sidebar == width,
+                    ResizeKind::Inspector => next.inspector == width,
+                };
+                if unchanged {
+                    return;
+                }
+                match drag.kind {
+                    ResizeKind::Sidebar => next.sidebar = width,
+                    ResizeKind::Inspector => next.inspector = width,
+                }
+                let mut widths = widths;
+                widths.set(next);
+            },
+            onmouseup: move |_| finish_resize(state, widths, resize),
+            onmouseleave: move |_| finish_resize(state, widths, resize),
             onkeydown: move |event| {
                 let key = match event.key() {
                     Key::Character(value) => value,
@@ -66,10 +100,15 @@ fn Studio() -> Element {
                     _ => return,
                 };
                 let ctrl = event.modifiers().ctrl() || event.modifiers().meta();
-                let Some(action) = app_shortcut(&key, ctrl, event.modifiers().shift()) else {
+                let Some(action) = app_shortcut(
+                    &key,
+                    ctrl,
+                    event.modifiers().shift(),
+                    event.modifiers().alt(),
+                ) else {
                     return;
                 };
-                if apply_shortcut(state, action) {
+                if apply_shortcut(state, chrome, widths, action) {
                     event.prevent_default();
                 }
             },
@@ -81,6 +120,8 @@ fn Studio() -> Element {
 #[component]
 fn Welcome() -> Element {
     let mut state = use_context::<Signal<StudioState>>();
+    let chrome = use_context::<Signal<PanelChrome>>();
+    let widths = use_context::<Signal<PanelWidths>>();
     let title = state.read().new_title.clone();
     rsx! {
         div { class: "welcome",
@@ -96,8 +137,8 @@ fn Welcome() -> Element {
                     oninput: move |event| state.write().new_title = event.value(),
                 }
                 div { class: "welcome-actions",
-                    button { class: "primary", onclick: move |_| create_project(state), "New project" }
-                    button { onclick: move |_| open_project(state), "Open project" }
+                    button { class: "primary", onclick: move |_| create_project(state, chrome, widths), "New project" }
+                    button { onclick: move |_| open_project(state, chrome, widths), "Open project" }
                 }
                 p { class: "hint", "Projects are folders with a SQLite database. Everything works offline." }
             }
@@ -108,7 +149,6 @@ fn Welcome() -> Element {
 #[component]
 fn Workspace() -> Element {
     let mut state = use_context::<Signal<StudioState>>();
-    let title = state.read().project_title();
     let status = state.read().status.clone();
     let mode = state.read().mode;
     let focus = state.read().focus_mode;
@@ -119,27 +159,29 @@ fn Workspace() -> Element {
     let today_words = state.read().words_today_at(project_words);
     let session_words = state.read().words_this_session_at(project_words);
     let session_time = format_elapsed(state.read().session_shown_secs);
-    let search = state.read().search.clone();
     let unsaved = state.read().has_unsaved();
-    let selected = state.read().selected;
-    let selected_in_trash = selected.is_some_and(|id| state.read().binder.is_in_trash(id));
-    let confirm_empty = state.read().confirm_empty_trash;
+    let chrome = use_context::<Signal<PanelChrome>>();
+    let arrangement = chrome.read();
+    let sidebar_left = arrangement.sidebar_side == SidebarSide::Left;
+    let show_sidebar = !focus && arrangement.sidebar_visible;
+    let show_inspector = !focus
+        && arrangement.inspector_visible
+        && matches!(mode, WorkspaceMode::Writing | WorkspaceMode::History);
+    let tab_title = {
+        let current = state.read();
+        if current.mode == WorkspaceMode::Writing {
+            current
+                .selected_node()
+                .map(|node| node.title.clone())
+                .unwrap_or_else(|| "Untitled".into())
+        } else {
+            current.mode.label().into()
+        }
+    };
 
     rsx! {
-        header { class: "topbar",
-            div { class: "brand",
-                span { class: "logo", "WS" }
-                strong { "{title}" }
-            }
-            input {
-                id: "binder-search",
-                class: "search",
-                placeholder: "Search titles and text…",
-                title: "Ctrl+F",
-                value: "{search}",
-                oninput: move |event| state.write().search = event.value(),
-            }
-            nav { class: "modes",
+        div { class: if focus { "workbench focus" } else { "workbench" },
+            nav { class: "activity",
                 for candidate in [
                     WorkspaceMode::Writing,
                     WorkspaceMode::Corkboard,
@@ -147,66 +189,72 @@ fn Workspace() -> Element {
                     WorkspaceMode::History,
                 ] {
                     button {
-                        class: if mode == candidate { "mode active" } else { "mode" },
-                        title: mode_shortcut(candidate),
-                        onclick: move |_| state.write().mode = candidate,
-                        "{candidate.label()}"
+                        class: if mode == candidate { "activity-btn active" } else { "activity-btn" },
+                        title: "{candidate.label()} ({mode_shortcut(candidate)}). Click again to hide the binder.",
+                        onclick: move |_| select_activity(state, chrome, candidate),
+                        ModeGlyph { mode: candidate }
                     }
                 }
-            }
-            div { class: "top-actions",
-                button { title: "Ctrl+S", onclick: move |_| state.write().save_all(), "Save" }
-                button { onclick: move |_| state.write().backup(), "Backup" }
-                button { onclick: move |_| export_project(state, CompiledFormat::Markdown), "Markdown" }
-                button { onclick: move |_| export_project(state, CompiledFormat::Docx), "DOCX" }
+                div { class: "activity-spacer" }
                 button {
-                    title: "Ctrl+Shift+F",
+                    class: if arrangement.inspector_visible { "activity-btn active" } else { "activity-btn" },
+                    title: "Inspector (Ctrl+Alt+I)",
+                    onclick: move |_| toggle_inspector(state, chrome),
+                    svg { class: "glyph", view_box: "0 0 16 16",
+                        path { d: "M1.5 2.5h13v11h-13zM10 2.5v11", fill: "none", stroke: "currentColor", stroke_width: "1.2" }
+                    }
+                }
+                button {
+                    class: if focus { "activity-btn active" } else { "activity-btn" },
+                    title: "Zen mode (Ctrl+Shift+F)",
                     onclick: move |_| {
                         let next = !state.read().focus_mode;
                         state.write().focus_mode = next;
                     },
-                    if focus { "Exit focus" } else { "Focus" }
+                    svg { class: "glyph", view_box: "0 0 16 16",
+                        path { d: "M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4", fill: "none", stroke: "currentColor", stroke_width: "1.2" }
+                    }
                 }
             }
-        }
-        div { class: if focus { "workspace focus" } else { "workspace" },
-            if !focus {
-                aside { class: "binder-pane",
-                    div { class: "pane-title", "Binder" }
-                    div { class: "binder-tools",
-                        button { onclick: move |_| state.write().add_node(NodeKind::Part), "Part" }
-                        button { title: "Ctrl+Shift+N", onclick: move |_| state.write().add_node(NodeKind::Chapter), "Chapter" }
-                        button { title: "Ctrl+N", onclick: move |_| state.write().add_node(NodeKind::Scene), "Scene" }
-                        button { onclick: move |_| state.write().add_node(NodeKind::Folder), "Folder" }
-                        button { onclick: move |_| state.write().add_node(NodeKind::Note), "Note" }
-                    }
-                    div { class: "binder-tools",
-                        button { onclick: move |_| state.write().trash_selected(), "Trash" }
-                        if selected_in_trash {
-                            button { class: "primary", onclick: move |_| state.write().restore_selected(), "Restore" }
-                        }
-                        button {
-                            class: if confirm_empty { "primary" } else { "" },
-                            onclick: move |_| state.write().empty_trash(),
-                            if confirm_empty { "Confirm empty" } else { "Empty trash" }
+            if show_sidebar && sidebar_left {
+                Explorer {}
+                Sash { kind: ResizeKind::Sidebar, positive: true }
+            }
+            if show_inspector && !sidebar_left {
+                InspectorPane {}
+                Sash { kind: ResizeKind::Inspector, positive: true }
+            }
+            div { class: "editor-group",
+                div { class: "tabs",
+                    div { class: "tab active",
+                        span { class: "tab-label", "{tab_title}" }
+                        if unsaved {
+                            span { class: "tab-dirty", title: "Unsaved changes" }
                         }
                     }
-                    p { class: "hint binder-hint", "Drag onto a container to nest. Drag onto a sibling to reorder. Drop on Trash to discard." }
-                    BinderTreeView {}
+                    div { class: "editor-actions",
+                        button { title: "Save (Ctrl+S)", onclick: move |_| state.write().save_all(), "Save" }
+                        button { title: "Backup", onclick: move |_| state.write().backup(), "Backup" }
+                        button { title: "Compile Markdown", onclick: move |_| export_project(state, CompiledFormat::Markdown), "Markdown" }
+                        button { title: "Compile DOCX", onclick: move |_| export_project(state, CompiledFormat::Docx), "DOCX" }
+                    }
+                }
+                main { class: "center",
+                    {match mode {
+                        WorkspaceMode::Writing => rsx! { EditorPane {} },
+                        WorkspaceMode::Corkboard => rsx! { CorkboardPane {} },
+                        WorkspaceMode::Outliner => rsx! { OutlinerPane {} },
+                        WorkspaceMode::History => rsx! { HistoryPane {} },
+                    }}
                 }
             }
-            main { class: "center",
-                {match mode {
-                    WorkspaceMode::Writing => rsx! { EditorPane {} },
-                    WorkspaceMode::Corkboard => rsx! { CorkboardPane {} },
-                    WorkspaceMode::Outliner => rsx! { OutlinerPane {} },
-                    WorkspaceMode::History => rsx! { HistoryPane {} },
-                }}
+            if show_inspector && sidebar_left {
+                Sash { kind: ResizeKind::Inspector, positive: false }
+                InspectorPane {}
             }
-            if !focus && matches!(mode, WorkspaceMode::Writing | WorkspaceMode::History) {
-                aside { class: "inspector",
-                    Inspector {}
-                }
+            if show_sidebar && !sidebar_left {
+                Sash { kind: ResizeKind::Sidebar, positive: false }
+                Explorer {}
             }
         }
         footer { class: "status",
@@ -241,6 +289,219 @@ fn Workspace() -> Element {
                     "Offline · {status}"
                 }
             }
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ResizeKind {
+    Sidebar,
+    Inspector,
+}
+
+#[derive(Clone, Copy)]
+struct ResizeDrag {
+    kind: ResizeKind,
+    origin_x: f64,
+    origin_width: u32,
+    positive: bool,
+}
+
+fn resize_limits(kind: ResizeKind) -> (u32, u32) {
+    match kind {
+        ResizeKind::Sidebar => (SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX),
+        ResizeKind::Inspector => (INSPECTOR_WIDTH_MIN, INSPECTOR_WIDTH_MAX),
+    }
+}
+
+fn publish_layout(
+    state: Signal<StudioState>,
+    mut chrome: Signal<PanelChrome>,
+    mut widths: Signal<PanelWidths>,
+) {
+    let layout = state.peek().panel_layout();
+    chrome.set(layout.chrome());
+    widths.set(layout.widths());
+}
+
+fn persist_layout(mut state: Signal<StudioState>, layout: PanelLayout) {
+    state.write().store_layout(layout);
+}
+
+fn persist_chrome(state: Signal<StudioState>, chrome: PanelChrome) {
+    let next = state.peek().panel_layout().with_chrome(chrome);
+    persist_layout(state, next);
+}
+
+fn toggle_sidebar(state: Signal<StudioState>, mut chrome: Signal<PanelChrome>) {
+    let mut next = *chrome.peek();
+    next.sidebar_visible = !next.sidebar_visible;
+    chrome.set(next);
+    persist_chrome(state, next);
+}
+
+fn toggle_inspector(state: Signal<StudioState>, mut chrome: Signal<PanelChrome>) {
+    let mut next = *chrome.peek();
+    next.inspector_visible = !next.inspector_visible;
+    chrome.set(next);
+    persist_chrome(state, next);
+}
+
+fn reveal_sidebar(state: Signal<StudioState>, mut chrome: Signal<PanelChrome>) -> bool {
+    if chrome.peek().sidebar_visible {
+        return false;
+    }
+    let mut next = *chrome.peek();
+    next.sidebar_visible = true;
+    chrome.set(next);
+    persist_chrome(state, next);
+    true
+}
+
+fn select_activity(mut state: Signal<StudioState>, chrome: Signal<PanelChrome>, mode: WorkspaceMode) {
+    let same = state.peek().mode == mode;
+    let visible = chrome.peek().sidebar_visible;
+    let focused = state.peek().focus_mode;
+    if same && visible && !focused {
+        toggle_sidebar(state, chrome);
+        return;
+    }
+    {
+        let mut current = state.write();
+        current.mode = mode;
+        current.focus_mode = false;
+    }
+    reveal_sidebar(state, chrome);
+}
+
+fn flip_sidebar(state: Signal<StudioState>, mut chrome: Signal<PanelChrome>) {
+    let mut next = *chrome.peek();
+    next.sidebar_side = match next.sidebar_side {
+        SidebarSide::Left => SidebarSide::Right,
+        SidebarSide::Right => SidebarSide::Left,
+    };
+    chrome.set(next);
+    persist_chrome(state, next);
+}
+
+fn finish_resize(
+    state: Signal<StudioState>,
+    widths: Signal<PanelWidths>,
+    mut resize: Signal<Option<ResizeDrag>>,
+) {
+    if resize.peek().is_none() {
+        return;
+    }
+    resize.set(None);
+    let next = state.peek().panel_layout().with_widths(*widths.peek());
+    persist_layout(state, next);
+}
+
+#[component]
+fn Sash(kind: ResizeKind, positive: bool) -> Element {
+    let mut resize = use_context::<Signal<Option<ResizeDrag>>>();
+    let mut widths = use_context::<Signal<PanelWidths>>();
+    let state = use_context::<Signal<StudioState>>();
+    rsx! {
+        div {
+            class: "sash",
+            title: "Drag to resize. Double-click to reset.",
+            onmousedown: move |event| {
+                event.prevent_default();
+                let origin_width = match kind {
+                    ResizeKind::Sidebar => widths.peek().sidebar,
+                    ResizeKind::Inspector => widths.peek().inspector,
+                };
+                resize.set(Some(ResizeDrag {
+                    kind,
+                    origin_x: event.client_coordinates().x,
+                    origin_width,
+                    positive,
+                }));
+            },
+            ondoubleclick: move |event| {
+                event.prevent_default();
+                let mut next = *widths.peek();
+                match kind {
+                    ResizeKind::Sidebar => next.sidebar = SIDEBAR_WIDTH_DEFAULT,
+                    ResizeKind::Inspector => next.inspector = INSPECTOR_WIDTH_DEFAULT,
+                }
+                widths.set(next);
+                let layout = state.peek().panel_layout().with_widths(next);
+                persist_layout(state, layout);
+            },
+        }
+    }
+}
+
+#[component]
+fn Explorer() -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let chrome = use_context::<Signal<PanelChrome>>();
+    let widths = use_context::<Signal<PanelWidths>>();
+    let width = widths.read().sidebar;
+    let title = state.read().project_title();
+    let mode = state.read().mode;
+    let search = state.read().search.clone();
+    let side = chrome.read().sidebar_side;
+    let selected = state.read().selected;
+    let selected_in_trash = selected.is_some_and(|id| state.read().binder.is_in_trash(id));
+    let confirm_empty = state.read().confirm_empty_trash;
+    rsx! {
+        aside {
+            class: "sidebar",
+            style: "width: {width}px; flex: 0 0 {width}px;",
+            div { class: "view-title",
+                span { "{mode.view_title()}" }
+                button {
+                    class: "view-action",
+                    title: "Move the binder to the other side",
+                    onclick: move |_| flip_sidebar(state, chrome),
+                    if side == SidebarSide::Left { "→" } else { "←" }
+                }
+            }
+            div { class: "section-label", "{title}" }
+            input {
+                id: "binder-search",
+                class: "search",
+                placeholder: "Search titles and text",
+                title: "Ctrl+F",
+                value: "{search}",
+                oninput: move |event| state.write().search = event.value(),
+            }
+            div { class: "binder-tools",
+                button { title: "New part", onclick: move |_| state.write().add_node(NodeKind::Part), "Part" }
+                button { title: "New chapter (Ctrl+Shift+N)", onclick: move |_| state.write().add_node(NodeKind::Chapter), "Chapter" }
+                button { title: "New scene (Ctrl+N)", onclick: move |_| state.write().add_node(NodeKind::Scene), "Scene" }
+                button { title: "New folder", onclick: move |_| state.write().add_node(NodeKind::Folder), "Folder" }
+                button { title: "New note", onclick: move |_| state.write().add_node(NodeKind::Note), "Note" }
+            }
+            div { class: "binder-tools",
+                button { onclick: move |_| state.write().trash_selected(), "Trash" }
+                if selected_in_trash {
+                    button { class: "primary", onclick: move |_| state.write().restore_selected(), "Restore" }
+                }
+                button {
+                    class: if confirm_empty { "primary" } else { "" },
+                    onclick: move |_| state.write().empty_trash(),
+                    if confirm_empty { "Confirm empty" } else { "Empty trash" }
+                }
+            }
+            BinderTreeView {}
+        }
+    }
+}
+
+#[component]
+fn InspectorPane() -> Element {
+    let widths = use_context::<Signal<PanelWidths>>();
+    let width = widths.read().inspector;
+    rsx! {
+        aside {
+            class: "secondary",
+            style: "width: {width}px; flex: 0 0 {width}px;",
+            div { class: "view-title", "Inspector" }
+            Inspector {}
         }
     }
 }
@@ -358,10 +619,7 @@ fn EditorPane() -> Element {
 
     rsx! {
         div { class: "editor-pane",
-            div { class: "editor-meta",
-                p { class: "eyebrow", "{kind}" }
-                h2 { "{heading}" }
-            }
+            div { class: "breadcrumb", "{kind} › {heading}" }
             FormatToolbar { enabled: can_edit }
             if !notes.is_empty() {
                 ul { class: "comment-list",
@@ -413,6 +671,34 @@ fn commit_editor_html(mut state: Signal<StudioState>, html: String) {
     state.write().apply_editor_html(html);
 }
 
+#[component]
+fn ModeGlyph(mode: WorkspaceMode) -> Element {
+    match mode {
+        WorkspaceMode::Writing => rsx! {
+            svg { class: "glyph", view_box: "0 0 16 16",
+                path { d: "M2.5 1.5h6.2L13.5 6v8.5h-11z", fill: "none", stroke: "currentColor", stroke_width: "1.2" }
+                path { d: "M8.5 1.8V6H13.2", fill: "none", stroke: "currentColor", stroke_width: "1.2" }
+            }
+        },
+        WorkspaceMode::Corkboard => rsx! {
+            svg { class: "glyph", view_box: "0 0 16 16",
+                path { d: "M2 2h5v5H2zM9 2h5v5H9zM2 9h5v5H2zM9 9h5v5H9z", fill: "none", stroke: "currentColor", stroke_width: "1.2" }
+            }
+        },
+        WorkspaceMode::Outliner => rsx! {
+            svg { class: "glyph", view_box: "0 0 16 16",
+                path { d: "M2 3.5h12M2 8h12M2 12.5h12", fill: "none", stroke: "currentColor", stroke_width: "1.2" }
+            }
+        },
+        WorkspaceMode::History => rsx! {
+            svg { class: "glyph", view_box: "0 0 16 16",
+                path { d: "M8 2.5a5.5 5.5 0 1 1-4.8 2.8", fill: "none", stroke: "currentColor", stroke_width: "1.2" }
+                path { d: "M2.2 2.5v3.2h3.2M8 5.2V8l2 1.4", fill: "none", stroke: "currentColor", stroke_width: "1.2" }
+            }
+        },
+    }
+}
+
 fn mode_shortcut(mode: WorkspaceMode) -> &'static str {
     match mode {
         WorkspaceMode::Writing => "Ctrl+1",
@@ -422,7 +708,12 @@ fn mode_shortcut(mode: WorkspaceMode) -> &'static str {
     }
 }
 
-fn apply_shortcut(mut state: Signal<StudioState>, action: AppShortcut) -> bool {
+fn apply_shortcut(
+    mut state: Signal<StudioState>,
+    chrome: Signal<PanelChrome>,
+    widths: Signal<PanelWidths>,
+    action: AppShortcut,
+) -> bool {
     let open = state.read().is_open();
     match action {
         AppShortcut::Save => {
@@ -438,7 +729,7 @@ fn apply_shortcut(mut state: Signal<StudioState>, action: AppShortcut) -> bool {
             }
             state.write().snapshot();
         }
-        AppShortcut::Find => focus_find(state),
+        AppShortcut::Find => focus_find(state, chrome),
         AppShortcut::ToggleFocus => {
             if !open {
                 return false;
@@ -454,7 +745,7 @@ fn apply_shortcut(mut state: Signal<StudioState>, action: AppShortcut) -> bool {
             if open {
                 state.write().add_node(NodeKind::Scene);
             } else {
-                create_project(state);
+                create_project(state, chrome, widths);
             }
         }
         AppShortcut::NewChapter => {
@@ -463,8 +754,26 @@ fn apply_shortcut(mut state: Signal<StudioState>, action: AppShortcut) -> bool {
             }
             state.write().add_node(NodeKind::Chapter);
         }
-        AppShortcut::OpenProject => open_project(state),
+        AppShortcut::OpenProject => open_project(state, chrome, widths),
         AppShortcut::ClearOrExitFocus => return clear_or_exit_focus(state),
+        AppShortcut::ToggleSidebar => {
+            if !open {
+                return false;
+            }
+            if state.read().focus_mode {
+                state.write().focus_mode = false;
+            }
+            toggle_sidebar(state, chrome);
+        }
+        AppShortcut::ToggleInspector => {
+            if !open {
+                return false;
+            }
+            if state.read().focus_mode {
+                state.write().focus_mode = false;
+            }
+            toggle_inspector(state, chrome);
+        }
     }
     true
 }
@@ -493,7 +802,7 @@ fn clear_or_exit_focus(mut state: Signal<StudioState>) -> bool {
     false
 }
 
-fn focus_find(mut state: Signal<StudioState>) {
+fn focus_find(mut state: Signal<StudioState>, chrome: Signal<PanelChrome>) {
     if !state.read().is_open() {
         return;
     }
@@ -501,11 +810,15 @@ fn focus_find(mut state: Signal<StudioState>) {
         focus_dom("cork-filter", false);
         return;
     }
-    let hidden = state.read().focus_mode;
-    if hidden {
+    let mut wait = false;
+    if state.read().focus_mode {
         state.write().focus_mode = false;
+        wait = true;
     }
-    focus_dom("binder-search", hidden);
+    if reveal_sidebar(state, chrome) {
+        wait = true;
+    }
+    focus_dom("binder-search", wait);
 }
 
 fn focus_dom(id: &'static str, wait_for_layout: bool) {
@@ -666,7 +979,6 @@ fn Inspector() -> Element {
     let mut state = use_context::<Signal<StudioState>>();
     let node: Option<BinderNode> = state.read().selected_node().cloned();
     rsx! {
-        div { class: "pane-title", "Inspector" }
         if let Some(node) = node {
             label { "Title" }
             input {
@@ -754,6 +1066,8 @@ fn SnapshotList() -> Element {
 #[component]
 fn HistoryPane() -> Element {
     let mut state = use_context::<Signal<StudioState>>();
+    let chrome = use_context::<Signal<PanelChrome>>();
+    let widths = use_context::<Signal<PanelWidths>>();
     let snapshots = state.read().snapshots_for_selected();
     let backups = state.read().backups();
     let confirm = state.read().confirm_backup.clone();
@@ -810,7 +1124,10 @@ fn HistoryPane() -> Element {
                                 }
                                 button {
                                     class: if confirm.as_ref() == Some(&item.path) { "primary" } else { "" },
-                                    onclick: move |_| state.write().request_backup_restore(item.path.clone()),
+                                    onclick: move |_| {
+                                        state.write().request_backup_restore(item.path.clone());
+                                        publish_layout(state, chrome, widths);
+                                    },
                                     if confirm.as_ref() == Some(&item.path) { "Confirm restore" } else { "Restore" }
                                 }
                             }
@@ -843,18 +1160,28 @@ fn WritingSessions() -> Element {
     }
 }
 
-fn create_project(mut state: Signal<StudioState>) {
+fn create_project(
+    mut state: Signal<StudioState>,
+    chrome: Signal<PanelChrome>,
+    widths: Signal<PanelWidths>,
+) {
     let Some(folder) = pick_folder("Choose a folder for the new project") else {
         return;
     };
     state.write().create_project_in(folder);
+    publish_layout(state, chrome, widths);
 }
 
-fn open_project(mut state: Signal<StudioState>) {
+fn open_project(
+    mut state: Signal<StudioState>,
+    chrome: Signal<PanelChrome>,
+    widths: Signal<PanelWidths>,
+) {
     let Some(folder) = pick_folder("Open a Writing Studio project folder") else {
         return;
     };
     state.write().open_project_at(folder);
+    publish_layout(state, chrome, widths);
 }
 
 fn export_project(mut state: Signal<StudioState>, format: CompiledFormat) {

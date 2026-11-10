@@ -17,14 +17,26 @@ pub enum AppShortcut {
     NewChapter,
     OpenProject,
     ClearOrExitFocus,
+    ToggleSidebar,
+    ToggleInspector,
 }
 
-pub fn app_shortcut(key: &str, ctrl: bool, shift: bool) -> Option<AppShortcut> {
+pub fn app_shortcut(key: &str, ctrl: bool, shift: bool, alt: bool) -> Option<AppShortcut> {
     let key = key.to_ascii_lowercase();
-    if key == "escape" && !ctrl && !shift {
+    if key == "escape" && !ctrl && !shift && !alt {
         return Some(AppShortcut::ClearOrExitFocus);
     }
     if !ctrl {
+        return None;
+    }
+    if alt && !shift {
+        return match key.as_str() {
+            "b" => Some(AppShortcut::ToggleSidebar),
+            "i" => Some(AppShortcut::ToggleInspector),
+            _ => None,
+        };
+    }
+    if alt {
         return None;
     }
     Some(match (key.as_str(), shift) {
@@ -51,29 +63,38 @@ mod tests {
 
     #[test]
     fn save_undo_and_redo() {
-        assert_eq!(app_shortcut("s", true, false), Some(AppShortcut::Save));
-        assert_eq!(app_shortcut("S", true, false), Some(AppShortcut::Save));
-        assert_eq!(app_shortcut("z", true, false), Some(AppShortcut::Undo));
-        assert_eq!(app_shortcut("y", true, false), Some(AppShortcut::Redo));
-        assert_eq!(app_shortcut("z", true, true), Some(AppShortcut::Redo));
-        assert_eq!(app_shortcut("s", false, false), None);
+        assert_eq!(app_shortcut("s", true, false, false), Some(AppShortcut::Save));
+        assert_eq!(app_shortcut("S", true, false, false), Some(AppShortcut::Save));
+        assert_eq!(app_shortcut("z", true, false, false), Some(AppShortcut::Undo));
+        assert_eq!(app_shortcut("y", true, false, false), Some(AppShortcut::Redo));
+        assert_eq!(app_shortcut("z", true, true, false), Some(AppShortcut::Redo));
+        assert_eq!(app_shortcut("s", false, false, false), None);
     }
 
     #[test]
     fn navigation_and_editing_chords() {
-        assert_eq!(app_shortcut("f", true, false), Some(AppShortcut::Find));
-        assert_eq!(app_shortcut("f", true, true), Some(AppShortcut::ToggleFocus));
-        assert_eq!(app_shortcut("\\", true, false), Some(AppShortcut::ToggleFocus));
-        assert_eq!(app_shortcut("1", true, false), Some(AppShortcut::Writing));
-        assert_eq!(app_shortcut("2", true, false), Some(AppShortcut::Corkboard));
-        assert_eq!(app_shortcut("3", true, false), Some(AppShortcut::Outliner));
-        assert_eq!(app_shortcut("4", true, false), Some(AppShortcut::History));
-        assert_eq!(app_shortcut("n", true, false), Some(AppShortcut::NewScene));
-        assert_eq!(app_shortcut("n", true, true), Some(AppShortcut::NewChapter));
-        assert_eq!(app_shortcut("o", true, false), Some(AppShortcut::OpenProject));
-        assert_eq!(app_shortcut("s", true, true), Some(AppShortcut::Snapshot));
-        assert_eq!(app_shortcut("escape", false, false), Some(AppShortcut::ClearOrExitFocus));
-        assert_eq!(app_shortcut("b", true, false), None);
-        assert_eq!(app_shortcut("escape", true, false), None);
+        assert_eq!(app_shortcut("f", true, false, false), Some(AppShortcut::Find));
+        assert_eq!(app_shortcut("f", true, true, false), Some(AppShortcut::ToggleFocus));
+        assert_eq!(app_shortcut("\\", true, false, false), Some(AppShortcut::ToggleFocus));
+        assert_eq!(app_shortcut("1", true, false, false), Some(AppShortcut::Writing));
+        assert_eq!(app_shortcut("2", true, false, false), Some(AppShortcut::Corkboard));
+        assert_eq!(app_shortcut("3", true, false, false), Some(AppShortcut::Outliner));
+        assert_eq!(app_shortcut("4", true, false, false), Some(AppShortcut::History));
+        assert_eq!(app_shortcut("n", true, false, false), Some(AppShortcut::NewScene));
+        assert_eq!(app_shortcut("n", true, true, false), Some(AppShortcut::NewChapter));
+        assert_eq!(app_shortcut("o", true, false, false), Some(AppShortcut::OpenProject));
+        assert_eq!(app_shortcut("s", true, true, false), Some(AppShortcut::Snapshot));
+        assert_eq!(
+            app_shortcut("escape", false, false, false),
+            Some(AppShortcut::ClearOrExitFocus)
+        );
+        assert_eq!(app_shortcut("b", true, false, false), None);
+        assert_eq!(app_shortcut("b", true, false, true), Some(AppShortcut::ToggleSidebar));
+        assert_eq!(
+            app_shortcut("i", true, false, true),
+            Some(AppShortcut::ToggleInspector)
+        );
+        assert_eq!(app_shortcut("b", true, true, true), None);
+        assert_eq!(app_shortcut("escape", true, false, false), None);
     }
 }

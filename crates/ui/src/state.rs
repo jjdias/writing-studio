@@ -9,8 +9,8 @@ use writing_studio_core::{autosave_due, autosave_wait, local_day, Id, Timestamp,
 use writing_studio_editor::EditorSession;
 use writing_studio_export::{compile_docx, compile_markdown, CompileInput};
 use writing_studio_project::{
-    format_elapsed, normalize_binder_color, BinderNode, BinderTree, NodeKind, ProjectMeta,
-    StoredSession,
+    format_elapsed, normalize_binder_color, BinderNode, BinderTree, NodeKind, PanelLayout,
+    ProjectMeta, StoredSession,
 };
 use writing_studio_search::ManuscriptIndex;
 use writing_studio_storage::{BackupInfo, ProjectStore, SnapshotInfo};
@@ -27,6 +27,15 @@ impl WorkspaceMode {
     pub fn label(self) -> &'static str {
         match self {
             Self::Writing => "Writing",
+            Self::Corkboard => "Corkboard",
+            Self::Outliner => "Outliner",
+            Self::History => "History",
+        }
+    }
+
+    pub fn view_title(self) -> &'static str {
+        match self {
+            Self::Writing => "Explorer",
             Self::Corkboard => "Corkboard",
             Self::Outliner => "Outliner",
             Self::History => "History",
@@ -193,6 +202,29 @@ impl StudioState {
                 return false;
             }
             meta.settings.daily_word_goal = goal;
+            meta.touch();
+            true
+        });
+        if changed {
+            self.settings_dirty = true;
+            self.note_edit();
+        }
+    }
+
+    pub fn panel_layout(&self) -> PanelLayout {
+        self.meta
+            .as_ref()
+            .map(|meta| meta.settings.layout.clamp())
+            .unwrap_or_default()
+    }
+
+    pub fn store_layout(&mut self, layout: PanelLayout) {
+        let layout = layout.clamp();
+        let changed = self.meta.as_mut().is_some_and(|meta| {
+            if meta.settings.layout == layout {
+                return false;
+            }
+            meta.settings.layout = layout;
             meta.touch();
             true
         });

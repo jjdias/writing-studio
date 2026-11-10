@@ -38,3 +38,9 @@ The status bar shows this document, this sitting, words added today, and the man
 ## Modes
 
 Writing, Corkboard, Outliner, History. **Focus** hides the binder and inspector.
+
+## Layout
+
+The arrangement is saved in the project. Drag the edge of the binder or the inspector to resize it. Double-click that edge to reset the width. The arrow in the binder header moves the binder to the other side; the inspector stays on the opposite side.
+
+Click the active activity-bar icon again to hide the binder, or press **Ctrl+Alt+B**. **Ctrl+Alt+I** shows or hides the inspector. **Ctrl+B** still bolds the selection in the manuscript.
