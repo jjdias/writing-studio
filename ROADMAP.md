@@ -131,6 +131,7 @@ Done on `phase-3`:
 - Locations, cultures, lore, and timelines
 - Research library: notes plus files in `attachments/`
 - One project for the series: the bible and every related book live in one folder. Compile and the word target follow one book. The binder, corkboard, outliner, and search can show that book or the whole series. Characters, world notes, plot, and research stay with the project.
+- New chapters, parts, scenes, and manuscript folders land in the book on screen. With one book filtered, they stay inside that book. With the whole series showing, they follow the selection.
 
 ### Phase 4 — Professional editing (local)
 
@@ -199,16 +200,6 @@ When optional cloud work starts, the source of truth for a disconnected writer r
 Phase 2 is complete on `phase-2`. Phase 3 is in progress on `phase-3`. The plot grid, character profiles, world notes, research library, and one project that holds the bible and every related book are in the desktop app.
 
 That folder is the series. Characters, world notes, plot, and research are the bible, stored once beside the books. The work left in this phase is to make that series behave as one book at a time when the writer is looking at one book. Richer front matter than the book title stays in Phase 6. A separate bible project beside each book is a bonus phase, not current work.
-
-### Add chapters and scenes inside the book on screen
-
-The book filter hides the other books, but a new chapter, part, or scene still follows the selection or else the first book in the manuscript. A chapter added while book two is on screen can be stored under book one and stay invisible.
-
-- When a book is selected in the filter, create new chapters, parts, scenes, and manuscript folders inside that book.
-- If the selection is already inside that book, nest the new item under the selection when the binder allows it.
-- If nothing in that book is selected, put chapters and parts on the book, and put a scene in the last chapter of that book.
-- Do not use the first book, or a container in a book the filter is hiding.
-- With the whole series on screen, keep the current rule: follow the selection, then the existing default parent.
 
 ### Use one current book
 

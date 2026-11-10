@@ -441,6 +441,69 @@ impl BinderTree {
         }
     }
 
+    /// Where a new binder item belongs.
+    ///
+    /// With the whole series on screen (`book_scope` is none), follow `selected`, then [`Self::default_parent`].
+    /// With one book on screen, chapters, parts, scenes, and manuscript folders stay inside that book.
+    /// A selection in another book is ignored. Notes and new books keep their usual parents.
+    pub fn parent_for_new_item(
+        &self,
+        kind: NodeKind,
+        selected: Option<Id>,
+        book_scope: Option<Id>,
+    ) -> Option<Id> {
+        let scoped = book_scope.filter(|book| {
+            self.manuscript_books().iter().any(|candidate| candidate.id == *book)
+        });
+        let inside_book = scoped.is_some()
+            && matches!(
+                kind,
+                NodeKind::Chapter | NodeKind::Part | NodeKind::Scene | NodeKind::Folder
+            );
+        if !inside_book {
+            if let Some(id) = selected.and_then(|id| self.container_for(id, kind)) {
+                return Some(id);
+            }
+            return self.default_parent(kind);
+        }
+        let book = scoped?;
+        if let Some(selected) = selected {
+            if self.book_of(selected) == Some(book) {
+                if let Some(parent) = self.container_for(selected, kind) {
+                    if parent == book || self.book_of(parent) == Some(book) {
+                        return Some(parent);
+                    }
+                }
+            }
+        }
+        match kind {
+            NodeKind::Scene => self.last_chapter_in(book).or(Some(book)),
+            NodeKind::Chapter | NodeKind::Part | NodeKind::Folder => Some(book),
+            _ => Some(book),
+        }
+    }
+
+    /// The last chapter under `book`, in binder order. Chapters nested in parts and folders count.
+    pub fn last_chapter_in(&self, book: Id) -> Option<Id> {
+        let mut last = None;
+        self.walk_chapters(book, &mut last);
+        last
+    }
+
+    fn walk_chapters(&self, parent: Id, last: &mut Option<Id>) {
+        for child in self.children(Some(parent)) {
+            if child.kind == NodeKind::Chapter {
+                *last = Some(child.id);
+            }
+            if matches!(
+                child.kind,
+                NodeKind::Book | NodeKind::Part | NodeKind::Chapter | NodeKind::Folder
+            ) {
+                self.walk_chapters(child.id, last);
+            }
+        }
+    }
+
     /// Permanently remove trashed items (not the trash root).
     /// Returns `(removed node ids, document ids to delete)`.
     pub fn purge_trash(&mut self) -> (Vec<Id>, Vec<Id>) {
@@ -686,6 +749,67 @@ mod tests {
         let research = binder.research_root().unwrap().id;
         assert!(!binder.in_manuscript(research));
         assert!(binder.in_manuscript(first));
+    }
+
+    #[test]
+    fn a_filtered_book_receives_new_items_instead_of_the_first_book() {
+        let (binder, chapter, scene, _, _) = tree();
+        let first = binder.get(chapter).unwrap().parent_id.unwrap();
+        let draft = binder.draft_root().unwrap().id;
+        let mut binder = binder;
+        let second = BinderNode::new(NodeKind::Book, "Second", Some(draft), 1);
+        let second_id = second.id;
+        let early = BinderNode::new(NodeKind::Chapter, "Early", Some(second_id), 0);
+        let early_id = early.id;
+        let later = BinderNode::new(NodeKind::Chapter, "Later", Some(second_id), 1);
+        let later_id = later.id;
+        binder.nodes.push(second);
+        binder.nodes.push(early);
+        binder.nodes.push(later);
+
+        assert_eq!(
+            binder.parent_for_new_item(NodeKind::Chapter, Some(scene), None),
+            Some(first)
+        );
+        assert_eq!(
+            binder.parent_for_new_item(NodeKind::Chapter, Some(scene), Some(second_id)),
+            Some(second_id)
+        );
+        assert_eq!(
+            binder.parent_for_new_item(NodeKind::Scene, None, Some(second_id)),
+            Some(later_id)
+        );
+        assert_eq!(
+            binder.parent_for_new_item(NodeKind::Scene, Some(early_id), Some(second_id)),
+            Some(early_id)
+        );
+        assert_eq!(
+            binder.parent_for_new_item(NodeKind::Folder, Some(scene), Some(second_id)),
+            Some(second_id)
+        );
+        assert_eq!(
+            binder.parent_for_new_item(NodeKind::Part, Some(later_id), Some(second_id)),
+            Some(second_id)
+        );
+        assert_eq!(
+            binder.parent_for_new_item(NodeKind::Note, Some(later_id), Some(second_id)),
+            binder.research_root().map(|node| node.id)
+        );
+        assert_eq!(
+            binder.parent_for_new_item(NodeKind::Book, None, Some(second_id)),
+            Some(draft)
+        );
+        let part = BinderNode::new(NodeKind::Part, "Part", Some(second_id), 2);
+        let part_id = part.id;
+        let nested = BinderNode::new(NodeKind::Chapter, "Nested", Some(part_id), 0);
+        let nested_id = nested.id;
+        binder.nodes.push(part);
+        binder.nodes.push(nested);
+        assert_eq!(binder.last_chapter_in(second_id), Some(nested_id));
+        assert_eq!(
+            binder.parent_for_new_item(NodeKind::Scene, None, Some(second_id)),
+            Some(nested_id)
+        );
     }
 }
 

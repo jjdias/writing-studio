@@ -1859,10 +1859,8 @@ impl StudioState {
     }
 
     fn infer_parent(&self, kind: NodeKind) -> Option<Id> {
-        if let Some(id) = self.selected.and_then(|id| self.binder.container_for(id, kind)) {
-            return Some(id);
-        }
-        self.binder.default_parent(kind)
+        self.binder
+            .parent_for_new_item(kind, self.selected, self.series_scope())
     }
 
     pub fn update_selected_title(&mut self, title: String) {

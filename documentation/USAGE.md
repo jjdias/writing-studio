@@ -17,7 +17,7 @@ Free, open-source, local-first. Your writing stays in a folder on your machine.
 ## Organize
 
 - **Book**, **Chapter**, **Scene**, **Note** add items. **Book** adds another novel under the same manuscript. Characters, world notes, plot, and research stay with the project.
-- **Whole series** in the binder, corkboard, and outliner shows every book. Pick a book there to hide the others. Search follows that choice.
+- **Whole series** in the binder, corkboard, and outliner shows every book. Pick a book there to hide the others. Search follows that choice. New chapters, parts, scenes, and manuscript folders are added inside that book. A scene with nothing selected goes in its last chapter. Notes still go under Research.
 - Drag items to reorder or nest. Drop on **Trash** to discard.
 - **Restore** returns a trashed item to its previous parent when that parent still exists.
 - **Empty trash** asks for a second click, then deletes those items from the local database.
