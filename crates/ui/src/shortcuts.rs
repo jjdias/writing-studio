@@ -13,6 +13,7 @@ pub enum AppShortcut {
     Corkboard,
     Outliner,
     Plot,
+    Characters,
     History,
     NewScene,
     NewChapter,
@@ -52,6 +53,7 @@ pub fn app_shortcut(key: &str, ctrl: bool, shift: bool, alt: bool) -> Option<App
         ("3", false) => AppShortcut::Outliner,
         ("4", false) => AppShortcut::History,
         ("5", false) => AppShortcut::Plot,
+        ("6", false) => AppShortcut::Characters,
         ("n", false) => AppShortcut::NewScene,
         ("n", true) => AppShortcut::NewChapter,
         ("o", false) => AppShortcut::OpenProject,
@@ -83,6 +85,7 @@ mod tests {
         assert_eq!(app_shortcut("3", true, false, false), Some(AppShortcut::Outliner));
         assert_eq!(app_shortcut("4", true, false, false), Some(AppShortcut::History));
         assert_eq!(app_shortcut("5", true, false, false), Some(AppShortcut::Plot));
+        assert_eq!(app_shortcut("6", true, false, false), Some(AppShortcut::Characters));
         assert_eq!(app_shortcut("n", true, false, false), Some(AppShortcut::NewScene));
         assert_eq!(app_shortcut("n", true, true, false), Some(AppShortcut::NewChapter));
         assert_eq!(app_shortcut("o", true, false, false), Some(AppShortcut::OpenProject));

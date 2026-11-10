@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Instant;
 
+use writing_studio_characters::Cast;
 use writing_studio_corkboard::CorkGroup;
 use writing_studio_core::{autosave_due, autosave_wait, local_day, Id, Timestamp, PRODUCT_NAME};
 use writing_studio_editor::EditorSession;
@@ -22,6 +23,7 @@ pub enum WorkspaceMode {
     Corkboard,
     Outliner,
     Plot,
+    Characters,
     History,
 }
 
@@ -32,6 +34,7 @@ impl WorkspaceMode {
             Self::Corkboard => "Corkboard",
             Self::Outliner => "Outliner",
             Self::Plot => "Plot",
+            Self::Characters => "Characters",
             Self::History => "History",
         }
     }
@@ -42,6 +45,7 @@ impl WorkspaceMode {
             Self::Corkboard => "Corkboard",
             Self::Outliner => "Outliner",
             Self::Plot => "Plot",
+            Self::Characters => "Characters",
             Self::History => "History",
         }
     }
@@ -65,6 +69,10 @@ pub struct StudioState {
     pub plot: PlotGrid,
     pub plot_dirty: bool,
     pub confirm_plotline: Option<Id>,
+    pub cast: Cast,
+    pub cast_dirty: bool,
+    pub selected_character: Option<Id>,
+    pub confirm_character: Option<Id>,
     pub mode: WorkspaceMode,
     pub focus_mode: bool,
     pub status: String,
@@ -101,6 +109,10 @@ impl Default for StudioState {
             plot: PlotGrid::new(),
             plot_dirty: false,
             confirm_plotline: None,
+            cast: Cast::new(),
+            cast_dirty: false,
+            selected_character: None,
+            confirm_character: None,
             mode: WorkspaceMode::Writing,
             focus_mode: false,
             status: "Offline · Local-first".into(),
@@ -303,13 +315,22 @@ impl StudioState {
     }
 
     fn attach_store(&mut self, store: ProjectStore, status: &str) {
-        match (store.load_meta(), store.load_binder(), store.load_plot()) {
-            (Ok(meta), Ok(binder), Ok(plot)) => {
+        match (
+            store.load_meta(),
+            store.load_binder(),
+            store.load_plot(),
+            store.load_cast(),
+        ) {
+            (Ok(meta), Ok(binder), Ok(plot), Ok(cast)) => {
                 self.meta = Some(meta);
                 self.binder = binder;
                 self.plot = plot;
                 self.plot_dirty = false;
                 self.confirm_plotline = None;
+                self.cast = cast;
+                self.cast_dirty = false;
+                self.selected_character = None;
+                self.confirm_character = None;
                 self.store = Some(Rc::new(RefCell::new(store)));
                 self.status = status.into();
                 if let Some(scene) = self
@@ -324,7 +345,7 @@ impl StudioState {
                 self.reindex_manuscript();
                 self.begin_writing_session();
             }
-            (Err(err), _, _) | (_, Err(err), _) | (_, _, Err(err)) => {
+            (Err(err), _, _, _) | (_, Err(err), _, _) | (_, _, Err(err), _) | (_, _, _, Err(err)) => {
                 self.status = format!("Project load failed: {err}");
             }
         }
@@ -422,6 +443,9 @@ impl StudioState {
         if self.plot_dirty && self.store.is_some() && !self.persist_plot_now() {
             return;
         }
+        if self.cast_dirty && self.store.is_some() && !self.persist_cast_now() {
+            return;
+        }
         self.note_writing_activity();
         if let Some(meta) = &self.meta {
             if let Some(store) = &self.store {
@@ -436,6 +460,7 @@ impl StudioState {
         }
         self.binder_dirty = false;
         self.plot_dirty = false;
+        self.cast_dirty = false;
         self.settings_dirty = false;
         self.last_edit = None;
         self.status = "All changes saved locally.".into();
@@ -503,6 +528,7 @@ impl StudioState {
         self.settings_dirty
             || self.binder_dirty
             || self.plot_dirty
+            || self.cast_dirty
             || self.session.as_ref().is_some_and(EditorSession::is_dirty)
     }
 
@@ -717,18 +743,29 @@ impl StudioState {
         let Some(store) = self.store.clone() else {
             return;
         };
-        let (meta, binder, plot) = {
+        let (meta, binder, plot, cast) = {
             let store = store.borrow();
-            (store.load_meta(), store.load_binder(), store.load_plot())
+            (
+                store.load_meta(),
+                store.load_binder(),
+                store.load_plot(),
+                store.load_cast(),
+            )
         };
-        match (meta, binder, plot) {
-            (Ok(meta), Ok(binder), Ok(plot)) => {
+        match (meta, binder, plot, cast) {
+            (Ok(meta), Ok(binder), Ok(plot), Ok(cast)) => {
                 let previous = self.selected;
                 self.meta = Some(meta);
                 self.binder = binder;
                 self.plot = plot;
                 self.plot_dirty = false;
                 self.confirm_plotline = None;
+                self.cast = cast;
+                self.cast_dirty = false;
+                self.selected_character = self
+                    .selected_character
+                    .filter(|id| self.cast.characters.iter().any(|character| character.id == *id));
+                self.confirm_character = None;
                 self.session = None;
                 self.editor_text.clear();
                 self.editor_html.clear();
@@ -748,7 +785,7 @@ impl StudioState {
                 self.reindex_manuscript();
                 self.begin_writing_session();
             }
-            (Err(err), _, _) | (_, Err(err), _) | (_, _, Err(err)) => {
+            (Err(err), _, _, _) | (_, Err(err), _, _) | (_, _, Err(err), _) | (_, _, _, Err(err)) => {
                 self.status = format!("Backup restored, but reload failed: {err}");
             }
         }
@@ -953,6 +990,167 @@ impl StudioState {
             Ok(()) => true,
             Err(err) => {
                 self.status = format!("Could not save plot: {err}");
+                false
+            }
+        }
+    }
+
+    pub fn add_character(&mut self) {
+        self.confirm_character = None;
+        let mut cast = self.cast.clone();
+        let id = cast.add_character();
+        self.selected_character = Some(id);
+        self.store_cast(cast, true);
+    }
+
+    pub fn select_character(&mut self, id: Id) {
+        if self.cast.characters.iter().any(|character| character.id == id) {
+            self.confirm_character = None;
+            self.selected_character = Some(id);
+        }
+    }
+
+    pub fn set_character_name(&mut self, id: Id, name: String) {
+        self.edit_character(|cast| cast.set_name(id, name));
+    }
+
+    pub fn set_character_role(&mut self, id: Id, role: String) {
+        self.edit_character(|cast| cast.set_role(id, role));
+    }
+
+    pub fn set_character_summary(&mut self, id: Id, summary: String) {
+        self.edit_character(|cast| cast.set_summary(id, summary));
+    }
+
+    pub fn remove_character(&mut self, id: Id) {
+        if self.confirm_character != Some(id) {
+            self.confirm_character = Some(id);
+            self.status = "Click delete again to remove this character, their motivations, and their relationships.".into();
+            return;
+        }
+        self.confirm_character = None;
+        let mut cast = self.cast.clone();
+        if !cast.remove_character(id) {
+            return;
+        }
+        if self.selected_character == Some(id) {
+            self.selected_character = cast.characters_in_order().first().map(|character| character.id);
+        }
+        self.store_cast(cast, true);
+    }
+
+    pub fn add_motivation(&mut self, character_id: Id) {
+        self.confirm_character = None;
+        let mut cast = self.cast.clone();
+        if cast.add_motivation(character_id).is_some() {
+            self.store_cast(cast, true);
+        }
+    }
+
+    pub fn set_motivation_body(&mut self, id: Id, body: String) {
+        self.confirm_character = None;
+        let mut cast = self.cast.clone();
+        if cast.set_motivation(id, body) {
+            self.store_cast(cast, false);
+        }
+    }
+
+    pub fn shift_motivation(&mut self, id: Id, earlier: bool) {
+        self.confirm_character = None;
+        let mut cast = self.cast.clone();
+        if cast.shift_motivation(id, earlier) {
+            self.store_cast(cast, true);
+        }
+    }
+
+    pub fn remove_motivation(&mut self, id: Id) {
+        self.confirm_character = None;
+        let mut cast = self.cast.clone();
+        if cast.remove_motivation(id) {
+            self.store_cast(cast, true);
+        }
+    }
+
+    pub fn add_relationship(&mut self, from_id: Id) {
+        self.confirm_character = None;
+        let other = self
+            .cast
+            .characters_in_order()
+            .into_iter()
+            .map(|character| character.id)
+            .find(|id| *id != from_id);
+        let Some(to_id) = other else {
+            self.status = "Add another character before linking a relationship.".into();
+            return;
+        };
+        let mut cast = self.cast.clone();
+        if cast.add_relationship(from_id, to_id).is_some() {
+            self.store_cast(cast, true);
+        }
+    }
+
+    pub fn set_relationship_kind(&mut self, id: Id, kind: String) {
+        self.confirm_character = None;
+        let mut cast = self.cast.clone();
+        if cast.set_relationship_kind(id, kind) {
+            self.store_cast(cast, false);
+        }
+    }
+
+    pub fn set_relationship_target(&mut self, id: Id, to_id: Id) {
+        self.confirm_character = None;
+        let mut cast = self.cast.clone();
+        if cast.set_relationship_target(id, to_id) {
+            self.store_cast(cast, true);
+        }
+    }
+
+    pub fn remove_relationship(&mut self, id: Id) {
+        self.confirm_character = None;
+        let mut cast = self.cast.clone();
+        if cast.remove_relationship(id) {
+            self.store_cast(cast, true);
+        }
+    }
+
+    fn edit_character(&mut self, edit: impl FnOnce(&mut Cast) -> bool) {
+        self.confirm_character = None;
+        let mut cast = self.cast.clone();
+        if edit(&mut cast) {
+            self.store_cast(cast, false);
+        }
+    }
+
+    fn store_cast(&mut self, cast: Cast, immediate: bool) {
+        if !immediate {
+            self.cast = cast;
+            self.cast_dirty = true;
+            self.note_edit();
+            return;
+        }
+        let Some(store) = &self.store else {
+            self.cast = cast;
+            self.cast_dirty = false;
+            return;
+        };
+        match store.borrow().persist_cast(&cast) {
+            Ok(()) => {
+                self.cast = cast;
+                self.cast_dirty = false;
+                self.status = "Characters saved locally.".into();
+            }
+            Err(err) => self.status = format!("Could not save characters: {err}"),
+        }
+    }
+
+    fn persist_cast_now(&mut self) -> bool {
+        let Some(store) = &self.store else {
+            return false;
+        };
+        match store.borrow().persist_cast(&self.cast) {
+            Ok(()) => true,
+            Err(err) => {
+                self.status = format!("Could not save characters: {err}");
                 false
             }
         }

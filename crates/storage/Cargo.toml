@@ -9,6 +9,7 @@ description = "Local-first SQLite project storage, autosave, and backups"
 chrono.workspace = true
 rusqlite.workspace = true
 serde_json.workspace = true
+writing-studio-characters.workspace = true
 writing-studio-core.workspace = true
 writing-studio-document.workspace = true
 writing-studio-plotting.workspace = true

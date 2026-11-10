@@ -10,6 +10,7 @@ dioxus.workspace = true
 rfd.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
+writing-studio-characters.workspace = true
 writing-studio-core.workspace = true
 writing-studio-corkboard.workspace = true
 writing-studio-document.workspace = true

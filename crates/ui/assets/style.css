@@ -467,6 +467,40 @@ button.primary:hover { background: var(--primary-hover); }
 .plot-card-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .plot-card-actions button { font-size: 12px; }
 
+.cast-pane { display: flex; height: 100%; min-height: 0; }
+.cast-list {
+  width: 220px;
+  flex: 0 0 220px;
+  overflow: auto;
+  border-right: 1px solid var(--line);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cast-list button.cast-name { text-align: left; }
+.cast-list button.cast-name.active { outline: 1px solid var(--gold); }
+.cast-profile { flex: 1; overflow: auto; padding: 12px 16px 24px; }
+.cast-profile label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 4px; }
+.cast-profile input, .cast-profile select, .cast-profile textarea {
+  width: 100%;
+  border: 1px solid var(--input-border);
+  background: var(--input);
+  color: var(--text);
+  border-radius: 2px;
+  padding: 6px 8px;
+  font: inherit;
+}
+.cast-profile textarea { min-height: 96px; resize: vertical; }
+.cast-profile input:focus, .cast-profile select:focus, .cast-profile textarea:focus {
+  outline: 1px solid var(--gold);
+  border-color: var(--gold);
+}
+.cast-block { margin-top: 18px; }
+.cast-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.cast-row input, .cast-row select { flex: 1; }
+.cast-actions { display: flex; gap: 8px; margin-top: 16px; }
+
 .outliner { padding: 0; }
 .outliner table { width: 100%; border-collapse: collapse; }
 .outliner th, .outliner td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }

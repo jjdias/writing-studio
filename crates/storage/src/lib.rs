@@ -17,6 +17,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use writing_studio_core::{
     Error, Id, Result, Timestamp, PROJECT_DB_FILE, PROJECT_FORMAT_FILE, PROJECT_FORMAT_VERSION,
 };
+use writing_studio_characters::{Cast, Character, CharacterRelationship, Motivation};
 use writing_studio_document::Document;
 use writing_studio_plotting::{PlotGrid, PlotPoint, Plotline};
 use writing_studio_project::{BinderNode, BinderTree, NodeKind, ProjectMeta, ProjectSettings};
@@ -238,6 +239,109 @@ impl ProjectStore {
                     point.sort_index,
                     point.created_at.to_rfc3339(),
                     point.updated_at.to_rfc3339(),
+                ],
+            )
+            .map_err(sqlite)?;
+        }
+        tx.commit().map_err(sqlite)?;
+        Ok(())
+    }
+
+    pub fn load_cast(&self) -> Result<Cast> {
+        let mut characters = self
+            .conn
+            .prepare(
+                "SELECT id, name, role, summary, sort_index, created_at, updated_at FROM characters",
+            )
+            .map_err(sqlite)?;
+        let characters = characters
+            .query_map([], |row| Ok(row_to_character(row)))
+            .map_err(sqlite)?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(sqlite)?;
+        let mut motivations = self
+            .conn
+            .prepare(
+                "SELECT id, character_id, body, sort_index, created_at, updated_at
+                 FROM character_motivations",
+            )
+            .map_err(sqlite)?;
+        let motivations = motivations
+            .query_map([], |row| Ok(row_to_motivation(row)))
+            .map_err(sqlite)?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(sqlite)?;
+        let mut relationships = self
+            .conn
+            .prepare(
+                "SELECT id, from_id, to_id, kind, sort_index, created_at, updated_at
+                 FROM character_relationships",
+            )
+            .map_err(sqlite)?;
+        let relationships = relationships
+            .query_map([], |row| Ok(row_to_relationship(row)))
+            .map_err(sqlite)?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(sqlite)?;
+        Ok(Cast {
+            characters,
+            motivations,
+            relationships,
+        })
+    }
+
+    pub fn persist_cast(&self, cast: &Cast) -> Result<()> {
+        let tx = self.conn.unchecked_transaction().map_err(sqlite)?;
+        tx.execute("DELETE FROM character_relationships", [])
+            .map_err(sqlite)?;
+        tx.execute("DELETE FROM character_motivations", [])
+            .map_err(sqlite)?;
+        tx.execute("DELETE FROM characters", []).map_err(sqlite)?;
+        for character in &cast.characters {
+            tx.execute(
+                "INSERT INTO characters (id, name, role, summary, sort_index, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![
+                    character.id.to_string(),
+                    character.name,
+                    character.role,
+                    character.summary,
+                    character.sort_index,
+                    character.created_at.to_rfc3339(),
+                    character.updated_at.to_rfc3339(),
+                ],
+            )
+            .map_err(sqlite)?;
+        }
+        for item in &cast.motivations {
+            tx.execute(
+                "INSERT INTO character_motivations (
+                    id, character_id, body, sort_index, created_at, updated_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    item.id.to_string(),
+                    item.character_id.to_string(),
+                    item.body,
+                    item.sort_index,
+                    item.created_at.to_rfc3339(),
+                    item.updated_at.to_rfc3339(),
+                ],
+            )
+            .map_err(sqlite)?;
+        }
+        for item in &cast.relationships {
+            tx.execute(
+                "INSERT INTO character_relationships (
+                    id, from_id, to_id, kind, sort_index, created_at, updated_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![
+                    item.id.to_string(),
+                    item.from_id.to_string(),
+                    item.to_id.to_string(),
+                    item.kind,
+                    item.sort_index,
+                    item.created_at.to_rfc3339(),
+                    item.updated_at.to_rfc3339(),
                 ],
             )
             .map_err(sqlite)?;
@@ -471,6 +575,41 @@ fn row_to_plot_point(row: &rusqlite::Row<'_>) -> PlotPoint {
     }
 }
 
+fn row_to_character(row: &rusqlite::Row<'_>) -> Character {
+    Character {
+        id: parse_id(&row.get::<_, String>(0).unwrap_or_default()),
+        name: row.get(1).unwrap_or_default(),
+        role: row.get(2).unwrap_or_default(),
+        summary: row.get(3).unwrap_or_default(),
+        sort_index: row.get(4).unwrap_or(0),
+        created_at: parse_ts(&row.get::<_, String>(5).unwrap_or_default()),
+        updated_at: parse_ts(&row.get::<_, String>(6).unwrap_or_default()),
+    }
+}
+
+fn row_to_motivation(row: &rusqlite::Row<'_>) -> Motivation {
+    Motivation {
+        id: parse_id(&row.get::<_, String>(0).unwrap_or_default()),
+        character_id: parse_id(&row.get::<_, String>(1).unwrap_or_default()),
+        body: row.get(2).unwrap_or_default(),
+        sort_index: row.get(3).unwrap_or(0),
+        created_at: parse_ts(&row.get::<_, String>(4).unwrap_or_default()),
+        updated_at: parse_ts(&row.get::<_, String>(5).unwrap_or_default()),
+    }
+}
+
+fn row_to_relationship(row: &rusqlite::Row<'_>) -> CharacterRelationship {
+    CharacterRelationship {
+        id: parse_id(&row.get::<_, String>(0).unwrap_or_default()),
+        from_id: parse_id(&row.get::<_, String>(1).unwrap_or_default()),
+        to_id: parse_id(&row.get::<_, String>(2).unwrap_or_default()),
+        kind: row.get(3).unwrap_or_default(),
+        sort_index: row.get(4).unwrap_or(0),
+        created_at: parse_ts(&row.get::<_, String>(5).unwrap_or_default()),
+        updated_at: parse_ts(&row.get::<_, String>(6).unwrap_or_default()),
+    }
+}
+
 fn parse_id(value: &str) -> Id {
     value.parse().unwrap_or_else(|_| Id::nil())
 }
@@ -603,6 +742,42 @@ mod tests {
         assert_eq!(loaded.points[0].summary, "She opens the door.");
         assert_eq!(loaded.points[0].scene_id, Some(scene));
         assert_eq!(loaded.points[0].plotline_id, loaded.lines[0].id);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn cast_round_trips_profiles_motivations_and_relationships() {
+        let dir = env::temp_dir().join(format!("ws-cast-{}", Id::new()));
+        let store = ProjectStore::create(&dir, "Cast Novel").unwrap();
+        assert!(store.load_cast().unwrap().characters.is_empty());
+
+        let mut cast = Cast::new();
+        let hero = cast.add_character();
+        let rival = cast.add_character();
+        cast.set_name(hero, "Ada".into());
+        cast.set_role(hero, "Protagonist".into());
+        cast.set_summary(hero, "Keeps the door locked.".into());
+        let motive = cast.add_motivation(hero).unwrap();
+        cast.set_motivation(motive, "Protect the house".into());
+        let link = cast.add_relationship(hero, rival).unwrap();
+        cast.set_relationship_kind(link, "rival".into());
+        store.persist_cast(&cast).unwrap();
+
+        let loaded = ProjectStore::open(&dir).unwrap().load_cast().unwrap();
+        assert_eq!(loaded.characters.len(), 2);
+        let ada = loaded
+            .characters
+            .iter()
+            .find(|character| character.name == "Ada")
+            .unwrap();
+        assert_eq!(ada.role, "Protagonist");
+        assert_eq!(ada.summary, "Keeps the door locked.");
+        assert_eq!(loaded.motivations.len(), 1);
+        assert_eq!(loaded.motivations[0].body, "Protect the house");
+        assert_eq!(loaded.motivations[0].character_id, ada.id);
+        assert_eq!(loaded.relationships.len(), 1);
+        assert_eq!(loaded.relationships[0].kind, "rival");
+        assert_eq!(loaded.relationships[0].from_id, ada.id);
         let _ = fs::remove_dir_all(dir);
     }
 }

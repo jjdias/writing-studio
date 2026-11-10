@@ -67,6 +67,35 @@ pub fn install(conn: &Connection) -> rusqlite::Result<()> {
         );
 
         CREATE INDEX IF NOT EXISTS idx_plot_points_line ON plot_points(plotline_id);
+
+        CREATE TABLE IF NOT EXISTS characters (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT '',
+            summary TEXT NOT NULL DEFAULT '',
+            sort_index INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS character_motivations (
+            id TEXT PRIMARY KEY,
+            character_id TEXT NOT NULL,
+            body TEXT NOT NULL DEFAULT '',
+            sort_index INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS character_relationships (
+            id TEXT PRIMARY KEY,
+            from_id TEXT NOT NULL,
+            to_id TEXT NOT NULL,
+            kind TEXT NOT NULL DEFAULT '',
+            sort_index INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
         "#,
     )?;
     let _ = conn.execute(
