@@ -18,6 +18,7 @@ use writing_studio_core::{
     Error, Id, Result, Timestamp, PROJECT_DB_FILE, PROJECT_FORMAT_FILE, PROJECT_FORMAT_VERSION,
 };
 use writing_studio_document::Document;
+use writing_studio_plotting::{PlotGrid, PlotPoint, Plotline};
 use writing_studio_project::{BinderNode, BinderTree, NodeKind, ProjectMeta, ProjectSettings};
 use writing_studio_templates::blank_novel;
 
@@ -174,6 +175,74 @@ impl ProjectStore {
         for node in &tree.nodes {
             self.upsert_node(node)?;
         }
+        Ok(())
+    }
+
+    pub fn load_plot(&self) -> Result<PlotGrid> {
+        let mut lines = self
+            .conn
+            .prepare(
+                "SELECT id, title, color, sort_index, created_at, updated_at FROM plotlines",
+            )
+            .map_err(sqlite)?;
+        let lines = lines
+            .query_map([], |row| Ok(row_to_plotline(row)))
+            .map_err(sqlite)?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(sqlite)?;
+        let mut points = self
+            .conn
+            .prepare(
+                "SELECT id, plotline_id, title, summary, scene_id, sort_index, created_at, updated_at
+                 FROM plot_points",
+            )
+            .map_err(sqlite)?;
+        let points = points
+            .query_map([], |row| Ok(row_to_plot_point(row)))
+            .map_err(sqlite)?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(sqlite)?;
+        Ok(PlotGrid { lines, points })
+    }
+
+    pub fn persist_plot(&self, grid: &PlotGrid) -> Result<()> {
+        let tx = self.conn.unchecked_transaction().map_err(sqlite)?;
+        tx.execute("DELETE FROM plot_points", []).map_err(sqlite)?;
+        tx.execute("DELETE FROM plotlines", []).map_err(sqlite)?;
+        for line in &grid.lines {
+            tx.execute(
+                "INSERT INTO plotlines (id, title, color, sort_index, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    line.id.to_string(),
+                    line.title,
+                    line.color,
+                    line.sort_index,
+                    line.created_at.to_rfc3339(),
+                    line.updated_at.to_rfc3339(),
+                ],
+            )
+            .map_err(sqlite)?;
+        }
+        for point in &grid.points {
+            tx.execute(
+                "INSERT INTO plot_points (
+                    id, plotline_id, title, summary, scene_id, sort_index, created_at, updated_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    point.id.to_string(),
+                    point.plotline_id.to_string(),
+                    point.title,
+                    point.summary,
+                    point.scene_id.map(|id| id.to_string()),
+                    point.sort_index,
+                    point.created_at.to_rfc3339(),
+                    point.updated_at.to_rfc3339(),
+                ],
+            )
+            .map_err(sqlite)?;
+        }
+        tx.commit().map_err(sqlite)?;
         Ok(())
     }
 
@@ -377,6 +446,31 @@ fn row_to_node(row: &rusqlite::Row<'_>) -> BinderNode {
     }
 }
 
+fn row_to_plotline(row: &rusqlite::Row<'_>) -> Plotline {
+    Plotline {
+        id: parse_id(&row.get::<_, String>(0).unwrap_or_default()),
+        title: row.get(1).unwrap_or_default(),
+        color: row.get(2).unwrap_or_default(),
+        sort_index: row.get(3).unwrap_or(0),
+        created_at: parse_ts(&row.get::<_, String>(4).unwrap_or_default()),
+        updated_at: parse_ts(&row.get::<_, String>(5).unwrap_or_default()),
+    }
+}
+
+fn row_to_plot_point(row: &rusqlite::Row<'_>) -> PlotPoint {
+    let scene: Option<String> = row.get(4).unwrap_or(None);
+    PlotPoint {
+        id: parse_id(&row.get::<_, String>(0).unwrap_or_default()),
+        plotline_id: parse_id(&row.get::<_, String>(1).unwrap_or_default()),
+        title: row.get(2).unwrap_or_default(),
+        summary: row.get(3).unwrap_or_default(),
+        scene_id: scene.as_deref().filter(|value| !value.is_empty()).map(parse_id),
+        sort_index: row.get(5).unwrap_or(0),
+        created_at: parse_ts(&row.get::<_, String>(6).unwrap_or_default()),
+        updated_at: parse_ts(&row.get::<_, String>(7).unwrap_or_default()),
+    }
+}
+
 fn parse_id(value: &str) -> Id {
     value.parse().unwrap_or_else(|_| Id::nil())
 }
@@ -476,6 +570,39 @@ mod tests {
             "Version one."
         );
         assert!(!store.list_backups().unwrap().is_empty());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn plot_grid_round_trips_lines_points_and_scene_links() {
+        let dir = env::temp_dir().join(format!("ws-plot-{}", Id::new()));
+        let store = ProjectStore::create(&dir, "Plot Novel").unwrap();
+        assert!(store.load_plot().unwrap().lines.is_empty());
+
+        let tree = store.load_binder().unwrap();
+        let scene = tree
+            .nodes
+            .iter()
+            .find(|node| node.kind == NodeKind::Scene)
+            .unwrap()
+            .id;
+        let mut grid = PlotGrid::new();
+        let line = grid.add_line();
+        grid.set_line_title(line, "Main plot".into());
+        let point = grid.add_point(line).unwrap();
+        grid.set_point_title(point, "Inciting incident".into());
+        grid.set_point_summary(point, "She opens the door.".into());
+        grid.set_point_scene(point, Some(scene));
+        store.persist_plot(&grid).unwrap();
+
+        let loaded = ProjectStore::open(&dir).unwrap().load_plot().unwrap();
+        assert_eq!(loaded.lines.len(), 1);
+        assert_eq!(loaded.lines[0].title, "Main plot");
+        assert_eq!(loaded.points.len(), 1);
+        assert_eq!(loaded.points[0].title, "Inciting incident");
+        assert_eq!(loaded.points[0].summary, "She opens the door.");
+        assert_eq!(loaded.points[0].scene_id, Some(scene));
+        assert_eq!(loaded.points[0].plotline_id, loaded.lines[0].id);
         let _ = fs::remove_dir_all(dir);
     }
 }

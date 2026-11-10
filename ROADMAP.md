@@ -94,7 +94,6 @@ These crates exist so module boundaries stay stable. They are **types or stubs**
 
 | Crate | Current state | Intended later work |
 | --- | --- | --- |
-| `writing-studio-plotting` | `Plotline` / `PlotPoint` structs | Plot Grid UI and persistence |
 | `writing-studio-characters` | `Character` / relationship structs | Profiles, relationships, inspector |
 | `writing-studio-worldbuilding` | `Location` / `TimelineEvent` structs | Locations, lore, timelines |
 | `writing-studio-research` | `ResearchItem` struct | Attachments, PDFs, library UI |
@@ -130,7 +129,7 @@ Phase 2 is complete.
 
 In progress on `phase-3`:
 
-- Plot Grid: plotlines, plot points, links to scenes
+- Plot Grid: plotlines, plot points, and links to scenes (in the desktop app, saved in the project)
 - Character profiles, relationships, motivations
 - Locations, cultures, lore, timelines
 - Research library: notes plus files in `attachments/`
@@ -189,6 +188,6 @@ When optional cloud work starts, the source of truth for a disconnected writer r
 
 ## Immediate next steps
 
-Phase 2 is complete on `phase-2`. Phase 3, local story development, is in progress on `phase-3`, starting with the plot grid.
+Phase 2 is complete on `phase-2`. Phase 3 is in progress on `phase-3`. The plot grid is in the desktop app. Next is character profiles, relationships, and motivations.
 
 Optional cloud stays later.

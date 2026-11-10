@@ -6315,6 +6315,7 @@ dependencies = [
  "serde_json",
  "writing-studio-core",
  "writing-studio-document",
+ "writing-studio-plotting",
  "writing-studio-project",
  "writing-studio-templates",
 ]
@@ -6349,6 +6350,7 @@ dependencies = [
  "writing-studio-editor",
  "writing-studio-export",
  "writing-studio-manuscript",
+ "writing-studio-plotting",
  "writing-studio-project",
  "writing-studio-search",
  "writing-studio-storage",

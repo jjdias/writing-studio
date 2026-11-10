@@ -431,6 +431,42 @@ button.primary:hover { background: var(--primary-hover); }
 .card-meta, .card-label { color: var(--muted); font-size: 12px; }
 .card-label { display: block; margin-top: 8px; color: var(--link); }
 
+.plot-pane { padding: 12px 16px 24px; overflow: auto; height: 100%; }
+.plot-toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.plot-row { margin-top: 18px; }
+.plot-row-head { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.plot-line-title { flex: 1; min-width: 140px; }
+.plot-color { width: 110px; flex: 0 0 auto; }
+.plot-points { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; }
+.plot-card {
+  width: 240px;
+  flex: 0 0 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-top: 4px solid var(--line);
+  border-radius: 2px;
+}
+.plot-pane input, .plot-pane select, .plot-pane textarea {
+  width: 100%;
+  border: 1px solid var(--input-border);
+  background: var(--input);
+  color: var(--text);
+  border-radius: 2px;
+  padding: 6px 8px;
+  font: inherit;
+}
+.plot-pane textarea { min-height: 72px; resize: vertical; }
+.plot-pane input:focus, .plot-pane select:focus, .plot-pane textarea:focus {
+  outline: 1px solid var(--gold);
+  border-color: var(--gold);
+}
+.plot-card-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.plot-card-actions button { font-size: 12px; }
+
 .outliner { padding: 0; }
 .outliner table { width: 100%; border-collapse: collapse; }
 .outliner th, .outliner td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }

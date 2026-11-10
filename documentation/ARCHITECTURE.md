@@ -16,7 +16,7 @@ Compile (Markdown / DOCX) reads the binder and `documents` table. It does not go
 Binder + stored documents → writing-studio-export → .md / .docx on disk
 ```
 
-## Phase 1 crates that actually run
+## Crates that run
 
 | Crate | Responsibility |
 | --- | --- |
@@ -28,19 +28,20 @@ Binder + stored documents → writing-studio-export → .md / .docx on disk
 | `writing-studio-templates` | Blank novel seed |
 | `writing-studio-storage` | SQLite, snapshots, folder backups, restore, load-all documents |
 | `writing-studio-corkboard` | Scene cards from the binder |
+| `writing-studio-plotting` | Plotlines, plot points, and scene links |
 | `writing-studio-search` | Binder title filter |
 | `writing-studio-export` | Manuscript compile to Markdown and DOCX |
 | `writing-studio-ui` | Workspace UI |
 | `writing-studio-desktop` | Native window |
 
-Remaining crates are typed placeholders (plotting, characters, worldbuilding, research, collaboration, synchronization, security) so module boundaries stay stable.
+The plot grid is stored in the same project database as the binder. Remaining crates are typed placeholders (characters, worldbuilding, research, collaboration, synchronization, security) so module boundaries stay stable.
 
 ## Data flow
 
 1. The UI holds a `StudioState` with an optional `ProjectStore` (SQLite connection in the project folder).
 2. Opening a scene loads JSON into an `EditorSession` wrapping a `Document`.
 3. Typing updates the session; idle autosave, blur, scene change, and Ctrl+S write JSON back through `ProjectStore`.
-4. Binder moves and trash update `binder_nodes` (parent, `sort_index`, `deleted_at`, `restore_parent_id`).
+4. Binder moves and trash update `binder_nodes` (parent, `sort_index`, `deleted_at`, `restore_parent_id`). Plotlines and plot points live in `plotlines` and `plot_points`. A plot point may store a binder scene id. Emptying trash clears links to deleted scenes.
 5. History restore either replaces one document from `snapshots` or copies a `backups/*.sqlite` into the live connection.
 6. Compile loads all documents, walks the draft root, and writes a file the user chooses.
 

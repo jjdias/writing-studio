@@ -8,6 +8,7 @@ use writing_studio_corkboard::CorkGroup;
 use writing_studio_core::{autosave_due, autosave_wait, local_day, Id, Timestamp, PRODUCT_NAME};
 use writing_studio_editor::EditorSession;
 use writing_studio_export::{compile_docx, compile_markdown, CompileInput};
+use writing_studio_plotting::PlotGrid;
 use writing_studio_project::{
     format_elapsed, normalize_binder_color, BinderNode, BinderTree, NodeKind, PanelLayout,
     ProjectMeta, StoredSession, Theme,
@@ -20,6 +21,7 @@ pub enum WorkspaceMode {
     Writing,
     Corkboard,
     Outliner,
+    Plot,
     History,
 }
 
@@ -29,6 +31,7 @@ impl WorkspaceMode {
             Self::Writing => "Writing",
             Self::Corkboard => "Corkboard",
             Self::Outliner => "Outliner",
+            Self::Plot => "Plot",
             Self::History => "History",
         }
     }
@@ -38,6 +41,7 @@ impl WorkspaceMode {
             Self::Writing => "Explorer",
             Self::Corkboard => "Corkboard",
             Self::Outliner => "Outliner",
+            Self::Plot => "Plot",
             Self::History => "History",
         }
     }
@@ -58,6 +62,9 @@ pub struct StudioState {
     pub manuscript_index: Rc<RefCell<ManuscriptIndex>>,
     pub cork_query: String,
     pub cork_group: CorkGroup,
+    pub plot: PlotGrid,
+    pub plot_dirty: bool,
+    pub confirm_plotline: Option<Id>,
     pub mode: WorkspaceMode,
     pub focus_mode: bool,
     pub status: String,
@@ -91,6 +98,9 @@ impl Default for StudioState {
             manuscript_index: Rc::new(RefCell::new(ManuscriptIndex::new())),
             cork_query: String::new(),
             cork_group: CorkGroup::Manuscript,
+            plot: PlotGrid::new(),
+            plot_dirty: false,
+            confirm_plotline: None,
             mode: WorkspaceMode::Writing,
             focus_mode: false,
             status: "Offline · Local-first".into(),
@@ -293,10 +303,13 @@ impl StudioState {
     }
 
     fn attach_store(&mut self, store: ProjectStore, status: &str) {
-        match (store.load_meta(), store.load_binder()) {
-            (Ok(meta), Ok(binder)) => {
+        match (store.load_meta(), store.load_binder(), store.load_plot()) {
+            (Ok(meta), Ok(binder), Ok(plot)) => {
                 self.meta = Some(meta);
                 self.binder = binder;
+                self.plot = plot;
+                self.plot_dirty = false;
+                self.confirm_plotline = None;
                 self.store = Some(Rc::new(RefCell::new(store)));
                 self.status = status.into();
                 if let Some(scene) = self
@@ -311,7 +324,7 @@ impl StudioState {
                 self.reindex_manuscript();
                 self.begin_writing_session();
             }
-            (Err(err), _) | (_, Err(err)) => {
+            (Err(err), _, _) | (_, Err(err), _) | (_, _, Err(err)) => {
                 self.status = format!("Project load failed: {err}");
             }
         }
@@ -406,6 +419,9 @@ impl StudioState {
         if self.binder_dirty && self.store.is_some() && !self.persist_binder() {
             return;
         }
+        if self.plot_dirty && self.store.is_some() && !self.persist_plot_now() {
+            return;
+        }
         self.note_writing_activity();
         if let Some(meta) = &self.meta {
             if let Some(store) = &self.store {
@@ -419,6 +435,7 @@ impl StudioState {
             return;
         }
         self.binder_dirty = false;
+        self.plot_dirty = false;
         self.settings_dirty = false;
         self.last_edit = None;
         self.status = "All changes saved locally.".into();
@@ -485,6 +502,7 @@ impl StudioState {
     pub fn has_unsaved(&self) -> bool {
         self.settings_dirty
             || self.binder_dirty
+            || self.plot_dirty
             || self.session.as_ref().is_some_and(EditorSession::is_dirty)
     }
 
@@ -699,15 +717,18 @@ impl StudioState {
         let Some(store) = self.store.clone() else {
             return;
         };
-        let (meta, binder) = {
+        let (meta, binder, plot) = {
             let store = store.borrow();
-            (store.load_meta(), store.load_binder())
+            (store.load_meta(), store.load_binder(), store.load_plot())
         };
-        match (meta, binder) {
-            (Ok(meta), Ok(binder)) => {
+        match (meta, binder, plot) {
+            (Ok(meta), Ok(binder), Ok(plot)) => {
                 let previous = self.selected;
                 self.meta = Some(meta);
                 self.binder = binder;
+                self.plot = plot;
+                self.plot_dirty = false;
+                self.confirm_plotline = None;
                 self.session = None;
                 self.editor_text.clear();
                 self.editor_html.clear();
@@ -727,7 +748,7 @@ impl StudioState {
                 self.reindex_manuscript();
                 self.begin_writing_session();
             }
-            (Err(err), _) | (_, Err(err)) => {
+            (Err(err), _, _) | (_, Err(err), _) | (_, _, Err(err)) => {
                 self.status = format!("Backup restored, but reload failed: {err}");
             }
         }
@@ -807,6 +828,134 @@ impl StudioState {
         self.binder.nodes.push(node);
         self.select_node(new_id);
         self.status = "Added to binder.".into();
+    }
+
+    pub fn add_plotline(&mut self) {
+        self.confirm_plotline = None;
+        let mut grid = self.plot.clone();
+        grid.add_line();
+        self.store_plot(grid, true);
+    }
+
+    pub fn set_plotline_title(&mut self, id: Id, title: String) {
+        self.confirm_plotline = None;
+        let mut grid = self.plot.clone();
+        if grid.set_line_title(id, title) {
+            self.store_plot(grid, false);
+        }
+    }
+
+    pub fn set_plotline_color(&mut self, id: Id, color: String) {
+        self.confirm_plotline = None;
+        let mut grid = self.plot.clone();
+        if grid.set_line_color(id, color) {
+            self.store_plot(grid, true);
+        }
+    }
+
+    pub fn remove_plotline(&mut self, id: Id) {
+        if self.confirm_plotline != Some(id) {
+            self.confirm_plotline = Some(id);
+            self.status = "Click delete again to remove this plotline and its plot points.".into();
+            return;
+        }
+        self.confirm_plotline = None;
+        let mut grid = self.plot.clone();
+        if grid.remove_line(id) {
+            self.store_plot(grid, true);
+        }
+    }
+
+    pub fn add_plot_point(&mut self, line_id: Id) {
+        self.confirm_plotline = None;
+        let mut grid = self.plot.clone();
+        if grid.add_point(line_id).is_some() {
+            self.store_plot(grid, true);
+        }
+    }
+
+    pub fn set_plot_point_title(&mut self, id: Id, title: String) {
+        self.confirm_plotline = None;
+        let mut grid = self.plot.clone();
+        if grid.set_point_title(id, title) {
+            self.store_plot(grid, false);
+        }
+    }
+
+    pub fn set_plot_point_summary(&mut self, id: Id, summary: String) {
+        self.confirm_plotline = None;
+        let mut grid = self.plot.clone();
+        if grid.set_point_summary(id, summary) {
+            self.store_plot(grid, false);
+        }
+    }
+
+    pub fn set_plot_point_scene(&mut self, id: Id, scene_id: Option<Id>) {
+        self.confirm_plotline = None;
+        let mut grid = self.plot.clone();
+        if grid.set_point_scene(id, scene_id) {
+            self.store_plot(grid, true);
+        }
+    }
+
+    pub fn shift_plot_point(&mut self, id: Id, earlier: bool) {
+        self.confirm_plotline = None;
+        let mut grid = self.plot.clone();
+        if grid.shift_point(id, earlier) {
+            self.store_plot(grid, true);
+        }
+    }
+
+    pub fn remove_plot_point(&mut self, id: Id) {
+        self.confirm_plotline = None;
+        let mut grid = self.plot.clone();
+        if grid.remove_point(id) {
+            self.store_plot(grid, true);
+        }
+    }
+
+    pub fn open_linked_scene(&mut self, scene_id: Id) {
+        if self.binder.get(scene_id).is_none() {
+            self.status = "That scene is no longer in the binder.".into();
+            return;
+        }
+        self.select_node(scene_id);
+        self.mode = WorkspaceMode::Writing;
+    }
+
+    fn store_plot(&mut self, grid: PlotGrid, immediate: bool) {
+        if !immediate {
+            self.plot = grid;
+            self.plot_dirty = true;
+            self.note_edit();
+            return;
+        }
+        let Some(store) = &self.store else {
+            self.plot = grid;
+            self.plot_dirty = false;
+            return;
+        };
+        match store.borrow().persist_plot(&grid) {
+            Ok(()) => {
+                self.plot = grid;
+                self.plot_dirty = false;
+                self.status = "Plot saved locally.".into();
+            }
+            Err(err) => self.status = format!("Could not save plot: {err}"),
+        }
+    }
+
+    fn persist_plot_now(&mut self) -> bool {
+        let Some(store) = &self.store else {
+            return false;
+        };
+        match store.borrow().persist_plot(&self.plot) {
+            Ok(()) => true,
+            Err(err) => {
+                self.status = format!("Could not save plot: {err}");
+                false
+            }
+        }
     }
 
     fn persist_binder(&mut self) -> bool {
@@ -929,6 +1078,11 @@ impl StudioState {
             }
         }
         if !self.persist_binder() {
+            return;
+        }
+        if self.plot.detach_scenes(&nodes) && !self.persist_plot_now() {
+            self.plot_dirty = true;
+            self.note_edit();
             return;
         }
         if selected_in_trash {

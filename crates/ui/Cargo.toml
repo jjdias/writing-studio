@@ -16,6 +16,7 @@ writing-studio-document.workspace = true
 writing-studio-editor.workspace = true
 writing-studio-export.workspace = true
 writing-studio-manuscript.workspace = true
+writing-studio-plotting.workspace = true
 writing-studio-project.workspace = true
 writing-studio-search.workspace = true
 writing-studio-storage.workspace = true

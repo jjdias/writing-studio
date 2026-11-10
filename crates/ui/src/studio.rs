@@ -192,6 +192,7 @@ fn Workspace() -> Element {
                     WorkspaceMode::Writing,
                     WorkspaceMode::Corkboard,
                     WorkspaceMode::Outliner,
+                    WorkspaceMode::Plot,
                     WorkspaceMode::History,
                 ] {
                     button {
@@ -250,6 +251,7 @@ fn Workspace() -> Element {
                         WorkspaceMode::Writing => rsx! { EditorPane {} },
                         WorkspaceMode::Corkboard => rsx! { CorkboardPane {} },
                         WorkspaceMode::Outliner => rsx! { OutlinerPane {} },
+                        WorkspaceMode::Plot => rsx! { PlotPane {} },
                         WorkspaceMode::History => rsx! { HistoryPane {} },
                     }}
                 }
@@ -709,6 +711,14 @@ fn ModeGlyph(mode: WorkspaceMode) -> Element {
                 path { d: "M2 3.5h12M2 8h12M2 12.5h12", fill: "none", stroke: "currentColor", stroke_width: "1.2" }
             }
         },
+        WorkspaceMode::Plot => rsx! {
+            svg { class: "glyph", view_box: "0 0 16 16",
+                path { d: "M2 4h12M2 8h12M2 12h12", fill: "none", stroke: "currentColor", stroke_width: "1.2" }
+                circle { cx: "5", cy: "4", r: "1.2", fill: "currentColor" }
+                circle { cx: "9", cy: "8", r: "1.2", fill: "currentColor" }
+                circle { cx: "7", cy: "12", r: "1.2", fill: "currentColor" }
+            }
+        },
         WorkspaceMode::History => rsx! {
             svg { class: "glyph", view_box: "0 0 16 16",
                 path { d: "M8 2.5a5.5 5.5 0 1 1-4.8 2.8", fill: "none", stroke: "currentColor", stroke_width: "1.2" }
@@ -723,6 +733,7 @@ fn mode_shortcut(mode: WorkspaceMode) -> &'static str {
         WorkspaceMode::Writing => "Ctrl+1",
         WorkspaceMode::Corkboard => "Ctrl+2",
         WorkspaceMode::Outliner => "Ctrl+3",
+        WorkspaceMode::Plot => "Ctrl+5",
         WorkspaceMode::History => "Ctrl+4",
     }
 }
@@ -759,6 +770,7 @@ fn apply_shortcut(
         AppShortcut::Writing => return set_mode(state, WorkspaceMode::Writing),
         AppShortcut::Corkboard => return set_mode(state, WorkspaceMode::Corkboard),
         AppShortcut::Outliner => return set_mode(state, WorkspaceMode::Outliner),
+        AppShortcut::Plot => return set_mode(state, WorkspaceMode::Plot),
         AppShortcut::History => return set_mode(state, WorkspaceMode::History),
         AppShortcut::NewScene => {
             if open {
@@ -1260,6 +1272,260 @@ fn apply_goal(mut state: Signal<StudioState>, value: String, daily: bool) {
         state.write().set_daily_goal(goal);
     } else {
         state.write().set_project_goal(goal);
+    }
+}
+
+#[derive(Clone, PartialEq)]
+struct PlotPointView {
+    id: Id,
+    title: String,
+    summary: String,
+    scene_id: Option<Id>,
+}
+
+#[derive(Clone, PartialEq)]
+struct PlotLineView {
+    id: Id,
+    title: String,
+    color: String,
+    points: Vec<PlotPointView>,
+}
+
+#[component]
+fn PlotPane() -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let snapshot = state.read().clone();
+    let scenes = scene_choices(&snapshot.binder);
+    let confirm = snapshot.confirm_plotline;
+    let lines: Vec<PlotLineView> = snapshot
+        .plot
+        .lines_in_order()
+        .into_iter()
+        .map(|line| PlotLineView {
+            id: line.id,
+            title: line.title.clone(),
+            color: line.color.clone(),
+            points: snapshot
+                .plot
+                .points_on(line.id)
+                .into_iter()
+                .map(|point| PlotPointView {
+                    id: point.id,
+                    title: point.title.clone(),
+                    summary: point.summary.clone(),
+                    scene_id: point.scene_id,
+                })
+                .collect(),
+        })
+        .collect();
+    rsx! {
+        div { class: "plot-pane",
+            div { class: "plot-toolbar",
+                button {
+                    class: "primary",
+                    onclick: move |_| state.write().add_plotline(),
+                    "Add plotline"
+                }
+            }
+            p { class: "hint", "Each row is a plotline. Plot points stay in order on that line and can open a manuscript scene. Titles save with the project." }
+            if lines.is_empty() {
+                p { class: "hint", "No plotlines yet." }
+            }
+            for line in lines {
+                PlotLineRow { line, scenes: scenes.clone(), confirm, binder_scenes: linked_scene_labels(&snapshot, &scenes) }
+            }
+        }
+    }
+}
+
+#[derive(Clone, PartialEq)]
+struct LinkedScene {
+    id: Id,
+    label: String,
+}
+
+fn linked_scene_labels(snapshot: &StudioState, scenes: &[(Id, String)]) -> Vec<LinkedScene> {
+    snapshot
+        .plot
+        .points
+        .iter()
+        .filter_map(|point| point.scene_id)
+        .filter(|id| !scenes.iter().any(|(scene, _)| scene == id))
+        .map(|id| LinkedScene {
+            id,
+            label: scene_caption(&snapshot.binder, id),
+        })
+        .collect()
+}
+
+#[component]
+fn PlotLineRow(line: PlotLineView, scenes: Vec<(Id, String)>, confirm: Option<Id>, binder_scenes: Vec<LinkedScene>) -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let line_id = line.id;
+    let color = line.color.clone();
+    let title = line.title.clone();
+    let stripe = binder_color_hex(&color);
+    let border = if stripe.is_empty() {
+        String::new()
+    } else {
+        format!("border-top-color: {stripe}")
+    };
+    let delete_label = if confirm == Some(line_id) {
+        "Delete plotline"
+    } else {
+        "Delete"
+    };
+    let points = line.points.clone();
+    rsx! {
+        section { class: "plot-row", key: "{line_id}",
+            div { class: "plot-row-head",
+                input {
+                    class: "plot-line-title",
+                    title: "Plotline title",
+                    value: "{title}",
+                    oninput: move |event| {
+                        state.write().set_plotline_title(line_id, event.value());
+                    },
+                }
+                select {
+                    class: "plot-color",
+                    title: "Plotline color",
+                    value: "{color}",
+                    onchange: move |event| {
+                        state.write().set_plotline_color(line_id, event.value());
+                    },
+                    for swatch in BINDER_COLORS {
+                        option { value: "{swatch.id}", "{swatch.name}" }
+                    }
+                }
+                button {
+                    onclick: move |_| state.write().add_plot_point(line_id),
+                    "Add point"
+                }
+                button {
+                    onclick: move |_| state.write().remove_plotline(line_id),
+                    "{delete_label}"
+                }
+            }
+            div { class: "plot-points",
+                if points.is_empty() {
+                    p { class: "hint", "No plot points on this line." }
+                }
+                for point in points {
+                    PlotPointCard { point, scenes: scenes.clone(), border: border.clone(), extras: binder_scenes.clone() }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn PlotPointCard(point: PlotPointView, scenes: Vec<(Id, String)>, border: String, extras: Vec<LinkedScene>) -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let point_id = point.id;
+    let title = point.title.clone();
+    let summary = point.summary.clone();
+    let scene_id = point.scene_id;
+    let scene_value = scene_id.map(|id| id.to_string()).unwrap_or_default();
+    let mut options = scenes;
+    if let Some(id) = scene_id {
+        if let Some(extra) = extras.into_iter().find(|extra| extra.id == id) {
+            options.push((extra.id, extra.label));
+        }
+    }
+    rsx! {
+        article { class: "plot-card", style: "{border}", key: "{point_id}",
+            input {
+                title: "Plot point title",
+                value: "{title}",
+                oninput: move |event| {
+                    state.write().set_plot_point_title(point_id, event.value());
+                },
+            }
+            textarea {
+                title: "What happens at this point",
+                value: "{summary}",
+                oninput: move |event| {
+                    state.write().set_plot_point_summary(point_id, event.value());
+                },
+            }
+            select {
+                title: "Linked manuscript scene",
+                value: "{scene_value}",
+                onchange: move |event| {
+                    state.write().set_plot_point_scene(point_id, parse_scene_id(&event.value()));
+                },
+                option { value: "", "No scene" }
+                for (id, label) in options {
+                    option { value: "{id}", "{label}" }
+                }
+            }
+            div { class: "plot-card-actions",
+                button {
+                    title: "Move earlier on this plotline",
+                    onclick: move |_| state.write().shift_plot_point(point_id, true),
+                    "Earlier"
+                }
+                button {
+                    title: "Move later on this plotline",
+                    onclick: move |_| state.write().shift_plot_point(point_id, false),
+                    "Later"
+                }
+                button {
+                    disabled: scene_id.is_none(),
+                    onclick: move |_| {
+                        if let Some(id) = scene_id {
+                            state.write().open_linked_scene(id);
+                        }
+                    },
+                    "Open"
+                }
+                button {
+                    onclick: move |_| state.write().remove_plot_point(point_id),
+                    "Remove"
+                }
+            }
+        }
+    }
+}
+
+fn scene_choices(binder: &writing_studio_project::BinderTree) -> Vec<(Id, String)> {
+    let mut scenes: Vec<(Id, String)> = binder
+        .nodes
+        .iter()
+        .filter(|node| node.kind == NodeKind::Scene && !binder.is_in_trash(node.id))
+        .map(|node| (node.id, scene_caption(binder, node.id)))
+        .collect();
+    scenes.sort_by(|left, right| left.1.to_lowercase().cmp(&right.1.to_lowercase()));
+    scenes
+}
+
+fn scene_caption(binder: &writing_studio_project::BinderTree, id: Id) -> String {
+    let Some(node) = binder.get(id) else {
+        return "Missing scene".into();
+    };
+    let parent = node
+        .parent_id
+        .and_then(|parent| binder.get(parent))
+        .map(|parent| parent.title.clone())
+        .unwrap_or_default();
+    let mut label = if parent.is_empty() {
+        node.title.clone()
+    } else {
+        format!("{parent} / {}", node.title)
+    };
+    if binder.is_in_trash(id) {
+        label.push_str(" (Trash)");
+    }
+    label
+}
+
+fn parse_scene_id(value: &str) -> Option<Id> {
+    let value = value.trim();
+    if value.is_empty() {
+        None
+    } else {
+        value.parse().ok()
     }
 }
 

@@ -45,6 +45,28 @@ pub fn install(conn: &Connection) -> rusqlite::Result<()> {
             created_at TEXT NOT NULL,
             label TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS plotlines (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            color TEXT NOT NULL DEFAULT '',
+            sort_index INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS plot_points (
+            id TEXT PRIMARY KEY,
+            plotline_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            summary TEXT NOT NULL DEFAULT '',
+            scene_id TEXT,
+            sort_index INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_plot_points_line ON plot_points(plotline_id);
         "#,
     )?;
     let _ = conn.execute(

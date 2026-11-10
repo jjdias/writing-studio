@@ -37,7 +37,11 @@ The status bar shows this document, this sitting, words added today, and the man
 
 ## Modes
 
-Writing, Corkboard, Outliner, History. **Focus** hides the binder and inspector.
+Writing, Corkboard, Outliner, Plot, History. **Ctrl+5** opens Plot. **Focus** hides the binder and inspector.
+
+## Plot
+
+**Plot** is a local grid of plotlines. Add a plotline, then add plot points along that line. Each point has a title, a short summary, and an optional link to a manuscript scene. **Open** jumps to that scene. **Earlier** and **Later** change the order on the line. Deleting a plotline asks for a second click and removes its points. The grid is saved in the project folder. Emptying trash drops links to scenes that were permanently deleted.
 
 ## Layout
 
