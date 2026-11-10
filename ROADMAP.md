@@ -198,8 +198,73 @@ When optional cloud work starts, the source of truth for a disconnected writer r
 
 Phase 2 is complete on `phase-2`. Phase 3 is in progress on `phase-3`. The plot grid, character profiles, world notes, research library, and one project that holds the bible and every related book are in the desktop app.
 
-That folder is the series. Characters, world notes, plot, and research are the bible, stored once beside the books. Compile, the word count, and the word target follow the chosen book. The binder, corkboard, outliner, and search can show one book or the whole series.
+That folder is the series. Characters, world notes, plot, and research are the bible, stored once beside the books. The work left in this phase is to make that series behave as one book at a time when the writer is looking at one book. Richer front matter than the book title stays in Phase 6. A separate bible project beside each book is a bonus phase, not current work.
 
-A separate bible project beside each book is a bonus phase, not current work.
+### Add chapters and scenes inside the book on screen
+
+The book filter hides the other books, but a new chapter, part, or scene still follows the selection or else the first book in the manuscript. A chapter added while book two is on screen can be stored under book one and stay invisible.
+
+- When a book is selected in the filter, create new chapters, parts, scenes, and manuscript folders inside that book.
+- If the selection is already inside that book, nest the new item under the selection when the binder allows it.
+- If nothing in that book is selected, put chapters and parts on the book, and put a scene in the last chapter of that book.
+- Do not use the first book, or a container in a book the filter is hiding.
+- With the whole series on screen, keep the current rule: follow the selection, then the existing default parent.
+
+### Use one current book
+
+Compile and the status-bar target use the book saved for compile. The binder, corkboard, outliner, and search use another filter, and that filter returns to the whole series when the project opens. The selection can be a scene in a third book, so the count on screen can belong to a book that is not the one being read.
+
+- Treat the book filter, the compile menu, and the status-bar book as the same choice. Changing any one of them changes the others.
+- Whole series remains a view only. It shows every book in the binder, corkboard, outliner, and search. Compile and the status bar stay on the last chosen book.
+- Remember the filter in the project. Reopening a project shows the same book, or the whole series, that was showing when it closed.
+- Selecting a scene makes that scene's book the current book for compile and the status bar.
+
+### Name the book wherever a scene is chosen
+
+A plot point's scene list is labeled "chapter / scene". Two books that both have a Chapter 1 look like the same scene.
+
+- Show book, chapter, and scene on the plot scene list.
+- Use that same caption for every other scene picker.
+
+### Let the bible point at scenes
+
+Characters, locations, cultures, lore, timeline events, and research notes stay with the project, and only a plot point can point at a scene. The writer cannot see which scenes a character, place, or note belongs to.
+
+- Let a character, location, culture, lore entry, timeline event, and research note point at one or more scenes.
+- Keep those records at project level. Do not copy them into a book.
+- Label each linked scene as book / chapter / scene.
+- Clearing trash drops links to deleted scenes, as plot points already do.
+
+### Make the word counts agree
+
+The status bar counts every document under the compile book, including text on a chapter that also has scenes. The outliner counts each scene, and counts a chapter only when that chapter has no scenes. Today and the sitting still add every book plus research notes, using one baseline for the whole project. Switching the shown book would subtract the wrong baseline.
+
+- Count the compile book's words the way the outliner does: each scene, and a chapter only when it has no scenes.
+- Keep research notes out of that total.
+- Count today and the open sitting for the current book, not for the other books.
+- Store the day baseline and the sitting baseline per book, so changing books does not mix one book's count with another's.
+
+### Keep research files with a backup
+
+**Backup** copies the SQLite file and leaves `attachments/` behind. Restoring an older backup can leave research rows pointing at files that are gone, or leave files on disk that the restored library no longer lists.
+
+- Include `attachments/` in a project backup, beside the SQLite copy.
+- Restore the database and those files together.
+- After restore, every research file row has its file on disk, and files that belonged only to the replaced library are not left behind as the current library.
+
+### Keep one research library
+
+The binder still has a Research section, and Research mode has a separate library of notes and files. The same kind of note can exist in both, and they do not share records.
+
+- Make the Research activity the only editor for research notes and attached files.
+- On open, import notes that already sit under the binder Research root into that library once, then remove them from the binder so the project does not keep a second copy.
+- Leave characters, world notes, plot, and the manuscript where they are.
+
+### Drop a book's target when the book is gone
+
+Emptying the trash deletes a book and leaves its word-goal entry in project settings. Compile already falls back to the first remaining book.
+
+- When a book is permanently deleted, remove its word-goal entry.
+- If that book was the compile book, point compile and the status bar at the next remaining book.
 
 Optional cloud stays later.
