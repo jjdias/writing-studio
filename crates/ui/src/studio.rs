@@ -2352,23 +2352,7 @@ fn scene_choices(binder: &writing_studio_project::BinderTree) -> Vec<(Id, String
 }
 
 fn scene_caption(binder: &writing_studio_project::BinderTree, id: Id) -> String {
-    let Some(node) = binder.get(id) else {
-        return "Missing scene".into();
-    };
-    let parent = node
-        .parent_id
-        .and_then(|parent| binder.get(parent))
-        .map(|parent| parent.title.clone())
-        .unwrap_or_default();
-    let mut label = if parent.is_empty() {
-        node.title.clone()
-    } else {
-        format!("{parent} / {}", node.title)
-    };
-    if binder.is_in_trash(id) {
-        label.push_str(" (Trash)");
-    }
-    label
+    binder.scene_caption(id)
 }
 
 fn parse_scene_id(value: &str) -> Option<Id> {

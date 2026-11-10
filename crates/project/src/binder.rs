@@ -222,6 +222,54 @@ impl BinderTree {
         self.ancestor_is(id, NodeKind::DraftRoot)
     }
 
+    /// Book, chapter, and scene, so the same chapter title in two books stays distinct.
+    /// A scene with no chapter uses its parent when that parent is not the book.
+    pub fn scene_caption(&self, id: Id) -> String {
+        let Some(node) = self.get(id) else {
+            return "Missing scene".into();
+        };
+        let book_id = self.book_of(id);
+        let book_title = book_id.and_then(|book| self.get(book)).map(|book| book.title.clone());
+        let chapter_title = self
+            .nearest_ancestor(id, NodeKind::Chapter)
+            .and_then(|chapter| self.get(chapter))
+            .map(|chapter| chapter.title.clone());
+        let parent = node.parent_id.and_then(|parent| self.get(parent));
+        let mut parts = Vec::new();
+        if let Some(title) = book_title {
+            parts.push(title);
+        }
+        if let Some(title) = chapter_title {
+            parts.push(title);
+        } else if let Some(parent) = parent {
+            if parent.kind != NodeKind::Book && !parent.kind.is_root() {
+                parts.push(parent.title.clone());
+            }
+        }
+        parts.push(node.title.clone());
+        let mut label = parts.join(" / ");
+        if self.is_in_trash(id) {
+            label.push_str(" (Trash)");
+        }
+        label
+    }
+
+    fn nearest_ancestor(&self, id: Id, kind: NodeKind) -> Option<Id> {
+        let mut current = self.get(id).and_then(|node| node.parent_id);
+        let mut guard = 0;
+        while let Some(cid) = current {
+            if self.get(cid).is_some_and(|node| node.kind == kind) {
+                return Some(cid);
+            }
+            current = self.get(cid).and_then(|node| node.parent_id);
+            guard += 1;
+            if guard > 10_000 {
+                break;
+            }
+        }
+        None
+    }
+
     pub fn research_root(&self) -> Option<&BinderNode> {
         self.nodes
             .iter()
@@ -806,6 +854,16 @@ mod tests {
         binder.nodes.push(part);
         binder.nodes.push(nested);
         assert_eq!(binder.last_chapter_in(second_id), Some(nested_id));
+        assert_eq!(binder.scene_caption(scene), format!("Book / Chapter 1 / {}", binder.get(scene).unwrap().title));
+        let other = BinderNode::new(NodeKind::Scene, "Tide", Some(nested_id), 0);
+        let other_id = other.id;
+        binder.nodes.push(other);
+        assert_eq!(binder.scene_caption(other_id), "Second / Nested / Tide");
+        let loose = BinderNode::new(NodeKind::Scene, "Loose", Some(second_id), 3);
+        let loose_id = loose.id;
+        binder.nodes.push(loose);
+        assert_eq!(binder.scene_caption(loose_id), "Second / Loose");
+        assert_eq!(binder.scene_caption(Id::new()), "Missing scene");
         assert_eq!(
             binder.parent_for_new_item(NodeKind::Scene, None, Some(second_id)),
             Some(nested_id)

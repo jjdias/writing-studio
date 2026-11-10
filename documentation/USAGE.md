@@ -43,7 +43,7 @@ Writing, Corkboard, Outliner, Plot, Characters, World, Research, History. **Ctrl
 
 ## Plot
 
-**Plot** is a local grid of plotlines. Add a plotline, then add plot points along that line. Each point has a title, a short summary, and an optional link to a manuscript scene. **Open** jumps to that scene. **Earlier** and **Later** change the order on the line. Deleting a plotline asks for a second click and removes its points. The grid is saved in the project folder. Emptying trash drops links to scenes that were permanently deleted.
+**Plot** is a local grid of plotlines. Add a plotline, then add plot points along that line. Each point has a title, a short summary, and an optional link to a manuscript scene. The scene list is labeled book / chapter / scene, so the same chapter in two books stays distinct. **Open** jumps to that scene. **Earlier** and **Later** change the order on the line. Deleting a plotline asks for a second click and removes its points. The grid is saved in the project folder. Emptying trash drops links to scenes that were permanently deleted.
 
 ## Characters
 

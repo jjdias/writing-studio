@@ -133,6 +133,7 @@ Done on `phase-3`:
 - One project for the series: the bible and every related book live in one folder. Compile and the word target follow one book. The binder, corkboard, outliner, and search can show that book or the whole series. Characters, world notes, plot, and research stay with the project.
 - New chapters, parts, scenes, and manuscript folders land in the book on screen. With one book filtered, they stay inside that book. With the whole series showing, they follow the selection.
 - One current book: the filter, the compile menu, and the status bar share it, and the project remembers whether the whole series is showing. Selecting a scene points compile and the status bar at that scene's book.
+- Scene lists name the book, the chapter, and the scene. The plot scene picker uses that caption.
 
 ### Phase 4 — Professional editing (local)
 
@@ -201,13 +202,6 @@ When optional cloud work starts, the source of truth for a disconnected writer r
 Phase 2 is complete on `phase-2`. Phase 3 is in progress on `phase-3`. The plot grid, character profiles, world notes, research library, and one project that holds the bible and every related book are in the desktop app.
 
 That folder is the series. Characters, world notes, plot, and research are the bible, stored once beside the books. The work left in this phase is to make that series behave as one book at a time when the writer is looking at one book. Richer front matter than the book title stays in Phase 6. A separate bible project beside each book is a bonus phase, not current work.
-
-### Name the book wherever a scene is chosen
-
-A plot point's scene list is labeled "chapter / scene". Two books that both have a Chapter 1 look like the same scene.
-
-- Show book, chapter, and scene on the plot scene list.
-- Use that same caption for every other scene picker.
 
 ### Let the bible point at scenes
 
