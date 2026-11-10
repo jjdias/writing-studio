@@ -267,6 +267,18 @@ impl ProjectSettings {
             self.project_word_goal = goal;
         }
     }
+
+    /// Remove a permanently deleted book's target. When it was the compile book, store `next_book`.
+    pub fn drop_book(&mut self, book_id: Id, next_book: Option<Id>) -> bool {
+        let before = self.book_word_goals.len();
+        self.book_word_goals.retain(|entry| entry.book_id != book_id);
+        let mut changed = self.book_word_goals.len() != before;
+        if self.compile_book_id == Some(book_id) {
+            self.compile_book_id = next_book;
+            changed = true;
+        }
+        changed
+    }
 }
 
 #[cfg(test)]
@@ -335,6 +347,13 @@ mod tests {
         let saved = serde_json::to_string(&settings).unwrap();
         let loaded: ProjectSettings = serde_json::from_str(&saved).unwrap();
         assert_eq!(loaded.goal_for_book(second, false), 30_000);
+        let third = Id::new();
+        settings.compile_book_id = Some(second);
+        assert!(settings.drop_book(second, Some(third)));
+        assert!(settings.book_word_goals.iter().all(|entry| entry.book_id != second));
+        assert_eq!(settings.compile_book_id, Some(third));
+        assert_eq!(settings.goal_for_book(first, true), 40_000);
+        assert!(!settings.drop_book(Id::new(), Some(first)));
     }
 
     #[test]

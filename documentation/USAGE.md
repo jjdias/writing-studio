@@ -20,7 +20,7 @@ Free, open-source, local-first. Your writing stays in a folder on your machine.
 - **Whole series** in the binder, corkboard, and outliner shows every book. Pick a book there, or in the compile menu, to make that book the one on screen, the one compiled, and the one in the status bar. The project remembers that choice. **Whole series** shows every book again and leaves compile and the status bar on the last book. Selecting a scene points compile and the status bar at that scene's book. New chapters, parts, scenes, and manuscript folders are added inside the book on screen. A scene with nothing selected goes in its last chapter. New folders go in the book on screen.
 - Drag items to reorder or nest. Drop on **Trash** to discard.
 - **Restore** returns a trashed item to its previous parent when that parent still exists.
-- **Empty trash** asks for a second click, then deletes those items from the local database.
+- **Empty trash** asks for a second click, then deletes those items from the local database. Permanently deleting a book drops its word target. If it was the compile book, compile and the status bar move to the first book that remains.
 
 ## Recover
 

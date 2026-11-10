@@ -2140,6 +2140,13 @@ impl StudioState {
         let selected_in_trash = self
             .selected
             .is_some_and(|id| self.binder.is_in_trash(id));
+        let deleted_books: Vec<Id> = self
+            .binder
+            .nodes
+            .iter()
+            .filter(|node| node.kind == NodeKind::Book && self.binder.is_in_trash(node.id))
+            .map(|node| node.id)
+            .collect();
         let (nodes, documents) = self.binder.purge_trash();
         if nodes.is_empty() {
             self.status = "Trash is already empty.".into();
@@ -2184,6 +2191,9 @@ impl StudioState {
             self.note_edit();
             return;
         }
+        if !self.forget_deleted_books(&deleted_books) {
+            return;
+        }
         if selected_in_trash {
             if let Some(trash) = self.binder.trash_root() {
                 let trash_id = trash.id;
@@ -2191,6 +2201,47 @@ impl StudioState {
             }
         }
         self.status = format!("Permanently deleted {} item(s) from local trash.", nodes.len());
+    }
+
+    fn forget_deleted_books(&mut self, book_ids: &[Id]) -> bool {
+        if book_ids.is_empty() {
+            return true;
+        }
+        let next = self.binder.manuscript_books().first().map(|book| book.id);
+        let compile_changed = {
+            let Some(meta) = &mut self.meta else {
+                return true;
+            };
+            let mut changed = false;
+            let mut compile_changed = false;
+            for id in book_ids {
+                let was_compile = meta.settings.compile_book_id == Some(*id);
+                if meta.settings.drop_book(*id, next) {
+                    changed = true;
+                    compile_changed |= was_compile;
+                }
+            }
+            if !changed {
+                return true;
+            }
+            meta.touch();
+            compile_changed
+        };
+        if compile_changed {
+            if let Some(book) = next {
+                self.track_compile_book(book);
+            }
+        }
+        let Some(meta) = self.meta.clone() else {
+            return true;
+        };
+        if let Some(store) = &self.store {
+            if let Err(err) = store.borrow().persist_meta(&meta) {
+                self.status = format!("Could not update the book target: {err}");
+                return false;
+            }
+        }
+        true
     }
 
     fn infer_parent(&self, kind: NodeKind) -> Option<Id> {

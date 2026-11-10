@@ -137,6 +137,7 @@ Done on `phase-3`:
 - Characters, locations, cultures, lore, timeline events, and research notes can point at scenes. Those records stay with the project. Emptying trash drops the links.
 - The compile book's word count matches the outliner. Today and the sitting use a baseline stored for that book.
 - Research is the only editor for research notes and files. Notes that still sat under the binder Research section are copied into that library on open, then removed from the binder.
+- Permanently deleting a book drops its word target. If it was the compile book, compile and the status bar move to the first book that remains.
 
 ### Phase 4 — Professional editing (local)
 
@@ -213,12 +214,5 @@ That folder is the series. Characters, world notes, plot, and research are the b
 - Include `attachments/` in a project backup, beside the SQLite copy.
 - Restore the database and those files together.
 - After restore, every research file row has its file on disk, and files that belonged only to the replaced library are not left behind as the current library.
-
-### Drop a book's target when the book is gone
-
-Emptying the trash deletes a book and leaves its word-goal entry in project settings. Compile already falls back to the first remaining book.
-
-- When a book is permanently deleted, remove its word-goal entry.
-- If that book was the compile book, point compile and the status bar at the next remaining book.
 
 Optional cloud stays later.
