@@ -130,11 +130,7 @@ Done on `phase-3`:
 - Character profiles, relationships, and motivations
 - Locations, cultures, lore, and timelines
 - Research library: notes plus files in `attachments/`
-
-Still in this phase. The bible exists in one place, as files on disk. It is never copied into each book.
-
-- One project for the series
-- One project per book, and a bible project beside it
+- One project for the series: the bible and every related book live in one folder. Compile and the word target follow one book. The binder, corkboard, outliner, and search can show that book or the whole series. Characters, world notes, plot, and research stay with the project.
 
 ### Phase 4 — Professional editing (local)
 
@@ -171,6 +167,17 @@ Do this only after local save/backup/restore is trustworthy. Sync remains opt-in
 - Accessibility and performance passes
 - Automated community builds
 
+### Bonus — One project per book, and a bible project beside it
+
+Not current work. The series layout in use is one project that holds the bible and every related book. This bonus keeps the other layout available later. The bible would still exist in one place, as files on disk, and would not be copied into each book.
+
+The bible is its own `.writingstudio` folder. Each novel stores a path to that folder. The book project keeps the manuscript, snapshots, and backups. Characters, world notes, plot, and research are read from the bible and written back there.
+
+- Store a local path from a book project to one bible folder. The path is a folder, not an account.
+- Read and edit characters, world notes, plot, and research in that folder.
+- If the bible folder is missing or moved, the book still opens and the manuscript stays writable. The bible panel says the folder is unavailable.
+- Open the bible next to the manuscript. A scene can point at a character, place, or note in the bible.
+
 ---
 
 ## Keep local writing unblocked
@@ -189,26 +196,10 @@ When optional cloud work starts, the source of truth for a disconnected writer r
 
 ## Immediate next steps
 
-Phase 2 is complete on `phase-2`. Phase 3 is in progress on `phase-3`. The plot grid, character profiles, world notes, and research library are in the desktop app. Next is the series bible, still as files on disk, in whichever layout the writer prefers.
+Phase 2 is complete on `phase-2`. Phase 3 is in progress on `phase-3`. The plot grid, character profiles, world notes, research library, and one project that holds the bible and every related book are in the desktop app.
 
-The bible is stored once. A series project keeps it beside the books in the same folder. A book project points at a separate bible folder and does not import a second copy. If that folder is missing, the manuscript still opens.
+That folder is the series. Characters, world notes, plot, and research are the bible, stored once beside the books. Compile, the word count, and the word target follow the chosen book. The binder, corkboard, outliner, and search can show one book or the whole series.
 
-### One project for the series
-
-Each book is a binder book under the manuscript. Characters, world notes, the plot grid, and the research library stay at project level. That shared material is the bible.
-
-- Add a book from the binder, under the manuscript.
-- Compile one chosen book and leave the others out. Front matter belongs to that book.
-- Count words, and apply a word target, for the book being compiled rather than for every book in the folder.
-- Let the corkboard, outliner, and search show one book or the whole series.
-
-### One project per book, and a bible project beside it
-
-The bible is its own `.writingstudio` folder. Each novel stores a path to that folder. The book project keeps the manuscript, snapshots, and backups. Characters, world notes, plot, and research are read from the bible and written back there.
-
-- Store a local path from a book project to one bible folder. The path is a folder, not an account.
-- Read and edit characters, world notes, plot, and research in that folder.
-- If the bible folder is missing or moved, the book still opens and the manuscript stays writable. The bible panel says the folder is unavailable.
-- Open the bible next to the manuscript. A scene can point at a character, place, or note in the bible.
+A separate bible project beside each book is a bonus phase, not current work.
 
 Optional cloud stays later.

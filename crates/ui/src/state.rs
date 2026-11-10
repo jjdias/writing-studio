@@ -141,6 +141,8 @@ pub struct StudioState {
     pub drop_target: Option<Id>,
     pub ignore_next_click: bool,
     pub confirm_empty_trash: bool,
+    /// Binder, corkboard, outliner, and search scope. None shows the whole series.
+    pub series_book: Option<Id>,
 }
 
 impl Default for StudioState {
@@ -190,6 +192,7 @@ impl Default for StudioState {
             drop_target: None,
             ignore_next_click: false,
             confirm_empty_trash: false,
+            series_book: None,
         }
     }
 }
@@ -237,10 +240,112 @@ impl StudioState {
     }
 
     pub fn goal(&self) -> u32 {
+        let Some(book) = self.compile_book_id() else {
+            return self
+                .meta
+                .as_ref()
+                .map(|meta| meta.settings.project_word_goal)
+                .unwrap_or(80_000);
+        };
+        let first = self
+            .binder
+            .manuscript_books()
+            .first()
+            .is_some_and(|node| node.id == book);
         self.meta
             .as_ref()
-            .map(|meta| meta.settings.project_word_goal)
+            .map(|meta| meta.settings.goal_for_book(book, first))
             .unwrap_or(80_000)
+    }
+
+    /// The book Markdown and DOCX export, and the book whose words and target are shown.
+    pub fn compile_book_id(&self) -> Option<Id> {
+        let books = self.binder.manuscript_books();
+        if let Some(stored) = self
+            .meta
+            .as_ref()
+            .and_then(|meta| meta.settings.compile_book_id)
+        {
+            if books.iter().any(|book| book.id == stored) {
+                return Some(stored);
+            }
+        }
+        books.first().map(|book| book.id)
+    }
+
+    pub fn compile_book_title(&self) -> String {
+        self.compile_book_id()
+            .and_then(|id| self.binder.get(id))
+            .map(|node| node.title.clone())
+            .unwrap_or_else(|| "Project".into())
+    }
+
+    pub fn compile_book_word_count(&self) -> u32 {
+        let Some(book) = self.compile_book_id() else {
+            return self.project_word_count();
+        };
+        self.binder
+            .subtree_word_count(book, |id| self.document_words(id, true))
+    }
+
+    pub fn manuscript_book_choices(&self) -> Vec<(Id, String)> {
+        self.binder
+            .manuscript_books()
+            .into_iter()
+            .map(|node| (node.id, node.title.clone()))
+            .collect()
+    }
+
+    /// One book, or the whole series when the writer has not picked a book.
+    pub fn series_scope(&self) -> Option<Id> {
+        self.series_book
+            .filter(|id| self.binder.manuscript_books().iter().any(|book| book.id == *id))
+    }
+
+    pub fn set_series_scope(&mut self, book: Option<Id>) {
+        self.series_book = book.filter(|id| {
+            self.binder
+                .manuscript_books()
+                .iter()
+                .any(|candidate| candidate.id == *id)
+        });
+    }
+
+    pub fn set_compile_book(&mut self, id: Id) {
+        if !self
+            .binder
+            .manuscript_books()
+            .iter()
+            .any(|book| book.id == id)
+        {
+            return;
+        }
+        let changed = self.meta.as_mut().is_some_and(|meta| {
+            if meta.settings.compile_book_id == Some(id) {
+                return false;
+            }
+            meta.settings.compile_book_id = Some(id);
+            meta.touch();
+            true
+        });
+        if changed {
+            self.settings_dirty = true;
+            self.note_edit();
+        }
+    }
+
+    fn document_words(&self, id: Id, include_open_edits: bool) -> u32 {
+        if include_open_edits {
+            if let Some(session) = &self.session {
+                if session.document_id() == id {
+                    return session.word_count();
+                }
+            }
+        }
+        self.store
+            .as_ref()
+            .map(|store| store.borrow().document_word_count(id))
+            .unwrap_or(0)
     }
 
     pub fn daily_goal(&self) -> u32 {
@@ -346,6 +451,32 @@ impl StudioState {
                 return false;
             }
             meta.settings.project_word_goal = goal;
+            meta.touch();
+            true
+        });
+        if changed {
+            self.settings_dirty = true;
+            self.note_edit();
+        }
+    }
+
+    pub fn set_compile_book_goal(&mut self, goal: u32) {
+        let Some(book) = self.compile_book_id() else {
+            self.set_project_goal(goal);
+            return;
+        };
+        let first = self
+            .binder
+            .manuscript_books()
+            .first()
+            .is_some_and(|node| node.id == book);
+        let changed = self.meta.as_mut().is_some_and(|meta| {
+            let same_goal = meta.settings.goal_for_book(book, first) == goal;
+            let same_project = !first || meta.settings.project_word_goal == goal;
+            if same_goal && same_project {
+                return false;
+            }
+            meta.settings.set_goal_for_book(book, goal, first);
             meta.touch();
             true
         });
@@ -713,7 +844,15 @@ impl StudioState {
                 return None;
             }
         };
-        let title = self.project_title();
+        let Some(book_id) = self.compile_book_id() else {
+            self.status = "Add a book before compiling.".into();
+            return None;
+        };
+        let title = self
+            .binder
+            .get(book_id)
+            .map(|node| node.title.clone())
+            .unwrap_or_else(|| self.project_title());
         let include_title_page = self
             .meta
             .as_ref()
@@ -722,6 +861,7 @@ impl StudioState {
         let input = CompileInput {
             title: &title,
             include_title_page,
+            book_id: Some(book_id),
             tree: &self.binder,
             documents: &documents,
         };
@@ -949,6 +1089,7 @@ impl StudioState {
             NodeKind::Note => "New note".into(),
             NodeKind::Folder => "New folder".into(),
             NodeKind::Part => "New part".into(),
+            NodeKind::Book => format!("Book {}", self.binder.manuscript_books().len() + 1),
             other => other.icon_label().to_string(),
         };
         let node = BinderNode::new(kind, title, parent_id, sort);

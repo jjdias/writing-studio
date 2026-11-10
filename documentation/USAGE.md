@@ -16,7 +16,8 @@ Free, open-source, local-first. Your writing stays in a folder on your machine.
 
 ## Organize
 
-- **Chapter**, **Scene**, **Note** add items.
+- **Book**, **Chapter**, **Scene**, **Note** add items. **Book** adds another novel under the same manuscript. Characters, world notes, plot, and research stay with the project.
+- **Whole series** in the binder, corkboard, and outliner shows every book. Pick a book there to hide the others. Search follows that choice.
 - Drag items to reorder or nest. Drop on **Trash** to discard.
 - **Restore** returns a trashed item to its previous parent when that parent still exists.
 - **Empty trash** asks for a second click, then deletes those items from the local database.
@@ -29,11 +30,12 @@ Free, open-source, local-first. Your writing stays in a folder on your machine.
 ## Compile
 
 - **Markdown** or **DOCX** in the top bar. Choose where to save.
-- Only the manuscript (not research, not trash) is included.
+- The book menu next to those buttons chooses which novel is compiled. Other books stay out of the file. The title page uses that book's title.
+- Research and trash are not included.
 
 ## Targets
 
-The status bar shows this document, this sitting, words added today, and the manuscript total. The daily and project targets are editable there and saved in the project. **History** lists completed sittings. A sitting is stored the next time you open the project, when it added words. Today’s count starts again on the next local day.
+The status bar shows this document, this sitting, and words added today. The labeled total is the book chosen for compile, with that book's word target. The daily target is still for the whole project. Both targets are editable there and saved in the project. **History** lists completed sittings. A sitting is stored the next time you open the project, when it added words. Today’s count starts again on the next local day.
 
 ## Modes
 

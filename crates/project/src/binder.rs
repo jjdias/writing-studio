@@ -184,6 +184,44 @@ impl BinderTree {
         self.nodes.iter().find(|node| node.kind == NodeKind::DraftRoot)
     }
 
+    /// Books directly under the manuscript, in binder order. Trashed books are omitted.
+    pub fn manuscript_books(&self) -> Vec<&BinderNode> {
+        let Some(draft) = self.draft_root() else {
+            return Vec::new();
+        };
+        self.children(Some(draft.id))
+            .into_iter()
+            .filter(|node| node.kind == NodeKind::Book)
+            .collect()
+    }
+
+    /// The book that contains `id`, when `id` is that book or one of its items.
+    pub fn book_of(&self, id: Id) -> Option<Id> {
+        let mut current = Some(id);
+        let mut guard = 0;
+        while let Some(cid) = current {
+            let Some(node) = self.get(cid) else {
+                return None;
+            };
+            if node.kind == NodeKind::Book {
+                return Some(node.id);
+            }
+            if node.kind == NodeKind::DraftRoot {
+                return None;
+            }
+            current = node.parent_id;
+            guard += 1;
+            if guard > 10_000 {
+                break;
+            }
+        }
+        None
+    }
+
+    pub fn in_manuscript(&self, id: Id) -> bool {
+        self.ancestor_is(id, NodeKind::DraftRoot)
+    }
+
     pub fn research_root(&self) -> Option<&BinderNode> {
         self.nodes
             .iter()
@@ -482,6 +520,30 @@ impl BinderTree {
             .map(|id| words_for(id))
             .sum()
     }
+
+    /// Word count of one binder item and the items nested under it.
+    pub fn subtree_word_count<F>(&self, root: Id, mut words_for: F) -> u32
+    where
+        F: FnMut(Id) -> u32,
+    {
+        fn walk<F>(tree: &BinderTree, id: Id, words_for: &mut F) -> u32
+        where
+            F: FnMut(Id) -> u32,
+        {
+            let Some(node) = tree.get(id) else {
+                return 0;
+            };
+            if node.deleted_at.is_some() || (tree.is_in_trash(id) && !node.kind.is_root()) {
+                return 0;
+            }
+            let mut total = node.document_id.map(&mut *words_for).unwrap_or(0);
+            for child in tree.children(Some(id)) {
+                total = total.saturating_add(walk(tree, child.id, words_for));
+            }
+            total
+        }
+        walk(self, root, &mut words_for)
+    }
 }
 
 #[cfg(test)]
@@ -593,6 +655,37 @@ mod tests {
         binder.drop_on(inner_id, outer_id).unwrap();
         assert_eq!(binder.get(inner_id).unwrap().parent_id, Some(outer_id));
         assert_eq!(binder.container_for(inner_id, NodeKind::Chapter), Some(inner_id));
+    }
+
+    #[test]
+    fn each_book_keeps_its_own_word_count() {
+        let (mut binder, chapter, scene, _, _) = tree();
+        let draft = binder.draft_root().unwrap().id;
+        let first = binder.get(chapter).unwrap().parent_id.unwrap();
+        let second = BinderNode::new(NodeKind::Book, "Second", Some(draft), 1);
+        let second_id = second.id;
+        let scene_two = BinderNode::new(NodeKind::Scene, "Other scene", Some(second_id), 0);
+        let other_doc = scene_two.document_id.unwrap();
+        binder.nodes.push(second);
+        binder.nodes.push(scene_two);
+        let first_doc = binder.get(scene).unwrap().document_id.unwrap();
+        let words = |id: Id| {
+            if id == first_doc {
+                12
+            } else if id == other_doc {
+                7
+            } else {
+                1
+            }
+        };
+        assert_eq!(binder.manuscript_books().len(), 2);
+        assert_eq!(binder.book_of(scene), Some(first));
+        assert_eq!(binder.book_of(chapter), Some(first));
+        assert_eq!(binder.subtree_word_count(first, words), 14);
+        assert_eq!(binder.subtree_word_count(second_id, words), 7);
+        let research = binder.research_root().unwrap().id;
+        assert!(!binder.in_manuscript(research));
+        assert!(binder.in_manuscript(first));
     }
 }
 

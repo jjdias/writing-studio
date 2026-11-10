@@ -15,6 +15,7 @@ pub fn manuscript_plain_text(tree: &BinderTree, docs: &[Document]) -> String {
     compile_markdown(&CompileInput {
         title: "Manuscript",
         include_title_page: false,
+        book_id: None,
         tree,
         documents: docs,
     })
@@ -57,6 +58,7 @@ mod tests {
         let markdown = compile_markdown(&CompileInput {
             title: "Test Novel",
             include_title_page: true,
+            book_id: None,
             tree: &tree,
             documents: &docs,
         });
@@ -109,6 +111,7 @@ mod tests {
         let bytes = compile_docx(&CompileInput {
             title: "Docx Novel",
             include_title_page: true,
+            book_id: None,
             tree: &tree,
             documents: &seeded.documents,
         })
@@ -132,5 +135,33 @@ mod tests {
         assert!(markdown.contains("Body text."));
         assert!(markdown.contains("Scene"));
         assert!(!markdown.contains("Research"));
+    }
+
+    #[test]
+    fn compile_one_book_leaves_the_other_out() {
+        let draft = BinderNode::new(NodeKind::DraftRoot, "Manuscript", None, 0);
+        let first = BinderNode::new(NodeKind::Book, "Harbor", Some(draft.id), 0);
+        let second = BinderNode::new(NodeKind::Book, "Inland", Some(draft.id), 1);
+        let chapter = BinderNode::new(NodeKind::Chapter, "Chapter 1", Some(first.id), 0);
+        let scene = BinderNode::new(NodeKind::Scene, "Tide", Some(chapter.id), 0);
+        let other_chapter = BinderNode::new(NodeKind::Chapter, "Chapter 1", Some(second.id), 0);
+        let other = BinderNode::new(NodeKind::Scene, "Ridge", Some(other_chapter.id), 0);
+        let tide = Document::from_plain_text(scene.document_id.unwrap(), "Salt on the pier.");
+        let ridge = Document::from_plain_text(other.document_id.unwrap(), "Dust on the road.");
+        let first_id = first.id;
+        let tree = BinderTree::new(vec![draft, first, second, chapter, scene, other_chapter, other]);
+        let markdown = compile_markdown(&CompileInput {
+            title: "Series",
+            include_title_page: true,
+            book_id: Some(first_id),
+            tree: &tree,
+            documents: &[tide, ridge],
+        });
+        assert!(markdown.contains("# Harbor"));
+        assert!(markdown.contains("Salt on the pier."));
+        assert!(!markdown.contains("# Series"));
+        assert!(!markdown.contains("Inland"));
+        assert!(!markdown.contains("Dust on the road."));
+        assert!(!markdown.contains("Ridge"));
     }
 }

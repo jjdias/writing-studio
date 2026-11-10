@@ -243,6 +243,13 @@ button.primary:hover { background: var(--primary-hover); }
 .sidebar .search { width: auto; margin: 0 12px 8px; }
 .binder-tools { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 8px 6px; }
 .binder-tools button { font-size: 11px; padding: 3px 6px; }
+.book-select, .compile-select {
+  max-width: 11rem;
+  height: 22px;
+  font: inherit;
+  font-size: 11px;
+}
+.compile-select { height: 24px; }
 .pane-title { font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); margin: 18px 0 8px; }
 
 .binder { overflow: auto; padding: 0 0 12px; }

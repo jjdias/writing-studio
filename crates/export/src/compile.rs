@@ -5,6 +5,8 @@ use writing_studio_project::{BinderTree, NodeKind};
 pub struct CompileInput<'a> {
     pub title: &'a str,
     pub include_title_page: bool,
+    /// When set, only this book is compiled. Its title is the front matter.
+    pub book_id: Option<Id>,
     pub tree: &'a BinderTree,
     pub documents: &'a [Document],
 }
@@ -25,6 +27,21 @@ pub fn collect_sections<'a>(input: &'a CompileInput<'a>) -> Vec<CompiledSection<
         });
     }
     let start_depth = if input.include_title_page { 2 } else { 1 };
+    if let Some(book_id) = input.book_id {
+        let Some(book) = input.tree.get(book_id) else {
+            return sections;
+        };
+        if book.kind != NodeKind::Book || input.tree.is_in_trash(book.id) {
+            return sections;
+        }
+        if input.include_title_page {
+            if let Some(page) = sections.first_mut() {
+                page.title = book.title.clone();
+            }
+        }
+        walk(input, book.id, start_depth, &mut sections);
+        return sections;
+    }
     if let Some(draft) = input.tree.draft_root() {
         walk(input, draft.id, start_depth, &mut sections);
     }

@@ -159,6 +159,8 @@ fn Workspace() -> Element {
     let focus = state.read().focus_mode;
     let words = state.read().word_count();
     let project_words = state.read().project_word_count();
+    let book_words = state.read().compile_book_word_count();
+    let book_title = state.read().compile_book_title();
     let goal = state.read().goal();
     let daily_goal = state.read().daily_goal();
     let today_words = state.read().words_today_at(project_words);
@@ -245,8 +247,9 @@ fn Workspace() -> Element {
                     div { class: "editor-actions",
                         button { title: "Save (Ctrl+S)", onclick: move |_| state.write().save_all(), "Save" }
                         button { title: "Backup", onclick: move |_| state.write().backup(), "Backup" }
-                        button { title: "Compile Markdown", onclick: move |_| export_project(state, CompiledFormat::Markdown), "Markdown" }
-                        button { title: "Compile DOCX", onclick: move |_| export_project(state, CompiledFormat::Docx), "DOCX" }
+                        CompileBookSelect {}
+                        button { title: "Compile the chosen book to Markdown", onclick: move |_| export_project(state, CompiledFormat::Markdown), "Markdown" }
+                        button { title: "Compile the chosen book to DOCX", onclick: move |_| export_project(state, CompiledFormat::Docx), "DOCX" }
                     }
                 }
                 main { class: "center",
@@ -286,10 +289,11 @@ fn Workspace() -> Element {
                     }
                 }
                 span { class: "goal-stat",
-                    "Project: {project_words} / "
+                    title: "Words and target for the book being compiled",
+                    "{book_title}: {book_words} / "
                     input {
                         class: "goal-input",
-                        title: "Manuscript word target",
+                        title: "Word target for the book being compiled",
                         value: "{goal}",
                         oninput: move |event| apply_goal(state, event.value(), false),
                         onblur: move |_| state.write().save_all(),
@@ -497,6 +501,10 @@ fn Explorer() -> Element {
                 oninput: move |event| state.write().search = event.value(),
             }
             div { class: "binder-tools",
+                button { title: "New book under the manuscript", onclick: move |_| state.write().add_node(NodeKind::Book), "Book" }
+                SeriesScopeSelect {}
+            }
+            div { class: "binder-tools",
                 button { title: "New part", onclick: move |_| state.write().add_node(NodeKind::Part), "Part" }
                 button { title: "New chapter (Ctrl+Shift+N)", onclick: move |_| state.write().add_node(NodeKind::Chapter), "Chapter" }
                 button { title: "New scene (Ctrl+N)", onclick: move |_| state.write().add_node(NodeKind::Scene), "Scene" }
@@ -560,6 +568,9 @@ fn BinderNodeView(id: Id, depth: u32, hits: Rc<HashSet<Id>>) -> Element {
     let Some(node) = snapshot.binder.get(id).cloned() else {
         return rsx! {};
     };
+    if !node_in_series_scope(&snapshot.binder, id, snapshot.series_scope()) {
+        return rsx! {};
+    }
     if !binder_matches(&snapshot.binder, id, &snapshot.search, &hits) {
         return rsx! {};
     }
@@ -1309,7 +1320,59 @@ fn apply_goal(mut state: Signal<StudioState>, value: String, daily: bool) {
     if daily {
         state.write().set_daily_goal(goal);
     } else {
-        state.write().set_project_goal(goal);
+        state.write().set_compile_book_goal(goal);
+    }
+}
+
+fn CompileBookSelect() -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let books = state.read().manuscript_book_choices();
+    let current = state.read().compile_book_id();
+    if books.is_empty() {
+        return rsx! {};
+    }
+    let value = current.map(|id| id.to_string()).unwrap_or_default();
+    rsx! {
+        select {
+            class: "compile-select",
+            title: "Book to compile. Other books stay out of the file.",
+            value: "{value}",
+            onchange: move |event| {
+                if let Ok(id) = event.value().parse::<Id>() {
+                    state.write().set_compile_book(id);
+                }
+            },
+            for (id, title) in books {
+                option { value: "{id}", "{title}" }
+            }
+        }
+    }
+}
+
+fn SeriesScopeSelect() -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let books = state.read().manuscript_book_choices();
+    let current = state.read().series_scope();
+    let value = current.map(|id| id.to_string()).unwrap_or_default();
+    rsx! {
+        select {
+            class: "book-select",
+            title: "Show one book or the whole series",
+            value: "{value}",
+            onchange: move |event| {
+                let raw = event.value();
+                let next = if raw.is_empty() {
+                    None
+                } else {
+                    raw.parse::<Id>().ok()
+                };
+                state.write().set_series_scope(next);
+            },
+            option { value: "", "Whole series" }
+            for (id, title) in books {
+                option { value: "{id}", "{title}" }
+            }
+        }
     }
 }
 
@@ -2323,14 +2386,21 @@ fn CorkboardPane() -> Element {
     let snapshot = state.read().clone();
     let query = snapshot.cork_query.clone();
     let group = snapshot.cork_group;
+    let scope = snapshot.series_scope();
     let cards: Vec<_> = cards_from_binder(&snapshot.binder, |id| words_for_document(&snapshot, id))
         .into_iter()
+        .filter(|card| {
+            scope
+                .map(|book| snapshot.binder.book_of(card.node_id) == Some(book))
+                .unwrap_or(true)
+        })
         .filter(|card| card_matches(card, &query))
         .collect();
     let sections = group_cards(&cards, group);
     rsx! {
         div { class: "cork-pane",
             div { class: "cork-tools",
+                SeriesScopeSelect {}
                 input {
                     id: "cork-filter",
                     class: "cork-filter",
@@ -2440,7 +2510,11 @@ fn OutlinerPane() -> Element {
     let mut state = use_context::<Signal<StudioState>>();
     let snapshot = state.read().clone();
     let mut books: Vec<OwnedOutlineBook> = Vec::new();
+    let scope = snapshot.series_scope();
     for line in outline_rows(&snapshot.binder) {
+        if scope.is_some_and(|book| line.book_id != book) {
+            continue;
+        }
         let Some(chapter) = snapshot.binder.get(line.chapter_id) else {
             continue;
         };
@@ -2474,6 +2548,9 @@ fn OutlinerPane() -> Element {
     }
     rsx! {
         div { class: "outliner",
+            div { class: "cork-tools",
+                SeriesScopeSelect {}
+            }
             if books.is_empty() {
                 p { class: "hint", "Add a chapter in the binder to outline it here." }
             }
@@ -2565,6 +2642,23 @@ fn words_for_document(snapshot: &StudioState, id: Id) -> u32 {
         .as_ref()
         .map(|store| store.borrow().document_word_count(id))
         .unwrap_or(0)
+}
+
+fn node_in_series_scope(
+    tree: &writing_studio_project::BinderTree,
+    id: Id,
+    scope: Option<Id>,
+) -> bool {
+    let Some(book) = scope else {
+        return true;
+    };
+    if tree.get(id).is_some_and(|node| node.kind.is_root()) {
+        return true;
+    }
+    if !tree.in_manuscript(id) {
+        return true;
+    }
+    tree.book_of(id) == Some(book)
 }
 
 fn binder_matches(

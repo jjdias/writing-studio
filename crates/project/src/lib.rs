@@ -9,7 +9,8 @@ mod writing;
 
 pub use binder::{binder_color_hex, normalize_binder_color, BinderColor, BinderNode, BinderTree, NodeKind, BINDER_COLORS};
 pub use settings::{
-    drag_width, PanelChrome, PanelLayout, PanelWidths, ProjectSettings, SidebarSide, Theme,
+    drag_width, BookWordGoal, PanelChrome, PanelLayout, PanelWidths, ProjectSettings, SidebarSide,
+    Theme,
     INSPECTOR_WIDTH_DEFAULT, INSPECTOR_WIDTH_MAX, INSPECTOR_WIDTH_MIN, SIDEBAR_WIDTH_DEFAULT,
     SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN,
 };

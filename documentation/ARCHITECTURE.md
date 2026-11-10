@@ -46,7 +46,7 @@ The plot grid, character cast, world notes, and research library are stored in t
 3. Typing updates the session; idle autosave, blur, scene change, and Ctrl+S write JSON back through `ProjectStore`.
 4. Binder moves and trash update `binder_nodes` (parent, `sort_index`, `deleted_at`, `restore_parent_id`). Plotlines and plot points live in `plotlines` and `plot_points`. A plot point may store a binder scene id. Emptying trash clears links to deleted scenes. Characters, motivations, and relationships live in `characters`, `character_motivations`, and `character_relationships`. Locations, cultures, lore, and timeline events live in `locations`, `cultures`, `lore_entries`, and `timeline_events`. Research notes live in `research_items`. Each attached file is a row in `research_files` and a copy under `attachments/`.
 5. History restore either replaces one document from `snapshots` or copies a `backups/*.sqlite` into the live connection.
-6. Compile loads all documents, walks the draft root, and writes a file the user chooses.
+6. Compile loads all documents, walks the chosen book, and writes a file the user chooses. Other books in the same manuscript stay out of that file. The word target beside that book's count is stored in project settings.
 
 ## Non-negotiables
 

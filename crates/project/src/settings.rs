@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use writing_studio_core::Id;
 
 use crate::WritingLog;
 
@@ -171,6 +172,13 @@ impl Theme {
 }
 
 /// Width after a horizontal drag. `positive` means moving the pointer right grows the panel.
+/// Word target for one book in a series project. Missing books use the project goal.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BookWordGoal {
+    pub book_id: Id,
+    pub goal: u32,
+}
+
 pub fn drag_width(origin: u32, delta_px: i32, positive: bool, min: u32, max: u32) -> u32 {
     let next = if positive {
         origin as i32 + delta_px
@@ -195,6 +203,12 @@ pub struct ProjectSettings {
     /// Dark, light, or paper. Missing on older projects.
     #[serde(default)]
     pub theme: Theme,
+    /// Book whose compile, word count, and word target are shown. Missing means the first book.
+    #[serde(default)]
+    pub compile_book_id: Option<Id>,
+    /// Per-book word targets. A book with no entry uses `project_word_goal` when it is the first book.
+    #[serde(default)]
+    pub book_word_goals: Vec<BookWordGoal>,
 }
 
 impl Default for ProjectSettings {
@@ -207,6 +221,41 @@ impl Default for ProjectSettings {
             writing: WritingLog::default(),
             layout: PanelLayout::default(),
             theme: Theme::Dark,
+            compile_book_id: None,
+            book_word_goals: Vec::new(),
+        }
+    }
+}
+
+impl ProjectSettings {
+    /// Target for `book_id`. The first book keeps the legacy project goal until it has its own entry.
+    pub fn goal_for_book(&self, book_id: Id, first_book: bool) -> u32 {
+        if let Some(entry) = self
+            .book_word_goals
+            .iter()
+            .find(|entry| entry.book_id == book_id)
+        {
+            return entry.goal;
+        }
+        if first_book {
+            self.project_word_goal
+        } else {
+            80_000
+        }
+    }
+
+    pub fn set_goal_for_book(&mut self, book_id: Id, goal: u32, first_book: bool) {
+        if let Some(entry) = self
+            .book_word_goals
+            .iter_mut()
+            .find(|entry| entry.book_id == book_id)
+        {
+            entry.goal = goal;
+        } else {
+            self.book_word_goals.push(BookWordGoal { book_id, goal });
+        }
+        if first_book {
+            self.project_word_goal = goal;
         }
     }
 }
@@ -244,6 +293,26 @@ mod tests {
         assert_eq!(settings.theme, Theme::Paper);
         assert_eq!(Theme::from_id("light"), Some(Theme::Light));
         assert_eq!(Theme::from_id("sepia"), None);
+        assert!(settings.compile_book_id.is_none());
+        assert!(settings.book_word_goals.is_empty());
+    }
+
+    #[test]
+    fn each_book_can_keep_its_own_word_goal() {
+        let mut settings = ProjectSettings::default();
+        settings.project_word_goal = 50_000;
+        let first = Id::new();
+        let second = Id::new();
+        assert_eq!(settings.goal_for_book(first, true), 50_000);
+        assert_eq!(settings.goal_for_book(second, false), 80_000);
+        settings.set_goal_for_book(second, 30_000, false);
+        settings.set_goal_for_book(first, 40_000, true);
+        assert_eq!(settings.goal_for_book(first, true), 40_000);
+        assert_eq!(settings.goal_for_book(second, false), 30_000);
+        assert_eq!(settings.project_word_goal, 40_000);
+        let saved = serde_json::to_string(&settings).unwrap();
+        let loaded: ProjectSettings = serde_json::from_str(&saved).unwrap();
+        assert_eq!(loaded.goal_for_book(second, false), 30_000);
     }
 
     #[test]
