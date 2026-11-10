@@ -9,6 +9,7 @@ use writing_studio_corkboard::CorkGroup;
 use writing_studio_core::{autosave_due, autosave_wait, local_day, Id, Timestamp, PRODUCT_NAME};
 use writing_studio_editor::EditorSession;
 use writing_studio_export::{compile_docx, compile_markdown, CompileInput};
+use writing_studio_manuscript::book_outline_words;
 use writing_studio_plotting::PlotGrid;
 use writing_studio_research::ResearchLibrary;
 use writing_studio_project::{
@@ -225,10 +226,6 @@ impl StudioState {
         self.manuscript_words(true)
     }
 
-    fn saved_manuscript_words(&self) -> u32 {
-        self.manuscript_words(false)
-    }
-
     fn manuscript_words(&self, include_open_edits: bool) -> u32 {
         let Some(store) = &self.store else {
             return 0;
@@ -290,10 +287,45 @@ impl StudioState {
 
     pub fn compile_book_word_count(&self) -> u32 {
         let Some(book) = self.compile_book_id() else {
-            return self.project_word_count();
+            return 0;
         };
+        self.outline_words(book, true)
+    }
+
+    pub fn current_book_words_today(&self) -> u32 {
+        let Some(book) = self.compile_book_id() else {
+            return 0;
+        };
+        let words = self.outline_words(book, true);
+        self.meta
+            .as_ref()
+            .map(|meta| meta.settings.writing.words_today_for_book(book, words))
+            .unwrap_or(0)
+    }
+
+    pub fn current_book_words_this_session(&self) -> u32 {
+        let Some(book) = self.compile_book_id() else {
+            return 0;
+        };
+        let words = self.outline_words(book, true);
+        self.meta
+            .as_ref()
+            .map(|meta| meta.settings.writing.session_words_for_book(book, words))
+            .unwrap_or(0)
+    }
+
+    fn outline_words(&self, book: Id, include_open_edits: bool) -> u32 {
+        book_outline_words(&self.binder, book, |id| {
+            self.document_words(id, include_open_edits)
+        })
+    }
+
+    fn book_outline_counts(&self, include_open_edits: bool) -> Vec<(Id, u32)> {
         self.binder
-            .subtree_word_count(book, |id| self.document_words(id, true))
+            .manuscript_books()
+            .iter()
+            .map(|book| (book.id, self.outline_words(book.id, include_open_edits)))
+            .collect()
     }
 
     pub fn manuscript_book_choices(&self) -> Vec<(Id, String)> {
@@ -329,6 +361,7 @@ impl StudioState {
     }
 
     pub fn set_compile_book(&mut self, id: Id) {
+        self.flush_editor();
         self.remember_compile_book(id);
         self.set_show_whole_series(false);
     }
@@ -376,6 +409,33 @@ impl StudioState {
             true
         });
         if changed {
+            self.settings_dirty = true;
+            self.note_edit();
+        }
+        let needs_baseline = self.meta.as_ref().is_none_or(|meta| {
+            meta.settings
+                .writing
+                .books
+                .iter()
+                .find(|book| book.book_id == id)
+                .map(|book| book.day != local_day() || book.session_baseline.is_none())
+                .unwrap_or(true)
+        });
+        if needs_baseline {
+            self.track_compile_book(id);
+        }
+    }
+
+    fn track_compile_book(&mut self, id: Id) {
+        let words = self.outline_words(id, false);
+        let today = local_day();
+        let Some(meta) = &mut self.meta else {
+            return;
+        };
+        let before = meta.settings.writing.clone();
+        meta.settings.writing.track_book(id, &today, words);
+        if meta.settings.writing != before {
+            meta.touch();
             self.settings_dirty = true;
             self.note_edit();
         }
@@ -815,16 +875,19 @@ impl StudioState {
         if self.session.as_ref().is_some_and(EditorSession::is_dirty) {
             self.flush_editor();
         }
-        let words = self.saved_manuscript_words();
+        let counts = self.book_outline_counts(false);
         let now = Timestamp::now().to_rfc3339();
         let today = local_day();
         let Some(meta) = &mut self.meta else {
             return;
         };
-        meta.settings.writing.open_session(&today, &now, words);
+        meta.settings.writing.open_books(&today, &now, &counts);
         meta.touch();
         let meta = meta.clone();
-        self.session_baseline = words;
+        self.session_baseline = self
+            .compile_book_id()
+            .and_then(|book| counts.iter().find(|(id, _)| *id == book).map(|(_, words)| *words))
+            .unwrap_or(0);
         self.session_started = Some(Instant::now());
         self.session_shown_secs = 0;
         let Some(store) = &self.store else {

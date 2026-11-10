@@ -35,7 +35,7 @@ Free, open-source, local-first. Your writing stays in a folder on your machine.
 
 ## Targets
 
-The status bar shows this document, this sitting, and words added today. The labeled total is the book chosen for compile, with that book's word target. The daily target is still for the whole project. Both targets are editable there and saved in the project. **History** lists completed sittings. A sitting is stored the next time you open the project, when it added words. Today’s count starts again on the next local day.
+The status bar shows this document, this sitting, and words added today. The labeled total matches the outliner for the book chosen for compile: each scene, and a chapter only when that chapter has no scenes. Research notes are not included. Today and the sitting use that book's own baselines, so another book's count does not change them. The daily target is still one number for the project. Both targets are editable there and saved in the project. **History** lists completed sittings. A sitting is stored the next time you open the project, when any book added words. Today’s count for each book starts again on the next local day.
 
 ## Modes
 

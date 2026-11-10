@@ -135,6 +135,7 @@ Done on `phase-3`:
 - One current book: the filter, the compile menu, and the status bar share it, and the project remembers whether the whole series is showing. Selecting a scene points compile and the status bar at that scene's book.
 - Scene lists name the book, the chapter, and the scene. The plot scene picker uses that caption.
 - Characters, locations, cultures, lore, timeline events, and research notes can point at scenes. Those records stay with the project. Emptying trash drops the links.
+- The compile book's word count matches the outliner. Today and the sitting use a baseline stored for that book.
 
 ### Phase 4 — Professional editing (local)
 
@@ -203,15 +204,6 @@ When optional cloud work starts, the source of truth for a disconnected writer r
 Phase 2 is complete on `phase-2`. Phase 3 is in progress on `phase-3`. The plot grid, character profiles, world notes, research library, and one project that holds the bible and every related book are in the desktop app.
 
 That folder is the series. Characters, world notes, plot, and research are the bible, stored once beside the books. The work left in this phase is to make that series behave as one book at a time when the writer is looking at one book. Richer front matter than the book title stays in Phase 6. A separate bible project beside each book is a bonus phase, not current work.
-
-### Make the word counts agree
-
-The status bar counts every document under the compile book, including text on a chapter that also has scenes. The outliner counts each scene, and counts a chapter only when that chapter has no scenes. Today and the sitting still add every book plus research notes, using one baseline for the whole project. Switching the shown book would subtract the wrong baseline.
-
-- Count the compile book's words the way the outliner does: each scene, and a chapter only when it has no scenes.
-- Keep research notes out of that total.
-- Count today and the open sitting for the current book, not for the other books.
-- Store the day baseline and the sitting baseline per book, so changing books does not mix one book's count with another's.
 
 ### Keep research files with a backup
 

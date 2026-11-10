@@ -1,7 +1,7 @@
 //! Daily writing progress and completed sessions stored with the project.
 
 use serde::{Deserialize, Serialize};
-use writing_studio_core::Timestamp;
+use writing_studio_core::{Id, Timestamp};
 
 /// Completed sittings kept in the project. Older entries drop off the front.
 pub const SESSION_HISTORY_LIMIT: usize = 40;
@@ -13,6 +13,21 @@ pub struct StoredSession {
     pub ended_at: String,
     pub words: u32,
     pub seconds: u64,
+}
+
+/// Today and the open sitting for one book.
+///
+/// Baselines are that book's outline word count, not the whole series.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BookProgress {
+    pub book_id: Id,
+    #[serde(default)]
+    pub day: String,
+    #[serde(default)]
+    pub day_baseline: u32,
+    /// Outline word count when the open sitting started covering this book.
+    #[serde(default)]
+    pub session_baseline: Option<u32>,
 }
 
 /// Manuscript baselines for today and the open sitting.
@@ -33,6 +48,9 @@ pub struct WritingLog {
     pub session_baseline: u32,
     #[serde(default)]
     pub sessions: Vec<StoredSession>,
+    /// Per-book today and sitting baselines. Missing on older projects.
+    #[serde(default)]
+    pub books: Vec<BookProgress>,
 }
 
 impl Default for WritingLog {
@@ -44,6 +62,7 @@ impl Default for WritingLog {
             session_active_at: String::new(),
             session_baseline: 0,
             sessions: Vec::new(),
+            books: Vec::new(),
         }
     }
 }
@@ -70,6 +89,60 @@ impl WritingLog {
         self.session_started_at = started_at.to_string();
         self.session_active_at = started_at.to_string();
         self.session_baseline = current_words;
+    }
+
+    /// Start a sitting from each book's outline count.
+    ///
+    /// The first call after an older project still closes the previous sitting
+    /// with the single manuscript baseline. Later calls add up each book's change.
+    pub fn open_books(&mut self, today: &str, started_at: &str, counts: &[(Id, u32)]) {
+        if self.books.is_empty() {
+            let sum = counts.iter().map(|(_, words)| *words).sum();
+            self.open_session(today, started_at, sum);
+        } else {
+            self.finish_books(counts);
+            self.session_started_at = started_at.to_string();
+            self.session_active_at = started_at.to_string();
+        }
+        for &(book_id, current) in counts {
+            let entry = self.ensure_book(book_id);
+            if entry.day != today {
+                entry.day = today.to_string();
+                entry.day_baseline = current;
+            }
+            entry.session_baseline = Some(current);
+        }
+    }
+
+    /// Remember a book that was not in the sitting yet, without resetting one that was.
+    pub fn track_book(&mut self, book_id: Id, today: &str, current: u32) {
+        let fresh = self.books.iter().all(|book| book.book_id != book_id);
+        let sitting = !self.session_started_at.is_empty();
+        let entry = self.ensure_book(book_id);
+        if fresh || entry.day != today {
+            entry.day = today.to_string();
+            entry.day_baseline = current;
+        }
+        if sitting && entry.session_baseline.is_none() {
+            entry.session_baseline = Some(current);
+        }
+    }
+
+    pub fn words_today_for_book(&self, book_id: Id, current: u32) -> u32 {
+        self.books
+            .iter()
+            .find(|book| book.book_id == book_id)
+            .map(|book| current.saturating_sub(book.day_baseline))
+            .unwrap_or(0)
+    }
+
+    pub fn session_words_for_book(&self, book_id: Id, current: u32) -> u32 {
+        self.books
+            .iter()
+            .find(|book| book.book_id == book_id)
+            .and_then(|book| book.session_baseline)
+            .map(|baseline| current.saturating_sub(baseline))
+            .unwrap_or(0)
     }
 
     pub fn note_activity(&mut self, at: &str) {
@@ -106,6 +179,64 @@ impl WritingLog {
         self.session_started_at.clear();
         self.session_active_at.clear();
         self.session_baseline = current_words;
+    }
+
+    fn finish_books(&mut self, counts: &[(Id, u32)]) {
+        if self.session_started_at.is_empty() {
+            return;
+        }
+        let words = counts.iter().fold(0u32, |total, (book_id, current)| {
+            let added = self
+                .books
+                .iter()
+                .find(|book| book.book_id == *book_id)
+                .and_then(|book| book.session_baseline)
+                .map(|baseline| current.saturating_sub(baseline))
+                .unwrap_or(0);
+            total.saturating_add(added)
+        });
+        self.record_session(words);
+        for book in &mut self.books {
+            book.session_baseline = None;
+        }
+        self.session_started_at.clear();
+        self.session_active_at.clear();
+    }
+
+    fn ensure_book(&mut self, book_id: Id) -> &mut BookProgress {
+        if let Some(index) = self.books.iter().position(|book| book.book_id == book_id) {
+            return &mut self.books[index];
+        }
+        self.books.push(BookProgress {
+            book_id,
+            day: String::new(),
+            day_baseline: 0,
+            session_baseline: None,
+        });
+        self.books.last_mut().expect("book progress was just added")
+    }
+
+    fn record_session(&mut self, words: u32) {
+        if self.session_started_at.is_empty() || words == 0 {
+            return;
+        }
+        let ended_at = if self.session_active_at.is_empty() {
+            self.session_started_at.clone()
+        } else {
+            self.session_active_at.clone()
+        };
+        let seconds = elapsed_seconds(&self.session_started_at, &ended_at);
+        self.sessions.push(StoredSession {
+            day: self.day.clone(),
+            started_at: self.session_started_at.clone(),
+            ended_at,
+            words,
+            seconds,
+        });
+        if self.sessions.len() > SESSION_HISTORY_LIMIT {
+            let extra = self.sessions.len() - SESSION_HISTORY_LIMIT;
+            self.sessions.drain(0..extra);
+        }
     }
 }
 
@@ -208,6 +339,37 @@ mod tests {
         assert_eq!(format_elapsed(60), "1 min");
         assert_eq!(format_elapsed(3600), "1 h");
         assert_eq!(format_elapsed(3660), "1 h 1 min");
+    }
+
+    #[test]
+    fn each_book_keeps_its_own_today_and_sitting() {
+        let mut log = WritingLog::default();
+        let harbor = Id::new();
+        let inland = Id::new();
+        log.open_books(
+            "2026-11-06",
+            "2026-11-06T18:00:00Z",
+            &[(harbor, 100), (inland, 40)],
+        );
+        assert_eq!(log.words_today_for_book(harbor, 130), 30);
+        assert_eq!(log.session_words_for_book(harbor, 130), 30);
+        assert_eq!(log.words_today_for_book(inland, 40), 0);
+        log.note_activity("2026-11-06T18:20:00Z");
+        log.open_books(
+            "2026-11-06",
+            "2026-11-06T19:00:00Z",
+            &[(harbor, 130), (inland, 55)],
+        );
+        assert_eq!(log.sessions.len(), 1);
+        assert_eq!(log.sessions[0].words, 45);
+        assert_eq!(log.words_today_for_book(harbor, 130), 30);
+        assert_eq!(log.words_today_for_book(inland, 55), 15);
+        assert_eq!(log.session_words_for_book(inland, 55), 0);
+        let added = Id::new();
+        log.track_book(added, "2026-11-06", 0);
+        log.track_book(added, "2026-11-06", 12);
+        assert_eq!(log.words_today_for_book(added, 12), 12);
+        assert_eq!(log.session_words_for_book(added, 12), 12);
     }
 
     #[test]

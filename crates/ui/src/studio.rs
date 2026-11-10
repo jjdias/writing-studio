@@ -158,13 +158,12 @@ fn Workspace() -> Element {
     let mode = state.read().mode;
     let focus = state.read().focus_mode;
     let words = state.read().word_count();
-    let project_words = state.read().project_word_count();
     let book_words = state.read().compile_book_word_count();
     let book_title = state.read().compile_book_title();
     let goal = state.read().goal();
     let daily_goal = state.read().daily_goal();
-    let today_words = state.read().words_today_at(project_words);
-    let session_words = state.read().words_this_session_at(project_words);
+    let today_words = state.read().current_book_words_today();
+    let session_words = state.read().current_book_words_this_session();
     let session_time = format_elapsed(state.read().session_shown_secs);
     let unsaved = state.read().has_unsaved();
     let theme = state.read().theme();

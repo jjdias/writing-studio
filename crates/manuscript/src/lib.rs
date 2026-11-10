@@ -116,6 +116,15 @@ pub fn row_word_count(document_id: Option<Id>, mut words_for: impl FnMut(Id) -> 
     document_id.map(|id| words_for(id)).unwrap_or(0)
 }
 
+/// Words the outliner shows for one book: each scene, and a chapter only when it has no scenes.
+pub fn book_outline_words(tree: &BinderTree, book: Id, mut words_for: impl FnMut(Id) -> u32) -> u32 {
+    outline_rows(tree)
+        .into_iter()
+        .filter(|row| row.book_id == book)
+        .map(|row| row_word_count(row.document_id, &mut words_for))
+        .sum()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -154,6 +163,9 @@ mod tests {
         assert_eq!(row_word_count(rows[1].document_id, words), 4);
         assert_eq!(row_word_count(rows[2].document_id, words), 2);
         assert_eq!(row_word_count(None, words), 0);
+        let book_id = tree.nodes[1].id;
+        assert_eq!(book_outline_words(&tree, book_id, words), 16);
+        assert_eq!(book_outline_words(&tree, Id::new(), words), 0);
     }
 
     #[test]
