@@ -10,7 +10,7 @@ This work landed from `phase-3` onto `master`. How to use it: [USAGE.md](USAGE.m
 
 ## Goals that Phase 3 met
 
-1. **One series project.** The bible exists in one place, beside the books, and is never copied into each book.
+1. **One series project.** The bible is stored once in the project, with the books, and is never copied into each book.
 2. **One current book.** Compile, the word target, today, and the sitting follow that book. The binder, corkboard, outliner, and search can show it or the whole series.
 3. **The bible can point at scenes.** Plot points, characters, world records, and research notes can name manuscript scenes. The records stay with the project.
 4. **One research library.** Research is the only editor for research notes and attached files.
@@ -38,7 +38,7 @@ This work landed from `phase-3` onto `master`. How to use it: [USAGE.md](USAGE.m
 - **World** keeps locations, cultures, lore, and a timeline.
 - **Research** keeps notes and files copied into `attachments/`.
 - Characters, locations, cultures, lore, timeline events, and research notes can link scenes. Emptying trash drops links to scenes that were permanently deleted.
-- Opening a project copies notes that still sit under the binder Research section into the research library, then removes those notes and research folders from the binder. The binder does not edit research.
+- A new project still seeds one binder research note. Opening a project copies notes that still sit under the binder Research section into the research library, then removes those notes and research folders from the binder. The binder does not edit research.
 
 ---
 
@@ -47,7 +47,7 @@ This work landed from `phase-3` onto `master`. How to use it: [USAGE.md](USAGE.m
 - A separate bible project beside each book (bonus)
 - Backups that include `attachments/` (bonus). A SQLite backup still leaves research files behind; copy the project folder to keep both.
 - Front matter richer than the book title (Phase 6)
-- Snapshot comparison, comments, track changes, and spellcheck (Phase 4)
+- Snapshot comparison, review annotations, highlights, track changes, and spellcheck (Phase 4). An inline comment on a selection already saves with the scene (Phase 2; see [PHASE2.md](PHASE2.md))
 - Cloud sync, accounts, or real-time collaboration (Phase 5)
 
 Those stay optional. They must not become required to write.

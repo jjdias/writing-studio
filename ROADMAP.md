@@ -4,7 +4,7 @@ Writing Studio is **open source** (MIT OR Apache-2.0) and **free for the communi
 
 **Local-first, now and later.** Saves, snapshots, backups, and compile live on the writer’s machine. Cloud connections and collaboration, if added, stay **optional**. They must never become a requirement to open a project, write, or keep copies of work.
 
-Status: Phase 1 (`v0.1.0` on `phase-1`), Phase 2 (`phase-2`), and Phase 3 (`phase-3`) are complete. Current work is Phase 4. Details: [`documentation/PHASE1.md`](documentation/PHASE1.md) and [`documentation/PHASE3.md`](documentation/PHASE3.md).
+Status: Phases 1, 2, and 3 are complete. Current work is Phase 4. Details: [`documentation/PHASE1.md`](documentation/PHASE1.md), [`documentation/PHASE2.md`](documentation/PHASE2.md), and [`documentation/PHASE3.md`](documentation/PHASE3.md).
 
 ---
 
@@ -27,7 +27,7 @@ These pieces exist and are used by the desktop app. See [`documentation/PHASE1.m
 - Cargo workspace with a shared core and a Dioxus desktop launcher (`apps/desktop`)
 - Rust toolchain pin, bundled rusqlite (including the SQLite backup API)
 - GitHub repository: [jjdias/writing-studio](https://github.com/jjdias/writing-studio)
-- Notes under `documentation/` (Phase 1, usage, architecture, project format)
+- Notes under `documentation/` (Phase 1, Phase 2, Phase 3, usage, architecture, project format)
 - Library tests for documents, editor, binder, storage, autosave, and compile
 
 ### Project format and local persistence
@@ -69,7 +69,9 @@ These pieces exist and are used by the desktop app. See [`documentation/PHASE1.m
 - Binder filter, focus mode
 - Corkboard scene cards; outliner table
 
-### Crates that actually run
+## Crates in the desktop app
+
+These crates run in the current app. Phase 1 did not include plotting, characters, worldbuilding, or the research library. Search was a binder title filter in Phase 1 and is a full-text index now.
 
 | Crate | Role |
 | --- | --- |
@@ -86,7 +88,7 @@ These pieces exist and are used by the desktop app. See [`documentation/PHASE1.m
 | `writing-studio-characters` | Profiles, motivations, and relationships |
 | `writing-studio-worldbuilding` | Locations, cultures, lore, and timelines |
 | `writing-studio-research` | Research notes and files in `attachments/` |
-| `writing-studio-search` | Full-text manuscript search |
+| `writing-studio-search` | In-memory full-text index of manuscript text, rebuilt when a project opens |
 | `writing-studio-ui` | Desktop workspace |
 | `writing-studio-desktop` | Native window |
 
@@ -102,24 +104,21 @@ These crates exist so module boundaries stay stable. They are **types or stubs**
 | `writing-studio-synchronization` | “optional = true” stub | Optional cloud sync |
 | `writing-studio-security` | Notes that local folders are unencrypted | Optional encryption when sync exists |
 
-Binder labels and colors are editable in the inspector and shown on binder rows.
-
 ---
 
-## Still to do
-
-Later phases keep **local writing complete**. Anything involving accounts, servers, or the internet is deferred and optional.
+## Done (Phase 2 and Phase 3)
 
 ### Phase 2 — Writing environment (local)
 
-Done on `phase-2`:
+Done. See [`documentation/PHASE2.md`](documentation/PHASE2.md).
 
-- Inline links from the toolbar, comments, and more block types
+- Inline links from the toolbar, and more block types (headings, code, scene break)
+- Inline comments: a note on a text run, stored in the document JSON. Review annotations, highlights, and track changes stay in Phase 4
 - Outliner: inline metadata edit and word counts per row
 - Binder labels, colors, and deeper nesting polish
 - Corkboard: reorder scenes, filter/group, card colors
 - Keyboard shortcuts beyond save / undo / redo
-- Full-text search of manuscript content (Tantivy), not only binder titles
+- Full-text search of manuscript content (Tantivy, in memory), not only binder titles
 - Daily writing targets and session statistics stored in the local project
 - Customizable panel layout, stored in the project: binder side, drag widths, and showing or hiding the binder and inspector
 - Themes stored in the project: Dark, Light, and Paper
@@ -128,27 +127,20 @@ Phase 2 is complete.
 
 ### Phase 3 — Story development (local)
 
-Done on `phase-3`:
+Done. See [`documentation/PHASE3.md`](documentation/PHASE3.md).
 
-- Plot Grid: plotlines, plot points, and links to scenes
-- Character profiles, relationships, and motivations
-- Locations, cultures, lore, and timelines
-- Research library: notes plus files in `attachments/`
-- One project for the series: the bible and every related book live in one folder. Compile and the word target follow one book. The binder, corkboard, outliner, and search can show that book or the whole series. Characters, world notes, plot, and research stay with the project.
-- New chapters, parts, scenes, and manuscript folders land in the book on screen. With one book filtered, they stay inside that book. With the whole series showing, they follow the selection.
-- One current book: the filter, the compile menu, and the status bar share it, and the project remembers whether the whole series is showing. Selecting a scene points compile and the status bar at that scene's book.
-- Scene lists name the book, the chapter, and the scene. The plot scene picker uses that caption.
-- Characters, locations, cultures, lore, timeline events, and research notes can point at scenes. Those records stay with the project. Emptying trash drops the links.
-- The compile book's word count matches the outliner. Today and the sitting use a baseline stored for that book.
-- Research is the only editor for research notes and files. Notes that still sat under the binder Research section are copied into that library on open, then removed from the binder.
-- Permanently deleting a book drops its word target. If it was the compile book, compile and the status bar move to the first book that remains.
+One project holds the bible and every related book. Compile, the word target, today, and the sitting follow one book. The binder, corkboard, outliner, and search can show that book or the whole series. Research notes are edited only in Research.
 
-Phase 3 is complete. See [`documentation/PHASE3.md`](documentation/PHASE3.md).
+Phase 3 is complete.
+
+## Still to do
+
+Later phases keep **local writing complete**. Anything involving accounts, servers, or the internet is deferred and optional.
 
 ### Phase 4 — Professional editing (local)
 
 - Snapshot comparison
-- Comments, annotations, highlights
+- Review comments, annotations, and highlights beyond the inline note already stored on a text run (Phase 2)
 - Track changes / suggestions without a server
 - Spellcheck integration
 - Scene diagnostics (goal, conflict, outcome) as local analysis
@@ -177,8 +169,22 @@ Do this only after local save/backup/restore is trustworthy. Sync remains opt-in
 
 - Packaged Windows, macOS, and Linux builds
 - Later: Android, iOS, and Dioxus Web/WASM
-- Accessibility and performance passes
+- Accessibility and performance passes for the packaged apps. The desktop writing surface is Phase 8
 - Automated community builds
+
+### Phase 8 — Writing surface (local)
+
+The desktop window already runs. This phase changes that window. It is not Phase 4, and it does not wait for the packaged builds.
+
+- Dark and Light give the manuscript a page: a reading font, a limited line length, and a surface that is not the same color as the panels. Paper is the model.
+- The activity bar shows the mode names. Ctrl+1 through Ctrl+8 follow the icon order: Writing, Corkboard, Outliner, Plot, Characters, World, Research, History.
+- Choosing the mode that is already open does not hide the binder. Hiding the binder stays on its own control.
+- Save, Backup, and Compile leave the tab strip and sit on a toolbar. The tab is the scene name.
+- The format toolbar shows which marks are on. Link and Comment ask in a small field in the window. The manuscript keeps the caret and the active formatting.
+- The status bar leads with the compile book's count, with today and the sitting beside it. The theme moves to a menu. The bar grows instead of clipping. Autosave is its own line.
+- Chapter and Scene stay above the binder. Book, Part, and Folder move into a menu. The kind mark becomes an icon so the title has the room.
+- A second click that deletes or restores names the item. Escape cancels that confirmation.
+- Icon buttons show focus and have a name, not only a tooltip. The window can list its shortcuts.
 
 ### Bonus — One project per book, and a bible project beside it
 
@@ -199,6 +205,21 @@ Not current work. **Backup** copies the SQLite file and leaves `attachments/` be
 - Restore the database and those files together.
 - After restore, every research file row has its file on disk, and files that belonged only to the replaced library are not left behind as the current library.
 
+### Bonus — Tags
+
+Not current work. The binder label stays one short label for the corkboard. Tags are a separate list of keywords on an item, stored in the project database. They are not typed into the scene, so compile does not write them into the draft.
+
+The model is the same idea as a note app’s tags: many tags on one item, nested with `/`, and a click that filters to the items that carry that tag.
+
+- Add and remove tags from the inspector. Suggestions come from tags already used in the project.
+- A tag allows letters, numbers, `_`, `-`, `/`, and common Unicode. Spaces are not allowed. A tag that is only digits is not allowed. `/` nests a tag, as in `plot/subplot`.
+- Matching ignores case. The list shows the spelling from the first time that tag was used.
+- Choosing a parent tag also shows items tagged with its children. `plot` includes `plot/subplot`.
+- A tag list in the binder column shows each tag, nested, with a count of items that are not in the trash. Choosing one filters the binder.
+- Compile, word counts, and the outliner ignore tags.
+- Emptying trash drops tags on the deleted items. A tag that nothing uses anymore leaves the list.
+- Start with binder items. Research notes can use the same list. Characters and world records can follow later.
+
 ---
 
 ## Keep local writing unblocked
@@ -217,8 +238,6 @@ When optional cloud work starts, the source of truth for a disconnected writer r
 
 ## Immediate next steps
 
-Phase 3 is complete. One project holds the bible and every related book. Characters, world notes, plot, and research stay with that project, stored once. Compile, the word target, today, and the sitting follow one book. The binder, corkboard, outliner, and search can show that book or the whole series. Research notes are edited only in Research.
-
-Current work is Phase 4, local professional editing: snapshot comparison, comments and annotations, track changes, spellcheck, and scene diagnostics. Richer front matter than the book title stays in Phase 6. A separate bible project beside each book, and backups that include research files, stay bonus work.
+Current work is Phase 4, local professional editing: snapshot comparison, review comments and annotations, track changes, spellcheck, and scene diagnostics. An inline note on a selection already saves with the scene (Phase 2). The writing-surface UI is Phase 8. Richer front matter than the book title stays in Phase 6. A separate bible project beside each book, backups that include research files, and tags stay bonus work.
 
 Optional cloud stays later.

@@ -1,5 +1,7 @@
 # Phase 1 — what shipped
 
+This file records **what Phase 1 shipped**. Later phases changed the window and some of these crates. For the current app, use [USAGE.md](USAGE.md). Phase 2 is [PHASE2.md](PHASE2.md). Phase 3 is [PHASE3.md](PHASE3.md). Current work is Phase 4 in [ROADMAP.md](../ROADMAP.md).
+
 Phase 1 is a **usable local writing studio**: create a project on disk, organize a manuscript, write scenes, recover work, and compile a draft. Nothing in this phase needs an account, a server, or a network connection.
 
 The program is **open source** (MIT OR Apache-2.0) and **free for the community** to use, study, change, and share.
@@ -44,9 +46,11 @@ cargo test --workspace --exclude writing-studio-desktop --exclude writing-studio
 | **Outliner** | Chapter/scene table |
 | **History** | Document snapshots and project backups |
 
-Also: binder title filter, focus mode (hides binder and inspector), status bar with word counts and unsaved/autosave state.
+Also, in this phase: a binder title filter, focus mode (hides binder and inspector), and a status bar with word counts and unsaved/autosave state.
 
-Top bar: Save, Backup, Markdown, DOCX, Focus.
+Top bar in this phase: Save, Backup, Markdown, DOCX, Focus.
+
+`writing-studio-search` was a binder title filter in Phase 1. It now keeps an in-memory full-text index of manuscript text. See [PHASE2.md](PHASE2.md). The current tab bar is Save, Backup, the book being compiled, Markdown, and DOCX. Zen mode is on the activity bar. See [USAGE.md](USAGE.md).
 
 ---
 
@@ -56,13 +60,13 @@ Top bar: Save, Backup, Markdown, DOCX, Focus.
 
 - Create and open a versioned project folder (`FORMAT` + `project.sqlite` + `backups/` + `attachments/`).
 - Settings stored in `project_meta.settings_json`: daily/project word goals, `compile_title_page`, `autosave_seconds` (default 2).
-- Blank novel template: Manuscript, Research, Trash, a book, Chapter 1, Scene 1, and a research note.
+- Blank novel template: Manuscript, Research, Trash, a book, Chapter 1, Scene 1, and a research note. The seed still creates that note. Opening a project now copies it into the research library and removes it from the binder. See [PHASE3.md](PHASE3.md).
 
 ### Binder
 
 - Hierarchy: manuscript, research, trash, book, part, chapter, scene, note, folder.
-- Add chapter, scene, or note from the toolbar.
-- Inspector: title, synopsis, status.
+- Add chapter, scene, or note from the toolbar. The binder tools are now Book, Part, Chapter, Scene, and Folder. See [USAGE.md](USAGE.md).
+- Inspector: title, synopsis, status. Label and color came in Phase 2.
 - Drag-and-drop: reorder siblings, nest into a valid parent, drop onto Trash.
 - Trash: move, restore to the previous parent when it still exists, empty trash (second click; deletes those rows and documents on disk).
 - Soft-delete tombstones (`deleted_at`) plus `restore_parent_id`.
@@ -71,7 +75,8 @@ Top bar: Save, Backup, Markdown, DOCX, Focus.
 ### Editor
 
 - Structured blocks: paragraph, heading, quote, list; inlines with bold, italic, underline, strikethrough, optional link.
-- Desktop rich-text view (HTML interchange) mapped back onto that model. Toolbar: Bold, Italic, Underline, Strike, Heading, Body, Quote, List, Numbered.
+- Desktop rich-text view (HTML interchange) mapped back onto that model. Toolbar in this phase: Bold, Italic, Underline, Strike, Heading, Body, Quote, List, Numbered.
+- Links, inline comments, code blocks, and scene breaks came in Phase 2 and are stored on the same document JSON. An inline comment is a note on a text run. Review annotations, highlights, and track changes remain Phase 4. See [PHASE2.md](PHASE2.md).
 - Undo/redo (Ctrl+Z / Ctrl+Y) against the document session; Ctrl+S and blur still flush.
 - Timed autosave after idle (`autosave_seconds`). Status shows **Unsaved** then **Autosaved locally.**
 - Per-scene word and character counts; project total vs goal.
@@ -109,11 +114,11 @@ See [PROJECT_FORMAT.md](PROJECT_FORMAT.md). Each scene or note is its own docume
 | `writing-studio-storage` | SQLite, snapshots, backups, restore, load-all for compile |
 | `writing-studio-corkboard` | Scene cards |
 | `writing-studio-export` | Markdown and DOCX compile |
-| `writing-studio-search` | Binder title filter |
+| `writing-studio-search` | Binder title filter in this phase. The crate now indexes manuscript text in memory |
 | `writing-studio-ui` | Dioxus workspace |
 | `writing-studio-desktop` | Native window |
 
-At the end of Phase 1, plotting, characters, worldbuilding, and research were still placeholders. Phase 3 built them. Collaboration, synchronization, and security remain stubs.
+At the end of Phase 1, plotting, characters, worldbuilding, and research were still placeholders. Phase 2 extended search, the editor, the corkboard, and the outliner. Phase 3 built the bible. Collaboration, synchronization, and security remain stubs.
 
 ---
 
@@ -130,10 +135,12 @@ At the end of Phase 1, plotting, characters, worldbuilding, and research were st
 
 ## Explicitly not in Phase 1
 
-- Plot Grid, character/worldbuilding UIs, and the research file library (shipped later in Phase 3; see [PHASE3.md](PHASE3.md))
+- Full-text search, labels and colors, corkboard grouping, an editable outliner, daily sittings, themes, panel layout, links, code blocks, scene breaks, and inline comments (shipped in Phase 2; see [PHASE2.md](PHASE2.md))
+- Plot Grid, character/worldbuilding UIs, and the research file library (shipped in Phase 3; see [PHASE3.md](PHASE3.md))
+- Review annotations, highlights, and track changes (Phase 4). Phase 2 inline comments are notes on a text run, already stored with the scene
 - Cloud sync, accounts, or real-time collaboration
 - PDF, EPUB, HTML compile (Markdown and DOCX are enough for this phase)
 - Packaged installers for macOS/Linux/mobile
 - On-device AI
 
-Those remain optional later work. They must not become required to write.
+Phase 2 and Phase 3 have since shipped. Cloud sync, packaged installers, PDF/EPUB/HTML compile, on-device AI, and the Phase 4 review tools remain later work. They must not become required to write.

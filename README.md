@@ -16,6 +16,16 @@ A working desktop app:
 
 Full list: [`documentation/PHASE1.md`](documentation/PHASE1.md).
 
+## Phase 2
+
+The writing environment around that studio:
+
+- Links, inline comments, headings, code blocks, and scene breaks stored on the scene
+- Full-text search, binder labels and colors, corkboard grouping, and an editable outliner
+- Daily targets, sittings, themes, and a panel layout saved in the project
+
+Full list: [`documentation/PHASE2.md`](documentation/PHASE2.md).
+
 ## Phase 3
 
 Story development in the same local project:
@@ -27,6 +37,8 @@ Story development in the same local project:
 - Bible entries can point at scenes. Research is edited only in Research
 
 Full list: [`documentation/PHASE3.md`](documentation/PHASE3.md).
+
+Phases 1, 2, and 3 are done. Current work is Phase 4, local professional editing. See the [roadmap](ROADMAP.md).
 
 ## Requirements
 
@@ -53,6 +65,7 @@ Desktop/UI crates need a windowing runtime and are not part of the default libra
 ## Documentation
 
 - [Phase 1 features](documentation/PHASE1.md)
+- [Phase 2 features](documentation/PHASE2.md)
 - [Phase 3 features](documentation/PHASE3.md)
 - [Usage](documentation/USAGE.md)
 - [Architecture](documentation/ARCHITECTURE.md)

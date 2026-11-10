@@ -25,7 +25,7 @@ MyNovel.writingstudio/
 ## Tables (v1)
 
 - `project_meta` — id, format_version, title, created_at, updated_at, `settings_json`
-- `binder_nodes` — hierarchy, synopsis, status, `deleted_at`, `restore_parent_id`
+- `binder_nodes` — hierarchy, synopsis, status, `label`, `color`, `deleted_at`, `restore_parent_id`. `label` is a short tag. `color` is empty or one of `gold`, `green`, `red`, `blue`, `violet`
 - `documents` — `content_json` (block model), word_count, char_count
 - `snapshots` — per-document JSON copies with label (`manual`, `pre-restore`, …)
 - `plotlines` — id, title, color, sort_index, created_at, updated_at
@@ -38,10 +38,10 @@ MyNovel.writingstudio/
 - `lore_entries` — title, body, optional `location_id` and `culture_id`, sort_index, timestamps
 - `timeline_events` — title, `when_label`, summary, optional `location_id`, sort_index, timestamps
 - `research_items` — title, notes, sort_index, timestamps
-- `research_files` — item_id, display `file_name`, `stored_name` relative to `attachments/`
+- `research_files` — id, item_id, display `file_name`, `stored_name` relative to `attachments/`, created_at
 - `bible_scene_links` — owner_kind, owner_id, scene_id, sort_index. A character, location, culture, lore entry, timeline event, or research note can point at several manuscript scenes. The records stay in the project; the scene text is not copied.
 
-Existing databases gain the plot, character, world, research, and `bible_scene_links` tables on open (`CREATE TABLE IF NOT EXISTS`). Databases created before `restore_parent_id` gain that column on open (`ALTER TABLE`). Format version stays **1** because these tables are additive.
+Existing databases gain the plot, character, world, research, and `bible_scene_links` tables on open (`CREATE TABLE IF NOT EXISTS`). Databases created before `restore_parent_id` gain that column on open (`ALTER TABLE`). `label` and `color` are part of the current `binder_nodes` definition. Opening a project does not add those columns to a database created before they existed. Format version stays **1** because the added tables are additive.
 
 A research file is stored as `attachments/{note-id}/{file-id}` plus a short extension. The sqlite backup does not include `attachments/`. Copy the project folder when you want the files and the database together.
 
@@ -76,11 +76,65 @@ A research file is stored as `attachments/{note-id}/{file-id}` plus a short exte
 }
 ```
 
-`writing`, `layout`, `theme`, `compile_book_id`, `book_word_goals`, and `show_whole_series` are optional for older projects. `show_whole_series` defaults to true. When it is false, the binder, corkboard, outliner, and search show `compile_book_id`. `theme` is `dark`, `light`, or `paper`. `sidebar_side` is `left` or `right`. Widths are pixels and are clamped when the project opens. `day_baseline` remains the older whole-manuscript count. `writing.books` stores each book's outline count at the start of `day` and at the start of the open sitting. Today and the sitting shown for a book use those baselines. Completed sittings that added words, summed across books, are appended to `sessions` (newest at the end, capped) the next time the project is opened. A new local day sets each book's baseline to that book's current outline count. `compile_book_id` is the book Markdown and DOCX export, and the book whose word count and target are shown. Each `book_word_goals` entry is a book id and a target. The first book with no entry keeps `project_word_goal`. Later books with no entry use 80000. Permanently deleting a book removes its entry. If that book was `compile_book_id`, the field becomes the first remaining book.
+`writing`, `layout`, `theme`, `compile_book_id`, `book_word_goals`, and `show_whole_series` are optional for older projects. `show_whole_series` defaults to true. When it is false, the binder, corkboard, outliner, and search show `compile_book_id`. `theme` is `dark`, `light`, or `paper`. `sidebar_side` is `left` or `right`. Widths are pixels. On open, the binder width is clamped to 180–480 and the inspector width to 220–560. `day_baseline` remains the older whole-manuscript count. `writing.books` stores each book's outline count at the start of `day` and at the start of the open sitting:
+
+```json
+{ "book_id": "…", "day": "2026-11-06", "day_baseline": 1200, "session_baseline": 1200 }
+```
+
+Today and the sitting shown for a book use those baselines. Completed sittings that added words, summed across books, are appended to `sessions` (newest at the end) the next time the project is opened. The list keeps the newest 40. Each sitting is:
+
+```json
+{
+  "day": "2026-11-06",
+  "started_at": "2026-11-06T18:00:00Z",
+  "ended_at": "2026-11-06T18:20:00Z",
+  "words": 400,
+  "seconds": 1200
+}
+```
+
+A new local day sets each book's baseline to that book's current outline count. `compile_book_id` is the book Markdown and DOCX export, and the book whose word count and target are shown. Each `book_word_goals` entry is `{ "book_id": "…", "goal": 80000 }`. The first book with no entry keeps `project_word_goal`. Later books with no entry use 80000. Permanently deleting a book removes its entry. If that book was `compile_book_id`, the field becomes the first remaining book.
 
 ## Document JSON
 
-Each document is a list of blocks (paragraph, heading, quote, list) with inline runs and marks (bold, italic, underline, strikethrough, optional link). Schema version is stored on the document (`schema_version`, currently 1). The desktop editor may use a restricted HTML view; what is saved is this JSON, not the HTML.
+Each document is a list of blocks. `schema_version` is currently 1. Block types are `paragraph`, `heading` (with `level`), `quote`, `list`, `code`, and `scene_break`. A block holds inline runs. Each run has marks: `bold`, `italic`, `underline`, `strikethrough`, an optional `link`, and an optional `comment`.
+
+`comment` is the inline note from the Comment control. It is saved with the scene. Review annotations, highlights, and track changes are not this field. Those remain Phase 4. See [PHASE2.md](PHASE2.md).
+
+```json
+{
+  "id": "…",
+  "schema_version": 1,
+  "updated_at": "2026-11-06T18:20:00Z",
+  "blocks": [
+    {
+      "id": "…",
+      "kind": {
+        "type": "heading",
+        "level": 1,
+        "inlines": [
+          {
+            "id": "…",
+            "text": "Dawn",
+            "marks": {
+              "bold": false,
+              "italic": false,
+              "underline": false,
+              "strikethrough": false,
+              "link": null,
+              "comment": "Check the tide"
+            }
+          }
+        ]
+      }
+    },
+    { "id": "…", "kind": { "type": "scene_break" } }
+  ]
+}
+```
+
+A `code` block uses the same inline list as a paragraph. A `list` block has `ordered` and `items`, and each item has its own inline list. The desktop editor may use a restricted HTML view; what is saved is this JSON, not the HTML.
 
 ## Compile
 

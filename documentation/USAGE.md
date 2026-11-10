@@ -2,6 +2,8 @@
 
 Free, open-source, local-first. Your writing stays in a folder on your machine.
 
+Phases 1, 2, and 3 are the app described here. Current work is Phase 4 in [ROADMAP.md](../ROADMAP.md).
+
 ## Start
 
 1. `cargo run -p writing-studio-desktop`
@@ -10,21 +12,40 @@ Free, open-source, local-first. Your writing stays in a folder on your machine.
 
 ## Write
 
-- Select a scene in the binder. Type in the manuscript. Formatting buttons apply bold, italic, underline, strike, heading, quote, and lists.
+- Select a scene in the binder. Type in the manuscript.
+- Formatting buttons: Bold, Italic, Underline, Strike, Link, Unlink, Comment, Uncomment, H1, H2, H3, Body, Quote, List, Numbered, Code, and Break.
+- **Comment** asks for a note on the selection. The note is saved with the scene, on that text run, and listed above the manuscript. **Uncomment** removes it. These are writer notes on a passage. Review annotations, highlights, and track changes are Phase 4 and are not this control. See [PHASE2.md](PHASE2.md).
 - Changes save a few seconds after you stop typing, when you leave the field, or with **Ctrl+S**.
-- **Ctrl+Z** / **Ctrl+Y** undo and redo in the document session.
+- **Ctrl+Z** undoes. **Ctrl+Y** or **Ctrl+Shift+Z** redoes in the document session.
+
+## Search
+
+The binder field searches titles and manuscript text. **Ctrl+F** focuses it. On the corkboard, **Ctrl+F** focuses the scene filter instead.
+
+The index is built in memory from the project when it opens, and updated when a document is saved. It is not a file in the project folder. The `.writingstudio` folder stays the source of truth.
+
+**Escape** leaves zen mode when it is on. Otherwise it clears the corkboard filter when that field has text, and otherwise clears the binder search.
 
 ## Organize
 
-- **Book**, **Chapter**, and **Scene** add manuscript items. **Book** adds another novel under the same manuscript. Characters, world notes, plot, and research stay with the project. Research notes are edited in **Research**, not in the binder.
+- **Book**, **Part**, **Chapter**, **Scene**, and **Folder** add manuscript items. **Book** adds another novel under the same manuscript. **Ctrl+N** adds a scene when a project is open. **Ctrl+Shift+N** adds a chapter. Characters, world notes, plot, and research stay with the project. Research notes are edited in **Research**, not in the binder.
 - **Whole series** in the binder, corkboard, and outliner shows every book. Pick a book there, or in the compile menu, to make that book the one on screen, the one compiled, and the one in the status bar. The project remembers that choice. **Whole series** shows every book again and leaves compile and the status bar on the last book. Selecting a scene points compile and the status bar at that scene's book. New chapters, parts, scenes, and manuscript folders are added inside the book on screen. A scene with nothing selected goes in its last chapter. New folders go in the book on screen.
+- The inspector edits title, synopsis, status, label, and color. Label and color are for items that are not roots. Colors are None, Gold, Green, Red, Blue, and Violet. The label shows on the binder row. The inspector is on screen in Writing and History. Other modes hide it. **Ctrl+Alt+I** still shows or hides it for when you return to Writing or History.
 - Drag items to reorder or nest. Drop on **Trash** to discard.
 - **Restore** returns a trashed item to its previous parent when that parent still exists.
 - **Empty trash** asks for a second click, then deletes those items from the local database. Permanently deleting a book drops its word target. If it was the compile book, compile and the status bar move to the first book that remains.
 
+## Corkboard
+
+**Corkboard** shows a card per scene: title, synopsis, status, word count, and label. Drag a card onto another scene to place it just after that scene. Filter the cards. Group them by order, chapter, label, color, or status. Card color comes from the binder color. Click a card to open that scene in Writing.
+
+## Outliner
+
+**Outliner** is a table of chapters and scenes. Edit the chapter title, scene title, status, and synopsis in the row. The words column is that row's count. **Open** returns to Writing on that item.
+
 ## Recover
 
-- Inspector → **Snapshot this document**. Restore from the inspector list or **History**.
+- Inspector → **Snapshot this document**, or **Ctrl+Shift+S**. Restore from the inspector list or **History**.
 - **Backup** writes `backups/project-….sqlite`. Restore from **History** (second click). A safety copy of the live file is written first.
 
 ## Compile
@@ -35,11 +56,11 @@ Free, open-source, local-first. Your writing stays in a folder on your machine.
 
 ## Targets
 
-The status bar shows this document, this sitting, and words added today. The labeled total matches the outliner for the book chosen for compile: each scene, and a chapter only when that chapter has no scenes. Research notes are not included. Today and the sitting use that book's own baselines, so another book's count does not change them. The daily target is still one number for the project. Both targets are editable there and saved in the project. **History** lists completed sittings. A sitting is stored the next time you open the project, when any book added words. Today’s count for each book starts again on the next local day.
+The status bar shows this document, this sitting, and words added today. The labeled total matches the outliner for the book chosen for compile: each scene, and a chapter only when that chapter has no scenes. Research notes are not included. Today and the sitting use that book's own baselines, so another book's count does not change them. The daily target is still one number for the project. Both targets are editable there and saved in the project. **History** lists completed sittings. A sitting is stored the next time you open the project, when any book added words. Today's count for each book starts again on the next local day.
 
 ## Modes
 
-Writing, Corkboard, Outliner, Plot, Characters, World, Research, History. **Ctrl+5** opens Plot. **Ctrl+6** opens Characters. **Ctrl+7** opens World. **Ctrl+8** opens Research. **Focus** hides the binder and inspector.
+Writing, Corkboard, Outliner, Plot, Characters, World, Research, History. The activity bar lists them in that order. Click the active icon again to hide the binder. **Zen mode** on that bar hides the binder and inspector.
 
 ## Plot
 
@@ -55,14 +76,40 @@ Writing, Corkboard, Outliner, Plot, Characters, World, Research, History. **Ctrl
 
 ## Research
 
-**Research** is the only editor for research notes and their files. Each note has a title, notes, and files. **Attach file** copies the file into `attachments/` inside the project folder. **Open** launches it with the usual app for that file type. Removing a file or a note asks for a second click and deletes the copy in `attachments/`. A sqlite backup does not include those files; copy the whole project folder to keep them. Opening a project copies notes that still sit under the binder Research section into this library, then removes those notes and research folders from the binder. Characters, world notes, plot, and the manuscript stay where they are. A note can link manuscript scenes, labeled book / chapter / scene. Emptying trash drops those links.
+**Research** is the only editor for research notes and their files. Each note has a title, notes, and files. **Attach file** copies the file into `attachments/` inside the project folder. **Open** launches it with the usual app for that file type. Removing a file or a note asks for a second click and deletes the copy in `attachments/`. A sqlite backup does not include those files; copy the whole project folder to keep them. A new project seeds one binder research note. Opening a project copies notes that still sit under the binder Research section into this library, then removes those notes and research folders from the binder. Characters, world notes, plot, and the manuscript stay where they are. A note can link manuscript scenes, labeled book / chapter / scene. Emptying trash drops those links.
 
 ## Layout
 
-The arrangement is saved in the project. Drag the edge of the binder or the inspector to resize it. Double-click that edge to reset the width. The arrow in the binder header moves the binder to the other side; the inspector stays on the opposite side.
+The arrangement is saved in the project. Drag the edge of the binder or the inspector to resize it. The binder width stays between 180 and 480 pixels. The inspector width stays between 220 and 560. Double-click that edge to reset the width. The arrow in the binder header moves the binder to the other side; the inspector stays on the opposite side.
 
 Click the active activity-bar icon again to hide the binder, or press **Ctrl+Alt+B**. **Ctrl+Alt+I** shows or hides the inspector. **Ctrl+B** still bolds the selection in the manuscript.
 
 ## Themes
 
 The status bar theme list saves **Dark**, **Light**, or **Paper** in the project. Dark matches VS Code Dark+. Light matches VS Code Light+. Paper keeps the warm chrome and sets the manuscript on a cream page.
+
+## Keyboard
+
+| Chord | Action |
+| --- | --- |
+| **Ctrl+S** | Save |
+| **Ctrl+Shift+S** | Snapshot this document |
+| **Ctrl+Z** | Undo |
+| **Ctrl+Y**, **Ctrl+Shift+Z** | Redo |
+| **Ctrl+B** | Bold the selection in the manuscript |
+| **Ctrl+F** | Search. On the corkboard, focuses the scene filter |
+| **Ctrl+Shift+F**, **Ctrl+\\** | Zen mode |
+| **Escape** | Leave zen mode, or clear the corkboard filter, or clear binder search |
+| **Ctrl+1** | Writing |
+| **Ctrl+2** | Corkboard |
+| **Ctrl+3** | Outliner |
+| **Ctrl+4** | History |
+| **Ctrl+5** | Plot |
+| **Ctrl+6** | Characters |
+| **Ctrl+7** | World |
+| **Ctrl+8** | Research |
+| **Ctrl+N** | New scene, when a project is open |
+| **Ctrl+Shift+N** | New chapter |
+| **Ctrl+O** | Open project |
+| **Ctrl+Alt+B** | Show or hide the binder |
+| **Ctrl+Alt+I** | Show or hide the inspector |
