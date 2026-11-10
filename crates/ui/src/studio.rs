@@ -1335,7 +1335,7 @@ fn CompileBookSelect() -> Element {
     rsx! {
         select {
             class: "compile-select",
-            title: "Book to compile. Other books stay out of the file.",
+            title: "Current book. Compile, the word target, and the binder follow this book.",
             value: "{value}",
             onchange: move |event| {
                 if let Ok(id) = event.value().parse::<Id>() {

@@ -55,6 +55,7 @@ A research file is stored as `attachments/{note-id}/{file-id}` plus a short exte
   "theme": "dark",
   "compile_book_id": null,
   "book_word_goals": [],
+  "show_whole_series": true,
   "layout": {
     "sidebar_side": "left",
     "sidebar_width": 260,
@@ -73,7 +74,7 @@ A research file is stored as `attachments/{note-id}/{file-id}` plus a short exte
 }
 ```
 
-`writing`, `layout`, `theme`, `compile_book_id`, and `book_word_goals` are optional for older projects. `theme` is `dark`, `light`, or `paper`. `sidebar_side` is `left` or `right`. Widths are pixels and are clamped when the project opens. `day_baseline` is the manuscript word count at the start of that local day. The open sitting records its start count and last activity. Completed sittings that added words are appended to `sessions` (newest at the end, capped) the next time the project is opened. A new local day sets `day_baseline` to the current count. `compile_book_id` is the book Markdown and DOCX export, and the book whose word count and target are shown. Each `book_word_goals` entry is a book id and a target. The first book with no entry keeps `project_word_goal`. Later books with no entry use 80000.
+`writing`, `layout`, `theme`, `compile_book_id`, `book_word_goals`, and `show_whole_series` are optional for older projects. `show_whole_series` defaults to true. When it is false, the binder, corkboard, outliner, and search show `compile_book_id`. `theme` is `dark`, `light`, or `paper`. `sidebar_side` is `left` or `right`. Widths are pixels and are clamped when the project opens. `day_baseline` is the manuscript word count at the start of that local day. The open sitting records its start count and last activity. Completed sittings that added words are appended to `sessions` (newest at the end, capped) the next time the project is opened. A new local day sets `day_baseline` to the current count. `compile_book_id` is the book Markdown and DOCX export, and the book whose word count and target are shown. Each `book_word_goals` entry is a book id and a target. The first book with no entry keeps `project_word_goal`. Later books with no entry use 80000.
 
 ## Document JSON
 

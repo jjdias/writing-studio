@@ -209,6 +209,14 @@ pub struct ProjectSettings {
     /// Per-book word targets. A book with no entry uses `project_word_goal` when it is the first book.
     #[serde(default)]
     pub book_word_goals: Vec<BookWordGoal>,
+    /// Binder, corkboard, outliner, and search show every book. Compile still uses `compile_book_id`.
+    /// Missing on older projects, which open on the whole series.
+    #[serde(default = "default_show_whole_series")]
+    pub show_whole_series: bool,
+}
+
+fn default_show_whole_series() -> bool {
+    true
 }
 
 impl Default for ProjectSettings {
@@ -223,6 +231,7 @@ impl Default for ProjectSettings {
             theme: Theme::Dark,
             compile_book_id: None,
             book_word_goals: Vec::new(),
+            show_whole_series: true,
         }
     }
 }
@@ -295,6 +304,19 @@ mod tests {
         assert_eq!(Theme::from_id("sepia"), None);
         assert!(settings.compile_book_id.is_none());
         assert!(settings.book_word_goals.is_empty());
+        assert!(settings.show_whole_series);
+    }
+
+    #[test]
+    fn the_series_view_is_remembered() {
+        let mut settings = ProjectSettings::default();
+        assert!(settings.show_whole_series);
+        settings.show_whole_series = false;
+        settings.compile_book_id = Some(Id::new());
+        let saved = serde_json::to_string(&settings).unwrap();
+        let loaded: ProjectSettings = serde_json::from_str(&saved).unwrap();
+        assert!(!loaded.show_whole_series);
+        assert_eq!(loaded.compile_book_id, settings.compile_book_id);
     }
 
     #[test]

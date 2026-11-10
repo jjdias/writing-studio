@@ -132,6 +132,7 @@ Done on `phase-3`:
 - Research library: notes plus files in `attachments/`
 - One project for the series: the bible and every related book live in one folder. Compile and the word target follow one book. The binder, corkboard, outliner, and search can show that book or the whole series. Characters, world notes, plot, and research stay with the project.
 - New chapters, parts, scenes, and manuscript folders land in the book on screen. With one book filtered, they stay inside that book. With the whole series showing, they follow the selection.
+- One current book: the filter, the compile menu, and the status bar share it, and the project remembers whether the whole series is showing. Selecting a scene points compile and the status bar at that scene's book.
 
 ### Phase 4 — Professional editing (local)
 
@@ -200,15 +201,6 @@ When optional cloud work starts, the source of truth for a disconnected writer r
 Phase 2 is complete on `phase-2`. Phase 3 is in progress on `phase-3`. The plot grid, character profiles, world notes, research library, and one project that holds the bible and every related book are in the desktop app.
 
 That folder is the series. Characters, world notes, plot, and research are the bible, stored once beside the books. The work left in this phase is to make that series behave as one book at a time when the writer is looking at one book. Richer front matter than the book title stays in Phase 6. A separate bible project beside each book is a bonus phase, not current work.
-
-### Use one current book
-
-Compile and the status-bar target use the book saved for compile. The binder, corkboard, outliner, and search use another filter, and that filter returns to the whole series when the project opens. The selection can be a scene in a third book, so the count on screen can belong to a book that is not the one being read.
-
-- Treat the book filter, the compile menu, and the status-bar book as the same choice. Changing any one of them changes the others.
-- Whole series remains a view only. It shows every book in the binder, corkboard, outliner, and search. Compile and the status bar stay on the last chosen book.
-- Remember the filter in the project. Reopening a project shows the same book, or the whole series, that was showing when it closed.
-- Selecting a scene makes that scene's book the current book for compile and the status bar.
 
 ### Name the book wherever a scene is chosen
 

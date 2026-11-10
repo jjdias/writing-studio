@@ -141,8 +141,6 @@ pub struct StudioState {
     pub drop_target: Option<Id>,
     pub ignore_next_click: bool,
     pub confirm_empty_trash: bool,
-    /// Binder, corkboard, outliner, and search scope. None shows the whole series.
-    pub series_book: Option<Id>,
 }
 
 impl Default for StudioState {
@@ -192,7 +190,6 @@ impl Default for StudioState {
             drop_target: None,
             ignore_next_click: false,
             confirm_empty_trash: false,
-            series_book: None,
         }
     }
 }
@@ -296,22 +293,61 @@ impl StudioState {
             .collect()
     }
 
-    /// One book, or the whole series when the writer has not picked a book.
+    /// The book the binder, corkboard, outliner, and search are limited to.
+    /// None means the whole series is on screen. Compile still uses [`Self::compile_book_id`].
     pub fn series_scope(&self) -> Option<Id> {
-        self.series_book
-            .filter(|id| self.binder.manuscript_books().iter().any(|book| book.id == *id))
+        let show_all = self
+            .meta
+            .as_ref()
+            .map(|meta| meta.settings.show_whole_series)
+            .unwrap_or(true);
+        if show_all {
+            None
+        } else {
+            self.compile_book_id()
+        }
     }
 
+    /// Whole series shows every book and leaves the compile book unchanged.
+    /// Choosing a book focuses that book in the filter, the compile menu, and the status bar.
     pub fn set_series_scope(&mut self, book: Option<Id>) {
-        self.series_book = book.filter(|id| {
-            self.binder
-                .manuscript_books()
-                .iter()
-                .any(|candidate| candidate.id == *id)
-        });
+        match book {
+            None => self.set_show_whole_series(true),
+            Some(id) => self.set_compile_book(id),
+        }
     }
 
     pub fn set_compile_book(&mut self, id: Id) {
+        self.remember_compile_book(id);
+        self.set_show_whole_series(false);
+    }
+
+    /// A scene in the current book, or the first scene in the manuscript.
+    fn opening_scene(&self) -> Option<Id> {
+        let in_current_book = self.compile_book_id().and_then(|book| {
+            self.binder.nodes.iter().find(|node| {
+                node.kind == NodeKind::Scene
+                    && !self.binder.is_in_trash(node.id)
+                    && self.binder.book_of(node.id) == Some(book)
+            })
+        });
+        in_current_book
+            .or_else(|| {
+                self.binder.nodes.iter().find(|node| {
+                    node.kind == NodeKind::Scene && !self.binder.is_in_trash(node.id)
+                })
+            })
+            .map(|node| node.id)
+    }
+
+    /// Point compile and the status bar at the book that contains `id`, without changing the series view.
+    fn adopt_book_of(&mut self, id: Id) {
+        if let Some(book) = self.binder.book_of(id) {
+            self.remember_compile_book(book);
+        }
+    }
+
+    fn remember_compile_book(&mut self, id: Id) {
         if !self
             .binder
             .manuscript_books()
@@ -325,6 +361,21 @@ impl StudioState {
                 return false;
             }
             meta.settings.compile_book_id = Some(id);
+            meta.touch();
+            true
+        });
+        if changed {
+            self.settings_dirty = true;
+            self.note_edit();
+        }
+    }
+
+    fn set_show_whole_series(&mut self, show: bool) {
+        let changed = self.meta.as_mut().is_some_and(|meta| {
+            if meta.settings.show_whole_series == show {
+                return false;
+            }
+            meta.settings.show_whole_series = show;
             meta.touch();
             true
         });
@@ -536,13 +587,7 @@ impl StudioState {
                 self.confirm_research = None;
                 self.store = Some(Rc::new(RefCell::new(store)));
                 self.status = status.into();
-                if let Some(scene) = self
-                    .binder
-                    .nodes
-                    .iter()
-                    .find(|node| node.kind == NodeKind::Scene)
-                {
-                    let id = scene.id;
+                if let Some(id) = self.opening_scene() {
                     self.select_node(id);
                 }
                 self.reindex_manuscript();
@@ -562,6 +607,7 @@ impl StudioState {
     pub fn select_node(&mut self, id: Id) {
         self.flush_editor();
         self.selected = Some(id);
+        self.adopt_book_of(id);
         let document_id = self.binder.get(id).and_then(|node| node.document_id);
         if let (Some(store), Some(doc_id)) = (&self.store, document_id) {
             let loaded = store.borrow().load_or_create_document(doc_id);
@@ -1012,13 +1058,7 @@ impl StudioState {
                 self.status = status.into();
                 if let Some(id) = previous.filter(|id| self.binder.get(*id).is_some()) {
                     self.select_node(id);
-                } else if let Some(scene) = self
-                    .binder
-                    .nodes
-                    .iter()
-                    .find(|node| node.kind == NodeKind::Scene)
-                {
-                    let id = scene.id;
+                } else if let Some(id) = self.opening_scene() {
                     self.select_node(id);
                 }
                 self.reindex_manuscript();
