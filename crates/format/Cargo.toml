@@ -1,0 +1,16 @@
+[package]
+name = "writing-studio-format"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Project format 2: scenes as Markdown files that can be read without this program"
+
+[dependencies]
+writing-studio-core.workspace = true
+writing-studio-document.workspace = true
+
+[dev-dependencies]
+pulldown-cmark = { version = "0.13", default-features = false }
+writing-studio-diagnostics.workspace = true
+writing-studio-project.workspace = true
+writing-studio-storage.workspace = true

@@ -106,6 +106,7 @@ These crates exist so module boundaries stay stable. They are **types or stubs**
 | Crate | Current state | Intended later work |
 | --- | --- | --- |
 | `writing-studio-collaboration` | Yrs placeholder constant | None planned. Editing at the same time is bonus work; Phase 5 does not use this crate |
+| `writing-studio-format` | Scenes to Markdown files and back, tested; not used by the app yet | Phase 5 stage 2: the files become the project |
 | `writing-studio-synchronization` | “optional = true” stub | Phase 5: merging two copies of a project, and sync through git |
 | `writing-studio-security` | Notes that local folders are unencrypted | None planned. A project is as private as the folder and the git host it is kept on |
 
@@ -156,7 +157,7 @@ Later phases keep **local writing complete**. Anything involving accounts, serve
 
 ### Phase 5 — Plain-text projects, and sync through git (optional)
 
-Not started. This replaces the earlier plan for an account and a server.
+In progress on the `alternative-phase-5` branch: stage 1 is done. This replaces the earlier plan for an account and a server.
 
 A writer who wants the book on two machines, or kept with a hosting provider, uses git. Any git host works, so the program does not need an integration for each storage service, and it runs no server of its own. Git is optional. Nobody needs it, or an account anywhere, to write.
 
@@ -166,15 +167,20 @@ The stages are in order. Each one is finished and useful before the next starts.
 
 #### 1. Write the format down
 
-- A specification of the new project folder, with example files, in `documentation/`.
-- Scenes are Markdown, one file each. A short header at the top holds what belongs to the scene: title, synopsis, status, label, and its goal, conflict, and outcome. The header uses the `---` front-matter form that other writing tools already read, with plain `key: value` lines.
-- Characters, places, cultures, lore, timeline events, and research notes are Markdown files of the same kind.
-- Structure is JSON: the binder's order and nesting, the plot grid, links between records, and the settings every machine shares.
-- Notes and highlights use CriticMarkup, an existing plain-text convention, with a fixed spelling for the note's kind, a resolved note, and the highlight color. Underline and anything else Markdown lacks gets one fixed spelling each.
-- The dialect is small and fixed: only what the editor can produce.
-- File names are a readable name and a short id, such as `the-harbor-3f9a.md`, in a flat folder. Order and nesting are in the binder file, so renaming or moving a scene does not rename files.
-- Files hold no time of last save and no per-paragraph ids. Order uses keys that let an item go between two others without renumbering the rest.
-- A test converts existing scenes to Markdown and back and gets the same document. This test passes on real projects before any later stage starts.
+Done for scenes, on the `alternative-phase-5` branch. See [`documentation/PROJECT_FORMAT_2.md`](documentation/PROJECT_FORMAT_2.md). Nothing the program stores has changed yet: it still reads and writes format 1.
+
+- The format is written down, with example files. Scene files are specified in full. The bible's Markdown files and the JSON files are specified more briefly, to be settled as stage 2 builds them.
+- A new crate, `writing-studio-format`, writes a scene as a Markdown file with a header and reads it back as the same document.
+- Scenes are Markdown, one file each. The header uses the `---` front-matter form, with plain `key: value` lines: title, synopsis, status, label, color, and the scene's goal, conflict, and outcome. Keys the program does not know are kept.
+- Notes and highlights use CriticMarkup, with a fixed spelling for the note's kind, a resolved note, and the highlight color. Underline is `<u>`.
+- What the writer typed is never read as formatting: characters that mean something to Markdown are escaped.
+- Where another Markdown reader would misread `**` or `*`, the file uses `<strong>` and `<em>` instead.
+- File names are a readable name and a short id, such as `the-harbor-3f9a.md`. A file is named once and not renamed.
+- Files hold no time of last save and no per-paragraph ids.
+- The round trip is tested: every kind of block and formatting, randomly built documents, a project on disk, and the files as an independent Markdown reader sees them. `check_project` runs the same check on any project folder without changing it.
+- A few things a Markdown file cannot hold are dropped when a scene is written, and listed in the format: bold or italic on a space at the edge of a stretch, a line break at the very end of a paragraph, and formatting inside a code block.
+
+Left for stage 2, where they are first needed: the bible and JSON files in code, and order keys.
 
 #### 2. Project format 2: text files are the project
 
@@ -404,7 +410,7 @@ With or without sync, the source of truth is the `.writingstudio` folder on the 
 
 ## Immediate next steps
 
-Phase 4, local professional editing, is complete and merged into `master`: snapshot comparison, review notes and highlights, track changes, spellcheck, and scene diagnostics. Phase 5 is planned and not started: plain-text projects first, then sync through git. Its first step is the written format and the test that converts scenes to Markdown and back. The writing-surface UI is Phase 8. Richer front matter than the book title stays in Phase 6.
+Phase 4, local professional editing, is complete and merged into `master`: snapshot comparison, review notes and highlights, track changes, spellcheck, and scene diagnostics. Phase 5 is in progress on the `alternative-phase-5` branch: plain-text projects first, then sync through git. Stage 1 is done: the format is written down, and scenes convert to Markdown and back. Next is stage 2, where the text files become the project. The writing-surface UI is Phase 8. Richer front matter than the book title stays in Phase 6.
 
 Bonus work, none of it started: editing at the same time; optional on-device assistance; reviewing a whole book at once; finer track changes; richer snapshot comparison; spelling at the word; diagnostics that fit the book; review marks in the compiled file; one place for the review panels; bringing an older project up to date on open; tests that drive the window; a separate bible project beside each book; backups that include research files; and tags.
 
