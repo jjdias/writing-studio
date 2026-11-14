@@ -4,9 +4,13 @@
 //! The schema version lives on the document so the engine can migrate later
 //! without tying storage to a UI representation.
 
+mod diff;
 mod html;
 mod model;
 
+pub use diff::{
+    compare_documents, compare_text, DiffOp, DiffParagraph, DiffSpan, DocumentDiff, ParagraphChange,
+};
 pub use model::{normalize_link, Block, BlockKind, Document, Inline, InlineNote, ListItem, Marks};
 
 pub const DOCUMENT_SCHEMA_VERSION: u32 = 1;

@@ -1148,6 +1148,37 @@ mod tests {
     }
 
     #[test]
+    fn loading_a_snapshot_leaves_the_live_document_alone() {
+        let dir = env::temp_dir().join(format!("ws-snapload-{}", Id::new()));
+        let store = ProjectStore::create(&dir, "Compare Novel").unwrap();
+        let tree = store.load_binder().unwrap();
+        let doc_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.kind == NodeKind::Scene)
+            .and_then(|node| node.document_id)
+            .unwrap();
+
+        let mut document = store.load_document(doc_id).unwrap();
+        document.replace_plain_text("Original scene.");
+        store.save_document(&document).unwrap();
+        let snap = store.snapshot_document(&document, "keep").unwrap();
+        document.replace_plain_text("Changed scene.");
+        store.save_document(&document).unwrap();
+
+        let held = store.load_snapshot(snap).unwrap();
+        assert_eq!(held.id, doc_id);
+        assert_eq!(held.to_plain_text(), "Original scene.");
+        assert_eq!(
+            store.load_document(doc_id).unwrap().to_plain_text(),
+            "Changed scene."
+        );
+        assert_eq!(store.list_snapshots(doc_id).unwrap().len(), 1);
+        assert!(store.load_snapshot(Id::new()).is_err());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn backup_restore_reloads_earlier_project_state() {
         let dir = env::temp_dir().join(format!("ws-bak-{}", Id::new()));
         let mut store = ProjectStore::create(&dir, "Backup Novel").unwrap();

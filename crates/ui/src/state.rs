@@ -6,6 +6,7 @@ use std::time::Instant;
 
 use writing_studio_characters::Cast;
 use writing_studio_corkboard::CorkGroup;
+use writing_studio_document::{compare_documents, Document, DocumentDiff};
 use writing_studio_core::{autosave_due, autosave_wait, local_day, Id, Timestamp, PRODUCT_NAME};
 use writing_studio_editor::EditorSession;
 use writing_studio_export::{compile_docx, compile_markdown, CompileInput};
@@ -107,6 +108,15 @@ pub enum BibleLink {
     Research,
 }
 
+/// One side of a snapshot comparison is always a snapshot. The other is the
+/// text on screen, or a second snapshot of the same document.
+#[derive(Clone, Debug)]
+pub struct SnapshotComparison {
+    pub older: String,
+    pub newer: String,
+    pub diff: DocumentDiff,
+}
+
 #[derive(Clone)]
 pub struct StudioState {
     pub product_name: &'static str,
@@ -143,6 +153,9 @@ pub struct StudioState {
     pub status: String,
     pub new_title: String,
     pub confirm_backup: Option<PathBuf>,
+    pub compare_snapshot: Option<Id>,
+    pub compare_against: Option<Id>,
+    pub compare_changes_only: bool,
     pub binder_dirty: bool,
     pub last_edit: Option<Instant>,
     pub session_started: Option<Instant>,
@@ -192,6 +205,9 @@ impl Default for StudioState {
             status: "Offline · Local-first".into(),
             new_title: "Untitled Novel".into(),
             confirm_backup: None,
+            compare_snapshot: None,
+            compare_against: None,
+            compare_changes_only: false,
             binder_dirty: false,
             last_edit: None,
             session_started: None,
@@ -679,6 +695,9 @@ impl StudioState {
 
     pub fn select_node(&mut self, id: Id) {
         self.flush_editor();
+        if self.selected != Some(id) {
+            self.close_comparison();
+        }
         self.selected = Some(id);
         self.adopt_book_of(id);
         let document_id = self.binder.get(id).and_then(|node| node.document_id);
@@ -1030,6 +1049,80 @@ impl StudioState {
             .as_ref()
             .and_then(|store| store.borrow().list_snapshots(doc_id).ok())
             .unwrap_or_default()
+    }
+
+    /// Show what changed between a snapshot and the current text. Asking for
+    /// the snapshot that is already open closes the comparison.
+    pub fn compare_snapshot(&mut self, snapshot_id: Id) {
+        if self.compare_snapshot == Some(snapshot_id) {
+            self.close_comparison();
+            return;
+        }
+        self.compare_snapshot = Some(snapshot_id);
+        self.compare_against = None;
+    }
+
+    /// Compare the open snapshot with another snapshot of the same document.
+    /// `None` compares it with the current text.
+    pub fn set_compare_against(&mut self, other: Option<Id>) {
+        self.compare_against = other.filter(|id| Some(*id) != self.compare_snapshot);
+    }
+
+    pub fn close_comparison(&mut self) {
+        self.compare_snapshot = None;
+        self.compare_against = None;
+    }
+
+    /// Nothing is written: both sides are read, and the live document and the
+    /// snapshots stay as they are.
+    pub fn snapshot_comparison(&self) -> Option<Result<SnapshotComparison, String>> {
+        let chosen = self.compare_snapshot?;
+        let store = self.store.as_ref()?;
+        let doc_id = self.selected_node().and_then(|node| node.document_id)?;
+        let snapshots = store.borrow().list_snapshots(doc_id).ok()?;
+        // The list is newest first.
+        let chosen_at = snapshots.iter().position(|item| item.id == chosen)?;
+        let other_at = self
+            .compare_against
+            .and_then(|id| snapshots.iter().position(|item| item.id == id));
+        let name = |index: usize| {
+            let item = &snapshots[index];
+            format!("{} · {}", item.label, item.created_label())
+        };
+        let load = |index: usize| store.borrow().load_snapshot(snapshots[index].id);
+
+        let result = match other_at {
+            Some(other_at) => {
+                let (old_at, new_at) = (chosen_at.max(other_at), chosen_at.min(other_at));
+                load(old_at).and_then(|old| {
+                    load(new_at).map(|new| SnapshotComparison {
+                        older: name(old_at),
+                        newer: name(new_at),
+                        diff: compare_documents(&old, &new),
+                    })
+                })
+            }
+            None => load(chosen_at).and_then(|old| {
+                self.current_document(doc_id).map(|new| SnapshotComparison {
+                    older: name(chosen_at),
+                    newer: "Current text".into(),
+                    diff: compare_documents(&old, &new),
+                })
+            }),
+        };
+        Some(result.map_err(|err| err.to_string()))
+    }
+
+    /// The open editing session when it holds this document, so text that is
+    /// not saved yet is still compared. Otherwise the saved document.
+    fn current_document(&self, doc_id: Id) -> writing_studio_core::Result<Document> {
+        if let Some(session) = self.session.as_ref().filter(|s| s.document_id() == doc_id) {
+            return Ok(session.document().clone());
+        }
+        match &self.store {
+            Some(store) => store.borrow().load_document(doc_id),
+            None => Err(writing_studio_core::Error::message("no project is open")),
+        }
     }
 
     pub fn backups(&self) -> Vec<BackupInfo> {
@@ -2327,5 +2420,87 @@ fn sanitize(title: &str) -> String {
         "untitled".into()
     } else {
         trimmed.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use writing_studio_document::ParagraphChange;
+
+    fn open_state(tag: &str) -> (StudioState, PathBuf) {
+        let dir = std::env::temp_dir().join(format!("ws-ui-{tag}-{}", Id::new()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut state = StudioState::default();
+        state.create_project_in(dir.clone());
+        assert!(state.session.is_some(), "{}", state.status);
+        (state, dir)
+    }
+
+    #[test]
+    fn snapshot_comparison_reads_unsaved_text_and_other_snapshots() {
+        let (mut state, dir) = open_state("compare");
+        assert!(state.snapshot_comparison().is_none());
+
+        state.apply_editor_text("She opened the door.".into());
+        state.snapshot();
+        state.apply_editor_text("She opened the red door.\nNobody was there.".into());
+        state.snapshot();
+        // Typed after the last snapshot and not saved yet.
+        state.apply_editor_text("She opened the red door.".into());
+
+        let snapshots = state.snapshots_for_selected();
+        assert_eq!(snapshots.len(), 2);
+        let (newest, oldest) = (snapshots[0].id, snapshots[1].id);
+
+        state.compare_snapshot(oldest);
+        let against_current = state.snapshot_comparison().unwrap().unwrap();
+        assert_eq!(against_current.newer, "Current text");
+        assert_eq!(against_current.diff.paragraphs.len(), 1);
+        assert_eq!(against_current.diff.paragraphs[0].change, ParagraphChange::Changed);
+        assert_eq!(against_current.diff.words_added, 1);
+
+        // Either snapshot can be the one chosen first; the older stays on the left.
+        state.set_compare_against(Some(newest));
+        let between = state.snapshot_comparison().unwrap().unwrap();
+        assert_eq!(between.diff.paragraphs.len(), 2);
+        assert_eq!(between.diff.paragraphs[1].change, ParagraphChange::Added);
+        state.compare_snapshot(newest);
+        state.set_compare_against(Some(oldest));
+        assert_eq!(state.snapshot_comparison().unwrap().unwrap().diff, between.diff);
+
+        // Comparing changes nothing on disk.
+        assert_eq!(state.snapshots_for_selected().len(), 2);
+        assert_eq!(state.editor_text, "She opened the red door.");
+
+        state.compare_snapshot(newest);
+        assert!(state.snapshot_comparison().is_none());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn choosing_another_document_closes_the_comparison() {
+        let (mut state, dir) = open_state("compare-select");
+        state.apply_editor_text("First draft.".into());
+        state.snapshot();
+        let snapshot = state.snapshots_for_selected()[0].id;
+        state.compare_snapshot(snapshot);
+        assert!(state.snapshot_comparison().is_some());
+
+        let current = state.selected.unwrap();
+        state.select_node(current);
+        assert_eq!(state.compare_snapshot, Some(snapshot));
+
+        let other = state
+            .binder
+            .nodes
+            .iter()
+            .find(|node| node.id != current && node.kind == NodeKind::Chapter)
+            .map(|node| node.id)
+            .unwrap();
+        state.select_node(other);
+        assert!(state.compare_snapshot.is_none());
+        assert!(state.snapshot_comparison().is_none());
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

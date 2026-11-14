@@ -4,7 +4,7 @@ Writing Studio is **open source** (MIT OR Apache-2.0) and **free for the communi
 
 **Local-first, now and later.** Saves, snapshots, backups, and compile live on the writer’s machine. Cloud connections and collaboration, if added, stay **optional**. They must never become a requirement to open a project, write, or keep copies of work.
 
-Status: Phases 1, 2, and 3 are complete. Current work is Phase 4. Details: [`documentation/PHASE1.md`](documentation/PHASE1.md), [`documentation/PHASE2.md`](documentation/PHASE2.md), and [`documentation/PHASE3.md`](documentation/PHASE3.md).
+Status: Phases 1, 2, and 3 are complete. Phase 4 is in progress on the `phase-4` branch; snapshot comparison is its first feature and is done. Details: [`documentation/PHASE1.md`](documentation/PHASE1.md), [`documentation/PHASE2.md`](documentation/PHASE2.md), [`documentation/PHASE3.md`](documentation/PHASE3.md), and [`documentation/PHASE4.md`](documentation/PHASE4.md).
 
 ---
 
@@ -27,7 +27,7 @@ These pieces exist and are used by the desktop app. See [`documentation/PHASE1.m
 - Cargo workspace with a shared core and a Dioxus desktop launcher (`apps/desktop`)
 - Rust toolchain pin, bundled rusqlite (including the SQLite backup API)
 - GitHub repository: [jjdias/writing-studio](https://github.com/jjdias/writing-studio)
-- Notes under `documentation/` (Phase 1, Phase 2, Phase 3, usage, architecture, project format)
+- Notes under `documentation/` (Phase 1 through Phase 4, usage, architecture, project format)
 - Library tests for documents, editor, binder, storage, autosave, and compile
 
 ### Project format and local persistence
@@ -76,7 +76,7 @@ These crates run in the current app. Phase 1 did not include plotting, character
 | Crate | Role |
 | --- | --- |
 | `writing-studio-core` | IDs, time, errors, events, format version, autosave policy |
-| `writing-studio-document` | Block document model, JSON, HTML interchange |
+| `writing-studio-document` | Block document model, JSON, HTML interchange, text comparison |
 | `writing-studio-editor` | Session, undo/redo, counts |
 | `writing-studio-project` | Binder tree and settings |
 | `writing-studio-manuscript` | Book / chapter / scene outline |
@@ -139,7 +139,14 @@ Later phases keep **local writing complete**. Anything involving accounts, serve
 
 ### Phase 4 — Professional editing (local)
 
-- Snapshot comparison
+In progress on the `phase-4` branch. See [`documentation/PHASE4.md`](documentation/PHASE4.md).
+
+Done:
+
+- Snapshot comparison. **History** shows what changed between a snapshot and the current text, or between two snapshots of the same document: paragraphs added and removed, and words changed inside a rewritten paragraph. It compares text only, and it writes nothing.
+
+Still to do:
+
 - Review comments, annotations, and highlights beyond the inline note already stored on a text run (Phase 2)
 - Track changes / suggestions without a server
 - Spellcheck integration
@@ -238,6 +245,6 @@ When optional cloud work starts, the source of truth for a disconnected writer r
 
 ## Immediate next steps
 
-Current work is Phase 4, local professional editing: snapshot comparison, review comments and annotations, track changes, spellcheck, and scene diagnostics. An inline note on a selection already saves with the scene (Phase 2). The writing-surface UI is Phase 8. Richer front matter than the book title stays in Phase 6. A separate bible project beside each book, backups that include research files, and tags stay bonus work.
+Current work is Phase 4, local professional editing, on the `phase-4` branch. Snapshot comparison is done. Next is review comments, annotations, and highlights; then track changes, spellcheck, and scene diagnostics. An inline note on a selection already saves with the scene (Phase 2). The writing-surface UI is Phase 8. Richer front matter than the book title stays in Phase 6. A separate bible project beside each book, backups that include research files, and tags stay bonus work.
 
 Optional cloud stays later.

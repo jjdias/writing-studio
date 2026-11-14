@@ -67,6 +67,7 @@ Desktop/UI crates need a windowing runtime and are not part of the default libra
 - [Phase 1 features](documentation/PHASE1.md)
 - [Phase 2 features](documentation/PHASE2.md)
 - [Phase 3 features](documentation/PHASE3.md)
+- [Phase 4 so far](documentation/PHASE4.md)
 - [Usage](documentation/USAGE.md)
 - [Architecture](documentation/ARCHITECTURE.md)
 - [Project format](documentation/PROJECT_FORMAT.md)

@@ -4,7 +4,7 @@ use std::rc::Rc;
 use dioxus::prelude::*;
 use writing_studio_core::Id;
 use writing_studio_corkboard::{card_matches, cards_from_binder, group_cards, CorkGroup};
-use writing_studio_document::InlineNote;
+use writing_studio_document::{DiffOp, InlineNote, ParagraphChange};
 use writing_studio_editor::EditorSession;
 use writing_studio_manuscript::{outline_rows, row_word_count};
 use writing_studio_project::{
@@ -1123,12 +1123,112 @@ fn SnapshotList() -> Element {
                             span { class: "card-meta", "{item.created_label()} · {item.word_count} words" }
                             p { class: "preview", "{item.preview}" }
                         }
-                        button {
-                            onclick: move |_| state.write().restore_snapshot(item.id),
-                            "Restore"
+                        div { class: "history-actions",
+                            button {
+                                title: "Show what changed since this snapshot, in History",
+                                onclick: move |_| {
+                                    let mut state = state.write();
+                                    if state.compare_snapshot != Some(item.id) {
+                                        state.compare_snapshot(item.id);
+                                    }
+                                    state.mode = WorkspaceMode::History;
+                                },
+                                "Compare"
+                            }
+                            button {
+                                onclick: move |_| state.write().restore_snapshot(item.id),
+                                "Restore"
+                            }
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+#[component]
+fn SnapshotCompare() -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let Some(result) = state.read().snapshot_comparison() else {
+        return rsx! {};
+    };
+    let chosen = state.read().compare_snapshot;
+    let against = state.read().compare_against;
+    let changes_only = state.read().compare_changes_only;
+    let others: Vec<_> = state
+        .read()
+        .snapshots_for_selected()
+        .into_iter()
+        .filter(|item| Some(item.id) != chosen)
+        .collect();
+    let against_value = against.map(|id| id.to_string()).unwrap_or_default();
+    rsx! {
+        div { class: "compare",
+            div { class: "compare-bar",
+                label { "Compare with" }
+                select {
+                    class: "compile-select",
+                    title: "The other side of the comparison",
+                    value: "{against_value}",
+                    onchange: move |event| {
+                        state.write().set_compare_against(event.value().parse::<Id>().ok());
+                    },
+                    option { value: "", "Current text" }
+                    for item in others {
+                        option { value: "{item.id}", "{item.label} · {item.created_label()}" }
+                    }
+                }
+                label { class: "compare-toggle",
+                    input {
+                        r#type: "checkbox",
+                        checked: changes_only,
+                        onchange: move |event| state.write().compare_changes_only = event.checked(),
+                    }
+                    "Changed paragraphs only"
+                }
+                button { onclick: move |_| state.write().close_comparison(), "Close" }
+            }
+            match result {
+                Err(err) => rsx! { p { class: "hint", "Could not compare: {err}" } },
+                Ok(comparison) => rsx! {
+                    p { class: "compare-summary",
+                        strong { "{comparison.older}" }
+                        " → "
+                        strong { "{comparison.newer}" }
+                        if comparison.diff.is_unchanged() {
+                            " · The text is the same."
+                        } else {
+                            " · "
+                            span { class: "diff-added", "+{comparison.diff.words_added} words" }
+                            " "
+                            span { class: "diff-removed", "−{comparison.diff.words_removed} words" }
+                            " · {comparison.diff.changed_paragraphs()} paragraphs changed"
+                        }
+                    }
+                    if !(changes_only && comparison.diff.is_unchanged()) {
+                        div { class: "compare-body",
+                            for paragraph in comparison.diff.paragraphs.iter().filter(|p| !changes_only || p.change != ParagraphChange::Same) {
+                                p {
+                                    class: match paragraph.change {
+                                        ParagraphChange::Same => "diff-para",
+                                        ParagraphChange::Changed => "diff-para changed",
+                                        ParagraphChange::Added => "diff-para added",
+                                        ParagraphChange::Removed => "diff-para removed",
+                                    },
+                                    for span in paragraph.spans.iter() {
+                                        match span.op {
+                                            DiffOp::Same => rsx! { "{span.text}" },
+                                            DiffOp::Added => rsx! { ins { class: "diff-added", "{span.text}" } },
+                                            DiffOp::Removed => rsx! { del { class: "diff-removed", "{span.text}" } },
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    p { class: "hint", "Text only. Formatting, links, and inline notes are not compared." }
+                },
             }
         }
     }
@@ -1140,6 +1240,7 @@ fn HistoryPane() -> Element {
     let chrome = use_context::<Signal<PanelChrome>>();
     let widths = use_context::<Signal<PanelWidths>>();
     let snapshots = state.read().snapshots_for_selected();
+    let comparing = state.read().compare_snapshot;
     let backups = state.read().backups();
     let confirm = state.read().confirm_backup.clone();
     let heading = state
@@ -1151,7 +1252,7 @@ fn HistoryPane() -> Element {
         div { class: "history-pane",
             section {
                 h2 { "Document snapshots" }
-                p { class: "hint", "Local copies of “{heading}”. Restoring writes the previous text as a pre-restore snapshot." }
+                p { class: "hint", "Local copies of “{heading}”. Compare shows what changed since a snapshot. Restoring writes the previous text as a pre-restore snapshot." }
                 if snapshots.is_empty() {
                     p { class: "hint", "Select a scene or note, then snapshot it from the inspector." }
                 } else {
@@ -1163,13 +1264,22 @@ fn HistoryPane() -> Element {
                                     span { class: "card-meta", "{item.created_label()} · {item.word_count} words" }
                                     p { class: "preview", "{item.preview}" }
                                 }
-                                button {
-                                    onclick: move |_| state.write().restore_snapshot(item.id),
-                                    "Restore"
+                                div { class: "history-actions",
+                                    button {
+                                        class: if comparing == Some(item.id) { "primary" } else { "" },
+                                        title: "Show what changed since this snapshot",
+                                        onclick: move |_| state.write().compare_snapshot(item.id),
+                                        if comparing == Some(item.id) { "Comparing" } else { "Compare" }
+                                    }
+                                    button {
+                                        onclick: move |_| state.write().restore_snapshot(item.id),
+                                        "Restore"
+                                    }
                                 }
                             }
                         }
                     }
+                    SnapshotCompare {}
                 }
             }
             section {

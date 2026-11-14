@@ -74,7 +74,8 @@ impl ProjectStore {
         Ok(rows)
     }
 
-    pub fn restore_snapshot(&self, snapshot_id: Id) -> Result<Document> {
+    /// Read the text a snapshot holds without changing the live document.
+    pub fn load_snapshot(&self, snapshot_id: Id) -> Result<Document> {
         let (document_id, json): (String, String) = self
             .conn
             .query_row(
@@ -89,9 +90,15 @@ impl ProjectStore {
         let document_id = document_id
             .parse::<Id>()
             .map_err(|_| Error::message("snapshot has an invalid document id"))?;
-        let mut restored =
+        let mut document =
             Document::from_json(&json).map_err(|err| Error::message(err.to_string()))?;
-        restored.id = document_id;
+        document.id = document_id;
+        Ok(document)
+    }
+
+    pub fn restore_snapshot(&self, snapshot_id: Id) -> Result<Document> {
+        let mut restored = self.load_snapshot(snapshot_id)?;
+        let document_id = restored.id;
         restored.updated_at = Timestamp::now();
 
         if let Ok(current) = self.load_document(document_id) {

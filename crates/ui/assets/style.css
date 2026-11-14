@@ -20,6 +20,10 @@
   --editor-text: #d4d4d4;
   --comment-bg: rgba(255, 200, 80, 0.16);
   --comment-line: #cca700;
+  --diff-add-bg: rgba(70, 180, 100, 0.22);
+  --diff-add-line: #4fb86a;
+  --diff-del-bg: rgba(241, 76, 76, 0.2);
+  --diff-del-line: #f14c4c;
   --code-bg: #2d2d2d;
   --status: #007acc;
   --status-fg: #ffffff;
@@ -52,6 +56,10 @@
   --editor-text: #333333;
   --comment-bg: rgba(255, 196, 0, 0.28);
   --comment-line: #bf8803;
+  --diff-add-bg: rgba(40, 160, 70, 0.18);
+  --diff-add-line: #1a7f37;
+  --diff-del-bg: rgba(229, 20, 0, 0.13);
+  --diff-del-line: #c21807;
   --code-bg: #f3f3f3;
   --status: #007acc;
   --status-fg: #ffffff;
@@ -81,6 +89,10 @@
   --editor-text: #2a241c;
   --comment-bg: rgba(196, 162, 101, 0.35);
   --comment-line: #8a6a3b;
+  --diff-add-bg: rgba(70, 130, 60, 0.22);
+  --diff-add-line: #4d7a3a;
+  --diff-del-bg: rgba(190, 70, 50, 0.2);
+  --diff-del-line: #a8402f;
   --code-bg: #efe6d4;
   --status: #6e5430;
   --status-fg: #f6f1e7;
@@ -546,6 +558,32 @@ button.primary:hover { background: var(--primary-hover); }
 .history-item .preview { color: var(--muted); font-size: 12px; margin: 4px 0 0; line-height: 1.4; }
 .history-item button { flex-shrink: 0; }
 .history-list.wide .history-item { background: transparent; }
+.history-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.inspector .history-actions { flex-direction: column; }
+
+.compare { margin-top: 12px; border: 1px solid var(--line); background: var(--panel-2); padding: 10px 12px; }
+.compare-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; }
+.compare-bar .compile-select { max-width: 18rem; }
+.compare-toggle { display: inline-flex; align-items: center; gap: 4px; margin-right: auto; }
+.compare-summary { font-size: 12px; margin: 10px 0; line-height: 1.5; }
+.compare-body {
+  max-height: 60vh;
+  overflow: auto;
+  padding: 12px 16px;
+  background: var(--editor);
+  color: var(--editor-text);
+  font-family: var(--font);
+  line-height: 1.6;
+  user-select: text;
+}
+.diff-para { margin: 0 0 0.6em; padding-left: 8px; border-left: 3px solid transparent; white-space: pre-wrap; min-height: 1em; }
+.diff-para.changed { border-left-color: var(--gold); }
+.diff-para.added { border-left-color: var(--diff-add-line); background: var(--diff-add-bg); }
+.diff-para.removed { border-left-color: var(--diff-del-line); background: var(--diff-del-bg); }
+ins.diff-added { background: var(--diff-add-bg); text-decoration: none; border-bottom: 1px solid var(--diff-add-line); }
+del.diff-removed { background: var(--diff-del-bg); text-decoration: line-through; }
+.compare-summary .diff-added { color: var(--diff-add-line); }
+.compare-summary .diff-removed { color: var(--diff-del-line); }
 
 .status {
   height: 22px;

@@ -21,7 +21,7 @@ Binder + stored documents → writing-studio-export → .md / .docx on disk
 | Crate | Responsibility |
 | --- | --- |
 | `writing-studio-core` | IDs, timestamps, errors, events, autosave debounce, format version |
-| `writing-studio-document` | Block document model, JSON, restricted HTML interchange |
+| `writing-studio-document` | Block document model, JSON, restricted HTML interchange, text comparison between two versions |
 | `writing-studio-editor` | Session, undo/redo, HTML/plain apply, counts |
 | `writing-studio-project` | Binder tree, settings, drag-and-drop, trash/restore |
 | `writing-studio-manuscript` | Book/chapter/scene outline |
@@ -58,4 +58,4 @@ Inline comments, links, code blocks, and scene breaks are fields on the document
 - Offline writing stays complete if a future optional sync service is unused or unavailable.
 - There is no account gate and no separate “community vs restricted” feature split in the core.
 
-See [PHASE1.md](PHASE1.md), [PHASE2.md](PHASE2.md), and [PHASE3.md](PHASE3.md) for the feature lists and [PROJECT_FORMAT.md](PROJECT_FORMAT.md) for on-disk layout. Current work is Phase 4 in [ROADMAP.md](../ROADMAP.md).
+See [PHASE1.md](PHASE1.md), [PHASE2.md](PHASE2.md), and [PHASE3.md](PHASE3.md) for the feature lists and [PROJECT_FORMAT.md](PROJECT_FORMAT.md) for on-disk layout. Current work is Phase 4: [PHASE4.md](PHASE4.md) lists what has shipped, and [ROADMAP.md](../ROADMAP.md) lists what is left.
