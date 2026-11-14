@@ -98,9 +98,9 @@ A new local day sets each book's baseline to that book's current outline count. 
 
 ## Document JSON
 
-Each document is a list of blocks. `schema_version` is currently 1. Block types are `paragraph`, `heading` (with `level`), `quote`, `list`, `code`, and `scene_break`. A block holds inline runs. Each run has marks: `bold`, `italic`, `underline`, `strikethrough`, an optional `link`, and an optional `comment`.
+Each document is a list of blocks. `schema_version` is currently 1. Block types are `paragraph`, `heading` (with `level`), `quote`, `list`, `code`, and `scene_break`. A block holds inline runs. Each run has marks: `bold`, `italic`, `underline`, `strikethrough`, an optional `link`, an optional `comment`, `comment_kind`, `comment_resolved`, and an optional `highlight`.
 
-`comment` is the inline note from the Comment control. It is saved with the scene. Review annotations, highlights, and track changes are not this field. Those remain Phase 4. See [PHASE2.md](PHASE2.md).
+`comment` is the note from the Note control. `comment_kind` is `comment`, `question`, `revise`, or `check`. `comment_resolved` is true once the note is resolved. `highlight` is `yellow`, `green`, `blue`, or `pink`. The last three fields came with Phase 4. A document saved before them loads with a plain, open comment and no highlight, and `schema_version` is still 1. Track changes is not stored yet. See [PHASE4.md](PHASE4.md).
 
 ```json
 {

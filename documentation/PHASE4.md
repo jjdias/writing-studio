@@ -28,11 +28,33 @@ Limits:
 
 Where it lives: the comparison is in `writing-studio-document` (`compare_documents`, `compare_text`). `ProjectStore::load_snapshot` reads a snapshot without restoring it. No new tables, and the project format version is unchanged.
 
+### Review notes and highlights
+
+Phase 2 could put one plain note on a text run. This builds on that field.
+
+- **Note** puts a note on the selected text. A note has a kind: Comment, Question, Revise, or Check. The kind changes the underline in the manuscript.
+- A note can be **resolved** and reopened. A resolved note stays on the text, dimmed.
+- **Yellow**, **Green**, **Blue**, and **Pink** highlight the selected text. A highlight needs no note, and text can carry both.
+- A selection that crosses paragraphs is marked in each paragraph. Paragraphs are never moved inside a note or a highlight.
+- A list above the manuscript shows every note and highlight in the open scene with the text it sits on. Click that text to select it in the manuscript. From the list: change a note's kind, edit its text, resolve or reopen it, or remove it. **Show resolved** lists resolved notes; **Remove resolved** takes them all off the scene.
+- Text that is partly bold or linked under one note is one entry in the list, not one per run.
+- Removing a note or highlight leaves the text. Each change from the list is one undo step.
+- Compile writes open notes as before (footnotes in Markdown, bracketed text in DOCX), with the kind in front when it is not Comment. Resolved notes and highlights are left out.
+
+Limits:
+
+- The list covers the open scene. There is no list of open notes across a whole book yet.
+- A note has no author or date. This is one writer's project on one machine.
+- A note that crosses paragraphs is one entry per paragraph.
+- Changing a note from the list redraws the manuscript, so the caret returns to the start.
+- **Note** still asks in a browser prompt. The in-window field is Phase 8.
+
+Where it lives: `marks.comment_kind`, `marks.comment_resolved`, and `marks.highlight` in the document JSON, beside the Phase 2 `marks.comment`. Older documents load unchanged and `schema_version` is still 1. See [PROJECT_FORMAT.md](PROJECT_FORMAT.md). `Document::review_items` lists them. The editor's selection handling is in `crates/ui/assets/review.js`.
+
 ---
 
 ## Still to do in Phase 4
 
-- Review comments, annotations, and highlights beyond the inline note on a text run (Phase 2)
 - Track changes / suggestions without a server
 - Spellcheck integration
 - Scene diagnostics (goal, conflict, outcome) as local analysis

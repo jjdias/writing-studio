@@ -4,7 +4,9 @@ use std::rc::Rc;
 use dioxus::prelude::*;
 use writing_studio_core::Id;
 use writing_studio_corkboard::{card_matches, cards_from_binder, group_cards, CorkGroup};
-use writing_studio_document::{DiffOp, InlineNote, ParagraphChange};
+use writing_studio_document::{
+    DiffOp, Highlight, NoteKind, ParagraphChange, ReviewItem, ReviewKind, ReviewTarget,
+};
 use writing_studio_editor::EditorSession;
 use writing_studio_manuscript::{outline_rows, row_word_count};
 use writing_studio_project::{
@@ -18,6 +20,7 @@ use crate::shortcuts::{app_shortcut, AppShortcut};
 use crate::state::{BibleLink, CompiledFormat, StudioState, WorkspaceMode, WorldSection};
 
 const STYLES: &str = include_str!("../assets/style.css");
+const REVIEW_JS: &str = include_str!("../assets/review.js");
 
 #[component]
 pub fn App() -> Element {
@@ -643,11 +646,6 @@ fn EditorPane() -> Element {
     let html = snapshot.editor_html.clone();
     let epoch = snapshot.editor_epoch;
     let can_edit = snapshot.session.is_some();
-    let notes = snapshot
-        .session
-        .as_ref()
-        .map(|session| session.document().comments())
-        .unwrap_or_default();
     let initial_html = if html.trim().is_empty() {
         "<p><br></p>".into()
     } else {
@@ -658,16 +656,7 @@ fn EditorPane() -> Element {
         div { class: "editor-pane",
             div { class: "breadcrumb", "{kind} › {heading}" }
             FormatToolbar { enabled: can_edit }
-            if !notes.is_empty() {
-                ul { class: "comment-list",
-                    for note in notes {
-                        li {
-                            span { class: "comment-anchor", "{comment_anchor(&note)}" }
-                            span { "{note.comment}" }
-                        }
-                    }
-                }
-            }
+            ReviewList {}
             div {
                 key: "{epoch}",
                 class: "manuscript rich",
@@ -903,14 +892,125 @@ fn focus_dom(id: &'static str, wait_for_layout: bool) {
     });
 }
 
-fn comment_anchor(note: &InlineNote) -> String {
-    let trimmed = note.text.trim();
-    let label = if trimmed.is_empty() { "Comment" } else { trimmed };
-    let count = label.chars().count();
-    if count <= 42 {
-        label.to_string()
+fn review_anchor(text: &str) -> String {
+    let trimmed = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if trimmed.chars().count() <= 42 {
+        trimmed
     } else {
-        format!("{}…", label.chars().take(42).collect::<String>())
+        format!("{}…", trimmed.chars().take(42).collect::<String>())
+    }
+}
+
+/// Notes and highlights in the open document, above the manuscript.
+#[component]
+fn ReviewList() -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let items: Vec<ReviewItem> = state.read().review_items();
+    if items.is_empty() {
+        return rsx! {};
+    }
+    let show_resolved = state.read().show_resolved_notes;
+    let is_resolved = |item: &ReviewItem| matches!(item.kind, ReviewKind::Note { resolved: true, .. });
+    let resolved = items.iter().filter(|item| is_resolved(item)).count();
+    let highlights = items
+        .iter()
+        .filter(|item| matches!(item.kind, ReviewKind::Highlight(_)))
+        .count();
+    let open = items.len() - resolved - highlights;
+    let shown: Vec<ReviewItem> = items
+        .into_iter()
+        .filter(|item| show_resolved || !is_resolved(item))
+        .collect();
+    rsx! {
+        div { class: "review",
+            div { class: "review-head",
+                span { "Review · {open} open · {resolved} resolved · {highlights} highlighted" }
+                if resolved > 0 {
+                    label { class: "compare-toggle",
+                        input {
+                            r#type: "checkbox",
+                            checked: show_resolved,
+                            onchange: move |event| state.write().show_resolved_notes = event.checked(),
+                        }
+                        "Show resolved"
+                    }
+                    button {
+                        title: "Take every resolved note off this document. The text stays.",
+                        onclick: move |_| state.write().remove_resolved_notes(),
+                        "Remove resolved"
+                    }
+                }
+            }
+            ul { class: "review-list",
+                for item in shown {
+                    ReviewRow { item }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn ReviewRow(item: ReviewItem) -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let target = item.target;
+    let anchor = review_anchor(&item.text);
+    let row_class = if matches!(item.kind, ReviewKind::Note { resolved: true, .. }) {
+        "review-item resolved"
+    } else {
+        "review-item"
+    };
+    let jump = match target {
+        ReviewTarget::Note(index) => format!("wsSelectReview(el, 'note', {index});"),
+        ReviewTarget::Highlight(index) => format!("wsSelectReview(el, 'highlight', {index});"),
+    };
+    rsx! {
+        li { class: row_class,
+            button {
+                class: "review-anchor",
+                title: "Show this text in the manuscript",
+                onclick: move |_| run_editor_script(state, jump.clone()),
+                "{anchor}"
+            }
+            match item.kind {
+                ReviewKind::Note { comment, kind, resolved } => {
+                    let ReviewTarget::Note(index) = target else { return rsx! {} };
+                    rsx! {
+                        select {
+                            class: "compile-select",
+                            title: "What this note is for",
+                            value: "{kind.as_str()}",
+                            onchange: move |event| {
+                                if let Some(next) = NoteKind::from_id(&event.value()) {
+                                    state.write().set_note_kind(index, next);
+                                }
+                            },
+                            for choice in NoteKind::ALL {
+                                option { value: "{choice.as_str()}", selected: choice == kind, "{choice.label()}" }
+                            }
+                        }
+                        input {
+                            class: "review-text",
+                            title: "Note text. Enter or leaving the field keeps the change.",
+                            value: "{comment}",
+                            onchange: move |event| state.write().set_note_text(index, &event.value()),
+                        }
+                        button {
+                            onclick: move |_| state.write().resolve_note(index, !resolved),
+                            if resolved { "Reopen" } else { "Resolve" }
+                        }
+                    }
+                }
+                ReviewKind::Highlight(color) => rsx! {
+                    span { class: "review-swatch hl-{color.as_str()}", "{color.label()} highlight" }
+                },
+            }
+            button {
+                title: "Remove it. The text stays.",
+                onclick: move |_| state.write().remove_review(target),
+                "Remove"
+            }
+        }
     }
 }
 
@@ -938,11 +1038,13 @@ fn run_format_command(state: Signal<StudioState>, command: &'static str, argumen
     });
 }
 
-fn run_editor_script(state: Signal<StudioState>, body: &'static str) {
+fn run_editor_script(state: Signal<StudioState>, body: impl Into<String>) {
+    let body = body.into();
     spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(16)).await;
         let script = format!(
             r#"
+            {REVIEW_JS}
             const el = document.querySelector('[data-manuscript]');
             if (el) {{ el.focus(); }}
             {body}
@@ -959,6 +1061,7 @@ fn run_editor_script(state: Signal<StudioState>, body: &'static str) {
 #[component]
 fn FormatToolbar(enabled: bool) -> Element {
     let state = use_context::<Signal<StudioState>>();
+    let mut note_kind = use_signal(|| NoteKind::Comment);
     rsx! {
         div { class: "format-toolbar",
             div { class: "format-group",
@@ -968,8 +1071,49 @@ fn FormatToolbar(enabled: bool) -> Element {
                 button { disabled: !enabled, onclick: move |_| run_format_command(state, "strikeThrough", ""), "Strike" }
                 button { disabled: !enabled, onclick: move |_| run_editor_script(state, LINK_SCRIPT), "Link" }
                 button { disabled: !enabled, onclick: move |_| run_format_command(state, "unlink", ""), "Unlink" }
-                button { disabled: !enabled, onclick: move |_| run_editor_script(state, COMMENT_SCRIPT), "Comment" }
-                button { disabled: !enabled, onclick: move |_| run_editor_script(state, UNCOMMENT_SCRIPT), "Uncomment" }
+            }
+            div { class: "format-group",
+                select {
+                    class: "compile-select",
+                    title: "What the next note is for",
+                    disabled: !enabled,
+                    value: "{note_kind().as_str()}",
+                    onchange: move |event| {
+                        if let Some(next) = NoteKind::from_id(&event.value()) {
+                            note_kind.set(next);
+                        }
+                    },
+                    for choice in NoteKind::ALL {
+                        option { value: "{choice.as_str()}", "{choice.label()}" }
+                    }
+                }
+                button {
+                    disabled: !enabled,
+                    title: "Put a note on the selected text",
+                    onclick: move |_| run_editor_script(state, format!("wsComment(el, '{}');", note_kind().as_str())),
+                    "Note"
+                }
+                button {
+                    disabled: !enabled,
+                    title: "Take the note off the selected text",
+                    onclick: move |_| run_editor_script(state, "wsUncomment(el);"),
+                    "Remove note"
+                }
+                for color in Highlight::ALL {
+                    button {
+                        class: "hl-btn hl-{color.as_str()}",
+                        disabled: !enabled,
+                        title: "Highlight the selected text in {color.as_str()}",
+                        onclick: move |_| run_editor_script(state, format!("wsHighlight(el, '{}');", color.as_str())),
+                        "{color.label()}"
+                    }
+                }
+                button {
+                    disabled: !enabled,
+                    title: "Take the highlight off the selected text",
+                    onclick: move |_| run_editor_script(state, "wsClearHighlight(el);"),
+                    "No highlight"
+                }
             }
             div { class: "format-group",
                 button { disabled: !enabled, onclick: move |_| run_format_command(state, "formatBlock", "H1"), "H1" }
@@ -1002,46 +1146,6 @@ if (sel && sel.rangeCount && !sel.isCollapsed) {
             document.execCommand('createLink', false, url);
         }
     }
-}
-"#;
-
-const COMMENT_SCRIPT: &str = r#"
-const sel = window.getSelection();
-if (sel && sel.rangeCount && !sel.isCollapsed && el && el.contains(sel.getRangeAt(0).commonAncestorContainer)) {
-    const saved = sel.getRangeAt(0).cloneRange();
-    const raw = window.prompt('Comment on the selection');
-    if (raw && raw.trim()) {
-        sel.removeAllRanges();
-        sel.addRange(saved);
-        const span = document.createElement('span');
-        span.className = 'ws-comment';
-        span.setAttribute('data-comment', raw.trim());
-        span.title = raw.trim();
-        const range = sel.getRangeAt(0);
-        try {
-            range.surroundContents(span);
-        } catch (err) {
-            span.appendChild(range.extractContents());
-            range.insertNode(span);
-        }
-    }
-}
-"#;
-
-const UNCOMMENT_SCRIPT: &str = r#"
-const sel = window.getSelection();
-if (sel && sel.rangeCount && el) {
-    const range = sel.getRangeAt(0);
-    const spans = Array.from(el.querySelectorAll('span[data-comment]'));
-    spans.forEach((span) => {
-        const hit = range.collapsed
-            ? span.contains(range.startContainer)
-            : (range.intersectsNode ? range.intersectsNode(span) : false);
-        if (!hit) return;
-        const parent = span.parentNode;
-        while (span.firstChild) parent.insertBefore(span.firstChild, span);
-        parent.removeChild(span);
-    });
 }
 "#;
 

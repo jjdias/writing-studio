@@ -120,13 +120,7 @@ fn add_inlines(
         } else {
             paragraph = paragraph.add_run(run);
         }
-        if let Some(note) = inline
-            .marks
-            .comment
-            .as_deref()
-            .map(str::trim)
-            .filter(|note| !note.is_empty())
-        {
+        if let Some(note) = inline.marks.compile_note() {
             paragraph = paragraph.add_run(
                 Run::new()
                     .add_text(format!(" [{note}]"))

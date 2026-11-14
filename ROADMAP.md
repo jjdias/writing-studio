@@ -4,7 +4,7 @@ Writing Studio is **open source** (MIT OR Apache-2.0) and **free for the communi
 
 **Local-first, now and later.** Saves, snapshots, backups, and compile live on the writer’s machine. Cloud connections and collaboration, if added, stay **optional**. They must never become a requirement to open a project, write, or keep copies of work.
 
-Status: Phases 1, 2, and 3 are complete. Phase 4 is in progress on the `phase-4` branch; snapshot comparison is its first feature and is done. Details: [`documentation/PHASE1.md`](documentation/PHASE1.md), [`documentation/PHASE2.md`](documentation/PHASE2.md), [`documentation/PHASE3.md`](documentation/PHASE3.md), and [`documentation/PHASE4.md`](documentation/PHASE4.md).
+Status: Phases 1, 2, and 3 are complete. Phase 4 is in progress on the `phase-4` branch; snapshot comparison and review notes and highlights are done. Details: [`documentation/PHASE1.md`](documentation/PHASE1.md), [`documentation/PHASE2.md`](documentation/PHASE2.md), [`documentation/PHASE3.md`](documentation/PHASE3.md), and [`documentation/PHASE4.md`](documentation/PHASE4.md).
 
 ---
 
@@ -113,7 +113,7 @@ These crates exist so module boundaries stay stable. They are **types or stubs**
 Done. See [`documentation/PHASE2.md`](documentation/PHASE2.md).
 
 - Inline links from the toolbar, and more block types (headings, code, scene break)
-- Inline comments: a note on a text run, stored in the document JSON. Review annotations, highlights, and track changes stay in Phase 4
+- Inline comments: a note on a text run, stored in the document JSON. Phase 4 added note kinds, resolving, and highlights. Track changes stays in Phase 4
 - Outliner: inline metadata edit and word counts per row
 - Binder labels, colors, and deeper nesting polish
 - Corkboard: reorder scenes, filter/group, card colors
@@ -145,9 +145,10 @@ Done:
 
 - Snapshot comparison. **History** shows what changed between a snapshot and the current text, or between two snapshots of the same document: paragraphs added and removed, and words changed inside a rewritten paragraph. It compares text only, and it writes nothing.
 
+- Review notes and highlights. A note on a passage has a kind (Comment, Question, Revise, Check) and can be resolved, reopened, edited, or removed from a list above the manuscript. Text can be highlighted in four colors. Both are stored on the text in the scene. Compile leaves out resolved notes and highlights.
+
 Still to do:
 
-- Review comments, annotations, and highlights beyond the inline note already stored on a text run (Phase 2)
 - Track changes / suggestions without a server
 - Spellcheck integration
 - Scene diagnostics (goal, conflict, outcome) as local analysis
@@ -245,6 +246,6 @@ When optional cloud work starts, the source of truth for a disconnected writer r
 
 ## Immediate next steps
 
-Current work is Phase 4, local professional editing, on the `phase-4` branch. Snapshot comparison is done. Next is review comments, annotations, and highlights; then track changes, spellcheck, and scene diagnostics. An inline note on a selection already saves with the scene (Phase 2). The writing-surface UI is Phase 8. Richer front matter than the book title stays in Phase 6. A separate bible project beside each book, backups that include research files, and tags stay bonus work.
+Current work is Phase 4, local professional editing, on the `phase-4` branch. Snapshot comparison and review notes and highlights are done. Next is track changes; then spellcheck and scene diagnostics. The writing-surface UI is Phase 8. Richer front matter than the book title stays in Phase 6. A separate bible project beside each book, backups that include research files, and tags stay bonus work.
 
 Optional cloud stays later.

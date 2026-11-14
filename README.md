@@ -20,7 +20,7 @@ Full list: [`documentation/PHASE1.md`](documentation/PHASE1.md).
 
 The writing environment around that studio:
 
-- Links, inline comments, headings, code blocks, and scene breaks stored on the scene
+- Links, notes, highlights, headings, code blocks, and scene breaks stored on the scene
 - Full-text search, binder labels and colors, corkboard grouping, and an editable outliner
 - Daily targets, sittings, themes, and a panel layout saved in the project
 

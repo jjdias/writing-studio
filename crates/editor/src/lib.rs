@@ -82,6 +82,19 @@ impl EditorSession {
         self.dirty = true;
     }
 
+    /// Change the document in place, as one undo step. The closure returns
+    /// whether it changed anything.
+    pub fn edit(&mut self, change: impl FnOnce(&mut Document) -> bool) -> bool {
+        let mut next = self.document.clone();
+        if !change(&mut next) {
+            return false;
+        }
+        self.push_undo();
+        self.document = next;
+        self.dirty = true;
+        true
+    }
+
     pub fn undo(&mut self) -> bool {
         if let Some(previous) = self.undo.pop() {
             self.redo.push(self.document.clone());
@@ -126,6 +139,19 @@ mod tests {
         assert_eq!(session.plain_text(), "Hello");
         assert!(session.redo());
         assert_eq!(session.plain_text(), "Hello world");
+    }
+
+    #[test]
+    fn resolving_a_note_is_one_undo_step() {
+        let mut session = EditorSession::empty(Id::new());
+        session.apply_html(r#"<p><span class="ws-comment" data-comment="tide">harbor</span></p>"#);
+        session.mark_clean();
+        assert!(session.edit(|doc| doc.set_note_resolved(0, true)));
+        assert!(session.is_dirty());
+        assert!(session.html().contains("data-resolved"));
+        assert!(!session.edit(|doc| doc.set_note_resolved(0, true)));
+        assert!(session.undo());
+        assert!(!session.html().contains("data-resolved"));
     }
 
     #[test]

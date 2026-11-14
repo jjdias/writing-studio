@@ -39,7 +39,7 @@ Binder + stored documents → writing-studio-export → .md / .docx on disk
 
 The plot grid, character cast, world notes, and research library are stored in the same project database as the binder. Research files are copied into `attachments/`. Search is not stored there: the Tantivy index is memory only. Remaining crates are typed placeholders (collaboration, synchronization, security) so module boundaries stay stable.
 
-Inline comments, links, code blocks, and scene breaks are fields on the document JSON. An inline comment is a note on one text run (`marks.comment`). Review annotations, highlights, and track changes are still Phase 4. See [PHASE2.md](PHASE2.md) and [ROADMAP.md](../ROADMAP.md).
+Inline comments, links, code blocks, and scene breaks are fields on the document JSON. A note sits on text runs (`marks.comment`, with `comment_kind` and `comment_resolved`), and so does a highlight (`marks.highlight`). `Document::review_items` lists them, joining neighboring runs that carry the same note. Track changes is still to do. See [PHASE4.md](PHASE4.md) and [ROADMAP.md](../ROADMAP.md).
 
 ## Data flow
 

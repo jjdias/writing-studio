@@ -13,8 +13,11 @@ Phases 1, 2, and 3 are the app described here. Current work is Phase 4 in [ROADM
 ## Write
 
 - Select a scene in the binder. Type in the manuscript.
-- Formatting buttons: Bold, Italic, Underline, Strike, Link, Unlink, Comment, Uncomment, H1, H2, H3, Body, Quote, List, Numbered, Code, and Break.
-- **Comment** asks for a note on the selection. The note is saved with the scene, on that text run, and listed above the manuscript. **Uncomment** removes it. These are writer notes on a passage. Review annotations, highlights, and track changes are Phase 4 and are not this control. See [PHASE2.md](PHASE2.md).
+- Formatting buttons: Bold, Italic, Underline, Strike, Link, Unlink, H1, H2, H3, Body, Quote, List, Numbered, Code, and Break. The review buttons are Note, Remove note, the four highlight colors, and No highlight.
+- **Note** asks for a note on the selection. The menu beside it sets what the note is for: Comment, Question, Revise, or Check. The note is saved with the scene, on that text. **Remove note** takes it off; the text stays.
+- **Yellow**, **Green**, **Blue**, and **Pink** highlight the selection. **No highlight** takes the color off. Text can carry a highlight and a note together.
+- Notes and highlights are listed above the manuscript. Click the quoted text to select it in the manuscript. In a note's row, change its kind, edit its text, **Resolve** it, or **Remove** it. A resolved note stays on the text, dimmed, and leaves the list until **Show resolved** is on. **Remove resolved** takes every resolved note off the scene. Each of these is one undo step.
+- Compile writes open notes: footnotes in Markdown, bracketed text in DOCX. A kind other than Comment is named in front of the note. Resolved notes and highlights are left out of the compiled file. Track changes is not built yet. See [PHASE4.md](PHASE4.md).
 - Changes save a few seconds after you stop typing, when you leave the field, or with **Ctrl+S**.
 - **Ctrl+Z** undoes. **Ctrl+Y** or **Ctrl+Shift+Z** redoes in the document session.
 

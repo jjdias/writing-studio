@@ -6,7 +6,9 @@ use std::time::Instant;
 
 use writing_studio_characters::Cast;
 use writing_studio_corkboard::CorkGroup;
-use writing_studio_document::{compare_documents, Document, DocumentDiff};
+use writing_studio_document::{
+    compare_documents, Document, DocumentDiff, NoteKind, ReviewItem, ReviewKind, ReviewTarget,
+};
 use writing_studio_core::{autosave_due, autosave_wait, local_day, Id, Timestamp, PRODUCT_NAME};
 use writing_studio_editor::EditorSession;
 use writing_studio_export::{compile_docx, compile_markdown, CompileInput};
@@ -156,6 +158,7 @@ pub struct StudioState {
     pub compare_snapshot: Option<Id>,
     pub compare_against: Option<Id>,
     pub compare_changes_only: bool,
+    pub show_resolved_notes: bool,
     pub binder_dirty: bool,
     pub last_edit: Option<Instant>,
     pub session_started: Option<Instant>,
@@ -208,6 +211,7 @@ impl Default for StudioState {
             compare_snapshot: None,
             compare_against: None,
             compare_changes_only: false,
+            show_resolved_notes: false,
             binder_dirty: false,
             last_edit: None,
             session_started: None,
@@ -732,6 +736,69 @@ impl StudioState {
             if session.is_dirty() {
                 self.note_edit();
             }
+        }
+    }
+
+    /// Notes and highlights in the open document.
+    pub fn review_items(&self) -> Vec<ReviewItem> {
+        self.session
+            .as_ref()
+            .map(|session| session.document().review_items())
+            .unwrap_or_default()
+    }
+
+    pub fn resolve_note(&mut self, note: usize, resolved: bool) {
+        let status = if resolved { "Note resolved." } else { "Note reopened." };
+        self.edit_review(status, |doc| doc.set_note_resolved(note, resolved));
+    }
+
+    pub fn set_note_kind(&mut self, note: usize, kind: NoteKind) {
+        self.edit_review("Note changed.", |doc| doc.set_note_kind(note, kind));
+    }
+
+    pub fn set_note_text(&mut self, note: usize, text: &str) {
+        self.edit_review("Note changed.", |doc| doc.set_note_text(note, text));
+    }
+
+    pub fn remove_review(&mut self, target: ReviewTarget) {
+        let status = match target {
+            ReviewTarget::Note(_) => "Note removed. The text stays.",
+            ReviewTarget::Highlight(_) => "Highlight removed. The text stays.",
+        };
+        self.edit_review(status, |doc| doc.remove_review(target));
+    }
+
+    /// Take every resolved note off the open document.
+    pub fn remove_resolved_notes(&mut self) {
+        self.edit_review("Resolved notes removed. The text stays.", |doc| {
+            let mut changed = false;
+            // Removing a note renumbers the ones after it, so look again each time.
+            while let Some(target) = doc.review_items().into_iter().find_map(|item| {
+                matches!(item.kind, ReviewKind::Note { resolved: true, .. }).then_some(item.target)
+            }) {
+                if !doc.remove_review(target) {
+                    break;
+                }
+                changed = true;
+            }
+            changed
+        });
+    }
+
+    /// A review edit changes marks, not text. It is one undo step, and the
+    /// editor is redrawn from the document.
+    fn edit_review(&mut self, status: &str, change: impl FnOnce(&mut Document) -> bool) {
+        let Some(mut session) = self.session.take() else {
+            return;
+        };
+        let changed = session.edit(change);
+        if changed {
+            self.sync_editor_from_session(&session);
+        }
+        self.session = Some(session);
+        if changed {
+            self.note_edit();
+            self.status = status.into();
         }
     }
 
@@ -2475,6 +2542,53 @@ mod tests {
 
         state.compare_snapshot(newest);
         assert!(state.snapshot_comparison().is_none());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn review_edits_redraw_the_editor_and_save_with_the_scene() {
+        let (mut state, dir) = open_state("review");
+        state.apply_editor_html(
+            concat!(
+                r#"<p>The <span class="ws-comment" data-comment="which one?">harbor</span> was "#,
+                r#"<mark data-highlight="yellow">quiet</mark>.</p>"#,
+                r#"<p><span class="ws-comment" data-comment="cut">Too long.</span></p>"#,
+            )
+            .into(),
+        );
+        assert_eq!(state.review_items().len(), 3);
+        let epoch = state.editor_epoch;
+
+        state.set_note_kind(0, NoteKind::Question);
+        state.resolve_note(0, true);
+        state.set_note_text(1, "cut this");
+        assert!(state.editor_epoch > epoch);
+        assert!(state.editor_html.contains(r#"data-resolved="true""#));
+        assert!(state.editor_html.contains(r#"data-kind="question""#));
+
+        // What the webview sends back after the redraw is not a new edit.
+        assert!(state.same_editor_html(&state.editor_html.clone()));
+
+        state.flush_editor();
+        let doc_id = state.session.as_ref().unwrap().document_id();
+        let saved = state.store.as_ref().unwrap().borrow().load_document(doc_id).unwrap();
+        let items = saved.review_items();
+        assert_eq!(
+            items[0].kind,
+            ReviewKind::Note {
+                comment: "which one?".into(),
+                kind: NoteKind::Question,
+                resolved: true,
+            }
+        );
+        assert!(matches!(&items[2].kind, ReviewKind::Note { comment, .. } if comment == "cut this"));
+
+        state.remove_review(ReviewTarget::Highlight(0));
+        state.remove_resolved_notes();
+        let left = state.review_items();
+        assert_eq!(left.len(), 1);
+        assert_eq!(left[0].text, "Too long.");
+        assert_eq!(state.editor_text, "The harbor was quiet.\nToo long.");
         let _ = std::fs::remove_dir_all(dir);
     }
 

@@ -5,7 +5,9 @@
 
 use writing_studio_core::Id;
 
-use crate::model::{normalize_link, Block, BlockKind, Document, Inline, ListItem, Marks};
+use crate::model::{
+    normalize_link, Block, BlockKind, Document, Highlight, Inline, ListItem, Marks, NoteKind,
+};
 
 impl Document {
     pub fn to_html(&self) -> String {
@@ -69,16 +71,25 @@ fn inline_to_html(inline: &Inline) -> String {
     if let Some(url) = inline.marks.link.as_deref().and_then(normalize_link) {
         body = format!("<a href=\"{}\">{body}</a>", escape_attr(&url));
     }
-    if let Some(note) = inline
-        .marks
-        .comment
-        .as_deref()
-        .map(str::trim)
-        .filter(|note| !note.is_empty())
-    {
+    if let Some(color) = inline.marks.highlight {
+        let color = color.as_str();
+        body = format!("<mark class=\"ws-hl\" data-highlight=\"{color}\">{body}</mark>");
+    }
+    if let Some(note) = inline.marks.note() {
         let attr = escape_attr(note);
+        let kind = inline.marks.comment_kind;
+        let mut extra = String::new();
+        let mut title = attr.clone();
+        if kind != NoteKind::Comment {
+            extra.push_str(&format!(" data-kind=\"{}\"", kind.as_str()));
+            title = format!("{}: {title}", kind.label());
+        }
+        if inline.marks.comment_resolved {
+            extra.push_str(" data-resolved=\"true\"");
+            title.push_str(" (resolved)");
+        }
         body = format!(
-            "<span class=\"ws-comment\" data-comment=\"{attr}\" title=\"{attr}\">{body}</span>"
+            "<span class=\"ws-comment\" data-comment=\"{attr}\"{extra} title=\"{title}\">{body}</span>"
         );
     }
     body
@@ -98,7 +109,8 @@ fn parse_html(html: &str) -> Vec<Block> {
     let tokens = tokenize(html);
     let mut blocks = Vec::new();
     let mut marks = Marks::default();
-    let mut comment_stack: Vec<Option<String>> = Vec::new();
+    let mut comment_stack: Vec<(Option<String>, NoteKind, bool)> = Vec::new();
+    let mut highlight_stack: Vec<Option<Highlight>> = Vec::new();
     let mut current_inlines: Vec<Inline> = Vec::new();
     let mut list_items: Vec<ListItem> = Vec::new();
     let mut list_ordered = false;
@@ -172,14 +184,27 @@ fn parse_html(html: &str) -> Vec<Block> {
                         .and_then(|(_, value)| normalize_link(&unescape(value)));
                 }
                 "span" => {
-                    comment_stack.push(marks.comment.clone());
-                    if let Some(note) = attrs
-                        .iter()
-                        .find(|(name, _)| name == "data-comment")
-                        .map(|(_, value)| unescape(value).trim().to_string())
+                    comment_stack.push((
+                        marks.comment.clone(),
+                        marks.comment_kind,
+                        marks.comment_resolved,
+                    ));
+                    if let Some(note) = attr(&attrs, "data-comment")
+                        .map(|value| unescape(value).trim().to_string())
                         .filter(|note| !note.is_empty())
                     {
                         marks.comment = Some(note);
+                        marks.comment_kind = attr(&attrs, "data-kind")
+                            .and_then(NoteKind::from_id)
+                            .unwrap_or_default();
+                        marks.comment_resolved = attr(&attrs, "data-resolved") == Some("true");
+                    }
+                }
+                "mark" => {
+                    highlight_stack.push(marks.highlight);
+                    if let Some(color) = attr(&attrs, "data-highlight").and_then(Highlight::from_id)
+                    {
+                        marks.highlight = Some(color);
                     }
                 }
                 _ => {}
@@ -214,7 +239,13 @@ fn parse_html(html: &str) -> Vec<Block> {
                 "u" => marks.underline = false,
                 "s" | "strike" | "del" => marks.strikethrough = false,
                 "a" => marks.link = None,
-                "span" => marks.comment = comment_stack.pop().flatten(),
+                "span" => {
+                    let (comment, kind, resolved) = comment_stack.pop().unwrap_or_default();
+                    marks.comment = comment;
+                    marks.comment_kind = kind;
+                    marks.comment_resolved = resolved;
+                }
+                "mark" => marks.highlight = highlight_stack.pop().flatten(),
                 _ => {}
             },
         }
@@ -224,6 +255,13 @@ fn parse_html(html: &str) -> Vec<Block> {
         blocks.push(Block::paragraph(""));
     }
     blocks
+}
+
+fn attr<'a>(attrs: &'a [(String, String)], name: &str) -> Option<&'a str> {
+    attrs
+        .iter()
+        .find(|(key, _)| key == name)
+        .map(|(_, value)| value.as_str())
 }
 
 #[derive(Clone, Copy)]
@@ -570,6 +608,57 @@ mod tests {
         assert!(matches!(restored.blocks[1].kind, BlockKind::Code { .. }));
         assert!(matches!(restored.blocks[2].kind, BlockKind::SceneBreak));
         assert_eq!(restored.blocks[3].plain_text(), "After");
+    }
+
+    #[test]
+    fn note_kinds_resolved_notes_and_highlights_round_trip() {
+        let mut doc = Document::new(Id::new());
+        doc.replace_html(concat!(
+            r#"<p>The <span class="ws-comment" data-comment="which one?" data-kind="question" data-resolved="true">"#,
+            r#"har<mark data-highlight="green">bor</mark></span> was <mark data-highlight="pink">quiet</mark>"#,
+            r#" and <mark data-highlight="plaid">plain</mark>.</p>"#,
+        ));
+        let BlockKind::Paragraph { inlines } = &doc.blocks[0].kind else {
+            panic!("expected paragraph");
+        };
+        let texts: Vec<&str> = inlines.iter().map(|inline| inline.text.as_str()).collect();
+        assert_eq!(texts, ["The ", "har", "bor", " was ", "quiet", " and plain."]);
+        assert_eq!(inlines[1].marks.note(), Some("which one?"));
+        assert_eq!(inlines[1].marks.comment_kind, NoteKind::Question);
+        assert!(inlines[1].marks.comment_resolved);
+        assert!(inlines[1].marks.highlight.is_none());
+        assert_eq!(inlines[2].marks.note(), Some("which one?"));
+        assert_eq!(inlines[2].marks.highlight, Some(Highlight::Green));
+        assert_eq!(inlines[3].marks, Marks::default());
+        assert_eq!(inlines[4].marks.highlight, Some(Highlight::Pink));
+
+        let html = doc.to_html();
+        assert!(html.contains(r#"data-kind="question""#));
+        assert!(html.contains(r#"data-resolved="true""#));
+        assert!(html.contains(r#"title="Question: which one? (resolved)""#));
+        assert!(html.contains(r#"<mark class="ws-hl" data-highlight="pink">quiet</mark>"#));
+        let mut again = Document::new(doc.id);
+        again.replace_html(&html);
+        assert_eq!(again.to_html(), html);
+        assert_eq!(again.review_items(), doc.review_items());
+        assert_eq!(doc.review_items().len(), 3);
+    }
+
+    /// The editor wraps each piece of selected text on its own. This is what it
+    /// sends after a note is put on text that crosses two paragraphs and a bold run.
+    #[test]
+    fn a_note_wrapped_piece_by_piece_is_one_item_per_paragraph() {
+        let mut doc = Document::new(Id::new());
+        doc.replace_html(concat!(
+            r#"<p>The <mark class="ws-hl" data-highlight="green">harbor</mark> was quiet at "#,
+            r#"<span class="ws-comment" data-comment="why?" data-kind="question" title="why?">dawn.</span></p>"#,
+            r#"<p><span class="ws-comment" data-comment="why?" data-kind="question" title="why?">Nobody </span>"#,
+            r#"<strong><span class="ws-comment" data-comment="why?" data-kind="question" title="why?">answered</span></strong> the door.</p>"#,
+        ));
+        let items = doc.review_items();
+        let texts: Vec<&str> = items.iter().map(|item| item.text.as_str()).collect();
+        assert_eq!(texts, ["harbor", "dawn.", "Nobody answered"]);
+        assert_eq!(doc.to_plain_text(), "The harbor was quiet at dawn.\nNobody answered the door.");
     }
 
     #[test]

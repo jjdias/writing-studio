@@ -89,13 +89,7 @@ fn inline_markdown(inline: &Inline, notes: &mut Vec<String>) -> String {
     if let Some(url) = inline.marks.link.as_deref().and_then(normalize_link) {
         text = format!("[{text}]({url})");
     }
-    if let Some(note) = inline
-        .marks
-        .comment
-        .as_deref()
-        .map(str::trim)
-        .filter(|note| !note.is_empty())
-    {
+    if let Some(note) = inline.marks.compile_note() {
         let n = notes.len() + 1;
         notes.push(note.replace('\n', " "));
         text.push_str(&format!("[^{n}]"));

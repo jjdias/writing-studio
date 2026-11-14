@@ -11,6 +11,9 @@ mod model;
 pub use diff::{
     compare_documents, compare_text, DiffOp, DiffParagraph, DiffSpan, DocumentDiff, ParagraphChange,
 };
-pub use model::{normalize_link, Block, BlockKind, Document, Inline, InlineNote, ListItem, Marks};
+pub use model::{
+    normalize_link, Block, BlockKind, Document, Highlight, Inline, InlineNote, ListItem, Marks,
+    NoteKind, ReviewItem, ReviewKind, ReviewTarget,
+};
 
 pub const DOCUMENT_SCHEMA_VERSION: u32 = 1;
