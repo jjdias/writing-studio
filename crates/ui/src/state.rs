@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Instant;
@@ -10,10 +10,13 @@ use writing_studio_document::{
     accept_change, compare_documents, reject_change, tracked_changes, Document, DocumentDiff,
     NoteKind, ReviewItem, ReviewKind, ReviewTarget, TrackedChange,
 };
+use writing_studio_diagnostics::{
+    findings, scene_facts, typical_words, BookContext, Finding, SceneBeats, SceneFacts,
+};
 use writing_studio_core::{autosave_due, autosave_wait, local_day, Id, Timestamp, PRODUCT_NAME};
 use writing_studio_editor::EditorSession;
 use writing_studio_export::{compile_docx, compile_markdown, CompileInput};
-use writing_studio_manuscript::book_outline_words;
+use writing_studio_manuscript::{book_outline_words, outline_rows};
 use writing_studio_plotting::PlotGrid;
 use writing_studio_research::ResearchLibrary;
 use writing_studio_project::{
@@ -138,6 +141,22 @@ impl Tracking {
     }
 }
 
+/// One of the three things a scene is asked for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Beat {
+    Goal,
+    Conflict,
+    Outcome,
+}
+
+/// What diagnostics says about one scene.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SceneReport {
+    pub beats: SceneBeats,
+    pub facts: SceneFacts,
+    pub findings: Vec<Finding>,
+}
+
 #[derive(Clone)]
 pub struct StudioState {
     pub product_name: &'static str,
@@ -184,6 +203,13 @@ pub struct StudioState {
     /// The unknown word whose suggestions are on screen.
     pub spell_focus: Option<String>,
     pub show_project_words: bool,
+    /// Goal, conflict, and outcome by binder item.
+    pub beats: HashMap<Id, SceneBeats>,
+    pub beats_dirty: bool,
+    /// The outliner shows the diagnostics table instead of the outline.
+    pub outliner_diagnostics: bool,
+    /// Scene text by document, read when the diagnostics table opens.
+    pub diagnostic_texts: Rc<HashMap<Id, String>>,
     pub binder_dirty: bool,
     pub last_edit: Option<Instant>,
     pub session_started: Option<Instant>,
@@ -241,6 +267,10 @@ impl Default for StudioState {
             speller: None,
             spell_focus: None,
             show_project_words: false,
+            beats: HashMap::new(),
+            beats_dirty: false,
+            outliner_diagnostics: false,
+            diagnostic_texts: Rc::new(HashMap::new()),
             binder_dirty: false,
             last_edit: None,
             session_started: None,
@@ -715,6 +745,7 @@ impl StudioState {
                 self.reindex_manuscript();
                 self.begin_writing_session();
                 self.load_speller();
+                self.load_beats();
             }
             (Err(err), _, _, _, _, _)
             | (_, Err(err), _, _, _, _)
@@ -925,6 +956,134 @@ impl StudioState {
             self.status =
                 format!("“{from}” was not replaced. A word that is partly formatted has to be fixed by hand.");
         }
+    }
+
+    fn load_beats(&mut self) {
+        self.beats_dirty = false;
+        self.diagnostic_texts = Rc::new(HashMap::new());
+        let Some(store) = &self.store else {
+            return;
+        };
+        match store.borrow().load_scene_beats() {
+            Ok(beats) => self.beats = beats,
+            Err(err) => {
+                self.beats = HashMap::new();
+                self.status = format!("Could not read scene goals: {err}");
+            }
+        }
+    }
+
+    fn persist_beats_now(&mut self) -> bool {
+        let Some(store) = &self.store else {
+            return false;
+        };
+        match store.borrow().persist_scene_beats(&self.beats) {
+            Ok(()) => true,
+            Err(err) => {
+                self.status = format!("Could not save scene goals: {err}");
+                false
+            }
+        }
+    }
+
+    /// Whether diagnostics covers this binder item: a scene in the
+    /// manuscript, or a chapter written without scenes.
+    pub fn has_scene_diagnostics(&self, node_id: Id) -> bool {
+        outline_rows(&self.binder)
+            .iter()
+            .any(|row| row.document_id.is_some() && row.scene_id.unwrap_or(row.chapter_id) == node_id)
+    }
+
+    pub fn scene_beats(&self, node_id: Id) -> SceneBeats {
+        self.beats.get(&node_id).cloned().unwrap_or_default()
+    }
+
+    pub fn set_scene_beat(&mut self, node_id: Id, beat: Beat, text: String) {
+        let entry = self.beats.entry(node_id).or_default();
+        let slot = match beat {
+            Beat::Goal => &mut entry.goal,
+            Beat::Conflict => &mut entry.conflict,
+            Beat::Outcome => &mut entry.outcome,
+        };
+        if *slot == text {
+            return;
+        }
+        *slot = text;
+        self.beats_dirty = true;
+        self.note_edit();
+    }
+
+    /// Read every scene's text for the diagnostics table. The table asks for
+    /// this when it opens, so it shows the text as last written.
+    pub fn load_diagnostic_texts(&mut self) {
+        self.flush_editor();
+        let Some(store) = &self.store else {
+            return;
+        };
+        match store.borrow().load_all_documents() {
+            Ok(documents) => {
+                self.diagnostic_texts = Rc::new(
+                    documents
+                        .into_iter()
+                        .map(|document| (document.id, document.to_plain_text()))
+                        .collect(),
+                );
+            }
+            Err(err) => self.status = format!("Could not read scenes for diagnostics: {err}"),
+        }
+    }
+
+    fn document_text(&self, document_id: Id) -> String {
+        if let Some(session) = self.session.as_ref().filter(|s| s.document_id() == document_id) {
+            return session.plain_text();
+        }
+        if let Some(text) = self.diagnostic_texts.get(&document_id) {
+            return text.clone();
+        }
+        self.store
+            .as_ref()
+            .and_then(|store| store.borrow().load_document(document_id).ok())
+            .map(|document| document.to_plain_text())
+            .unwrap_or_default()
+    }
+
+    /// What a scene is compared with: the usual scene length in its book,
+    /// and whether the bible has characters to look for.
+    pub fn book_context(&self, book_id: Id) -> BookContext {
+        let counts = outline_rows(&self.binder)
+            .into_iter()
+            .filter(|row| row.book_id == book_id)
+            .filter_map(|row| row.document_id)
+            .map(|document_id| self.document_words(document_id, true));
+        BookContext {
+            typical_words: typical_words(counts),
+            has_cast: self.cast.characters.iter().any(|c| !c.name.trim().is_empty()),
+        }
+    }
+
+    /// Diagnostics for one scene, measured against its own book.
+    pub fn scene_report(&self, node_id: Id) -> Option<SceneReport> {
+        let book = self.binder.book_of(node_id)?;
+        self.scene_report_in(node_id, &self.book_context(book))
+    }
+
+    /// The same, when the caller already has the book's context.
+    pub fn scene_report_in(&self, node_id: Id, context: &BookContext) -> Option<SceneReport> {
+        let document_id = self.binder.get(node_id)?.document_id?;
+        let names: Vec<String> = self
+            .cast
+            .characters
+            .iter()
+            .map(|character| character.name.clone())
+            .collect();
+        let beats = self.scene_beats(node_id);
+        let facts = scene_facts(&self.document_text(document_id), &names);
+        let findings = findings(&beats, &facts, context);
+        Some(SceneReport {
+            beats,
+            facts,
+            findings,
+        })
     }
 
     /// The baseline, when it belongs to the document in the editor.
@@ -1211,6 +1370,9 @@ impl StudioState {
         if self.library_dirty && self.store.is_some() && !self.persist_library_now() {
             return;
         }
+        if self.beats_dirty && self.store.is_some() && !self.persist_beats_now() {
+            return;
+        }
         self.note_writing_activity();
         if let Some(meta) = &self.meta {
             if let Some(store) = &self.store {
@@ -1228,6 +1390,7 @@ impl StudioState {
         self.cast_dirty = false;
         self.world_dirty = false;
         self.library_dirty = false;
+        self.beats_dirty = false;
         self.settings_dirty = false;
         self.last_edit = None;
         self.status = "All changes saved locally.".into();
@@ -1298,6 +1461,7 @@ impl StudioState {
             || self.cast_dirty
             || self.world_dirty
             || self.library_dirty
+            || self.beats_dirty
             || self.session.as_ref().is_some_and(EditorSession::is_dirty)
     }
 
@@ -1649,6 +1813,7 @@ impl StudioState {
                 self.reindex_manuscript();
                 self.begin_writing_session();
                 self.load_speller();
+                self.load_beats();
             }
             (Err(err), _, _, _, _, _)
             | (_, Err(err), _, _, _, _)
@@ -2675,6 +2840,11 @@ impl StudioState {
                 }
             }
         }
+        let beats_before = self.beats.len();
+        self.beats.retain(|id, _| !nodes.contains(id));
+        if self.beats.len() != beats_before && !self.persist_beats_now() {
+            self.beats_dirty = true;
+        }
         if !self.persist_binder() {
             return;
         }
@@ -3028,6 +3198,63 @@ mod tests {
         assert_eq!(reopened.spelling_language().as_deref(), Some("en_US"));
         reopened.remove_project_word("zhul");
         assert!(reopened.unknown_words().iter().any(|item| item.word == "Zhul"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn scene_diagnostics_report_beats_and_text_and_save_with_the_project() {
+        let (mut state, dir) = open_state("diagnostics");
+        let scene = state.selected.unwrap();
+        assert!(state.has_scene_diagnostics(scene));
+        let manuscript = state
+            .binder
+            .nodes
+            .iter()
+            .find(|node| node.kind == NodeKind::DraftRoot)
+            .map(|node| node.id)
+            .unwrap();
+        assert!(!state.has_scene_diagnostics(manuscript));
+
+        let report = state.scene_report(scene).unwrap();
+        // A new scene has its opening line and no beats yet.
+        assert_eq!(
+            report.findings,
+            [Finding::NoGoal, Finding::NoConflict, Finding::NoOutcome]
+        );
+
+        state.add_character();
+        let id = state.cast.characters.last().unwrap().id;
+        state.set_character_name(id, "Mara Vance".into());
+        state.apply_editor_html("<p>Mara ran for the harbor. “Wait,” said the pilot.</p>".into());
+        state.set_scene_beat(scene, Beat::Goal, "Reach the harbor".into());
+        state.set_scene_beat(scene, Beat::Outcome, "The boat has gone".into());
+        assert!(state.has_unsaved());
+        let report = state.scene_report(scene).unwrap();
+        assert_eq!(report.findings, [Finding::NoConflict]);
+        assert_eq!(report.facts.words, 9);
+        assert_eq!(report.facts.characters[0].name, "Mara Vance");
+        assert_eq!(report.facts.dialogue_percent, 11);
+
+        state.save_all();
+        assert!(!state.has_unsaved());
+        let root = state.store.as_ref().unwrap().borrow().root.clone();
+        let mut reopened = StudioState::default();
+        reopened.open_project_at(root);
+        assert_eq!(reopened.scene_beats(scene).goal, "Reach the harbor");
+        reopened.load_diagnostic_texts();
+        // Another scene is on screen; the table still reads this one's text.
+        reopened.session = None;
+        assert_eq!(reopened.scene_report(scene).unwrap().facts.words, 9);
+
+        // Emptying the trash drops the beats of deleted scenes.
+        reopened.select_node(scene);
+        reopened.trash_selected();
+        reopened.empty_trash();
+        reopened.empty_trash();
+        assert!(reopened.beats.is_empty());
+        let store = reopened.store.as_ref().unwrap().borrow();
+        assert!(store.load_scene_beats().unwrap().is_empty());
+        drop(store);
         let _ = std::fs::remove_dir_all(dir);
     }
 

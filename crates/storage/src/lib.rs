@@ -19,6 +19,7 @@ use writing_studio_core::{
     Error, Id, Result, Timestamp, PROJECT_DB_FILE, PROJECT_FORMAT_FILE, PROJECT_FORMAT_VERSION,
 };
 use writing_studio_characters::{Cast, Character, CharacterRelationship, Motivation};
+use writing_studio_diagnostics::SceneBeats;
 use writing_studio_document::Document;
 use writing_studio_plotting::{PlotGrid, PlotPoint, Plotline};
 use writing_studio_project::{BinderNode, BinderTree, NodeKind, ProjectMeta, ProjectSettings};
@@ -208,6 +209,48 @@ impl ProjectStore {
             .collect::<std::result::Result<Vec<_>, _>>()
             .map_err(sqlite)?;
         Ok(PlotGrid { lines, points })
+    }
+
+    /// Goal, conflict, and outcome for each scene that has any, by binder item.
+    pub fn load_scene_beats(&self) -> Result<HashMap<Id, SceneBeats>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT node_id, goal, conflict, outcome FROM scene_beats")
+            .map_err(sqlite)?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    SceneBeats {
+                        goal: row.get(1)?,
+                        conflict: row.get(2)?,
+                        outcome: row.get(3)?,
+                    },
+                ))
+            })
+            .map_err(sqlite)?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(sqlite)?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|(id, beats)| Some((id.parse::<Id>().ok()?, beats)))
+            .collect())
+    }
+
+    /// Replace the stored beats with `beats`. A scene with nothing written
+    /// keeps no row.
+    pub fn persist_scene_beats(&self, beats: &HashMap<Id, SceneBeats>) -> Result<()> {
+        let tx = self.conn.unchecked_transaction().map_err(sqlite)?;
+        tx.execute("DELETE FROM scene_beats", []).map_err(sqlite)?;
+        for (id, item) in beats.iter().filter(|(_, item)| !item.is_empty()) {
+            tx.execute(
+                "INSERT INTO scene_beats (node_id, goal, conflict, outcome) VALUES (?1, ?2, ?3, ?4)",
+                params![id.to_string(), item.goal, item.conflict, item.outcome],
+            )
+            .map_err(sqlite)?;
+        }
+        tx.commit().map_err(sqlite)?;
+        Ok(())
     }
 
     pub fn persist_plot(&self, grid: &PlotGrid) -> Result<()> {
@@ -1216,6 +1259,29 @@ mod tests {
         reopened.save_tracking_baseline(&document).unwrap();
         reopened.delete_document(doc_id).unwrap();
         assert!(reopened.load_tracking_baseline(doc_id).unwrap().is_none());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn scene_beats_round_trip_and_blank_ones_keep_no_row() {
+        let dir = env::temp_dir().join(format!("ws-beats-{}", Id::new()));
+        let store = ProjectStore::create(&dir, "Beats Novel").unwrap();
+        assert!(store.load_scene_beats().unwrap().is_empty());
+        let (kept, blank) = (Id::new(), Id::new());
+        let mut beats = HashMap::new();
+        beats.insert(
+            kept,
+            SceneBeats {
+                goal: "Reach the harbor".into(),
+                conflict: String::new(),
+                outcome: "Turned back".into(),
+            },
+        );
+        beats.insert(blank, SceneBeats::default());
+        store.persist_scene_beats(&beats).unwrap();
+        let loaded = ProjectStore::open(&dir).unwrap().load_scene_beats().unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[&kept], beats[&kept]);
         let _ = fs::remove_dir_all(dir);
     }
 

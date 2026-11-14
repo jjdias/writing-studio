@@ -38,7 +38,19 @@ Story development in the same local project:
 
 Full list: [`documentation/PHASE3.md`](documentation/PHASE3.md).
 
-Phases 1, 2, and 3 are done. Current work is Phase 4, local professional editing. See the [roadmap](ROADMAP.md).
+## Phase 4
+
+Professional editing, still local:
+
+- Compare a snapshot with the current text or with another snapshot
+- Notes with a kind that can be resolved, and highlights in four colors
+- Track changes to a scene, then accept or reject them
+- Spellcheck on this computer, with a project dictionary
+- Scene diagnostics: goal, conflict, and outcome, with checks on the text
+
+Full list: [`documentation/PHASE4.md`](documentation/PHASE4.md).
+
+Phases 1 through 4 are done. Phase 4 is on the `phase-4` branch. See the [roadmap](ROADMAP.md).
 
 ## Requirements
 
@@ -67,7 +79,7 @@ Desktop/UI crates need a windowing runtime and are not part of the default libra
 - [Phase 1 features](documentation/PHASE1.md)
 - [Phase 2 features](documentation/PHASE2.md)
 - [Phase 3 features](documentation/PHASE3.md)
-- [Phase 4 so far](documentation/PHASE4.md)
+- [Phase 4 features](documentation/PHASE4.md)
 - [Usage](documentation/USAGE.md)
 - [Architecture](documentation/ARCHITECTURE.md)
 - [Project format](documentation/PROJECT_FORMAT.md)

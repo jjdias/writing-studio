@@ -31,6 +31,7 @@ MyNovel.writingstudio/
 - `binder_nodes` — hierarchy, synopsis, status, `label`, `color`, `deleted_at`, `restore_parent_id`. `label` is a short tag. `color` is empty or one of `gold`, `green`, `red`, `blue`, `violet`
 - `documents` — `content_json` (block model), word_count, char_count
 - `snapshots` — per-document JSON copies with label (`manual`, `pre-restore`, …)
+- `scene_beats` — `node_id`, `goal`, `conflict`, `outcome`: the three beats of a scene, keyed by binder item. A scene with none written has no row. Added in Phase 4 on open
 - `tracking_baselines` — one row per tracked document: `document_id`, the document JSON from when tracking began (or from the last accept), and `started_at`. No row means the document is not tracked. Added in Phase 4 on open (`CREATE TABLE IF NOT EXISTS`)
 - `plotlines` — id, title, color, sort_index, created_at, updated_at
 - `plot_points` — plotline_id, title, summary, optional `scene_id` (a binder scene), sort_index, timestamps

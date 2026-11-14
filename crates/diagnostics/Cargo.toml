@@ -1,0 +1,8 @@
+[package]
+name = "writing-studio-diagnostics"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Scene goal, conflict, and outcome, with local checks on a scene's text"
+
+[dependencies]

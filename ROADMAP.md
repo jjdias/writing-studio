@@ -4,7 +4,7 @@ Writing Studio is **open source** (MIT OR Apache-2.0) and **free for the communi
 
 **Local-first, now and later.** Saves, snapshots, backups, and compile live on the writer’s machine. Cloud connections and collaboration, if added, stay **optional**. They must never become a requirement to open a project, write, or keep copies of work.
 
-Status: Phases 1, 2, and 3 are complete. Phase 4 is in progress on the `phase-4` branch; snapshot comparison, review notes and highlights, track changes, and spellcheck are done. Details: [`documentation/PHASE1.md`](documentation/PHASE1.md), [`documentation/PHASE2.md`](documentation/PHASE2.md), [`documentation/PHASE3.md`](documentation/PHASE3.md), and [`documentation/PHASE4.md`](documentation/PHASE4.md).
+Status: Phases 1, 2, 3, and 4 are complete. Phase 4 is on the `phase-4` branch and is not merged into `master` yet. Details: [`documentation/PHASE1.md`](documentation/PHASE1.md), [`documentation/PHASE2.md`](documentation/PHASE2.md), [`documentation/PHASE3.md`](documentation/PHASE3.md), and [`documentation/PHASE4.md`](documentation/PHASE4.md).
 
 ---
 
@@ -90,6 +90,7 @@ These crates run in the current app. Phase 1 did not include plotting, character
 | `writing-studio-research` | Research notes and files in `attachments/` |
 | `writing-studio-search` | In-memory full-text index of manuscript text, rebuilt when a project opens |
 | `writing-studio-spellcheck` | Hunspell dictionaries (English US bundled), project word list, suggestions |
+| `writing-studio-diagnostics` | Scene goal, conflict, and outcome; counts and checks on a scene's text |
 | `writing-studio-ui` | Desktop workspace |
 | `writing-studio-desktop` | Native window |
 
@@ -107,7 +108,7 @@ These crates exist so module boundaries stay stable. They are **types or stubs**
 
 ---
 
-## Done (Phase 2 and Phase 3)
+## Done (Phase 2, Phase 3, and Phase 4)
 
 ### Phase 2 — Writing environment (local)
 
@@ -134,28 +135,21 @@ One project holds the bible and every related book. Compile, the word target, to
 
 Phase 3 is complete.
 
+### Phase 4 — Professional editing (local)
+
+Done on the `phase-4` branch, which is not merged into `master` yet. See [`documentation/PHASE4.md`](documentation/PHASE4.md).
+
+- Snapshot comparison. **History** shows what changed between a snapshot and the current text, or between two snapshots of the same document: paragraphs added and removed, and words changed inside a rewritten paragraph. It compares text only, and it writes nothing.
+- Review notes and highlights. A note on a passage has a kind (Comment, Question, Revise, Check) and can be resolved, reopened, edited, or removed from a list above the manuscript. Text can be highlighted in four colors. Both are stored on the text in the scene. Compile leaves out resolved notes and highlights.
+- Track changes without a server. **Track changes** keeps a copy of the scene as it is at that moment, in the project. Every paragraph rewritten, added, or removed after that is listed above the manuscript, to accept or reject one at a time or all at once. It tracks text, per scene.
+- Spellcheck, on this computer only. Unknown words are underlined in the manuscript and listed above it with suggestions. English (US) is built in; other Hunspell dictionaries are read from the project's `dictionaries/` folder or from the system. A project keeps its own list of accepted words, and names from the bible are accepted without adding them.
+- Scene diagnostics. Each scene has a goal, a conflict, and an outcome, written in the inspector or in the outliner's **Diagnostics** table. The table lists what is missing and what the text shows: length against the book's usual scene, share of dialogue, sentence length, and which characters from the bible are named. It counts on this computer and does not read meaning.
+
+Phase 4 is complete. Optional on-device assistance, which was listed here, is now bonus work.
+
 ## Still to do
 
 Later phases keep **local writing complete**. Anything involving accounts, servers, or the internet is deferred and optional.
-
-### Phase 4 — Professional editing (local)
-
-In progress on the `phase-4` branch. See [`documentation/PHASE4.md`](documentation/PHASE4.md).
-
-Done:
-
-- Snapshot comparison. **History** shows what changed between a snapshot and the current text, or between two snapshots of the same document: paragraphs added and removed, and words changed inside a rewritten paragraph. It compares text only, and it writes nothing.
-
-- Review notes and highlights. A note on a passage has a kind (Comment, Question, Revise, Check) and can be resolved, reopened, edited, or removed from a list above the manuscript. Text can be highlighted in four colors. Both are stored on the text in the scene. Compile leaves out resolved notes and highlights.
-
-- Track changes without a server. **Track changes** keeps a copy of the scene as it is at that moment, in the project. Every paragraph rewritten, added, or removed after that is listed above the manuscript, to accept or reject one at a time or all at once. It tracks text, per scene.
-
-- Spellcheck, on this computer only. Unknown words are underlined in the manuscript and listed above it with suggestions. English (US) is built in; other Hunspell dictionaries are read from the project's `dictionaries/` folder or from the system. A project keeps its own list of accepted words, and names from the bible are accepted without adding them.
-
-Still to do:
-
-- Scene diagnostics (goal, conflict, outcome) as local analysis
-- Optional **local** assistance later (on-device only); never required
 
 ### Phase 5 — Optional cloud
 
@@ -196,6 +190,14 @@ The desktop window already runs. This phase changes that window. It is not Phase
 - Chapter and Scene stay above the binder. Book, Part, and Folder move into a menu. The kind mark becomes an icon so the title has the room.
 - A second click that deletes or restores names the item. Escape cancels that confirmation.
 - Icon buttons show focus and have a name, not only a tooltip. The window can list its shortcuts.
+
+### Bonus — Optional local assistance
+
+Not current work. This was the last item of Phase 4 and moved here so that Phase 4 could close on the editing tools.
+
+- Assistance runs on the writer's device only. No text is sent to a server.
+- It is optional and off unless the writer turns it on. Writing, saving, compiling, and every Phase 4 tool work without it.
+- It never becomes required to open a project or to keep working in one.
 
 ### Bonus — One project per book, and a bible project beside it
 
@@ -249,6 +251,6 @@ When optional cloud work starts, the source of truth for a disconnected writer r
 
 ## Immediate next steps
 
-Current work is Phase 4, local professional editing, on the `phase-4` branch. Snapshot comparison, review notes and highlights, track changes, and spellcheck are done. Next is scene diagnostics. The writing-surface UI is Phase 8. Richer front matter than the book title stays in Phase 6. A separate bible project beside each book, backups that include research files, and tags stay bonus work.
+Phase 4, local professional editing, is complete on the `phase-4` branch: snapshot comparison, review notes and highlights, track changes, spellcheck, and scene diagnostics. The next step is to merge that branch into `master`. The phase after it is not started. The writing-surface UI is Phase 8. Richer front matter than the book title stays in Phase 6. Optional on-device assistance, a separate bible project beside each book, backups that include research files, and tags stay bonus work.
 
 Optional cloud stays later.

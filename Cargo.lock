@@ -6241,6 +6241,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "writing-studio-diagnostics"
+version = "0.1.0"
+
+[[package]]
 name = "writing-studio-document"
 version = "0.1.0"
 dependencies = [
@@ -6334,6 +6338,7 @@ dependencies = [
  "serde_json",
  "writing-studio-characters",
  "writing-studio-core",
+ "writing-studio-diagnostics",
  "writing-studio-document",
  "writing-studio-plotting",
  "writing-studio-project",
@@ -6369,6 +6374,7 @@ dependencies = [
  "writing-studio-characters",
  "writing-studio-core",
  "writing-studio-corkboard",
+ "writing-studio-diagnostics",
  "writing-studio-document",
  "writing-studio-editor",
  "writing-studio-export",

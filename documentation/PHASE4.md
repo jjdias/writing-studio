@@ -1,10 +1,10 @@
-# Phase 4 — what has shipped so far
+# Phase 4 — what shipped
 
 Phase 4 is **local professional editing**: comparing versions, reviewing, tracking changes, spellcheck, and scene diagnostics. Nothing in this phase needs an account, a server, or a network connection.
 
 The program stays **open source** (MIT OR Apache-2.0) and **free for the community**.
 
-Phase 4 is in progress on the `phase-4` branch. How to use it: [USAGE.md](USAGE.md).
+This work is on the `phase-4` branch and is not merged into `master` yet. How to use it: [USAGE.md](USAGE.md). On-disk layout: [PROJECT_FORMAT.md](PROJECT_FORMAT.md).
 
 ---
 
@@ -97,9 +97,41 @@ Limits:
 
 Where it lives: the new `writing-studio-spellcheck` crate, on the `spellbook` crate (a Rust reader for Hunspell dictionaries, MPL-2.0). The bundled dictionary is in `crates/spellcheck/dictionaries/` with its own license file; it is SCOWL-derived and is not under this repository's MIT OR Apache-2.0 terms. The editor side is `crates/ui/assets/spell.js`.
 
+### Scene diagnostics
+
+- A scene has three beats the writer fills in: **Goal** (what the viewpoint character wants), **Conflict** (what stands in the way), and **Outcome** (how it ends). They are edited in the inspector, under the synopsis, and in the outliner.
+- **Outliner** → **Diagnostics** shows every scene of the books on screen in one table: the three beats, word count, share of dialogue, the characters named, and the checks. A line above each book says how many scenes have all three beats.
+- The inspector shows the same for the selected scene.
+- The checks are:
+  - No goal, no conflict, or no outcome written.
+  - Nothing written in the scene.
+  - Much longer than the book's usual scene (more than twice the middle scene length) or much shorter (under a third of it). This needs at least four scenes with text in the book.
+  - No character from the bible is named. This is skipped when the bible has no characters.
+  - Long sentences: more than 30 words on average.
+- A chapter written without scenes counts as one scene.
+- Beats are saved in the project. Permanently deleting a scene deletes its beats.
+- Compile and word counts ignore beats.
+
+Limits:
+
+- This is counting, on this computer. It does not read meaning. It cannot say whether a goal is a good one, or whether the scene delivers the outcome that was written down.
+- Dialogue is the text inside double quotation marks: “ ”, " ", and « ». Dialogue in single quotation marks or after a dash is not counted.
+- A character is found by a capitalized word of their name. A scene told in the first person, or one that uses only a nickname, shows as naming nobody.
+- Sentences are split at `.`, `!`, `?`, and `…`, so an abbreviation such as "Mr." ends one early.
+- The thresholds are fixed. They are not settings yet.
+- The diagnostics table reads the scenes when it opens.
+
+Where it lives: the new `writing-studio-diagnostics` crate. Beats are rows in the new `scene_beats` table, added on open; the project format version is unchanged.
+
 ---
 
-## Still to do in Phase 4
+## Explicitly not in Phase 4
 
-- Scene diagnostics (goal, conflict, outcome) as local analysis
-- Optional local assistance later (on-device only); never required
+- Optional on-device assistance (bonus). It was listed in this phase and moved out so the phase could close on the editing tools.
+- Grammar checking
+- A book-wide list of open notes, and tracking changes across a whole book
+- Live insert and delete marks in the manuscript while typing; tracked changes are listed above it
+- The writing-surface changes to the window (Phase 8), including the in-window field that replaces the browser prompt for notes and links
+- Cloud sync, accounts, or real-time collaboration (Phase 5)
+
+Those stay optional. They must not become required to write.

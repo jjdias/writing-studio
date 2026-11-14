@@ -23,7 +23,7 @@ This work landed on `phase-2`. How to use it: [USAGE.md](USAGE.md). On-disk layo
 
 - Toolbar: Bold, Italic, Underline, Strike, Link, Unlink, Comment, Uncomment, H1, H2, H3, Body, Quote, List, Numbered, Code, and Break.
 - A comment is a note on the selected text. It is stored on that run (`marks.comment`) and listed above the manuscript. Uncomment removes it. The note is saved with the scene.
-- These notes are part of the document. Review annotations, highlights, and track changes are still Phase 4. See [ROADMAP.md](../ROADMAP.md).
+- These notes are part of the document. Note kinds, resolving, highlights, and track changes came in Phase 4. See [PHASE4.md](PHASE4.md).
 
 ### Binder, corkboard, and outliner
 

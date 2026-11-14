@@ -33,6 +33,7 @@ Binder + stored documents → writing-studio-export → .md / .docx on disk
 | `writing-studio-worldbuilding` | Locations, cultures, lore, and timelines |
 | `writing-studio-research` | Research notes and files in `attachments/` |
 | `writing-studio-search` | In-memory full-text index of manuscript text, rebuilt from SQLite when a project opens |
+| `writing-studio-diagnostics` | Scene goal, conflict, and outcome, and the counts and checks made on a scene's text. No dependencies |
 | `writing-studio-spellcheck` | Checks words against a Hunspell dictionary (English US is compiled in) and the project's own words; suggests replacements. No network |
 | `writing-studio-export` | Manuscript compile to Markdown and DOCX |
 | `writing-studio-ui` | Workspace UI |
@@ -59,4 +60,4 @@ Inline comments, links, code blocks, and scene breaks are fields on the document
 - Offline writing stays complete if a future optional sync service is unused or unavailable.
 - There is no account gate and no separate “community vs restricted” feature split in the core.
 
-See [PHASE1.md](PHASE1.md), [PHASE2.md](PHASE2.md), and [PHASE3.md](PHASE3.md) for the feature lists and [PROJECT_FORMAT.md](PROJECT_FORMAT.md) for on-disk layout. Current work is Phase 4: [PHASE4.md](PHASE4.md) lists what has shipped, and [ROADMAP.md](../ROADMAP.md) lists what is left.
+See [PHASE1.md](PHASE1.md), [PHASE2.md](PHASE2.md), [PHASE3.md](PHASE3.md), and [PHASE4.md](PHASE4.md) for the feature lists and [PROJECT_FORMAT.md](PROJECT_FORMAT.md) for on-disk layout. Phase 4 is in [PHASE4.md](PHASE4.md). What comes next is in [ROADMAP.md](../ROADMAP.md).

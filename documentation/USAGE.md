@@ -2,7 +2,7 @@
 
 Free, open-source, local-first. Your writing stays in a folder on your machine.
 
-Phases 1, 2, and 3 are the app described here. Current work is Phase 4 in [ROADMAP.md](../ROADMAP.md).
+Phases 1 through 4 are the app described here. Phase 4 is on the `phase-4` branch. See [ROADMAP.md](../ROADMAP.md).
 
 ## Start
 
@@ -46,6 +46,8 @@ The index is built in memory from the project when it opens, and updated when a 
 ## Outliner
 
 **Outliner** is a table of chapters and scenes. Edit the chapter title, scene title, status, and synopsis in the row. The words column is that row's count. **Open** returns to Writing on that item.
+
+**Diagnostics**, beside **Outline** at the top, changes the table. Each scene shows its **Goal**, **Conflict**, and **Outcome**, which you type in the row, then its words, its share of dialogue, the characters from the bible it names, and the checks: a missing goal, conflict, or outcome; a scene with no text; a scene much longer or shorter than the book's usual one; no character named; long sentences. The same three fields and checks are in the inspector for the selected scene. The checks count what is in the text. They do not judge it. See [PHASE4.md](PHASE4.md) for exactly what is counted.
 
 ## Recover
 

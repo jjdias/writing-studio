@@ -1,6 +1,6 @@
 # Phase 1 — what shipped
 
-This file records **what Phase 1 shipped**. Later phases changed the window and some of these crates. For the current app, use [USAGE.md](USAGE.md). Phase 2 is [PHASE2.md](PHASE2.md). Phase 3 is [PHASE3.md](PHASE3.md). Current work is Phase 4 in [ROADMAP.md](../ROADMAP.md).
+This file records **what Phase 1 shipped**. Later phases changed the window and some of these crates. For the current app, use [USAGE.md](USAGE.md). Phase 2 is [PHASE2.md](PHASE2.md). Phase 3 is [PHASE3.md](PHASE3.md). Phase 4 is [PHASE4.md](PHASE4.md). What comes next is in [ROADMAP.md](../ROADMAP.md).
 
 Phase 1 is a **usable local writing studio**: create a project on disk, organize a manuscript, write scenes, recover work, and compile a draft. Nothing in this phase needs an account, a server, or a network connection.
 
@@ -143,4 +143,4 @@ At the end of Phase 1, plotting, characters, worldbuilding, and research were st
 - Packaged installers for macOS/Linux/mobile
 - On-device AI
 
-Phase 2 and Phase 3 have since shipped. Cloud sync, packaged installers, PDF/EPUB/HTML compile, on-device AI, and the Phase 4 review tools remain later work. They must not become required to write.
+Phase 2, Phase 3, and the Phase 4 review tools have since shipped. Cloud sync, packaged installers, PDF/EPUB/HTML compile, and on-device AI remain later work. They must not become required to write.

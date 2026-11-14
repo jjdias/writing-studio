@@ -15,11 +15,12 @@ use writing_studio_project::{
     PanelWidths, SidebarSide, Theme, BINDER_COLORS, INSPECTOR_WIDTH_DEFAULT, INSPECTOR_WIDTH_MAX,
     INSPECTOR_WIDTH_MIN, SIDEBAR_WIDTH_DEFAULT, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN,
 };
+use writing_studio_diagnostics::{BookContext, SceneFacts};
 use writing_studio_search::matches_query;
 use writing_studio_spellcheck::UnknownWord;
 
 use crate::shortcuts::{app_shortcut, AppShortcut};
-use crate::state::{BibleLink, CompiledFormat, StudioState, WorkspaceMode, WorldSection};
+use crate::state::{Beat, BibleLink, CompiledFormat, StudioState, WorkspaceMode, WorldSection};
 
 const STYLES: &str = include_str!("../assets/style.css");
 const REVIEW_JS: &str = include_str!("../assets/review.js");
@@ -1479,6 +1480,9 @@ fn Inspector() -> Element {
                 oninput: move |event| state.write().update_selected_status(event.value()),
                 onblur: move |_| state.write().save_all(),
             }
+            if state.read().has_scene_diagnostics(node.id) {
+                SceneDiagnostics { node_id: node.id }
+            }
             if !node.kind.is_root() {
                 label { "Label" }
                 input {
@@ -1511,6 +1515,81 @@ fn Inspector() -> Element {
             SnapshotList {}
         } else {
             p { class: "hint", "Select a binder item to edit metadata." }
+        }
+    }
+}
+
+fn beat_label(beat: Beat) -> &'static str {
+    match beat {
+        Beat::Goal => "Goal",
+        Beat::Conflict => "Conflict",
+        Beat::Outcome => "Outcome",
+    }
+}
+
+fn beat_hint(beat: Beat) -> &'static str {
+    match beat {
+        Beat::Goal => "What the viewpoint character wants in this scene",
+        Beat::Conflict => "What stands in the way",
+        Beat::Outcome => "How the scene ends: won, lost, or changed",
+    }
+}
+
+/// "Mara ×5, Rose ×2", for at most three characters.
+fn cast_summary(facts: &SceneFacts) -> String {
+    let mut parts: Vec<String> = facts
+        .characters
+        .iter()
+        .take(3)
+        .map(|mention| format!("{} ×{}", mention.name, mention.count))
+        .collect();
+    if facts.characters.len() > 3 {
+        parts.push(format!("and {} more", facts.characters.len() - 3));
+    }
+    parts.join(", ")
+}
+
+/// Goal, conflict, and outcome for the selected scene, with what the checks found.
+#[component]
+fn SceneDiagnostics(node_id: Id) -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let Some(report) = state.read().scene_report(node_id) else {
+        return rsx! {};
+    };
+    let facts = report.facts.clone();
+    let cast = cast_summary(&facts);
+    rsx! {
+        div { class: "pane-title history-title", "Scene diagnostics" }
+        for beat in [Beat::Goal, Beat::Conflict, Beat::Outcome] {
+            label { "{beat_label(beat)}" }
+            textarea {
+                class: "synopsis beat",
+                placeholder: "{beat_hint(beat)}",
+                value: match beat {
+                    Beat::Goal => report.beats.goal.clone(),
+                    Beat::Conflict => report.beats.conflict.clone(),
+                    Beat::Outcome => report.beats.outcome.clone(),
+                },
+                oninput: move |event| state.write().set_scene_beat(node_id, beat, event.value()),
+                onblur: move |_| state.write().save_all(),
+            }
+        }
+        if facts.words > 0 {
+            p { class: "hint diag-facts",
+                "{facts.words} words · {facts.dialogue_percent}% dialogue · {facts.average_sentence} words in an average sentence"
+                if !cast.is_empty() {
+                    " · {cast}"
+                }
+            }
+        }
+        if report.findings.is_empty() {
+            p { class: "hint", "Nothing to flag in this scene." }
+        } else {
+            ul { class: "diag-list",
+                for finding in report.findings.iter() {
+                    li { class: if finding.is_beat() { "diag-beat" } else { "" }, "{finding.message()}" }
+                }
+            }
         }
     }
 }
@@ -3110,15 +3189,30 @@ fn OutlinerPane() -> Element {
             book.rows.push(row);
         }
     }
+    let diagnostics = snapshot.outliner_diagnostics;
     rsx! {
         div { class: "outliner",
             div { class: "cork-tools",
                 SeriesScopeSelect {}
+                button {
+                    class: if diagnostics { "" } else { "primary" },
+                    onclick: move |_| state.write().outliner_diagnostics = false,
+                    "Outline"
+                }
+                button {
+                    class: if diagnostics { "primary" } else { "" },
+                    title: "Goal, conflict, and outcome for each scene, with checks on its text",
+                    onclick: move |_| state.write().outliner_diagnostics = true,
+                    "Diagnostics"
+                }
             }
             if books.is_empty() {
                 p { class: "hint", "Add a chapter in the binder to outline it here." }
             }
-            for book in books {
+            if diagnostics {
+                DiagnosticsTables { books: books.clone() }
+            }
+            for book in books.into_iter().filter(|_| !diagnostics) {
                 h3 { "{book.title}" }
                 table {
                     thead {
@@ -3184,6 +3278,115 @@ fn OutlinerPane() -> Element {
                                         "Open"
                                     }
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Every scene of each book on screen, with its beats and what the checks found.
+#[component]
+fn DiagnosticsTables(books: Vec<OwnedOutlineBook>) -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    // Read the scenes once when the table opens. Text cannot change while it
+    // is on screen, because the manuscript is not.
+    use_hook(move || {
+        spawn(async move { state.write().load_diagnostic_texts() });
+    });
+    let snapshot = state.read().clone();
+    rsx! {
+        p { class: "hint",
+            "Goal, conflict, and outcome are yours to write. The checks count what is in the text on this computer; they do not read meaning."
+        }
+        for book in books {
+            DiagnosticsBook { context: snapshot.book_context(book.id), book }
+        }
+    }
+}
+
+#[component]
+fn DiagnosticsBook(book: OwnedOutlineBook, context: BookContext) -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let snapshot = state.read().clone();
+    let rows: Vec<_> = book
+        .rows
+        .iter()
+        .filter_map(|row| Some((row.clone(), snapshot.scene_report_in(row.open_id, &context)?)))
+        .collect();
+    let total = rows.len();
+    let complete = rows.iter().filter(|(_, report)| report.beats.is_complete()).count();
+    let typical = if context.typical_words > 0 {
+        format!(" · a scene is usually about {} words", context.typical_words)
+    } else {
+        String::new()
+    };
+    rsx! {
+        h3 { "{book.title}" }
+        p { class: "hint", "{complete} of {total} scenes have a goal, a conflict, and an outcome{typical}" }
+        table { class: "diag-table",
+            thead {
+                tr {
+                    th { "Scene" }
+                    th { "Goal" }
+                    th { "Conflict" }
+                    th { "Outcome" }
+                    th { "Words" }
+                    th { "Dialogue" }
+                    th { "Named" }
+                    th { "Checks" }
+                    th {}
+                }
+            }
+            tbody {
+                for (row, report) in rows {
+                    tr { key: "{row.open_id}",
+                        td { class: "diag-scene",
+                            span { class: "card-meta", "{row.chapter_title}" }
+                            if !row.scene_title.is_empty() {
+                                div { "{row.scene_title}" }
+                            }
+                        }
+                        for beat in [Beat::Goal, Beat::Conflict, Beat::Outcome] {
+                            td {
+                                input {
+                                    class: "cell-input",
+                                    title: "{beat_hint(beat)}",
+                                    value: match beat {
+                                        Beat::Goal => report.beats.goal.clone(),
+                                        Beat::Conflict => report.beats.conflict.clone(),
+                                        Beat::Outcome => report.beats.outcome.clone(),
+                                    },
+                                    oninput: move |event| state.write().set_scene_beat(row.open_id, beat, event.value()),
+                                    onblur: move |_| state.write().save_all(),
+                                }
+                            }
+                        }
+                        td { class: "words", "{report.facts.words}" }
+                        td { class: "words",
+                            if report.facts.words > 0 { "{report.facts.dialogue_percent}%" }
+                        }
+                        td { class: "diag-cast", "{cast_summary(&report.facts)}" }
+                        td {
+                            if report.findings.is_empty() {
+                                span { class: "hint", "—" }
+                            } else {
+                                ul { class: "diag-list",
+                                    for finding in report.findings.iter() {
+                                        li { class: if finding.is_beat() { "diag-beat" } else { "" }, "{finding.message()}" }
+                                    }
+                                }
+                            }
+                        }
+                        td {
+                            button {
+                                onclick: move |_| {
+                                    state.write().select_node(row.open_id);
+                                    state.write().mode = WorkspaceMode::Writing;
+                                },
+                                "Open"
                             }
                         }
                     }
@@ -3274,12 +3477,14 @@ fn binder_item_class(
     class
 }
 
+#[derive(Clone, PartialEq)]
 struct OwnedOutlineBook {
     id: Id,
     title: String,
     rows: Vec<OwnedOutlineRow>,
 }
 
+#[derive(Clone, PartialEq)]
 struct OwnedOutlineRow {
     chapter_id: Id,
     scene_id: Option<Id>,

@@ -52,6 +52,13 @@ pub fn install(conn: &Connection) -> rusqlite::Result<()> {
             started_at TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS scene_beats (
+            node_id TEXT PRIMARY KEY,
+            goal TEXT NOT NULL DEFAULT '',
+            conflict TEXT NOT NULL DEFAULT '',
+            outcome TEXT NOT NULL DEFAULT ''
+        );
+
         CREATE TABLE IF NOT EXISTS plotlines (
             id TEXT PRIMARY KEY,
             title TEXT NOT NULL,
