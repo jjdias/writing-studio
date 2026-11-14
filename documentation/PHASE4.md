@@ -4,7 +4,7 @@ Phase 4 is **local professional editing**: comparing versions, reviewing, tracki
 
 The program stays **open source** (MIT OR Apache-2.0) and **free for the community**.
 
-This work is on the `phase-4` branch and is not merged into `master` yet. How to use it: [USAGE.md](USAGE.md). On-disk layout: [PROJECT_FORMAT.md](PROJECT_FORMAT.md).
+This work landed from `phase-4` onto `master`. How to use it: [USAGE.md](USAGE.md). On-disk layout: [PROJECT_FORMAT.md](PROJECT_FORMAT.md).
 
 ---
 
@@ -129,8 +129,8 @@ Where it lives: the new `writing-studio-diagnostics` crate. Beats are rows in th
 
 - Optional on-device assistance (bonus). It was listed in this phase and moved out so the phase could close on the editing tools.
 - Grammar checking
-- A book-wide list of open notes, and tracking changes across a whole book
-- Live insert and delete marks in the manuscript while typing; tracked changes are listed above it
+- A book-wide list of open notes, and tracking changes across a whole book (bonus)
+- Live insert and delete marks in the manuscript while typing; tracked changes are listed above it (bonus)
 - The writing-surface changes to the window (Phase 8), including the in-window field that replaces the browser prompt for notes and links
 - Cloud sync, accounts, or real-time collaboration (Phase 5)
 

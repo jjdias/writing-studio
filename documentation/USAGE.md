@@ -2,7 +2,7 @@
 
 Free, open-source, local-first. Your writing stays in a folder on your machine.
 
-Phases 1 through 4 are the app described here. Phase 4 is on the `phase-4` branch. See [ROADMAP.md](../ROADMAP.md).
+Phases 1 through 4 are the app described here. What comes next is in [ROADMAP.md](../ROADMAP.md).
 
 ## Start
 

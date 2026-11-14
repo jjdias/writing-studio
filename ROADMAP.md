@@ -4,7 +4,7 @@ Writing Studio is **open source** (MIT OR Apache-2.0) and **free for the communi
 
 **Local-first, now and later.** Saves, snapshots, backups, and compile live on the writer’s machine. Cloud connections and collaboration, if added, stay **optional**. They must never become a requirement to open a project, write, or keep copies of work.
 
-Status: Phases 1, 2, 3, and 4 are complete. Phase 4 is on the `phase-4` branch and is not merged into `master` yet. Details: [`documentation/PHASE1.md`](documentation/PHASE1.md), [`documentation/PHASE2.md`](documentation/PHASE2.md), [`documentation/PHASE3.md`](documentation/PHASE3.md), and [`documentation/PHASE4.md`](documentation/PHASE4.md).
+Status: Phases 1, 2, 3, and 4 are complete and on `master`. Details: [`documentation/PHASE1.md`](documentation/PHASE1.md), [`documentation/PHASE2.md`](documentation/PHASE2.md), [`documentation/PHASE3.md`](documentation/PHASE3.md), and [`documentation/PHASE4.md`](documentation/PHASE4.md).
 
 ---
 
@@ -137,7 +137,7 @@ Phase 3 is complete.
 
 ### Phase 4 — Professional editing (local)
 
-Done on the `phase-4` branch, which is not merged into `master` yet. See [`documentation/PHASE4.md`](documentation/PHASE4.md).
+Done. See [`documentation/PHASE4.md`](documentation/PHASE4.md).
 
 - Snapshot comparison. **History** shows what changed between a snapshot and the current text, or between two snapshots of the same document: paragraphs added and removed, and words changed inside a rewritten paragraph. It compares text only, and it writes nothing.
 - Review notes and highlights. A note on a passage has a kind (Comment, Question, Revise, Check) and can be resolved, reopened, edited, or removed from a list above the manuscript. Text can be highlighted in four colors. Both are stored on the text in the scene. Compile leaves out resolved notes and highlights.
@@ -176,6 +176,7 @@ Do this only after local save/backup/restore is trustworthy. Sync remains opt-in
 - Later: Android, iOS, and Dioxus Web/WASM
 - Accessibility and performance passes for the packaged apps. The desktop writing surface is Phase 8
 - Automated community builds
+- Packaged builds carry the license notice of the bundled spelling dictionary (`crates/spellcheck/dictionaries/`)
 
 ### Phase 8 — Writing surface (local)
 
@@ -198,6 +199,86 @@ Not current work. This was the last item of Phase 4 and moved here so that Phase
 - Assistance runs on the writer's device only. No text is sent to a server.
 - It is optional and off unless the writer turns it on. Writing, saving, compiling, and every Phase 4 tool work without it.
 - It never becomes required to open a project or to keep working in one.
+
+### Bonus — Review a whole book at once
+
+Not current work. The Phase 4 review tools work on the scene that is open. Going through a finished draft means opening each scene to see what is left.
+
+- One list of open notes across the current book or the whole series, grouped by scene. Clicking a note opens its scene at that text.
+- The same for unknown words: a book-wide spelling list, and a replacement that can run across the book.
+- A switch that tracks changes in every scene of a book from now, and a list of the scenes that have changes waiting.
+- Counts of open notes and waiting changes on the binder row and the corkboard card.
+- A date on each note, shown in the list.
+
+### Bonus — Finer track changes
+
+Not current work. Tracked changes are per paragraph, and the manuscript does not show them.
+
+- Mark changed, added, and removed paragraphs in the manuscript itself, not only in the list above it.
+- Accept or reject one edit inside a paragraph that has several.
+- Track a change that is only formatting, a link, or a note.
+- Show a paragraph that moved as moved, not as removed in one place and added in another.
+- A date on each change, from when it was first seen.
+
+### Bonus — Richer snapshot comparison
+
+Not current work. Comparison is text only, in one column, between a snapshot and the current text or another snapshot.
+
+- Show changes to formatting, links, notes, and highlights.
+- Show a moved paragraph as moved.
+- Old and new side by side, as a choice beside the single column.
+- Compare the scene as it is in a project backup, without restoring that backup.
+- Restore one paragraph from a snapshot, instead of the whole scene.
+
+### Bonus — Spelling at the word
+
+Not current work. A suggestion replaces every copy of a word in the scene, and all of spelling is worked from the list above the manuscript.
+
+- A right-click menu on an underlined word: suggestions, add to the project dictionary, ignore.
+- Replace one copy of a word, and ignore a word in this scene only.
+- Two dictionaries at once, for a book that mixes languages.
+- Replace a word that is partly bold or partly linked.
+- Check spelling in the synopsis, the scene beats, and the bible's text fields.
+- Read dictionary files in encodings other than UTF-8 and Latin-1.
+
+### Bonus — Diagnostics that fit the book
+
+Not current work. The checks use fixed numbers and count dialogue and characters in one way.
+
+- Settings for the checks, saved in the project: what counts as a long or short scene and a long sentence, and which checks run.
+- Count dialogue written in single quotation marks or after a dash.
+- Other names for a character (a nickname, a title), so a scene that uses them is found.
+- A viewpoint character for each scene, so a first-person scene is not reported as naming nobody, and a count of scenes per viewpoint.
+- A small chart of scene length and dialogue share across the book.
+- The missing-beat marks on the corkboard card.
+
+### Bonus — Review marks in the compiled file
+
+Not current work. Compile writes open notes as footnotes or bracketed text, and leaves out highlights and tracked changes. This belongs with the export profiles of Phase 6.
+
+- DOCX: notes as Word comments, highlights as Word highlighting, and tracked changes as Word revisions that an editor can accept or reject in Word.
+- A compile choice between a clean draft and a draft with review marks.
+
+### Bonus — One place for the review panels
+
+Not current work. The note list, the tracked changes, and the spelling list each sit above the manuscript and take room from it when all three are in use. This belongs with the writing surface of Phase 8.
+
+- One panel for the three, with a tab for each, that can be folded away or moved to the side.
+- Changing a note from that panel leaves the caret where it was.
+
+### Bonus — Bring an older project up to date on open
+
+Not current work. New tables are added when a project opens, but columns added to `binder_nodes` after its first version are not: a database from before `label` and `color` does not gain them.
+
+- Add any missing column on open, and after a backup is restored.
+- A test that opens a database from each earlier layout.
+
+### Bonus — Tests that drive the window
+
+Not current work. The tests cover the document model, storage, the state behind the window, and the editor scripts in a browser. Nothing opens the desktop window and clicks through it, so a control wired to the wrong action is only found by hand.
+
+- A test run that starts the app on a temporary project and drives the toolbar, the review panels, History, and the outliner.
+- Run it in the automated builds of Phase 7.
 
 ### Bonus — One project per book, and a bible project beside it
 
@@ -251,6 +332,8 @@ When optional cloud work starts, the source of truth for a disconnected writer r
 
 ## Immediate next steps
 
-Phase 4, local professional editing, is complete on the `phase-4` branch: snapshot comparison, review notes and highlights, track changes, spellcheck, and scene diagnostics. The next step is to merge that branch into `master`. The phase after it is not started. The writing-surface UI is Phase 8. Richer front matter than the book title stays in Phase 6. Optional on-device assistance, a separate bible project beside each book, backups that include research files, and tags stay bonus work.
+Phase 4, local professional editing, is complete and merged into `master`: snapshot comparison, review notes and highlights, track changes, spellcheck, and scene diagnostics. The next phase is not started. The writing-surface UI is Phase 8. Richer front matter than the book title stays in Phase 6.
+
+Bonus work, none of it started: optional on-device assistance; reviewing a whole book at once; finer track changes; richer snapshot comparison; spelling at the word; diagnostics that fit the book; review marks in the compiled file; one place for the review panels; bringing an older project up to date on open; tests that drive the window; a separate bible project beside each book; backups that include research files; and tags.
 
 Optional cloud stays later.

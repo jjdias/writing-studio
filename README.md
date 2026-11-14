@@ -50,7 +50,7 @@ Professional editing, still local:
 
 Full list: [`documentation/PHASE4.md`](documentation/PHASE4.md).
 
-Phases 1 through 4 are done. Phase 4 is on the `phase-4` branch. See the [roadmap](ROADMAP.md).
+Phases 1 through 4 are done. See the [roadmap](ROADMAP.md) for what is next.
 
 ## Requirements
 
