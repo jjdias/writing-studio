@@ -28,6 +28,7 @@ MyNovel.writingstudio/
 - `binder_nodes` — hierarchy, synopsis, status, `label`, `color`, `deleted_at`, `restore_parent_id`. `label` is a short tag. `color` is empty or one of `gold`, `green`, `red`, `blue`, `violet`
 - `documents` — `content_json` (block model), word_count, char_count
 - `snapshots` — per-document JSON copies with label (`manual`, `pre-restore`, …)
+- `tracking_baselines` — one row per tracked document: `document_id`, the document JSON from when tracking began (or from the last accept), and `started_at`. No row means the document is not tracked. Added in Phase 4 on open (`CREATE TABLE IF NOT EXISTS`)
 - `plotlines` — id, title, color, sort_index, created_at, updated_at
 - `plot_points` — plotline_id, title, summary, optional `scene_id` (a binder scene), sort_index, timestamps
 - `characters` — name, role, summary, sort_index, timestamps
@@ -100,7 +101,7 @@ A new local day sets each book's baseline to that book's current outline count. 
 
 Each document is a list of blocks. `schema_version` is currently 1. Block types are `paragraph`, `heading` (with `level`), `quote`, `list`, `code`, and `scene_break`. A block holds inline runs. Each run has marks: `bold`, `italic`, `underline`, `strikethrough`, an optional `link`, an optional `comment`, `comment_kind`, `comment_resolved`, and an optional `highlight`.
 
-`comment` is the note from the Note control. `comment_kind` is `comment`, `question`, `revise`, or `check`. `comment_resolved` is true once the note is resolved. `highlight` is `yellow`, `green`, `blue`, or `pink`. The last three fields came with Phase 4. A document saved before them loads with a plain, open comment and no highlight, and `schema_version` is still 1. Track changes is not stored yet. See [PHASE4.md](PHASE4.md).
+`comment` is the note from the Note control. `comment_kind` is `comment`, `question`, `revise`, or `check`. `comment_resolved` is true once the note is resolved. `highlight` is `yellow`, `green`, `blue`, or `pink`. The last three fields came with Phase 4. A document saved before them loads with a plain, open comment and no highlight, and `schema_version` is still 1. Tracked changes are not stored in the document; see `tracking_baselines`. See [PHASE4.md](PHASE4.md).
 
 ```json
 {

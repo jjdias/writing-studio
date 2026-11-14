@@ -51,11 +51,34 @@ Limits:
 
 Where it lives: `marks.comment_kind`, `marks.comment_resolved`, and `marks.highlight` in the document JSON, beside the Phase 2 `marks.comment`. Older documents load unchanged and `schema_version` is still 1. See [PROJECT_FORMAT.md](PROJECT_FORMAT.md). `Document::review_items` lists them. The editor's selection handling is in `crates/ui/assets/review.js`.
 
+### Track changes
+
+- **Track changes** on the toolbar starts tracking the open scene. The project keeps a copy of the scene as it is at that moment: the baseline. Nothing else about writing changes.
+- Every paragraph whose text now differs from the baseline is listed above the manuscript as Changed, Added, or Removed. A changed paragraph shows the words added and removed inside it.
+- **Accept** keeps a change: the baseline takes that paragraph, and the change leaves the list. The text does not move.
+- **Reject** undoes a change in the text: the baseline's paragraph comes back, with the formatting, notes, and highlights it had. A rejected addition is removed; a rejected removal is put back where it was. Reject is one undo step, so **Ctrl+Z** brings the change back.
+- **Accept all** makes the baseline the text as it is now; tracking goes on from there. **Reject all** puts the whole scene back to the baseline, as one undo step.
+- **Stop tracking** keeps the text as it is and discards the baseline.
+- Click Changed, Added, or Removed on a row to select that paragraph in the manuscript.
+- The baseline is in the project database, so tracked changes are still there after closing and reopening. Each scene is tracked on its own.
+- Compile, word counts, search, and snapshots use the current text, with every change in it, whether accepted or not.
+
+Limits:
+
+- Only text is tracked. A paragraph whose words are unchanged is not listed, whatever happened to its bold, links, notes, or highlights.
+- Changes are per paragraph. Two edits in one paragraph are accepted or rejected together. A list counts as one paragraph.
+- A paragraph that moved is listed as removed in one place and added in another.
+- The manuscript itself does not mark changed paragraphs; the list does.
+- Tracking is turned on per scene. There is no switch for a whole book.
+- A change has no author or date.
+- Accept cannot be undone with Ctrl+Z; it does not change the text.
+
+Where it lives: `writing-studio-document` (`tracked_changes`, `accept_change`, `reject_change`), built on the snapshot comparison. Baselines are rows in the new `tracking_baselines` table, added on open; the project format version is unchanged. Permanently deleting a scene deletes its baseline. Restoring a backup now also adds any tables the backup is missing.
+
 ---
 
 ## Still to do in Phase 4
 
-- Track changes / suggestions without a server
 - Spellcheck integration
 - Scene diagnostics (goal, conflict, outcome) as local analysis
 - Optional local assistance later (on-device only); never required

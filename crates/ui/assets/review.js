@@ -149,3 +149,18 @@ function wsSelectReview(el, type, index) {
     first.parentElement.scrollIntoView({ block: 'center' });
     return true;
 }
+
+// Select the nth top-level paragraph and scroll to it. A paragraph that was
+// removed has no place of its own, so the caller passes where it used to be
+// and the nearest paragraph is shown.
+function wsShowBlock(el, index) {
+    if (!el || !el.children.length) return false;
+    const block = el.children[Math.min(index, el.children.length - 1)];
+    const range = document.createRange();
+    range.selectNodeContents(block);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    block.scrollIntoView({ block: 'center' });
+    return true;
+}

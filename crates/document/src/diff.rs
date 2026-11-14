@@ -72,73 +72,132 @@ pub fn compare_text(old: &str, new: &str) -> DocumentDiff {
     let old_lines: Vec<&str> = old.split('\n').collect();
     let new_lines: Vec<&str> = new.split('\n').collect();
     let mut diff = DocumentDiff::default();
-    let mut removed: Vec<&str> = Vec::new();
-    let mut added: Vec<&str> = Vec::new();
+    for unit in compare_units(&old_lines, &new_lines) {
+        count_words(&mut diff, &unit.spans);
+        diff.paragraphs.push(DiffParagraph {
+            change: unit.change,
+            spans: unit.spans,
+        });
+    }
+    diff
+}
 
-    for (op, line) in sequence_diff(&old_lines, &new_lines) {
+/// One paragraph of a comparison, with where it sits on each side.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct DiffUnit {
+    pub change: ParagraphChange,
+    pub spans: Vec<DiffSpan>,
+    /// Index on the old side. `None` for an added paragraph.
+    pub old: Option<usize>,
+    /// Index on the new side. `None` for a removed paragraph.
+    pub new: Option<usize>,
+    /// Where an added paragraph would go on the old side.
+    pub old_at: usize,
+    /// Where a removed paragraph would go on the new side.
+    pub new_at: usize,
+}
+
+/// Compare two lists of paragraphs. Paragraphs are matched whole first; what
+/// is left between matches is handled by [`flush_gap`].
+pub(crate) fn compare_units(old: &[&str], new: &[&str]) -> Vec<DiffUnit> {
+    let mut units = Vec::new();
+    let mut gap = Gap::default();
+    let (mut old_at, mut new_at) = (0usize, 0usize);
+    for (op, line) in sequence_diff(old, new) {
         match op {
-            DiffOp::Removed => removed.push(line),
-            DiffOp::Added => added.push(line),
+            DiffOp::Removed => {
+                gap.removed.push(line);
+                old_at += 1;
+            }
+            DiffOp::Added => {
+                gap.added.push(line);
+                new_at += 1;
+            }
             DiffOp::Same => {
-                flush_gap(&mut diff, &mut removed, &mut added);
-                diff.paragraphs.push(whole(ParagraphChange::Same, line));
+                flush_gap(&mut units, &mut gap);
+                units.push(DiffUnit {
+                    change: ParagraphChange::Same,
+                    spans: whole(DiffOp::Same, line),
+                    old: Some(old_at),
+                    new: Some(new_at),
+                    old_at,
+                    new_at,
+                });
+                old_at += 1;
+                new_at += 1;
+                gap.old_start = old_at;
+                gap.new_start = new_at;
             }
         }
     }
-    flush_gap(&mut diff, &mut removed, &mut added);
-    diff
+    flush_gap(&mut units, &mut gap);
+    units
+}
+
+#[derive(Default)]
+struct Gap<'a> {
+    removed: Vec<&'a str>,
+    added: Vec<&'a str>,
+    old_start: usize,
+    new_start: usize,
 }
 
 /// Turn a run of removed and added paragraphs into output. Paragraphs are
 /// paired in order; a pair that still shares enough words becomes one
 /// `Changed` paragraph.
-fn flush_gap(diff: &mut DocumentDiff, removed: &mut Vec<&str>, added: &mut Vec<&str>) {
-    let pairs = removed.len().min(added.len());
+fn flush_gap(units: &mut Vec<DiffUnit>, gap: &mut Gap) {
+    let pairs = gap.removed.len().min(gap.added.len());
+    let removed_unit = |index: usize, new_at: usize| DiffUnit {
+        change: ParagraphChange::Removed,
+        spans: whole(DiffOp::Removed, gap.removed[index]),
+        old: Some(gap.old_start + index),
+        new: None,
+        old_at: gap.old_start + index,
+        new_at,
+    };
+    let added_unit = |index: usize, old_at: usize| DiffUnit {
+        change: ParagraphChange::Added,
+        spans: whole(DiffOp::Added, gap.added[index]),
+        old: None,
+        new: Some(gap.new_start + index),
+        old_at,
+        new_at: gap.new_start + index,
+    };
     for index in 0..pairs {
-        let old_tokens = tokens(removed[index]);
-        let new_tokens = tokens(added[index]);
+        let old_tokens = tokens(gap.removed[index]);
+        let new_tokens = tokens(gap.added[index]);
         let ops = sequence_diff(&old_tokens, &new_tokens);
         if similar(&ops, &old_tokens, &new_tokens) {
-            let spans = merge_spans(ops);
-            count_words(diff, &spans);
-            diff.paragraphs.push(DiffParagraph {
+            units.push(DiffUnit {
                 change: ParagraphChange::Changed,
-                spans,
+                spans: merge_spans(ops),
+                old: Some(gap.old_start + index),
+                new: Some(gap.new_start + index),
+                old_at: gap.old_start + index,
+                new_at: gap.new_start + index,
             });
         } else {
-            push_whole(diff, ParagraphChange::Removed, removed[index]);
-            push_whole(diff, ParagraphChange::Added, added[index]);
+            units.push(removed_unit(index, gap.new_start + index));
+            units.push(added_unit(index, gap.old_start + index + 1));
         }
     }
-    for line in &removed[pairs..] {
-        push_whole(diff, ParagraphChange::Removed, line);
+    for index in pairs..gap.removed.len() {
+        units.push(removed_unit(index, gap.new_start + pairs));
     }
-    for line in &added[pairs..] {
-        push_whole(diff, ParagraphChange::Added, line);
+    for index in pairs..gap.added.len() {
+        units.push(added_unit(index, gap.old_start + pairs));
     }
-    removed.clear();
-    added.clear();
+    gap.old_start += gap.removed.len();
+    gap.new_start += gap.added.len();
+    gap.removed.clear();
+    gap.added.clear();
 }
 
-fn push_whole(diff: &mut DocumentDiff, change: ParagraphChange, line: &str) {
-    let paragraph = whole(change, line);
-    count_words(diff, &paragraph.spans);
-    diff.paragraphs.push(paragraph);
-}
-
-fn whole(change: ParagraphChange, line: &str) -> DiffParagraph {
-    let op = match change {
-        ParagraphChange::Removed => DiffOp::Removed,
-        ParagraphChange::Added => DiffOp::Added,
-        ParagraphChange::Same | ParagraphChange::Changed => DiffOp::Same,
-    };
-    DiffParagraph {
-        change,
-        spans: vec![DiffSpan {
-            op,
-            text: line.to_string(),
-        }],
-    }
+fn whole(op: DiffOp, line: &str) -> Vec<DiffSpan> {
+    vec![DiffSpan {
+        op,
+        text: line.to_string(),
+    }]
 }
 
 fn count_words(diff: &mut DocumentDiff, spans: &[DiffSpan]) {
@@ -154,10 +213,12 @@ fn count_words(diff: &mut DocumentDiff, spans: &[DiffSpan]) {
 
 fn similar(ops: &[(DiffOp, &str)], old: &[&str], new: &[&str]) -> bool {
     let words = |tokens: &[&str]| tokens.iter().filter(|token| is_word(token)).count();
-    let total = words(old) + words(new);
-    if total == 0 {
+    // A blank paragraph that gained text, or text that was cleared, is one
+    // change to that paragraph.
+    if words(old) == 0 || words(new) == 0 {
         return true;
     }
+    let total = words(old) + words(new);
     let kept = ops
         .iter()
         .filter(|(op, token)| *op == DiffOp::Same && is_word(token))
@@ -355,6 +416,35 @@ mod tests {
             changes,
             vec![ParagraphChange::Removed, ParagraphChange::Added]
         );
+    }
+
+    #[test]
+    fn units_say_where_each_paragraph_sits_on_both_sides() {
+        let old = ["First.", "Second.", "Third."];
+        let new = ["First.", "Third.", "The harbor at dawn.", "Fourth, said Mara."];
+        let units = compare_units(&old, &new);
+        let places: Vec<_> = units
+            .iter()
+            .map(|unit| (unit.change, unit.old, unit.new, unit.old_at, unit.new_at))
+            .collect();
+        assert_eq!(
+            places,
+            vec![
+                (ParagraphChange::Same, Some(0), Some(0), 0, 0),
+                (ParagraphChange::Removed, Some(1), None, 1, 1),
+                (ParagraphChange::Same, Some(2), Some(1), 2, 1),
+                (ParagraphChange::Added, None, Some(2), 3, 2),
+                (ParagraphChange::Added, None, Some(3), 3, 3),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_blank_paragraph_that_gained_text_is_one_change() {
+        let diff = compare_text("", "She opened the door.");
+        assert_eq!(diff.paragraphs.len(), 1);
+        assert_eq!(diff.paragraphs[0].change, ParagraphChange::Changed);
+        assert_eq!((diff.words_added, diff.words_removed), (4, 0));
     }
 
     #[test]

@@ -46,6 +46,12 @@ pub fn install(conn: &Connection) -> rusqlite::Result<()> {
             label TEXT
         );
 
+        CREATE TABLE IF NOT EXISTS tracking_baselines (
+            document_id TEXT PRIMARY KEY,
+            content_json TEXT NOT NULL,
+            started_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS plotlines (
             id TEXT PRIMARY KEY,
             title TEXT NOT NULL,

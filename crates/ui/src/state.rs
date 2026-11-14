@@ -7,7 +7,8 @@ use std::time::Instant;
 use writing_studio_characters::Cast;
 use writing_studio_corkboard::CorkGroup;
 use writing_studio_document::{
-    compare_documents, Document, DocumentDiff, NoteKind, ReviewItem, ReviewKind, ReviewTarget,
+    accept_change, compare_documents, reject_change, tracked_changes, Document, DocumentDiff,
+    NoteKind, ReviewItem, ReviewKind, ReviewTarget, TrackedChange,
 };
 use writing_studio_core::{autosave_due, autosave_wait, local_day, Id, Timestamp, PRODUCT_NAME};
 use writing_studio_editor::EditorSession;
@@ -119,6 +120,20 @@ pub struct SnapshotComparison {
     pub diff: DocumentDiff,
 }
 
+/// The open document as it was when tracking was turned on. Tracked changes
+/// are measured from this copy.
+#[derive(Clone, Debug)]
+pub struct Tracking {
+    pub baseline: Document,
+    pub started: Timestamp,
+}
+
+impl Tracking {
+    pub fn started_label(&self) -> String {
+        self.started.inner().format("%Y-%m-%d %H:%M UTC").to_string()
+    }
+}
+
 #[derive(Clone)]
 pub struct StudioState {
     pub product_name: &'static str,
@@ -159,6 +174,7 @@ pub struct StudioState {
     pub compare_against: Option<Id>,
     pub compare_changes_only: bool,
     pub show_resolved_notes: bool,
+    pub tracking: Option<Tracking>,
     pub binder_dirty: bool,
     pub last_edit: Option<Instant>,
     pub session_started: Option<Instant>,
@@ -212,6 +228,7 @@ impl Default for StudioState {
             compare_against: None,
             compare_changes_only: false,
             show_resolved_notes: false,
+            tracking: None,
             binder_dirty: false,
             last_edit: None,
             session_started: None,
@@ -720,6 +737,163 @@ impl StudioState {
             self.editor_text.clear();
             self.editor_html.clear();
             self.editor_epoch += 1;
+        }
+        self.load_tracking();
+    }
+
+    /// Read the tracking baseline of the open document, if it has one.
+    fn load_tracking(&mut self) {
+        self.tracking = None;
+        let (Some(store), Some(session)) = (&self.store, &self.session) else {
+            return;
+        };
+        match store.borrow().load_tracking_baseline(session.document_id()) {
+            Ok(found) => {
+                self.tracking = found.map(|(baseline, started)| Tracking { baseline, started });
+            }
+            Err(err) => self.status = format!("Could not read tracked changes: {err}"),
+        }
+    }
+
+    /// The baseline, when it belongs to the document in the editor.
+    fn tracking_for_session(&self) -> Option<(&Tracking, &EditorSession)> {
+        let session = self.session.as_ref()?;
+        let tracking = self.tracking.as_ref()?;
+        (tracking.baseline.id == session.document_id()).then_some((tracking, session))
+    }
+
+    pub fn is_tracking(&self) -> bool {
+        self.tracking_for_session().is_some()
+    }
+
+    /// Paragraphs rewritten, added, or removed since tracking began.
+    pub fn tracked_changes(&self) -> Vec<TrackedChange> {
+        self.tracking_for_session()
+            .map(|(tracking, session)| tracked_changes(&tracking.baseline, session.document()))
+            .unwrap_or_default()
+    }
+
+    /// Start tracking the open document from the text it has now.
+    pub fn start_tracking(&mut self) {
+        if self.is_tracking() {
+            return;
+        }
+        self.flush_editor();
+        let (Some(store), Some(session)) = (&self.store, &self.session) else {
+            return;
+        };
+        let baseline = session.document().clone();
+        let saved = store.borrow().save_tracking_baseline(&baseline);
+        match saved {
+            Ok(()) => {
+                self.load_tracking();
+                self.status = "Tracking changes to this document from now.".into();
+            }
+            Err(err) => self.status = format!("Could not start tracking: {err}"),
+        }
+    }
+
+    /// Stop tracking. The text stays as it is; the baseline is discarded.
+    pub fn stop_tracking(&mut self) {
+        let (Some(store), Some(session)) = (&self.store, &self.session) else {
+            return;
+        };
+        let stopped = store.borrow().stop_tracking(session.document_id());
+        match stopped {
+            Ok(()) => {
+                self.tracking = None;
+                self.status = "Stopped tracking. The text was kept as it is.".into();
+            }
+            Err(err) => self.status = format!("Could not stop tracking: {err}"),
+        }
+    }
+
+    /// Keep one change. It leaves the list; the text does not move.
+    pub fn accept_tracked_change(&mut self, index: usize) {
+        let Some((tracking, session)) = self.tracking_for_session() else {
+            return;
+        };
+        let Some(change) = tracked_changes(&tracking.baseline, session.document()).get(index).cloned()
+        else {
+            return;
+        };
+        let mut baseline = tracking.baseline.clone();
+        if accept_change(&mut baseline, session.document(), &change) {
+            self.replace_baseline(baseline, "Change accepted.");
+        }
+    }
+
+    /// Keep every change: the baseline becomes the text as it is now.
+    pub fn accept_all_tracked_changes(&mut self) {
+        let Some((_, session)) = self.tracking_for_session() else {
+            return;
+        };
+        let baseline = session.document().clone();
+        self.replace_baseline(baseline, "All changes accepted.");
+    }
+
+    fn replace_baseline(&mut self, baseline: Document, status: &str) {
+        let Some(store) = &self.store else {
+            return;
+        };
+        let saved = store.borrow().save_tracking_baseline(&baseline);
+        match saved {
+            Ok(()) => {
+                if let Some(tracking) = &mut self.tracking {
+                    tracking.baseline = baseline;
+                }
+                self.status = status.into();
+            }
+            Err(err) => self.status = format!("Could not accept the change: {err}"),
+        }
+    }
+
+    /// Undo one change in the text. It is one undo step.
+    pub fn reject_tracked_change(&mut self, index: usize) {
+        let Some((tracking, session)) = self.tracking_for_session() else {
+            return;
+        };
+        let Some(change) = tracked_changes(&tracking.baseline, session.document()).get(index).cloned()
+        else {
+            return;
+        };
+        let baseline = tracking.baseline.clone();
+        self.edit_text("Change rejected. Undo brings it back.", |doc| {
+            reject_change(&baseline, doc, &change)
+        });
+    }
+
+    /// Put the text back as it was when tracking began. One undo step.
+    pub fn reject_all_tracked_changes(&mut self) {
+        let Some((tracking, session)) = self.tracking_for_session() else {
+            return;
+        };
+        if tracked_changes(&tracking.baseline, session.document()).is_empty() {
+            return;
+        }
+        let baseline = tracking.baseline.clone();
+        self.edit_text("All changes rejected. Undo brings them back.", |doc| {
+            doc.blocks = baseline.blocks.clone();
+            doc.updated_at = Timestamp::now();
+            true
+        });
+    }
+
+    /// Change the words of the open document from outside the editor, as one
+    /// undo step, and redraw the editor.
+    fn edit_text(&mut self, status: &str, change: impl FnOnce(&mut Document) -> bool) {
+        let Some(mut session) = self.session.take() else {
+            return;
+        };
+        let changed = session.edit(change);
+        if changed {
+            self.sync_editor_from_session(&session);
+        }
+        self.session = Some(session);
+        if changed {
+            self.note_edit();
+            self.note_session_for_search();
+            self.status = status.into();
         }
     }
 
@@ -2589,6 +2763,59 @@ mod tests {
         assert_eq!(left.len(), 1);
         assert_eq!(left[0].text, "Too long.");
         assert_eq!(state.editor_text, "The harbor was quiet.\nToo long.");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn tracked_changes_are_accepted_rejected_and_kept_across_reopen() {
+        let (mut state, dir) = open_state("track");
+        state.apply_editor_html("<p>She opened the door.</p><p>Nobody spoke.</p>".into());
+        assert!(!state.is_tracking());
+        assert!(state.tracked_changes().is_empty());
+
+        state.start_tracking();
+        assert!(state.is_tracking());
+        assert!(state.tracked_changes().is_empty());
+
+        state.apply_editor_html(
+            "<p>She opened the red door.</p><p>A gull cried.</p><p>Nobody spoke.</p><p>The end.</p>"
+                .into(),
+        );
+        assert_eq!(state.tracked_changes().len(), 3);
+
+        // Accepting keeps the text and drops the change.
+        state.accept_tracked_change(0);
+        assert_eq!(state.tracked_changes().len(), 2);
+        assert!(state.editor_text.starts_with("She opened the red door."));
+
+        // Rejecting takes the paragraph back out of the text, and undo returns it.
+        let epoch = state.editor_epoch;
+        state.reject_tracked_change(0);
+        assert_eq!(state.editor_text, "She opened the red door.\nNobody spoke.\nThe end.");
+        assert!(state.editor_epoch > epoch);
+        assert_eq!(state.tracked_changes().len(), 1);
+        state.undo();
+        assert_eq!(state.tracked_changes().len(), 2);
+
+        // The baseline is in the project, so the changes survive closing it.
+        state.flush_editor();
+        let root = state.store.as_ref().unwrap().borrow().root.clone();
+        let mut reopened = StudioState::default();
+        reopened.open_project_at(root);
+        assert!(reopened.is_tracking());
+        assert_eq!(reopened.tracked_changes().len(), 2);
+
+        reopened.reject_all_tracked_changes();
+        assert_eq!(reopened.editor_text, "She opened the red door.\nNobody spoke.");
+        assert!(reopened.tracked_changes().is_empty());
+        reopened.undo();
+        reopened.accept_all_tracked_changes();
+        assert!(reopened.tracked_changes().is_empty());
+        assert!(reopened.editor_text.ends_with("The end."));
+
+        reopened.stop_tracking();
+        assert!(!reopened.is_tracking());
+        assert!(reopened.editor_text.ends_with("The end."));
         let _ = std::fs::remove_dir_all(dir);
     }
 

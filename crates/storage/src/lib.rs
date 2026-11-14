@@ -695,6 +695,12 @@ impl ProjectStore {
             .map_err(sqlite)?;
         self.conn
             .execute(
+                "DELETE FROM tracking_baselines WHERE document_id = ?1",
+                params![id.to_string()],
+            )
+            .map_err(sqlite)?;
+        self.conn
+            .execute(
                 "DELETE FROM documents WHERE id = ?1",
                 params![id.to_string()],
             )
@@ -1175,6 +1181,41 @@ mod tests {
         );
         assert_eq!(store.list_snapshots(doc_id).unwrap().len(), 1);
         assert!(store.load_snapshot(Id::new()).is_err());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn tracking_baseline_is_kept_replaced_and_dropped_with_its_document() {
+        let dir = env::temp_dir().join(format!("ws-track-{}", Id::new()));
+        let store = ProjectStore::create(&dir, "Tracked Novel").unwrap();
+        let doc_id = store
+            .load_binder()
+            .unwrap()
+            .nodes
+            .iter()
+            .find(|node| node.kind == NodeKind::Scene)
+            .and_then(|node| node.document_id)
+            .unwrap();
+        assert!(store.load_tracking_baseline(doc_id).unwrap().is_none());
+
+        let mut document = store.load_document(doc_id).unwrap();
+        document.replace_plain_text("First draft.");
+        store.save_tracking_baseline(&document).unwrap();
+        let (baseline, started) = store.load_tracking_baseline(doc_id).unwrap().unwrap();
+        assert_eq!(baseline.to_plain_text(), "First draft.");
+
+        document.replace_plain_text("Second draft.");
+        store.save_tracking_baseline(&document).unwrap();
+        let reopened = ProjectStore::open(&dir).unwrap();
+        let (baseline, kept) = reopened.load_tracking_baseline(doc_id).unwrap().unwrap();
+        assert_eq!(baseline.to_plain_text(), "Second draft.");
+        assert_eq!(kept, started);
+
+        reopened.stop_tracking(doc_id).unwrap();
+        assert!(reopened.load_tracking_baseline(doc_id).unwrap().is_none());
+        reopened.save_tracking_baseline(&document).unwrap();
+        reopened.delete_document(doc_id).unwrap();
+        assert!(reopened.load_tracking_baseline(doc_id).unwrap().is_none());
         let _ = fs::remove_dir_all(dir);
     }
 

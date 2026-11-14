@@ -7,6 +7,7 @@
 mod diff;
 mod html;
 mod model;
+mod track;
 
 pub use diff::{
     compare_documents, compare_text, DiffOp, DiffParagraph, DiffSpan, DocumentDiff, ParagraphChange,
@@ -15,5 +16,7 @@ pub use model::{
     normalize_link, Block, BlockKind, Document, Highlight, Inline, InlineNote, ListItem, Marks,
     NoteKind, ReviewItem, ReviewKind, ReviewTarget,
 };
+
+pub use track::{accept_change, reject_change, tracked_changes, TrackedChange};
 
 pub const DOCUMENT_SCHEMA_VERSION: u32 = 1;

@@ -111,6 +111,55 @@ impl ProjectStore {
         Ok(restored)
     }
 
+    /// Keep `baseline` as the text tracked changes are measured from. The
+    /// start time is kept when a baseline is replaced.
+    pub fn save_tracking_baseline(&self, baseline: &Document) -> Result<()> {
+        let json = baseline
+            .to_json()
+            .map_err(|err| Error::message(err.to_string()))?;
+        self.conn
+            .execute(
+                "INSERT INTO tracking_baselines (document_id, content_json, started_at)
+                 VALUES (?1, ?2, ?3)
+                 ON CONFLICT(document_id) DO UPDATE SET content_json = excluded.content_json",
+                params![baseline.id.to_string(), json, Timestamp::now().to_rfc3339()],
+            )
+            .map_err(sqlite)?;
+        Ok(())
+    }
+
+    /// The baseline and when tracking began, or `None` when the document is
+    /// not tracked.
+    pub fn load_tracking_baseline(&self, document_id: Id) -> Result<Option<(Document, Timestamp)>> {
+        let row: Option<(String, String)> = self
+            .conn
+            .query_row(
+                "SELECT content_json, started_at FROM tracking_baselines WHERE document_id = ?1",
+                params![document_id.to_string()],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(sqlite)?;
+        let Some((json, started)) = row else {
+            return Ok(None);
+        };
+        let mut baseline =
+            Document::from_json(&json).map_err(|err| Error::message(err.to_string()))?;
+        baseline.id = document_id;
+        let started = Timestamp::parse(&started).unwrap_or_else(|_| Timestamp::now());
+        Ok(Some((baseline, started)))
+    }
+
+    pub fn stop_tracking(&self, document_id: Id) -> Result<()> {
+        self.conn
+            .execute(
+                "DELETE FROM tracking_baselines WHERE document_id = ?1",
+                params![document_id.to_string()],
+            )
+            .map_err(sqlite)?;
+        Ok(())
+    }
+
     pub fn list_backups(&self) -> Result<Vec<BackupInfo>> {
         let dir = self.root.join("backups");
         if !dir.exists() {
@@ -181,6 +230,8 @@ impl ProjectStore {
                 "backup is not a Writing Studio project database; live project was left unchanged",
             ));
         }
+        // A backup written by an older version lacks the tables added since.
+        crate::schema::install(&self.conn).map_err(sqlite)?;
         Ok(())
     }
 }

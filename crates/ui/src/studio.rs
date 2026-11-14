@@ -6,6 +6,7 @@ use writing_studio_core::Id;
 use writing_studio_corkboard::{card_matches, cards_from_binder, group_cards, CorkGroup};
 use writing_studio_document::{
     DiffOp, Highlight, NoteKind, ParagraphChange, ReviewItem, ReviewKind, ReviewTarget,
+    TrackedChange,
 };
 use writing_studio_editor::EditorSession;
 use writing_studio_manuscript::{outline_rows, row_word_count};
@@ -657,6 +658,7 @@ fn EditorPane() -> Element {
             div { class: "breadcrumb", "{kind} › {heading}" }
             FormatToolbar { enabled: can_edit }
             ReviewList {}
+            TrackPanel {}
             div {
                 key: "{epoch}",
                 class: "manuscript rich",
@@ -901,6 +903,93 @@ fn review_anchor(text: &str) -> String {
     }
 }
 
+/// Paragraphs changed since tracking was turned on, with accept and reject.
+#[component]
+fn TrackPanel() -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let Some(started) = state
+        .read()
+        .tracking
+        .as_ref()
+        .filter(|_| state.read().is_tracking())
+        .map(|tracking| tracking.started_label())
+    else {
+        return rsx! {};
+    };
+    let changes: Vec<TrackedChange> = state.read().tracked_changes();
+    let count = changes.len();
+    rsx! {
+        div { class: "review track",
+            div { class: "review-head",
+                if count == 0 {
+                    span { "Tracking changes since {started} · nothing changed yet" }
+                } else {
+                    span { "Tracking changes since {started} · {count} changed paragraphs" }
+                    button {
+                        title: "Keep every change. Tracking goes on from the text as it is now.",
+                        onclick: move |_| state.write().accept_all_tracked_changes(),
+                        "Accept all"
+                    }
+                    button {
+                        title: "Put the text back as it was when tracking began. Undo brings the changes back.",
+                        onclick: move |_| state.write().reject_all_tracked_changes(),
+                        "Reject all"
+                    }
+                }
+            }
+            ul { class: "review-list track-list",
+                for (index, change) in changes.into_iter().enumerate() {
+                    TrackRow { index, change }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn TrackRow(index: usize, change: TrackedChange) -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let (label, row_class) = match change.change {
+        ParagraphChange::Added => ("Added", "review-item track-item added"),
+        ParagraphChange::Removed => ("Removed", "review-item track-item removed"),
+        _ => ("Changed", "review-item track-item"),
+    };
+    let block = change.current_block.unwrap_or(change.current_at);
+    let blank = change.spans.iter().all(|span| span.text.trim().is_empty());
+    rsx! {
+        li { class: row_class,
+            button {
+                class: "review-anchor track-kind",
+                title: "Show where this is in the manuscript",
+                onclick: move |_| run_editor_script(state, format!("wsShowBlock(el, {block});")),
+                "{label}"
+            }
+            p { class: "track-text",
+                if blank {
+                    span { class: "hint", "Blank paragraph" }
+                }
+                for span in change.spans.iter() {
+                    match span.op {
+                        DiffOp::Same => rsx! { "{span.text}" },
+                        DiffOp::Added => rsx! { ins { class: "diff-added", "{span.text}" } },
+                        DiffOp::Removed => rsx! { del { class: "diff-removed", "{span.text}" } },
+                    }
+                }
+            }
+            button {
+                title: "Keep this change",
+                onclick: move |_| state.write().accept_tracked_change(index),
+                "Accept"
+            }
+            button {
+                title: "Put this paragraph back as it was. Undo brings the change back.",
+                onclick: move |_| state.write().reject_tracked_change(index),
+                "Reject"
+            }
+        }
+    }
+}
+
 /// Notes and highlights in the open document, above the manuscript.
 #[component]
 fn ReviewList() -> Element {
@@ -1060,7 +1149,8 @@ fn run_editor_script(state: Signal<StudioState>, body: impl Into<String>) {
 
 #[component]
 fn FormatToolbar(enabled: bool) -> Element {
-    let state = use_context::<Signal<StudioState>>();
+    let mut state = use_context::<Signal<StudioState>>();
+    let tracking = state.read().is_tracking();
     let mut note_kind = use_signal(|| NoteKind::Comment);
     rsx! {
         div { class: "format-toolbar",
@@ -1113,6 +1203,25 @@ fn FormatToolbar(enabled: bool) -> Element {
                     title: "Take the highlight off the selected text",
                     onclick: move |_| run_editor_script(state, "wsClearHighlight(el);"),
                     "No highlight"
+                }
+            }
+            div { class: "format-group",
+                button {
+                    class: if tracking { "primary" } else { "" },
+                    disabled: !enabled,
+                    title: if tracking {
+                        "Stop tracking. The text stays as it is and the list of changes is dropped."
+                    } else {
+                        "Track changes to this document from now, to accept or reject them later"
+                    },
+                    onclick: move |_| {
+                        if tracking {
+                            state.write().stop_tracking();
+                        } else {
+                            state.write().start_tracking();
+                        }
+                    },
+                    if tracking { "Stop tracking" } else { "Track changes" }
                 }
             }
             div { class: "format-group",

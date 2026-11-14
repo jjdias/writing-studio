@@ -4,7 +4,7 @@ Writing Studio is **open source** (MIT OR Apache-2.0) and **free for the communi
 
 **Local-first, now and later.** Saves, snapshots, backups, and compile live on the writer’s machine. Cloud connections and collaboration, if added, stay **optional**. They must never become a requirement to open a project, write, or keep copies of work.
 
-Status: Phases 1, 2, and 3 are complete. Phase 4 is in progress on the `phase-4` branch; snapshot comparison and review notes and highlights are done. Details: [`documentation/PHASE1.md`](documentation/PHASE1.md), [`documentation/PHASE2.md`](documentation/PHASE2.md), [`documentation/PHASE3.md`](documentation/PHASE3.md), and [`documentation/PHASE4.md`](documentation/PHASE4.md).
+Status: Phases 1, 2, and 3 are complete. Phase 4 is in progress on the `phase-4` branch; snapshot comparison, review notes and highlights, and track changes are done. Details: [`documentation/PHASE1.md`](documentation/PHASE1.md), [`documentation/PHASE2.md`](documentation/PHASE2.md), [`documentation/PHASE3.md`](documentation/PHASE3.md), and [`documentation/PHASE4.md`](documentation/PHASE4.md).
 
 ---
 
@@ -33,7 +33,7 @@ These pieces exist and are used by the desktop app. See [`documentation/PHASE1.m
 ### Project format and local persistence
 
 - Versioned project folder (`FORMAT` + `project.sqlite` + `backups/` + `attachments/`)
-- SQLite schema: `project_meta`, `binder_nodes`, `documents`, `snapshots`
+- SQLite schema: `project_meta`, `binder_nodes`, `documents`, `snapshots` (later phases added tables; see [`documentation/PROJECT_FORMAT.md`](documentation/PROJECT_FORMAT.md))
 - WAL mode and transactional document writes
 - Create / open project from the welcome screen (native folder picker)
 - Save (Ctrl+S / Save) writes documents, binder metadata, and settings to disk
@@ -76,7 +76,7 @@ These crates run in the current app. Phase 1 did not include plotting, character
 | Crate | Role |
 | --- | --- |
 | `writing-studio-core` | IDs, time, errors, events, format version, autosave policy |
-| `writing-studio-document` | Block document model, JSON, HTML interchange, text comparison |
+| `writing-studio-document` | Block document model, JSON, HTML interchange, text comparison, tracked changes |
 | `writing-studio-editor` | Session, undo/redo, counts |
 | `writing-studio-project` | Binder tree and settings |
 | `writing-studio-manuscript` | Book / chapter / scene outline |
@@ -113,7 +113,7 @@ These crates exist so module boundaries stay stable. They are **types or stubs**
 Done. See [`documentation/PHASE2.md`](documentation/PHASE2.md).
 
 - Inline links from the toolbar, and more block types (headings, code, scene break)
-- Inline comments: a note on a text run, stored in the document JSON. Phase 4 added note kinds, resolving, and highlights. Track changes stays in Phase 4
+- Inline comments: a note on a text run, stored in the document JSON. Phase 4 added note kinds, resolving, highlights, and track changes
 - Outliner: inline metadata edit and word counts per row
 - Binder labels, colors, and deeper nesting polish
 - Corkboard: reorder scenes, filter/group, card colors
@@ -147,9 +147,10 @@ Done:
 
 - Review notes and highlights. A note on a passage has a kind (Comment, Question, Revise, Check) and can be resolved, reopened, edited, or removed from a list above the manuscript. Text can be highlighted in four colors. Both are stored on the text in the scene. Compile leaves out resolved notes and highlights.
 
+- Track changes without a server. **Track changes** keeps a copy of the scene as it is at that moment, in the project. Every paragraph rewritten, added, or removed after that is listed above the manuscript, to accept or reject one at a time or all at once. It tracks text, per scene.
+
 Still to do:
 
-- Track changes / suggestions without a server
 - Spellcheck integration
 - Scene diagnostics (goal, conflict, outcome) as local analysis
 - Optional **local** assistance later (on-device only); never required
@@ -246,6 +247,6 @@ When optional cloud work starts, the source of truth for a disconnected writer r
 
 ## Immediate next steps
 
-Current work is Phase 4, local professional editing, on the `phase-4` branch. Snapshot comparison and review notes and highlights are done. Next is track changes; then spellcheck and scene diagnostics. The writing-surface UI is Phase 8. Richer front matter than the book title stays in Phase 6. A separate bible project beside each book, backups that include research files, and tags stay bonus work.
+Current work is Phase 4, local professional editing, on the `phase-4` branch. Snapshot comparison, review notes and highlights, and track changes are done. Next is spellcheck; then scene diagnostics. The writing-surface UI is Phase 8. Richer front matter than the book title stays in Phase 6. A separate bible project beside each book, backups that include research files, and tags stay bonus work.
 
 Optional cloud stays later.

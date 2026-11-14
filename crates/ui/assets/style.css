@@ -394,6 +394,12 @@ button.primary:hover { background: var(--primary-hover); }
 .hl-blue { background: var(--hl-blue); }
 .hl-pink { background: var(--hl-pink); }
 .format-toolbar .hl-btn { color: var(--text); }
+.track-list { max-height: 12rem; }
+.track-item { align-items: flex-start; }
+.track-item .track-kind { flex: 0 0 5.5em; }
+.track-item.added .track-kind { color: var(--diff-add-line); }
+.track-item.removed .track-kind { color: var(--diff-del-line); }
+.track-text { flex: 1; margin: 0; padding: 2px 6px; white-space: pre-wrap; line-height: 1.45; color: var(--text); background: var(--panel-2); }
 .manuscript {
   flex: 1;
   margin: 0;
