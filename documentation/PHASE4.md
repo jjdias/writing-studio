@@ -132,6 +132,6 @@ Where it lives: the new `writing-studio-diagnostics` crate. Beats are rows in th
 - A book-wide list of open notes, and tracking changes across a whole book (bonus)
 - Live insert and delete marks in the manuscript while typing; tracked changes are listed above it (bonus)
 - The writing-surface changes to the window (Phase 8), including the in-window field that replaces the browser prompt for notes and links
-- Cloud sync, accounts, or real-time collaboration (Phase 5)
+- Sync between machines (Phase 5, through git). Accounts and a server are no longer planned; editing at the same time is bonus work
 
 Those stay optional. They must not become required to write.

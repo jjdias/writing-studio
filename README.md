@@ -1,6 +1,6 @@
 # Writing Studio
 
-Open-source, local-first writing studio in Rust. Organize a manuscript, write scenes, recover work, and compile a draft. **Free for the community** under MIT OR Apache-2.0. No account is required. Cloud sync may exist later as an optional extra; it will never be required to write.
+Open-source, local-first writing studio in Rust. Organize a manuscript, write scenes, recover work, and compile a draft. **Free for the community** under MIT OR Apache-2.0. No account is required. Sync between machines is planned through git, with any host the writer chooses; it will never be required to write.
 
 ## Phase 1
 

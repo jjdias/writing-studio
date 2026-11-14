@@ -2,7 +2,7 @@
 
 Writing Studio is **open source** (MIT OR Apache-2.0) and **free for the community**. Anyone may use, study, modify, and share it. No account is required to write.
 
-**Local-first, now and later.** Saves, snapshots, backups, and compile live on the writer’s machine. Cloud connections and collaboration, if added, stay **optional**. They must never become a requirement to open a project, write, or keep copies of work.
+**Local-first, now and later.** Saves, snapshots, backups, and compile live on the writer’s machine. Keeping a project on a second machine or with a hosting provider, planned in Phase 5 through git, stays **optional**. It must never become a requirement to open a project, write, or keep copies of work.
 
 Status: Phases 1, 2, 3, and 4 are complete and on `master`. Details: [`documentation/PHASE1.md`](documentation/PHASE1.md), [`documentation/PHASE2.md`](documentation/PHASE2.md), [`documentation/PHASE3.md`](documentation/PHASE3.md), and [`documentation/PHASE4.md`](documentation/PHASE4.md).
 
@@ -15,6 +15,9 @@ Status: Phases 1, 2, 3, and 4 are complete and on `master`. Details: [`documenta
 3. **Never lose writing.** Transactional saves, WAL, crash-safe SQLite, and local backups come before sync.
 4. **Shared Rust core.** UI, storage, compile, and later optional sync all consume the same document JSON and binder model.
 5. **Offline writing is complete.** If a network, account, or server is unavailable, the studio still works.
+6. **Easy to stay, easy to leave.** Every change should make writing a book here easier. None should make it harder to take the book somewhere else. A writer who stops using this program keeps files that another program, or a plain text editor, can read.
+
+Principles 2 to 4 describe the project as it is stored today. Phase 5 changes where the manuscript lives, from the SQLite file to text files, and keeps the rest.
 
 ---
 
@@ -102,9 +105,9 @@ These crates exist so module boundaries stay stable. They are **types or stubs**
 
 | Crate | Current state | Intended later work |
 | --- | --- | --- |
-| `writing-studio-collaboration` | Yrs placeholder constant | Optional CRDT editing |
-| `writing-studio-synchronization` | “optional = true” stub | Optional cloud sync |
-| `writing-studio-security` | Notes that local folders are unencrypted | Optional encryption when sync exists |
+| `writing-studio-collaboration` | Yrs placeholder constant | None planned. Editing at the same time is bonus work; Phase 5 does not use this crate |
+| `writing-studio-synchronization` | “optional = true” stub | Phase 5: merging two copies of a project, and sync through git |
+| `writing-studio-security` | Notes that local folders are unencrypted | None planned. A project is as private as the folder and the git host it is kept on |
 
 ---
 
@@ -151,17 +154,78 @@ Phase 4 is complete. Optional on-device assistance, which was listed here, is no
 
 Later phases keep **local writing complete**. Anything involving accounts, servers, or the internet is deferred and optional.
 
-### Phase 5 — Optional cloud
+### Phase 5 — Plain-text projects, and sync through git (optional)
 
-Do this only after local save/backup/restore is trustworthy. Sync remains opt-in.
+Not started. This replaces the earlier plan for an account and a server.
 
-- Optional account and Axum backend
-- Opt-in sync of an already-local project
-- Conflict rules for binder structure, deletions, and attachments
-- Real-time collaboration via Yrs / WebSockets
-- Shared-project permissions
-- Encrypt traffic; credentials never gate the manuscript
-- Writers who never connect remain on the same project format
+A writer who wants the book on two machines, or kept with a hosting provider, uses git. Any git host works, so the program does not need an integration for each storage service, and it runs no server of its own. Git is optional. Nobody needs it, or an account anywhere, to write.
+
+Git works on text files. Today a project is one SQLite file, which git can store but cannot compare or merge. So the first half of this phase changes how a project is stored, and that half is worth doing even for a writer who never uses git: the book becomes files that can be read without this program.
+
+The stages are in order. Each one is finished and useful before the next starts.
+
+#### 1. Write the format down
+
+- A specification of the new project folder, with example files, in `documentation/`.
+- Scenes are Markdown, one file each. A short header at the top holds what belongs to the scene: title, synopsis, status, label, and its goal, conflict, and outcome. The header uses the `---` front-matter form that other writing tools already read, with plain `key: value` lines.
+- Characters, places, cultures, lore, timeline events, and research notes are Markdown files of the same kind.
+- Structure is JSON: the binder's order and nesting, the plot grid, links between records, and the settings every machine shares.
+- Notes and highlights use CriticMarkup, an existing plain-text convention, with a fixed spelling for the note's kind, a resolved note, and the highlight color. Underline and anything else Markdown lacks gets one fixed spelling each.
+- The dialect is small and fixed: only what the editor can produce.
+- File names are a readable name and a short id, such as `the-harbor-3f9a.md`, in a flat folder. Order and nesting are in the binder file, so renaming or moving a scene does not rename files.
+- Files hold no time of last save and no per-paragraph ids. Order uses keys that let an item go between two others without renumbering the rest.
+- A test converts existing scenes to Markdown and back and gets the same document. This test passes on real projects before any later stage starts.
+
+#### 2. Project format 2: text files are the project
+
+- The Markdown and JSON files are the source of truth. `FORMAT` says 2.
+- SQLite stays as a cache on this machine: search, word counts, and fast opening. It is rebuilt from the files when it is missing or out of date, and it is never the only copy of anything written.
+- Saving writes the file safely: a crash during a save leaves the old file or the new one, never half of one.
+- What belongs to one machine stays on it and out of the shared files: theme, panel layout, the current book on screen, writing sessions and today's count, snapshots, backups, and track-changes baselines.
+- Opening a format 1 project converts it, after writing a backup of the SQLite file. The conversion is checked by reading the new files back and comparing them with the database. An older version of the program refuses a format 2 project, as `FORMAT` already requires.
+- Compile, search, snapshots, track changes, spellcheck, and diagnostics work as before.
+
+#### 3. Files changed outside the program
+
+- A writer can edit a scene in any text editor. The program reads the change the next time the project opens, and while it is open.
+- Text the program does not understand is kept as written, never dropped.
+- A file that cannot be read is reported by name, and the rest of the project still opens.
+- After any outside change the binder is checked: a file the binder does not list is added to a Recovered folder, and a binder entry whose file is gone is shown as missing, not deleted.
+
+#### 4. Merge two copies of a project
+
+One person usually writes a book, sometimes on two machines. Two people in the same scene at the same moment is not what this is for.
+
+- The program merges two copies of a project itself, from the last version they shared. Git is not left to write conflict markers into a file.
+- Scenes merge by paragraph. Paragraphs changed on only one side are taken. A paragraph changed on both sides is a conflict.
+- A conflict is shown with the Phase 4 review tools: both versions, and a choice of one, the other, or both. Until the writer chooses, both are kept.
+- Binder rules: an item moved on one side and edited on the other keeps both changes. An item deleted on one side and edited on the other is kept. A merge that would leave a loop or an item with no parent puts that item in Recovered.
+- Attachments are whole files: the newer one is used and the other is kept beside it.
+- No merge discards text without showing it.
+
+#### 5. Sync through git
+
+- **Sync** saves the project as a commit, fetches, merges with stage 4, and pushes. One button, and a line that says when the project was last synced and whether there is anything to send or receive.
+- The writer does not see branches, staging, or rebase. Commit messages are written by the program from what changed.
+- Autosave does not commit. Sync, closing the project, and a pause in writing do.
+- The first version uses the `git` program installed on the computer, and the keys or tokens the writer has already set up for it. The program stores no passwords.
+- A guide in `documentation/` explains how to create a private repository with a common host and connect a project to it.
+- Connecting a project warns that a public repository makes the manuscript public.
+- A new project gets a `.gitignore` for the cache, the local settings, snapshots, and backups, and a short `README` in the folder that says what the files are and how to read them without this program.
+- Large research files are stored as they are. The guide explains Git LFS for writers who need it.
+- If git is not installed, or there is no network, everything except Sync works, and Sync says why it cannot run.
+
+#### Later in this phase
+
+- A git engine built into the program, so that nothing has to be installed and Sync can work on phones and tablets.
+- Guided setup: create or pick a repository and sign in from inside the program.
+- History from git in the History view: open or compare a scene as it was at an earlier sync.
+
+#### Not in this phase
+
+- An account, a server run by this project, or shared-project permissions. Who can read or write a project is decided by the git host.
+- Two people editing at the same time. This is bonus work.
+- Encrypting a project. A private repository is as private as its host makes it.
 
 ### Phase 6 — Publishing (local)
 
@@ -191,6 +255,13 @@ The desktop window already runs. This phase changes that window. It is not Phase
 - Chapter and Scene stay above the binder. Book, Part, and Folder move into a menu. The kind mark becomes an icon so the title has the room.
 - A second click that deletes or restores names the item. Escape cancels that confirmation.
 - Icon buttons show focus and have a name, not only a tooltip. The window can list its shortcuts.
+
+### Bonus — Editing at the same time
+
+Not current work. This was part of the earlier plan for Phase 5, with a server. Most books are written by one person, or by a team in which one person edits, so sync through git covers the need.
+
+- Two writers in the same project at the same moment, each seeing the other's changes as they are made.
+- This needs a connection between the two programs. It must stay optional, and a project used this way must stay the same plain-text project.
 
 ### Bonus — Optional local assistance
 
@@ -322,18 +393,19 @@ Do **not** require any of these to write or compile:
 
 - User accounts or login
 - A network connection
-- Cloud backup as the only copy
+- Git, a git host, or any hosting provider
+- A copy on a server as the only copy
 - Simultaneous editing across machines
 - Server-side search or storage as the source of truth
 
-When optional cloud work starts, the source of truth for a disconnected writer remains the `.writingstudio` folder on disk.
+With or without sync, the source of truth is the `.writingstudio` folder on the writer's disk. A git host holds a copy of it.
 
 ---
 
 ## Immediate next steps
 
-Phase 4, local professional editing, is complete and merged into `master`: snapshot comparison, review notes and highlights, track changes, spellcheck, and scene diagnostics. The next phase is not started. The writing-surface UI is Phase 8. Richer front matter than the book title stays in Phase 6.
+Phase 4, local professional editing, is complete and merged into `master`: snapshot comparison, review notes and highlights, track changes, spellcheck, and scene diagnostics. Phase 5 is planned and not started: plain-text projects first, then sync through git. Its first step is the written format and the test that converts scenes to Markdown and back. The writing-surface UI is Phase 8. Richer front matter than the book title stays in Phase 6.
 
-Bonus work, none of it started: optional on-device assistance; reviewing a whole book at once; finer track changes; richer snapshot comparison; spelling at the word; diagnostics that fit the book; review marks in the compiled file; one place for the review panels; bringing an older project up to date on open; tests that drive the window; a separate bible project beside each book; backups that include research files; and tags.
+Bonus work, none of it started: editing at the same time; optional on-device assistance; reviewing a whole book at once; finer track changes; richer snapshot comparison; spelling at the word; diagnostics that fit the book; review marks in the compiled file; one place for the review panels; bringing an older project up to date on open; tests that drive the window; a separate bible project beside each book; backups that include research files; and tags.
 
-Optional cloud stays later.
+There is no plan for an account or a server run by this project.
