@@ -4,7 +4,7 @@ Writing Studio is **open source** (MIT OR Apache-2.0) and **free for the communi
 
 **Local-first, now and later.** Saves, snapshots, backups, and compile live on the writer’s machine. Cloud connections and collaboration, if added, stay **optional**. They must never become a requirement to open a project, write, or keep copies of work.
 
-Status: Phases 1, 2, and 3 are complete. Phase 4 is in progress on the `phase-4` branch; snapshot comparison, review notes and highlights, and track changes are done. Details: [`documentation/PHASE1.md`](documentation/PHASE1.md), [`documentation/PHASE2.md`](documentation/PHASE2.md), [`documentation/PHASE3.md`](documentation/PHASE3.md), and [`documentation/PHASE4.md`](documentation/PHASE4.md).
+Status: Phases 1, 2, and 3 are complete. Phase 4 is in progress on the `phase-4` branch; snapshot comparison, review notes and highlights, track changes, and spellcheck are done. Details: [`documentation/PHASE1.md`](documentation/PHASE1.md), [`documentation/PHASE2.md`](documentation/PHASE2.md), [`documentation/PHASE3.md`](documentation/PHASE3.md), and [`documentation/PHASE4.md`](documentation/PHASE4.md).
 
 ---
 
@@ -89,6 +89,7 @@ These crates run in the current app. Phase 1 did not include plotting, character
 | `writing-studio-worldbuilding` | Locations, cultures, lore, and timelines |
 | `writing-studio-research` | Research notes and files in `attachments/` |
 | `writing-studio-search` | In-memory full-text index of manuscript text, rebuilt when a project opens |
+| `writing-studio-spellcheck` | Hunspell dictionaries (English US bundled), project word list, suggestions |
 | `writing-studio-ui` | Desktop workspace |
 | `writing-studio-desktop` | Native window |
 
@@ -149,9 +150,10 @@ Done:
 
 - Track changes without a server. **Track changes** keeps a copy of the scene as it is at that moment, in the project. Every paragraph rewritten, added, or removed after that is listed above the manuscript, to accept or reject one at a time or all at once. It tracks text, per scene.
 
+- Spellcheck, on this computer only. Unknown words are underlined in the manuscript and listed above it with suggestions. English (US) is built in; other Hunspell dictionaries are read from the project's `dictionaries/` folder or from the system. A project keeps its own list of accepted words, and names from the bible are accepted without adding them.
+
 Still to do:
 
-- Spellcheck integration
 - Scene diagnostics (goal, conflict, outcome) as local analysis
 - Optional **local** assistance later (on-device only); never required
 
@@ -247,6 +249,6 @@ When optional cloud work starts, the source of truth for a disconnected writer r
 
 ## Immediate next steps
 
-Current work is Phase 4, local professional editing, on the `phase-4` branch. Snapshot comparison, review notes and highlights, and track changes are done. Next is spellcheck; then scene diagnostics. The writing-surface UI is Phase 8. Richer front matter than the book title stays in Phase 6. A separate bible project beside each book, backups that include research files, and tags stay bonus work.
+Current work is Phase 4, local professional editing, on the `phase-4` branch. Snapshot comparison, review notes and highlights, track changes, and spellcheck are done. Next is scene diagnostics. The writing-surface UI is Phase 8. Richer front matter than the book title stays in Phase 6. A separate bible project beside each book, backups that include research files, and tags stay bonus work.
 
 Optional cloud stays later.

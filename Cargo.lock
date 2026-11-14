@@ -4629,6 +4629,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "spellbook"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0d204abcbdf8e88729306a8d0ca01a79d8a49969fe1f84696909d6dbc4321c1a"
+dependencies = [
+ "foldhash",
+ "hashbrown 0.17.1",
+]
+
+[[package]]
 name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6307,6 +6317,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "writing-studio-spellcheck"
+version = "0.1.0"
+dependencies = [
+ "spellbook",
+ "writing-studio-core",
+ "writing-studio-document",
+]
+
+[[package]]
 name = "writing-studio-storage"
 version = "0.1.0"
 dependencies = [
@@ -6358,6 +6377,7 @@ dependencies = [
  "writing-studio-project",
  "writing-studio-research",
  "writing-studio-search",
+ "writing-studio-spellcheck",
  "writing-studio-storage",
  "writing-studio-worldbuilding",
 ]

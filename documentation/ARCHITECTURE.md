@@ -33,6 +33,7 @@ Binder + stored documents → writing-studio-export → .md / .docx on disk
 | `writing-studio-worldbuilding` | Locations, cultures, lore, and timelines |
 | `writing-studio-research` | Research notes and files in `attachments/` |
 | `writing-studio-search` | In-memory full-text index of manuscript text, rebuilt from SQLite when a project opens |
+| `writing-studio-spellcheck` | Checks words against a Hunspell dictionary (English US is compiled in) and the project's own words; suggests replacements. No network |
 | `writing-studio-export` | Manuscript compile to Markdown and DOCX |
 | `writing-studio-ui` | Workspace UI |
 | `writing-studio-desktop` | Native window |

@@ -213,6 +213,36 @@ pub struct ProjectSettings {
     /// Missing on older projects, which open on the whole series.
     #[serde(default = "default_show_whole_series")]
     pub show_whole_series: bool,
+    /// Spellcheck switch, dictionary, and the project's own words. Missing on older projects.
+    #[serde(default)]
+    pub spelling: SpellingSettings,
+}
+
+/// Spellcheck choices stored with the project.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SpellingSettings {
+    #[serde(default = "default_visible")]
+    pub enabled: bool,
+    /// Dictionary name, such as `en_US`. A name that cannot be found falls back to the bundled one.
+    #[serde(default = "default_spelling_language")]
+    pub language: String,
+    /// Words this project accepts: names, places, invented terms. Lowercase, sorted.
+    #[serde(default)]
+    pub words: Vec<String>,
+}
+
+fn default_spelling_language() -> String {
+    "en_US".into()
+}
+
+impl Default for SpellingSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            language: default_spelling_language(),
+            words: Vec::new(),
+        }
+    }
 }
 
 fn default_show_whole_series() -> bool {
@@ -232,6 +262,7 @@ impl Default for ProjectSettings {
             compile_book_id: None,
             book_word_goals: Vec::new(),
             show_whole_series: true,
+            spelling: SpellingSettings::default(),
         }
     }
 }

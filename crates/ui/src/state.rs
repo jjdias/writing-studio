@@ -21,6 +21,10 @@ use writing_studio_project::{
     ProjectMeta, StoredSession, Theme,
 };
 use writing_studio_search::ManuscriptIndex;
+use writing_studio_spellcheck::{
+    available_dictionaries, name_words, normalize_word, replace_in_document, DictionaryInfo,
+    Speller, UnknownWord,
+};
 use writing_studio_storage::{BackupInfo, ProjectStore, SnapshotInfo};
 use writing_studio_worldbuilding::World;
 
@@ -175,6 +179,11 @@ pub struct StudioState {
     pub compare_changes_only: bool,
     pub show_resolved_notes: bool,
     pub tracking: Option<Tracking>,
+    /// The dictionary in use. `None` while spellcheck is off or before a project is open.
+    pub speller: Option<Rc<Speller>>,
+    /// The unknown word whose suggestions are on screen.
+    pub spell_focus: Option<String>,
+    pub show_project_words: bool,
     pub binder_dirty: bool,
     pub last_edit: Option<Instant>,
     pub session_started: Option<Instant>,
@@ -229,6 +238,9 @@ impl Default for StudioState {
             compare_changes_only: false,
             show_resolved_notes: false,
             tracking: None,
+            speller: None,
+            spell_focus: None,
+            show_project_words: false,
             binder_dirty: false,
             last_edit: None,
             session_started: None,
@@ -702,6 +714,7 @@ impl StudioState {
                 }
                 self.reindex_manuscript();
                 self.begin_writing_session();
+                self.load_speller();
             }
             (Err(err), _, _, _, _, _)
             | (_, Err(err), _, _, _, _)
@@ -752,6 +765,165 @@ impl StudioState {
                 self.tracking = found.map(|(baseline, started)| Tracking { baseline, started });
             }
             Err(err) => self.status = format!("Could not read tracked changes: {err}"),
+        }
+    }
+
+    /// Read the dictionary the project asks for. A dictionary that is gone
+    /// from disk falls back to the bundled one.
+    fn load_speller(&mut self) {
+        self.speller = None;
+        self.spell_focus = None;
+        let Some(meta) = &self.meta else {
+            return;
+        };
+        if !meta.settings.spelling.enabled {
+            return;
+        }
+        let wanted = meta.settings.spelling.language.clone();
+        let choices = self.spelling_choices();
+        let found = choices.iter().find(|item| item.id == wanted);
+        let loaded = match found {
+            Some(info) => Speller::load(info),
+            None => Speller::bundled(),
+        };
+        match loaded {
+            Ok(speller) => {
+                if found.is_none() {
+                    self.status =
+                        format!("The {wanted} dictionary was not found. Checking spelling in English (US).");
+                }
+                self.speller = Some(Rc::new(speller));
+            }
+            Err(err) => self.status = format!("Spellcheck is off: {err}"),
+        }
+    }
+
+    /// The bundled dictionary, then any found in the project's
+    /// `dictionaries/` folder and on this computer.
+    pub fn spelling_choices(&self) -> Vec<DictionaryInfo> {
+        let root = self.store.as_ref().map(|store| store.borrow().root.clone());
+        available_dictionaries(root.as_deref())
+    }
+
+    /// The dictionary name in use, or `None` when spellcheck is off.
+    pub fn spelling_language(&self) -> Option<String> {
+        self.speller.as_ref().map(|speller| speller.language().to_string())
+    }
+
+    /// Choose a dictionary by name, or `None` to turn spellcheck off.
+    pub fn set_spelling(&mut self, language: Option<String>) {
+        let changed = self.meta.as_mut().is_some_and(|meta| {
+            let spelling = &mut meta.settings.spelling;
+            let before = spelling.clone();
+            spelling.enabled = language.is_some();
+            if let Some(language) = language {
+                spelling.language = language;
+            }
+            let changed = *spelling != before;
+            if changed {
+                meta.touch();
+            }
+            changed
+        });
+        if changed {
+            self.settings_dirty = true;
+            self.note_edit();
+            self.load_speller();
+        }
+    }
+
+    pub fn project_words(&self) -> Vec<String> {
+        self.meta
+            .as_ref()
+            .map(|meta| meta.settings.spelling.words.clone())
+            .unwrap_or_default()
+    }
+
+    /// Words spellcheck accepts besides the dictionary: the project's own
+    /// list, and every word in a character, place, or culture name.
+    fn accepted_words(&self) -> HashSet<String> {
+        let mut words = name_words(
+            self.cast
+                .characters
+                .iter()
+                .map(|character| character.name.as_str())
+                .chain(self.world.locations.iter().map(|place| place.name.as_str()))
+                .chain(self.world.cultures.iter().map(|culture| culture.name.as_str())),
+        );
+        words.extend(self.project_words());
+        words
+    }
+
+    /// Words in the open document that are not in the dictionary, in the
+    /// order they first appear.
+    pub fn unknown_words(&self) -> Vec<UnknownWord> {
+        let (Some(speller), Some(session)) = (&self.speller, &self.session) else {
+            return Vec::new();
+        };
+        speller.unknown_words(&session.plain_text(), &self.accepted_words())
+    }
+
+    pub fn spelling_suggestions(&self, word: &str) -> Vec<String> {
+        self.speller
+            .as_ref()
+            .map(|speller| speller.suggest(word))
+            .unwrap_or_default()
+    }
+
+    /// Accept a word everywhere in this project.
+    pub fn add_project_word(&mut self, word: &str) {
+        let Some(word) = normalize_word(word) else {
+            return;
+        };
+        let added = self.meta.as_mut().is_some_and(|meta| {
+            let words = &mut meta.settings.spelling.words;
+            if words.contains(&word) {
+                return false;
+            }
+            words.push(word.clone());
+            words.sort();
+            meta.touch();
+            true
+        });
+        if added {
+            self.settings_dirty = true;
+            self.note_edit();
+            self.spell_focus = None;
+            self.status = format!("“{word}” is in this project's dictionary.");
+        }
+    }
+
+    pub fn remove_project_word(&mut self, word: &str) {
+        let removed = self.meta.as_mut().is_some_and(|meta| {
+            let words = &mut meta.settings.spelling.words;
+            let before = words.len();
+            words.retain(|known| known != word);
+            let removed = words.len() != before;
+            if removed {
+                meta.touch();
+            }
+            removed
+        });
+        if removed {
+            self.settings_dirty = true;
+            self.note_edit();
+            self.status = format!("“{word}” was taken out of this project's dictionary.");
+        }
+    }
+
+    /// Replace every whole-word `from` in the open document. One undo step.
+    pub fn replace_misspelling(&mut self, from: &str, to: &str) {
+        let mut count = 0;
+        self.edit_text("", |doc| {
+            count = replace_in_document(doc, from, to);
+            count > 0
+        });
+        if count > 0 {
+            self.spell_focus = None;
+            self.status = format!("Replaced “{from}” with “{to}” {count} times in this document.");
+        } else {
+            self.status =
+                format!("“{from}” was not replaced. A word that is partly formatted has to be fixed by hand.");
         }
     }
 
@@ -1476,6 +1648,7 @@ impl StudioState {
                 }
                 self.reindex_manuscript();
                 self.begin_writing_session();
+                self.load_speller();
             }
             (Err(err), _, _, _, _, _)
             | (_, Err(err), _, _, _, _)
@@ -2816,6 +2989,45 @@ mod tests {
         reopened.stop_tracking();
         assert!(!reopened.is_tracking());
         assert!(reopened.editor_text.ends_with("The end."));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn spelling_uses_the_dictionary_project_words_and_bible_names() {
+        let (mut state, dir) = open_state("spell");
+        assert_eq!(state.spelling_language().as_deref(), Some("en_US"));
+        state.apply_editor_html("<p>Maravance did not recieve teh letter. Teh end, said Zhul.</p>".into());
+        let words: Vec<String> = state.unknown_words().into_iter().map(|item| item.word).collect();
+        assert_eq!(words, ["Maravance", "recieve", "teh", "Teh", "Zhul"]);
+        assert!(state.spelling_suggestions("recieve").contains(&"receive".to_string()));
+
+        state.add_project_word("Zhul");
+        state.add_project_word("zhul");
+        assert_eq!(state.project_words(), ["zhul"]);
+        state.add_character();
+        let id = state.cast.characters.last().unwrap().id;
+        state.set_character_name(id, "Maravance Oduya".into());
+        state.replace_misspelling("recieve", "receive");
+        state.replace_misspelling("teh", "the");
+        let words: Vec<String> = state.unknown_words().into_iter().map(|item| item.word).collect();
+        assert_eq!(words, ["Teh"]);
+        assert!(state.editor_text.contains("receive the letter"));
+        state.undo();
+        assert!(state.editor_text.contains("receive teh letter"));
+
+        // The switch, the language, and the word list are saved in the project.
+        state.set_spelling(None);
+        assert!(state.unknown_words().is_empty());
+        state.save_all();
+        let root = state.store.as_ref().unwrap().borrow().root.clone();
+        let mut reopened = StudioState::default();
+        reopened.open_project_at(root);
+        assert!(reopened.spelling_language().is_none());
+        assert_eq!(reopened.project_words(), ["zhul"]);
+        reopened.set_spelling(Some("missing_XX".into()));
+        assert_eq!(reopened.spelling_language().as_deref(), Some("en_US"));
+        reopened.remove_project_word("zhul");
+        assert!(reopened.unknown_words().iter().any(|item| item.word == "Zhul"));
         let _ = std::fs::remove_dir_all(dir);
     }
 

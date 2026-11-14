@@ -75,10 +75,31 @@ Limits:
 
 Where it lives: `writing-studio-document` (`tracked_changes`, `accept_change`, `reject_change`), built on the snapshot comparison. Baselines are rows in the new `tracking_baselines` table, added on open; the project format version is unchanged. Permanently deleting a scene deletes its baseline. Restoring a backup now also adds any tables the backup is missing.
 
+### Spellcheck
+
+- Unknown words are underlined in the manuscript and listed above it, in the order they first appear, with a count.
+- Clicking a word selects it in the manuscript and shows up to six suggestions. Choosing one replaces every copy of that word in the open scene, as one undo step. With track changes on, the replacement is a tracked change.
+- **Add to project dictionary** accepts a word everywhere in the project. The list is saved in the project settings and can be edited from the panel.
+- Words in character, place, and culture names are accepted without being added. A possessive of a known word is accepted too.
+- Numbers, single letters, and words in capitals are skipped. Curly and straight apostrophes are the same.
+- English (US) is compiled into the program, so spellcheck works with no network and no system dictionary. Other Hunspell dictionaries are read from the project's `dictionaries/` folder and from the system's Hunspell folders. The status bar menu chooses one or turns spellcheck off. The choice is saved in the project. A dictionary that has gone missing falls back to English (US).
+- The underline is drawn over the text and is not part of the scene. It is never saved or compiled.
+
+Limits:
+
+- One dictionary at a time. A scene in two languages will show the other language's words as unknown.
+- A suggestion replaces every copy in the open scene, not one copy. There is no right-click menu on a word.
+- The list and the replacement cover the open scene, not the whole book.
+- A word that is half bold or half linked is found, but a suggestion cannot replace it; fix it by hand.
+- Underlines use the CSS Custom Highlight API. A webview without it shows the list and no underlines.
+- Dictionary files that are neither UTF-8 nor Latin-1 need converting to UTF-8 first.
+- No grammar checking.
+
+Where it lives: the new `writing-studio-spellcheck` crate, on the `spellbook` crate (a Rust reader for Hunspell dictionaries, MPL-2.0). The bundled dictionary is in `crates/spellcheck/dictionaries/` with its own license file; it is SCOWL-derived and is not under this repository's MIT OR Apache-2.0 terms. The editor side is `crates/ui/assets/spell.js`.
+
 ---
 
 ## Still to do in Phase 4
 
-- Spellcheck integration
 - Scene diagnostics (goal, conflict, outcome) as local analysis
 - Optional local assistance later (on-device only); never required

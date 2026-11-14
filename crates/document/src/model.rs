@@ -386,6 +386,23 @@ impl Document {
         changed
     }
 
+    /// Let `change` rewrite the text of each run. It returns whether it
+    /// changed that run. Formatting, notes, and highlights stay on the run.
+    pub fn edit_text_runs(&mut self, mut change: impl FnMut(&mut String) -> bool) -> bool {
+        let mut changed = false;
+        for block in &mut self.blocks {
+            for inlines in inline_runs_mut(&mut block.kind) {
+                for inline in inlines.iter_mut() {
+                    changed |= change(&mut inline.text);
+                }
+            }
+        }
+        if changed {
+            self.updated_at = Timestamp::now();
+        }
+        changed
+    }
+
     fn review_slots(&self) -> Vec<ReviewSlot> {
         let mut slots = Vec::new();
         let (mut notes, mut highlights) = (0usize, 0usize);

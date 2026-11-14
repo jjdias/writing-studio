@@ -16,12 +16,16 @@ use writing_studio_project::{
     INSPECTOR_WIDTH_MIN, SIDEBAR_WIDTH_DEFAULT, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN,
 };
 use writing_studio_search::matches_query;
+use writing_studio_spellcheck::UnknownWord;
 
 use crate::shortcuts::{app_shortcut, AppShortcut};
 use crate::state::{BibleLink, CompiledFormat, StudioState, WorkspaceMode, WorldSection};
 
 const STYLES: &str = include_str!("../assets/style.css");
 const REVIEW_JS: &str = include_str!("../assets/review.js");
+const SPELL_JS: &str = include_str!("../assets/spell.js");
+/// Unknown words shown as buttons before the rest are counted as "more".
+const SPELL_WORDS_SHOWN: usize = 60;
 
 #[component]
 pub fn App() -> Element {
@@ -171,6 +175,8 @@ fn Workspace() -> Element {
     let session_time = format_elapsed(state.read().session_shown_secs);
     let unsaved = state.read().has_unsaved();
     let theme = state.read().theme();
+    let spelling_value = state.read().spelling_language().unwrap_or_default();
+    let spelling_choices = state.read().spelling_choices();
     let chrome = use_context::<Signal<PanelChrome>>();
     let arrangement = chrome.read();
     let sidebar_left = arrangement.sidebar_side == SidebarSide::Left;
@@ -301,6 +307,19 @@ fn Workspace() -> Element {
                         oninput: move |event| apply_goal(state, event.value(), false),
                         onblur: move |_| state.write().save_all(),
                     }
+                }
+            }
+            select {
+                class: "theme-select",
+                title: "Spellcheck dictionary, saved in this project. More dictionaries can go in the project's dictionaries folder.",
+                value: "{spelling_value}",
+                onchange: move |event| {
+                    let value = event.value();
+                    state.write().set_spelling((!value.is_empty()).then_some(value));
+                },
+                option { value: "", selected: spelling_value.is_empty(), "Spelling: off" }
+                for item in spelling_choices {
+                    option { value: "{item.id}", selected: item.id == spelling_value, "Spelling: {item.label}" }
                 }
             }
             select {
@@ -647,6 +666,15 @@ fn EditorPane() -> Element {
     let html = snapshot.editor_html.clone();
     let epoch = snapshot.editor_epoch;
     let can_edit = snapshot.session.is_some();
+    // The words to underline. An empty list clears the underlines, which is
+    // also what a project with spellcheck off sends.
+    let unknown: Vec<String> = snapshot
+        .unknown_words()
+        .into_iter()
+        .map(|item| item.word)
+        .collect();
+    let unknown_json = serde_json::to_string(&unknown).unwrap_or_else(|_| "[]".into());
+    use_effect(use_reactive((&epoch, &unknown_json), |(_, words)| paint_spelling(words)));
     let initial_html = if html.trim().is_empty() {
         "<p><br></p>".into()
     } else {
@@ -659,6 +687,7 @@ fn EditorPane() -> Element {
             FormatToolbar { enabled: can_edit }
             ReviewList {}
             TrackPanel {}
+            SpellPanel {}
             div {
                 key: "{epoch}",
                 class: "manuscript rich",
@@ -689,6 +718,41 @@ fn read_manuscript_html(state: Signal<StudioState>) {
         if let Ok(html) = eval.recv::<String>().await {
             commit_editor_html(state, html);
         }
+    });
+}
+
+/// Send the unknown words to the manuscript, which underlines them. Nothing
+/// comes back into the document.
+fn paint_spelling(words_json: String) {
+    spawn(async move {
+        // Wait for the manuscript to be on screen after a redraw.
+        tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+        let script = format!(
+            r#"
+            {SPELL_JS}
+            dioxus.send(wsSpellApply(document.querySelector('[data-manuscript]'), {words_json}));
+            "#
+        );
+        let mut eval = document::eval(&script);
+        let _ = eval.recv::<bool>().await;
+    });
+}
+
+/// Select the next place a word appears in the manuscript.
+fn find_spelling(word: &str) {
+    let word_json = serde_json::to_string(word).unwrap_or_else(|_| "\"\"".into());
+    spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(16)).await;
+        let script = format!(
+            r#"
+            {SPELL_JS}
+            const el = document.querySelector('[data-manuscript]');
+            if (el) {{ el.focus(); }}
+            dioxus.send(wsSpellFind(el, {word_json}));
+            "#
+        );
+        let mut eval = document::eval(&script);
+        let _ = eval.recv::<bool>().await;
     });
 }
 
@@ -900,6 +964,138 @@ fn review_anchor(text: &str) -> String {
         trimmed
     } else {
         format!("{}…", trimmed.chars().take(42).collect::<String>())
+    }
+}
+
+/// Words in the open document that the dictionary does not know, and the
+/// project's own word list.
+#[component]
+fn SpellPanel() -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let snapshot = state.read().clone();
+    if snapshot.speller.is_none() || snapshot.session.is_none() {
+        return rsx! {};
+    }
+    let unknown: Vec<UnknownWord> = snapshot.unknown_words();
+    let project_words = snapshot.project_words();
+    if unknown.is_empty() && project_words.is_empty() {
+        return rsx! {};
+    }
+    let show_project = snapshot.show_project_words;
+    let focus = snapshot
+        .spell_focus
+        .clone()
+        .filter(|word| unknown.iter().any(|item| &item.word == word));
+    let suggestions = focus
+        .as_deref()
+        .map(|word| snapshot.spelling_suggestions(word))
+        .unwrap_or_default();
+    let total = unknown.len();
+    let hidden = total.saturating_sub(SPELL_WORDS_SHOWN);
+    let project_count = project_words.len();
+    rsx! {
+        div { class: "review spell",
+            div { class: "review-head",
+                if total == 0 {
+                    span { "Spelling · every word is known" }
+                } else {
+                    span { "Spelling · {total} words not in the dictionary" }
+                }
+                if project_count > 0 {
+                    button {
+                        class: if show_project { "primary" } else { "" },
+                        title: "Words this project accepts. Click one to take it out.",
+                        onclick: move |_| {
+                            let mut state = state.write();
+                            state.show_project_words = !state.show_project_words;
+                        },
+                        "Project dictionary ({project_count})"
+                    }
+                }
+            }
+            if total > 0 {
+                div { class: "spell-words",
+                    for item in unknown.into_iter().take(SPELL_WORDS_SHOWN) {
+                        SpellWord { item: item.clone(), active: focus.as_deref() == Some(item.word.as_str()) }
+                    }
+                    if hidden > 0 {
+                        span { class: "hint", "and {hidden} more" }
+                    }
+                }
+            }
+            if let Some(word) = focus {
+                SpellFocus { word, suggestions }
+            }
+            if show_project && project_count > 0 {
+                div { class: "spell-words",
+                    for word in project_words {
+                        button {
+                            key: "{word}",
+                            class: "spell-chip",
+                            title: "Take “{word}” out of this project's dictionary",
+                            onclick: move |_| state.write().remove_project_word(&word),
+                            "{word} ×"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn SpellWord(item: UnknownWord, active: bool) -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let word = item.word.clone();
+    rsx! {
+        button {
+            class: if active { "spell-chip active" } else { "spell-chip" },
+            title: "Show “{item.word}” in the manuscript, with suggestions",
+            onclick: move |_| {
+                state.write().spell_focus = Some(word.clone());
+                find_spelling(&word);
+            },
+            "{item.word}"
+            if item.count > 1 {
+                span { class: "spell-count", " ×{item.count}" }
+            }
+        }
+    }
+}
+
+#[component]
+fn SpellFocus(word: String, suggestions: Vec<String>) -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let (find_word, add_word) = (word.clone(), word.clone());
+    rsx! {
+        div { class: "spell-focus",
+            strong { "{word}" }
+            if suggestions.is_empty() {
+                span { class: "hint", "No suggestions" }
+            }
+            for suggestion in suggestions {
+                button {
+                    key: "{suggestion}",
+                    title: "Replace every “{word}” in this document with “{suggestion}”",
+                    onclick: {
+                        let word = word.clone();
+                        move |_| state.write().replace_misspelling(&word, &suggestion)
+                    },
+                    "{suggestion}"
+                }
+            }
+            button {
+                title: "Show the next place this word appears",
+                onclick: move |_| find_spelling(&find_word),
+                "Find next"
+            }
+            button {
+                title: "Accept this word everywhere in this project",
+                onclick: move |_| state.write().add_project_word(&add_word),
+                "Add to project dictionary"
+            }
+            button { onclick: move |_| state.write().spell_focus = None, "Close" }
+        }
     }
 }
 

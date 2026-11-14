@@ -89,6 +89,16 @@ The arrangement is saved in the project. Drag the edge of the binder or the insp
 
 Click the active activity-bar icon again to hide the binder, or press **Ctrl+Alt+B**. **Ctrl+Alt+I** shows or hides the inspector. **Ctrl+B** still bolds the selection in the manuscript.
 
+## Spelling
+
+- Words that are not in the dictionary are underlined in red in the manuscript and listed above it. The word you are still typing is not underlined until the caret leaves it.
+- Click a word in the list to select it in the manuscript and see suggestions. A suggestion replaces **every** copy of that word in the open scene, as one undo step. **Find next** moves to the next copy. **Add to project dictionary** accepts the word everywhere in this project.
+- **Project dictionary** lists the accepted words. Click one to take it out.
+- Words in character, place, and culture names are accepted without adding them. Numbers, single letters, and words in capitals are not checked.
+- The status bar menu **Spelling** chooses the dictionary or turns spellcheck off. English (US) is built in. For another language, put its Hunspell files (`name.aff` and `name.dic`) in a `dictionaries` folder inside the project folder and reopen the project. Dictionaries installed on the computer in the usual Hunspell folders are listed too.
+- Spellcheck runs on this computer. No text leaves it.
+- Underlines need a recent webview. Where they do not show, the list still works.
+
 ## Themes
 
 The status bar theme list saves **Dark**, **Light**, or **Paper** in the project. Dark matches VS Code Dark+. Light matches VS Code Light+. Paper keeps the warm chrome and sets the manuscript on a cream page.

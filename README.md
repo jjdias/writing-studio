@@ -76,3 +76,5 @@ Desktop/UI crates need a windowing runtime and are not part of the default libra
 ## License
 
 MIT OR Apache-2.0. Use, study, modify, and share it with the community.
+
+Spellcheck uses the `spellbook` crate (MPL-2.0) and bundles the Hunspell English (US) dictionary, which has its own permissive license: see [`crates/spellcheck/dictionaries/`](crates/spellcheck/dictionaries/README.md).

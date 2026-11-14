@@ -1,0 +1,11 @@
+[package]
+name = "writing-studio-spellcheck"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Local spellcheck with Hunspell dictionaries and a project word list"
+
+[dependencies]
+spellbook.workspace = true
+writing-studio-core.workspace = true
+writing-studio-document.workspace = true

@@ -10,7 +10,10 @@ MyNovel.writingstudio/
   project.sqlite         # metadata, binder, documents, snapshots, plot, characters, world, research
   backups/               # timestamped SQLite copies
   attachments/           # copies of research files, one folder per note
+  dictionaries/          # optional: Hunspell `name.aff` + `name.dic` pairs for spellcheck
 ```
+
+`dictionaries/` is not created by the program. Add it by hand to check spelling in a language that is not built in. The spellcheck switch, the chosen dictionary name, and the project's accepted words are in `settings_json` under `spelling` (`enabled`, `language`, `words`). A project saved before Phase 4 opens with spellcheck on, English (US), and no words.
 
 ## Rules
 
