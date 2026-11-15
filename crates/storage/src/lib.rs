@@ -12,7 +12,7 @@ mod schema;
 
 pub use files::{
     read_project_files, verify_project_files, write_atomic, write_format_2_marker,
-    write_project_files, ProjectContent, FILES_FORMAT_VERSION,
+    write_project_files, Extras, ProjectContent, FILES_FORMAT_VERSION,
 };
 pub use recovery::{BackupInfo, SnapshotInfo};
 

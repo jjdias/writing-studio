@@ -60,6 +60,85 @@ pub struct ProjectContent {
     /// keeps the name it was first given; an item with no entry here gets a
     /// name when it is written.
     pub files: HashMap<Id, String>,
+    /// What the files say about an item that the program does not use, by
+    /// the item's id. Only items that have some are here.
+    pub extras: HashMap<Id, Extras>,
+}
+
+/// Entries a file holds that this program does not know: added by a person,
+/// or by a later version of the program. They are read with the item and
+/// written back after the entries the program knows, so that saving never
+/// removes them.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Extras {
+    /// Names in the head of the item's own HTML file.
+    pub head: Header,
+    /// Keys of the item's line in `binder.json`, `bible.json`, or `plot.json`.
+    pub json: Map<String, Value>,
+}
+
+impl Extras {
+    fn is_empty(&self) -> bool {
+        self.head.entries.is_empty() && self.json.is_empty()
+    }
+}
+
+/// The keys of each kind of line that the program writes. Any other key is
+/// kept as an extra; one of these never is, so that an extra cannot stand in
+/// for what the program knows.
+const BINDER_KEYS: [&str; 11] = [
+    "id", "kind", "parent", "deleted", "restore_parent", "file", "status", "title", "synopsis", "label",
+    "color",
+];
+const ENTRY_KEYS: [&str; 2] = ["id", "file"];
+const RESEARCH_FILE_KEYS: [&str; 4] = ["id", "note", "name", "stored"];
+const PLOTLINE_KEYS: [&str; 4] = ["id", "title", "color", "points"];
+const POINT_KEYS: [&str; 4] = ["id", "title", "summary", "scene"];
+/// Names in a scene's head that the program writes. `title` is the `<title>`;
+/// a `<meta name="title">` beside it is not kept.
+const SCENE_HEAD: [&str; 9] = [
+    "id", "title", "synopsis", "status", "label", "color", "goal", "conflict", "outcome",
+];
+
+fn unknown_keys(item: &Value, known: &[&str]) -> Map<String, Value> {
+    item.as_object()
+        .into_iter()
+        .flatten()
+        .filter(|(key, _)| !known.contains(&key.as_str()))
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect()
+}
+
+fn unknown_head(header: &Header, known: &[&str]) -> Header {
+    Header {
+        entries: header
+            .entries
+            .iter()
+            .filter(|(key, _)| !known.contains(&key.as_str()) && !SCENE_HEAD.contains(&key.as_str()))
+            .cloned()
+            .collect(),
+    }
+}
+
+/// Add an item's extra keys to its line, after the ones the program wrote.
+fn add_json_extras(item: &mut Map<String, Value>, extras: Option<&Extras>, known: &[&str]) {
+    for (key, value) in extras.into_iter().flat_map(|extras| &extras.json) {
+        if !known.contains(&key.as_str()) && !item.contains_key(key) {
+            item.insert(key.clone(), value.clone());
+        }
+    }
+}
+
+/// Add an item's extra names to the head of its file.
+fn add_head_extras(header: &mut Header, extras: Option<&Extras>, known: &[&str]) {
+    for (key, value) in extras.into_iter().flat_map(|extras| &extras.head.entries) {
+        let taken = known.contains(&key.as_str())
+            || SCENE_HEAD.contains(&key.as_str())
+            || header.entries.iter().any(|(name, _)| name == key);
+        if !taken {
+            header.entries.push((key.clone(), value.clone()));
+        }
+    }
 }
 
 impl ProjectContent {
@@ -90,6 +169,7 @@ impl ProjectContent {
             world: store.load_world()?,
             library: store.load_library()?,
             files: HashMap::new(),
+            extras: HashMap::new(),
         })
     }
 }
@@ -164,14 +244,22 @@ fn blocks_text(blocks: Vec<Block>) -> String {
 
 /// An entry of the bible as a file: its name as the title, its text as the
 /// body, and the rest as named values.
-fn entry_file(id: Id, title: &str, text: &str, other: Vec<(&str, HeaderValue)>) -> String {
+fn entry_file(
+    id: Id,
+    title: &str,
+    text: &str,
+    other: Vec<(&str, HeaderValue)>,
+    extras: Option<&Extras>,
+) -> String {
     let mut header = Header::default();
+    let known: Vec<&str> = other.iter().map(|(key, _)| *key).collect();
     for (key, value) in other {
         match value {
             HeaderValue::Text(text) => header.set_text(key, &text),
             HeaderValue::List(items) => header.set_list(key, &items),
         }
     }
+    add_head_extras(&mut header, extras, &known);
     SceneFile {
         header: SceneHeader {
             id: Some(id),
@@ -303,7 +391,14 @@ pub fn verify_project_files(root: &Path, content: &ProjectContent) -> Result<()>
 
 /// The file of one item with text: a scene, or a chapter written without
 /// scenes.
-pub(crate) fn scene_text(node: &BinderNode, beats: &SceneBeats, blocks: &[Block]) -> String {
+pub(crate) fn scene_text(
+    node: &BinderNode,
+    beats: &SceneBeats,
+    blocks: &[Block],
+    extras: Option<&Extras>,
+) -> String {
+    let mut other = Header::default();
+    add_head_extras(&mut other, extras, &[]);
     SceneFile {
         header: SceneHeader {
             id: Some(node.id),
@@ -315,7 +410,7 @@ pub(crate) fn scene_text(node: &BinderNode, beats: &SceneBeats, blocks: &[Block]
             goal: beats.goal.clone(),
             conflict: beats.conflict.clone(),
             outcome: beats.outcome.clone(),
-            other: Header::default(),
+            other,
         },
         blocks: blocks.to_vec(),
     }
@@ -323,7 +418,11 @@ pub(crate) fn scene_text(node: &BinderNode, beats: &SceneBeats, blocks: &[Block]
 }
 
 /// `binder.json`. `paths` has the file of every item with text.
-pub(crate) fn binder_json(tree: &BinderTree, paths: &HashMap<Id, String>) -> String {
+pub(crate) fn binder_json(
+    tree: &BinderTree,
+    paths: &HashMap<Id, String>,
+    extras: &HashMap<Id, Extras>,
+) -> String {
     let mut items = Vec::new();
     for node in in_tree_order(tree) {
         let mut item = Map::new();
@@ -357,6 +456,7 @@ pub(crate) fn binder_json(tree: &BinderTree, paths: &HashMap<Id, String>) -> Str
                 }
             }
         }
+        add_json_extras(&mut item, extras.get(&node.id), &BINDER_KEYS);
         items.push(Value::Object(item));
     }
     lined(&[("items", items)])
@@ -371,6 +471,7 @@ pub(crate) fn bible_files(
     library: &ResearchLibrary,
     known: &HashMap<Id, String>,
     used: &mut HashSet<String>,
+    extras: &HashMap<Id, Extras>,
 ) -> (Vec<(Id, String, String)>, String) {
     let mut entries: Vec<(Id, String, String)> = Vec::new();
     // The bible: one file for each entry, and one list that orders them.
@@ -384,7 +485,11 @@ pub(crate) fn bible_files(
                      html: String| {
         let path = place(known, used, folder, title, id);
         entries.push((id, path.clone(), html));
-        list.push(json!({ "id": id.to_string(), "file": path }));
+        let mut item = Map::new();
+        item.insert("id".into(), json!(id.to_string()));
+        item.insert("file".into(), json!(path));
+        add_json_extras(&mut item, extras.get(&id), &ENTRY_KEYS);
+        list.push(Value::Object(item));
         links.extend(
             scenes
                 .iter()
@@ -407,6 +512,7 @@ pub(crate) fn bible_files(
                 ("role", HeaderValue::Text(person.role.clone())),
                 ("motivation", HeaderValue::List(motivations)),
             ],
+            extras.get(&person.id),
         );
         entry("characters", &mut list, person.id, &person.name, &person.scene_ids, html);
     }
@@ -418,13 +524,14 @@ pub(crate) fn bible_files(
             &place_.name,
             &place_.summary,
             vec![("culture", optional_id(place_.culture_id))],
+            extras.get(&place_.id),
         );
         entry("places", &mut list, place_.id, &place_.name, &place_.scene_ids, html);
     }
     order.push(("places", std::mem::take(&mut list)));
 
     for culture in sorted(&world.cultures, |item| item.sort_index) {
-        let html = entry_file(culture.id, &culture.name, &culture.summary, Vec::new());
+        let html = entry_file(culture.id, &culture.name, &culture.summary, Vec::new(), extras.get(&culture.id));
         entry("cultures", &mut list, culture.id, &culture.name, &culture.scene_ids, html);
     }
     order.push(("cultures", std::mem::take(&mut list)));
@@ -438,6 +545,7 @@ pub(crate) fn bible_files(
                 ("place", optional_id(lore.location_id)),
                 ("culture", optional_id(lore.culture_id)),
             ],
+            extras.get(&lore.id),
         );
         entry("lore", &mut list, lore.id, &lore.title, &lore.scene_ids, html);
     }
@@ -452,13 +560,14 @@ pub(crate) fn bible_files(
                 ("when", HeaderValue::Text(event.when_label.clone())),
                 ("place", optional_id(event.location_id)),
             ],
+            extras.get(&event.id),
         );
         entry("timeline", &mut list, event.id, &event.title, &event.scene_ids, html);
     }
     order.push(("timeline", std::mem::take(&mut list)));
 
     for note in sorted(&library.items, |item| item.sort_index) {
-        let html = entry_file(note.id, &note.title, &note.notes, Vec::new());
+        let html = entry_file(note.id, &note.title, &note.notes, Vec::new(), extras.get(&note.id));
         entry("research", &mut list, note.id, &note.title, &note.scene_ids, html);
     }
     order.push(("research", std::mem::take(&mut list)));
@@ -469,12 +578,13 @@ pub(crate) fn bible_files(
             .files
             .iter()
             .map(|file| {
-                json!({
-                    "id": file.id.to_string(),
-                    "note": file.item_id.to_string(),
-                    "name": file.file_name,
-                    "stored": file.stored_name,
-                })
+                let mut item = Map::new();
+                item.insert("id".into(), json!(file.id.to_string()));
+                item.insert("note".into(), json!(file.item_id.to_string()));
+                item.insert("name".into(), json!(file.file_name));
+                item.insert("stored".into(), json!(file.stored_name));
+                add_json_extras(&mut item, extras.get(&file.id), &RESEARCH_FILE_KEYS);
+                Value::Object(item)
             })
             .collect(),
     ));
@@ -496,7 +606,7 @@ pub(crate) fn bible_files(
     (entries, lined(&order))
 }
 
-pub(crate) fn plot_json(plot: &PlotGrid) -> Result<String> {
+pub(crate) fn plot_json(plot: &PlotGrid, extras: &HashMap<Id, Extras>) -> Result<String> {
     let plotlines: Vec<Value> = sorted(&plot.lines, |line| line.sort_index)
         .into_iter()
         .map(|line| {
@@ -511,15 +621,17 @@ pub(crate) fn plot_json(plot: &PlotGrid) -> Result<String> {
                     if let Some(scene) = point.scene_id {
                         item.insert("scene".into(), json!(scene.to_string()));
                     }
+                    add_json_extras(&mut item, extras.get(&point.id), &POINT_KEYS);
                     Value::Object(item)
                 })
                 .collect();
-            json!({
-                "id": line.id.to_string(),
-                "title": line.title,
-                "color": line.color,
-                "points": points,
-            })
+            let mut item = Map::new();
+            item.insert("id".into(), json!(line.id.to_string()));
+            item.insert("title".into(), json!(line.title));
+            item.insert("color".into(), json!(line.color));
+            item.insert("points".into(), json!(points));
+            add_json_extras(&mut item, extras.get(&line.id), &PLOTLINE_KEYS);
+            Value::Object(item)
         })
         .collect();
     pretty(&json!({ "plotlines": plotlines }))
@@ -558,18 +670,25 @@ fn render(content: &ProjectContent) -> Result<Rendered> {
         let path = place(&content.files, &mut used, "manuscript", &node.title, node.id);
         let beats = content.beats.get(&node.id).cloned().unwrap_or_default();
         let blocks = documents.get(&node.id).map(|document| document.blocks.as_slice()).unwrap_or_default();
-        contents.push((path.clone(), scene_text(node, &beats, blocks)));
+        contents.push((path.clone(), scene_text(node, &beats, blocks, content.extras.get(&node.id))));
         files.insert(node.id, path);
     }
-    contents.push(("binder.json".into(), binder_json(&content.binder, &files)));
+    contents.push(("binder.json".into(), binder_json(&content.binder, &files, &content.extras)));
 
-    let (entries, bible) = bible_files(&content.cast, &content.world, &content.library, &content.files, &mut used);
+    let (entries, bible) = bible_files(
+        &content.cast,
+        &content.world,
+        &content.library,
+        &content.files,
+        &mut used,
+        &content.extras,
+    );
     for (id, path, text) in entries {
         contents.push((path.clone(), text));
         files.insert(id, path);
     }
     contents.push(("bible.json".into(), bible));
-    contents.push(("plot.json".into(), plot_json(&content.plot)?));
+    contents.push(("plot.json".into(), plot_json(&content.plot, &content.extras)?));
     let (project, local) = settings_json(&content.meta)?;
     contents.push(("project.json".into(), project));
     contents.push((LOCAL_SETTINGS.into(), local));
@@ -649,6 +768,12 @@ fn header_id(file: &SceneFile, path: &str, key: &str) -> Result<Option<Id>> {
 pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
     let now = Timestamp::now();
     let mut files: HashMap<Id, String> = HashMap::new();
+    let mut extras: HashMap<Id, Extras> = HashMap::new();
+    let mut keep = |id: Id, found: Extras| {
+        if !found.is_empty() {
+            extras.insert(id, found);
+        }
+    };
 
     // Settings.
     let project = JsonFile::read(root, "project.json")?;
@@ -710,8 +835,13 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
             .map(|text| Timestamp::parse(text).unwrap_or(now));
         node.restore_parent_id = binder_file.optional_id(item, "restore_parent")?;
         node.document_id = None;
+        let mut found = Extras {
+            json: unknown_keys(item, &BINDER_KEYS),
+            ..Extras::default()
+        };
         if let Some(path) = item.get("file").and_then(Value::as_str) {
             let file = read_entry(root, "binder.json", path, id)?;
+            found.head = unknown_head(&file.header.other, &[]);
             node.title = file.header.title;
             node.synopsis = file.header.synopsis;
             node.status = file.header.status;
@@ -731,6 +861,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
             documents.push(document);
             files.insert(id, path.to_string());
         }
+        keep(id, found);
         nodes.push(node);
     }
 
@@ -743,13 +874,21 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
             .or_default()
             .push(bible.id(link, "scene")?);
     }
-    let mut entries = |key: &str| -> Result<Vec<(Id, i64, String, SceneFile)>> {
+    // `head` is the names the program reads from this kind of entry's head.
+    let mut entries = |key: &str, head: &[&str]| -> Result<Vec<(Id, i64, String, SceneFile)>> {
         let mut out = Vec::new();
         for (index, item) in bible.list(key).into_iter().enumerate() {
             let id = bible.id(item, "id")?;
             let path = text_of(item, "file");
             let file = read_entry(root, "bible.json", &path, id)?;
             files.insert(id, path.clone());
+            keep(
+                id,
+                Extras {
+                    head: unknown_head(&file.header.other, head),
+                    json: unknown_keys(item, &ENTRY_KEYS),
+                },
+            );
             out.push((id, index as i64, path, file));
         }
         Ok(out)
@@ -757,7 +896,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
     let links_of = |id: Id| scene_links.get(&id).cloned().unwrap_or_default();
 
     let mut cast = Cast::default();
-    for (id, index, _, file) in entries("characters")? {
+    for (id, index, _, file) in entries("characters", &["role", "motivation"])? {
         for (at, body) in file.header.other.list("motivation").unwrap_or_default().iter().enumerate() {
             cast.motivations.push(Motivation {
                 id: Id::new(),
@@ -803,7 +942,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
     }
 
     let mut world = World::default();
-    for (id, index, path, file) in entries("places")? {
+    for (id, index, path, file) in entries("places", &["culture"])? {
         world.locations.push(Location {
             id,
             name: file.header.title.clone(),
@@ -815,7 +954,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
             updated_at: now,
         });
     }
-    for (id, index, _, file) in entries("cultures")? {
+    for (id, index, _, file) in entries("cultures", &[])? {
         world.cultures.push(Culture {
             id,
             name: file.header.title.clone(),
@@ -826,7 +965,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
             updated_at: now,
         });
     }
-    for (id, index, path, file) in entries("lore")? {
+    for (id, index, path, file) in entries("lore", &["place", "culture"])? {
         world.lore.push(LoreEntry {
             id,
             title: file.header.title.clone(),
@@ -839,7 +978,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
             updated_at: now,
         });
     }
-    for (id, index, path, file) in entries("timeline")? {
+    for (id, index, path, file) in entries("timeline", &["when", "place"])? {
         world.events.push(TimelineEvent {
             id,
             title: file.header.title.clone(),
@@ -854,7 +993,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
     }
 
     let mut library = ResearchLibrary::default();
-    for (id, index, _, file) in entries("research")? {
+    for (id, index, _, file) in entries("research", &[])? {
         library.items.push(ResearchItem {
             id,
             title: file.header.title.clone(),
@@ -867,6 +1006,13 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
     }
     for item in bible.list("research_files") {
         let stored = text_of(item, "stored");
+        keep(
+            bible.id(item, "id")?,
+            Extras {
+                json: unknown_keys(item, &RESEARCH_FILE_KEYS),
+                ..Extras::default()
+            },
+        );
         // The name is used to open a file under attachments/.
         inside(&root.join("attachments"), "bible.json", &stored)?;
         library.files.push(ResearchFile {
@@ -883,6 +1029,13 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
     let mut plot = PlotGrid::default();
     for (index, line) in plot_file.list("plotlines").into_iter().enumerate() {
         let line_id = plot_file.id(line, "id")?;
+        keep(
+            line_id,
+            Extras {
+                json: unknown_keys(line, &PLOTLINE_KEYS),
+                ..Extras::default()
+            },
+        );
         plot.lines.push(Plotline {
             id: line_id,
             title: text_of(line, "title"),
@@ -893,8 +1046,16 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
         });
         let points = line.get("points").and_then(Value::as_array).cloned().unwrap_or_default();
         for (at, point) in points.iter().enumerate() {
+            let point_id = plot_file.id(point, "id")?;
+            keep(
+                point_id,
+                Extras {
+                    json: unknown_keys(point, &POINT_KEYS),
+                    ..Extras::default()
+                },
+            );
             plot.points.push(PlotPoint {
-                id: plot_file.id(point, "id")?,
+                id: point_id,
                 plotline_id: line_id,
                 title: text_of(point, "title"),
                 summary: text_of(point, "summary"),
@@ -916,6 +1077,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
         world,
         library,
         files,
+        extras,
     })
 }
 

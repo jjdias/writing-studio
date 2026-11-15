@@ -30,7 +30,7 @@ use writing_studio_templates::blank_novel;
 use writing_studio_worldbuilding::World;
 
 use crate::files::{
-    bible_files, binder_json, inside, place, plot_json, read_project_files, scene_text, settings_json,
+    bible_files, Extras, binder_json, inside, place, plot_json, read_project_files, scene_text, settings_json,
     verify_project_files, write_atomic, write_format_2_marker, write_project_files, ProjectContent,
     LOCAL_SETTINGS,
 };
@@ -45,6 +45,9 @@ const CACHE_FILE: &str = "cache.sqlite";
 pub(crate) struct Mirror {
     /// The file of each item that has one.
     paths: RefCell<HashMap<Id, String>>,
+    /// What the files hold that the program does not use, read when the
+    /// project opened. Written back with each item, so that a save keeps it.
+    extras: RefCell<HashMap<Id, Extras>>,
     /// A fingerprint of what each scene file's head was last written from.
     heads: RefCell<HashMap<Id, u64>>,
     /// A fingerprint of the text each small file was last written with.
@@ -321,6 +324,7 @@ impl ProjectStore {
         self.rekey_documents()?;
         let mut content = ProjectContent::from_store(self)?;
         content.files = self.mirror.paths.borrow().clone();
+        content.extras = self.mirror.extras.borrow().clone();
         let files = write_project_files(&self.root, &content)?;
         self.mirror.remember(&content, files);
         Ok(())
@@ -376,14 +380,15 @@ impl ProjectStore {
                 .map(|document| document.blocks)
                 .unwrap_or_default();
             let path = self.mirror.path_for(node.id, "manuscript", &node.title);
-            self.write_file(&path, &scene_text(node, scene_beats, &blocks))?;
+            let text = scene_text(node, scene_beats, &blocks, self.mirror.extras.borrow().get(&node.id));
+            self.write_file(&path, &text)?;
             self.mirror.heads.borrow_mut().insert(node.id, mark);
         }
         Ok(())
     }
 
     fn write_binder(&self, tree: &BinderTree) -> Result<()> {
-        let text = binder_json(tree, &self.mirror.paths.borrow());
+        let text = binder_json(tree, &self.mirror.paths.borrow(), &self.mirror.extras.borrow());
         self.write_small("binder.json", &text)
     }
 
@@ -393,7 +398,7 @@ impl ProjectStore {
     fn write_bible(&self, cast: &Cast, world: &World, library: &ResearchLibrary, folders: &[&str]) -> Result<()> {
         let known = self.mirror.paths.borrow().clone();
         let mut used: HashSet<String> = known.values().cloned().collect();
-        let (entries, bible) = bible_files(cast, world, library, &known, &mut used);
+        let (entries, bible) = bible_files(cast, world, library, &known, &mut used, &self.mirror.extras.borrow());
         let mut present = HashSet::new();
         for (id, path, text) in &entries {
             self.write_small(path, text)?;
@@ -452,7 +457,8 @@ impl ProjectStore {
                 let beats = self.beats_of(node.id)?;
                 let is_new = !self.mirror.paths.borrow().contains_key(&node.id);
                 let path = self.mirror.path_for(node.id, "manuscript", &node.title);
-                self.write_file(&path, &scene_text(&node, &beats, &document.blocks))?;
+                let text = scene_text(&node, &beats, &document.blocks, self.mirror.extras.borrow().get(&node.id));
+                self.write_file(&path, &text)?;
                 self.mirror
                     .heads
                     .borrow_mut()
@@ -516,7 +522,7 @@ impl ProjectStore {
 
     pub fn persist_plot(&self, grid: &PlotGrid) -> Result<()> {
         if self.mirroring() {
-            self.write_small("plot.json", &plot_json(grid)?)?;
+            self.write_small("plot.json", &plot_json(grid, &self.mirror.extras.borrow())?)?;
         }
         self.persist_plot_cached(grid)
     }
@@ -556,6 +562,7 @@ impl Mirror {
             .map(|node| (node.id, head_fingerprint(node, content.beats.get(&node.id).unwrap_or(&none))))
             .collect();
         *self.paths.borrow_mut() = files;
+        *self.extras.borrow_mut() = content.extras.clone();
         self.written.borrow_mut().clear();
     }
 
@@ -817,6 +824,72 @@ mod tests {
         assert!(!path.exists());
         assert!(scene_file.exists());
         assert!(!fs::read_to_string(dir.join("bible.json")).unwrap().contains(&mara.to_string()));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn entries_the_program_does_not_know_survive_every_kind_of_save() {
+        let dir = temp("extras");
+        let store = ProjectStore::create(&dir, "Kept").unwrap();
+        let scene = scene_of(&store);
+        let mut cast = Cast::new();
+        let mara = cast.add_character();
+        cast.set_name(mara, "Mara".into());
+        store.persist_cast(&cast).unwrap();
+        let mut grid = PlotGrid::new();
+        let line = grid.add_line();
+        store.persist_plot(&grid).unwrap();
+        drop(store);
+
+        // A person, or a later version of the program, adds to the files.
+        let edit = |path: &Path, from: &str, to: &str| {
+            let text = fs::read_to_string(path).unwrap();
+            assert!(text.contains(from), "{from:?} is not in {}", path.display());
+            fs::write(path, text.replacen(from, to, 1)).unwrap();
+        };
+        let reopened = ProjectStore::open(&dir).unwrap();
+        let scene_file = file_of(&reopened, scene.id);
+        let mara_file = file_of(&reopened, mara);
+        drop(reopened);
+        edit(&scene_file, "<link rel=", "<meta name=\"pov\" content=\"Mara\">\n<link rel=");
+        edit(&mara_file, "<link rel=", "<meta name=\"eyes\" content=\"grey\">\n<link rel=");
+        let id = format!("\"id\":\"{}\"", scene.id);
+        edit(&dir.join("binder.json"), &id, &format!("{id},\"tag\":\"draft-2\""));
+        let line_id = format!("\"id\": \"{line}\"");
+        edit(&dir.join("plot.json"), &line_id, &format!("\"arc\": \"rising\",\n      {line_id}"));
+
+        // Every save that touches those items keeps what was added.
+        let store = ProjectStore::open(&dir).unwrap();
+        let mut document = store.load_document(scene.id).unwrap();
+        document.replace_plain_text("New text.");
+        store.save_document(&document).unwrap();
+        let mut tree = store.load_binder().unwrap();
+        let node = tree.nodes.iter_mut().find(|node| node.id == scene.id).unwrap();
+        node.title = "Renamed".into();
+        node.parent_id = None;
+        store.persist_binder(&tree).unwrap();
+        let mut cast = store.load_cast().unwrap();
+        cast.characters[0].summary = "Changed.".into();
+        store.persist_cast(&cast).unwrap();
+        let mut grid = store.load_plot().unwrap();
+        grid.lines[0].title = "Escape".into();
+        store.persist_plot(&grid).unwrap();
+
+        let scene_text = fs::read_to_string(&scene_file).unwrap();
+        assert!(scene_text.contains("<meta name=\"pov\" content=\"Mara\">"));
+        assert!(scene_text.contains("<title>Renamed</title>") && scene_text.contains("New text."));
+        let mara_text = fs::read_to_string(&mara_file).unwrap();
+        assert!(mara_text.contains("<meta name=\"eyes\" content=\"grey\">") && mara_text.contains("Changed."));
+        assert!(fs::read_to_string(dir.join("binder.json")).unwrap().contains("\"tag\":\"draft-2\""));
+        let plot = fs::read_to_string(dir.join("plot.json")).unwrap();
+        assert!(plot.contains("\"arc\": \"rising\"") && plot.contains("Escape"));
+
+        // Restoring a backup writes every file again, and keeps them too.
+        let mut store = store;
+        let backup = store.backup().unwrap();
+        store.restore_backup(&backup).unwrap();
+        assert!(fs::read_to_string(&scene_file).unwrap().contains("name=\"pov\""));
+        assert!(fs::read_to_string(dir.join("binder.json")).unwrap().contains("draft-2"));
         let _ = fs::remove_dir_all(dir);
     }
 

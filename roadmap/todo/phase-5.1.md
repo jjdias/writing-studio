@@ -2,21 +2,16 @@
 
 Not started. These are gaps found while building Phase 5 stages 1 and 2. None of them is in the Phase 5 plan, and each one matters before writers keep real books in format 2.
 
-Items 1 to 4 are about not losing writing. Do them first, in order, before the rest of Phase 5. Items 5 to 10 can follow in any order.
+Items 1 to 4 are about not losing writing. Do them first, in order, before the rest of Phase 5. Item 1 is done. Items 5 to 10 can follow in any order.
 
 Read "Before you start" in [phase-5.md](phase-5.md) first: it lists the files, the rules the code keeps, and how to test.
 
 ## 1. Keep what the program does not understand in a file
 
-**The problem.** A scene file's head can hold names the program does not know: a person adds `<meta name="pov" content="Mara">`, or a later version of the program writes a new one. `SceneFile::parse_html` keeps them in `SceneHeader.other`. The store then throws them away: `scene_text` in `crates/storage/src/files.rs` writes the head with `other: Header::default()`, so the next save of that scene removes them. The same is true of extra names in a bible file's head, and of extra keys in an item of `binder.json`, `bible.json`, or `plot.json`. The format promises these are kept ([PROJECT_FORMAT_2.md](../../documentation/PROJECT_FORMAT_2.md), "The head").
+**Done.** See [../done/phase-5.md](../done/phase-5.md), "Phase 5.1". What is left of it:
 
-**How to fix it.**
-
-- Keep the unknown part with the item it belongs to. The cache has no column for it, so add one: a `extra_json TEXT NOT NULL DEFAULT ''` column on `binder_nodes`, and on each bible table, added with `ALTER TABLE` in `schema.rs` the way `restore_parent_id` was. Store the unknown head entries there as JSON, and the unknown JSON keys of the item's line.
-- `read_project_files` fills it; `scene_text`, `entry_file`, `binder_json`, `bible_files`, and `plot_json` write it back after the known entries.
-- Do not let an unknown entry override a known one: a name the program knows always comes from the program.
-
-**Tests.** Add an unknown `<meta>` to a scene file, an unknown key to its line in `binder.json`, and an unknown name to a character file. Open the project, change the scene's text, the scene's title, and the character's summary, and save. All three unknown parts are still there.
+- Unknown keys in `project.json`, and unknown settings inside it, are still dropped on save.
+- Unknown keys on a line of `relationships` or `scene_links` in `bible.json` are still dropped. Those lines have no id of their own to keep them by; give them one if this is needed.
 
 ## 2. Do not write over a file that was changed outside while the project is open
 

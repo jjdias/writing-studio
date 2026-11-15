@@ -54,9 +54,21 @@ Order keys were dropped from the plan. The order of the lines in a file is the o
 - **Emptying the trash deletes scene files**, because that step already asks twice. Deleting a bible entry deletes its file.
 - **Conversion is automatic when a format 1 project is opened.** It is one-way. Asking first is in Phase 5.1.
 
+## Phase 5.1, item 1 — Entries the program does not know are kept
+
+A file can hold entries the program does not use: a person adds `<meta name="pov" content="Mara">` to a scene, a key to a line of `binder.json`, or a later version of the program writes a new one. Before this, the next save of that item removed them.
+
+- When a project opens, each item's unknown entries are read with it: names in the head of a scene or bible file, and keys on its line in `binder.json`, `bible.json` (entries and research files), and `plot.json` (plotlines and points).
+- They are kept in memory while the project is open and written back after the entries the program knows, on every save of that item, and when a backup is restored.
+- An unknown entry never stands in for one the program knows: a name or key the program writes is never taken from the extras.
+- They are not in the cache. The files are read every time a project opens, so the cache does not need them. This replaces the database column the plan proposed.
+- Still dropped: unknown keys in `project.json`, and on the `relationships` and `scene_links` lines of `bible.json`, which have no id of their own.
+
+Checked by a test that adds an entry to a scene file, its binder line, a character file, and a plot line, then saves each through the store, and restores a backup.
+
 ## What was checked
 
-- 148 tests pass across the workspace.
+- 148 tests passed across the workspace at the end of stage 2. The storage crate's tests, 22 with the one for item 1, pass after it.
 - Scene files: every kind of block and formatting, with their awkward cases; randomly built documents (2,000 with every run, and more than a million in one-off runs); a project on disk.
 - The Markdown export, read with an independent Markdown reader (`pulldown-cmark`).
 - The store: making a project, saving, reopening after a file was changed outside, opening with no `.local/`, converting a format 1 project, a conversion cut short, opening without converting, deleting a bible entry, and restoring a backup.
