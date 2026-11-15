@@ -2,7 +2,7 @@
 
 Not started. These are gaps found while building Phase 5 stages 1 and 2. None of them is in the Phase 5 plan, and each one matters before writers keep real books in format 2.
 
-Items 1 to 4 are about not losing writing. Do them first, in order, before the rest of Phase 5. Items 1 and 2 are done. Items 5 to 10 can follow in any order.
+Items 1 to 4 are about not losing writing. Do them first, in order, before the rest of Phase 5. Items 1 to 3 are done. Items 5 to 10 can follow in any order.
 
 Read "Before you start" in [phase-5.md](phase-5.md) first: it lists the files, the rules the code keeps, and how to test.
 
@@ -22,18 +22,10 @@ Read "Before you start" in [phase-5.md](phase-5.md) first: it lists the files, t
 
 ## 3. Ask before converting a format 1 project
 
-**The problem.** Opening a format 1 project converts it at once. The conversion is one-way: a version of the program from before format 2 will not open the project afterwards. A writer who shares a project with someone on an older version, or who wants to try the new version first, has no choice.
+**Done.** See [../done/phase-5.md](../done/phase-5.md), "Phase 5.1". What is left of it:
 
-**How to fix it.**
-
-- `ProjectStore::needs_conversion` already says whether opening would convert. In `open_project` (`crates/ui/src/studio.rs`), call it first. If it is true, ask, with three choices:
-  - **Convert this project.** As now.
-  - **Convert a copy.** Choose a new folder, write the converted copy there (`to_format_2` in `crates/storage/examples/` does exactly this; move its code into the storage crate), and open the copy. The original is not touched.
-  - **Cancel.**
-- Say in the question that older versions cannot open a converted project, and that a backup of the database is written first.
-- A confirmation is two clicks elsewhere in the program (backup restore, empty trash). Follow that pattern rather than adding a dialog library.
-
-**Tests.** In `state.rs`: open a format 1 project with "copy" and check that the original folder is unchanged and the copy is format 2. With "cancel", nothing is written.
+- Escape does not close the question. Escape closing a confirmation is part of Phase 8.
+- Opening another project while one is open does not save the first one before the question appears. This was already so before; it is unchanged.
 
 ## 4. Convert a real book before relying on the conversion
 
@@ -92,4 +84,4 @@ attachments/** -text
 ## 10. Update the guides for format 2
 
 - `documentation/USAGE.md` still says little about the folder. Add a section on what the folder holds, that it can be read without the program, that `.local/` is this computer's, and what happens when an older project is opened.
-- Describe the two commands writers can run on a project (`to_format_2` and `check_project`) or remove them from the guides once item 3 has put conversion of a copy in the window.
+- Conversion of a copy is now in the window (item 3). Decide whether the guides still need `to_format_2` and `check_project`, which do the same from a terminal, or only the window.

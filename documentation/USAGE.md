@@ -53,6 +53,7 @@ The index is built in memory from the project when it opens, and updated when a 
 
 - Inspector → **Snapshot this document**, or **Ctrl+Shift+S**. Restore from the inspector list or **History**.
 - **Compare** on a snapshot shows, in **History**, what changed between that snapshot and the current text. Added text is marked green and removed text is struck through. **Compare with** picks a second snapshot instead of the current text. **Changed paragraphs only** hides the rest. Only text is compared, not formatting, links, or inline notes. Comparing changes nothing.
+- Opening a project made by an earlier version asks first: **Convert this project**, **Convert a copy…**, or **Cancel**. Converting cannot be undone, and earlier versions will not open the project afterwards. A copy leaves the original as it was.
 - A scene's file can be changed outside the program, in a text editor or by git. When you come back to the window, the open scene is read again if you have nothing unsaved. If a save would write over a file that was changed outside, the other version is kept beside it as `….conflict-<time>.html`, and the status line says so.
 - **Backup** writes `.local/backups/project-….sqlite` in the project folder. Restore from **History** (second click). A safety copy is written first, and the scene files are written again from what was restored. Backups and snapshots belong to this computer; they are not part of what git shares.
 

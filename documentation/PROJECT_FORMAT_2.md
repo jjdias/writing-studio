@@ -253,7 +253,9 @@ JSON is for structure that is not read as prose. Where a file is a list, each it
 
 ## Converting a format 1 project
 
-Opening a format 1 project converts it, in place, in this order:
+Opening a format 1 project asks first, because conversion cannot be undone. The writer can convert it, convert a copy into a folder they choose (the original is not touched, and keeps its snapshots and backups), or cancel.
+
+Converting in place happens in this order:
 
 1. A backup of the database is written.
 2. The files are written.
@@ -265,7 +267,7 @@ If the program stops between steps 4 and 5, the next open finishes the move. A v
 
 In format 1 a scene's text had an id of its own. In format 2 it has the id of its binder item. Snapshots and baselines are moved to the new id.
 
-To see one of your own projects in this format before converting it, as a copy in a new folder:
+The same copy can be made from a terminal:
 
 ```bash
 cargo run -p writing-studio-storage --example to_format_2 -- path/to/Novel.writingstudio path/to/new-folder

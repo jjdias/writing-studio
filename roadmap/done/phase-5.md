@@ -52,7 +52,7 @@ Order keys were dropped from the plan. The order of the lines in a file is the o
 - **The book on screen is this machine's setting**, with the theme and layout. Word targets and the spelling list go with the book.
 - **One `bible.json`** orders the bible's entries and holds their links, in place of a separate links file.
 - **Emptying the trash deletes scene files**, because that step already asks twice. Deleting a bible entry deletes its file.
-- **Conversion is automatic when a format 1 project is opened.** It is one-way. Asking first is in Phase 5.1.
+- **Conversion is one-way.** Since Phase 5.1 item 3 the writer is asked first.
 
 ## Phase 5.1, item 1 — Entries the program does not know are kept
 
@@ -78,9 +78,21 @@ A project's files can change while it is open: an edit in a text editor, a `git 
 
 Checked by tests that change a scene file, `binder.json`, and a scene about to be deleted behind the store's back, and by a test of the window's state that reads a changed scene again, and keeps both when the writer is typing. **The focus event itself has not been tried in the window.**
 
+## Phase 5.1, item 3 — The writer is asked before a project is converted
+
+Converting a format 1 project cannot be undone: earlier versions of the program will not open it afterwards. Opening one now asks first, with three choices:
+
+- **Convert this project.** As before: a backup of the database, the files, the check, then the change of format.
+- **Convert a copy…** Choose a folder. A converted copy is written there as `Name (converted).writingstudio`, checked against the original, and opened. The original is not touched; its snapshots and backups stay with it. Research files and dictionaries are copied.
+- **Cancel.** Nothing is written.
+
+The copy is made by `ProjectStore::convert_copy`, which the `to_format_2` example now calls. The welcome screen no longer says a project is a SQLite database.
+
+Checked by a test of the window's state: the question writes nothing, cancel leaves the project as it was, a copy opens and leaves the original a format 1 project, a copy where one already exists is refused, and converting in place works. A storage test checks that the copy has the text and the research files, and that the original gains nothing. The question was looked at in the browser engine with the window's styles; **it has not been opened in the desktop window**.
+
 ## What was checked
 
-- 148 tests passed across the workspace at the end of stage 2. The storage crate's 24 tests and the UI crate's 9 pass after items 1 and 2.
+- 148 tests passed across the workspace at the end of stage 2. The storage crate's 25 tests and the UI crate's 10 pass after items 1 to 3.
 - Scene files: every kind of block and formatting, with their awkward cases; randomly built documents (2,000 with every run, and more than a million in one-off runs); a project on disk.
 - The Markdown export, read with an independent Markdown reader (`pulldown-cmark`).
 - The store: making a project, saving, reopening after a file was changed outside, opening with no `.local/`, converting a format 1 project, a conversion cut short, opening without converting, deleting a bible entry, and restoring a backup.

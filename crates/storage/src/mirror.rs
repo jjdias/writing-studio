@@ -222,6 +222,30 @@ impl ProjectStore {
         Self::with_cache(root, &database, true)
     }
 
+    /// Write a format 2 copy of a format 1 project into `target`, a folder
+    /// that must not exist yet. The project is only read. The copy is checked
+    /// against the project before it is marked as format 2. Research files
+    /// and dictionaries are copied; snapshots and backups stay with the
+    /// original. Returns how many scene and bible files were written.
+    pub fn convert_copy(source: impl AsRef<Path>, target: impl AsRef<Path>) -> Result<usize> {
+        let (source, target) = (source.as_ref(), target.as_ref());
+        if target.exists() {
+            return Err(Error::message(format!(
+                "{} already exists; choose a name that is not taken",
+                target.display()
+            )));
+        }
+        let store = Self::open_as_is(source)?;
+        let content = ProjectContent::from_store(&store)?;
+        let files = write_project_files(target, &content)?;
+        verify_project_files(target, &content)?;
+        for folder in ["attachments", "dictionaries"] {
+            copy_folder(&source.join(folder), &target.join(folder))?;
+        }
+        write_format_2_marker(target)?;
+        Ok(files.len())
+    }
+
     /// Turn a format 1 project into format 2, in place.
     ///
     /// A backup of the database is written first. The files are written and
@@ -685,6 +709,23 @@ impl ProjectStore {
     }
 }
 
+fn copy_folder(from: &Path, to: &Path) -> std::io::Result<()> {
+    if !from.is_dir() {
+        return Ok(());
+    }
+    fs::create_dir_all(to)?;
+    for entry in fs::read_dir(from)? {
+        let entry = entry?;
+        let target = to.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_folder(&entry.path(), &target)?;
+        } else if entry.file_type()?.is_file() {
+            fs::copy(entry.path(), target)?;
+        }
+    }
+    Ok(())
+}
+
 impl Mirror {
     /// Take in what was just read from, or written to, the files.
     fn remember(&self, content: &ProjectContent, files: HashMap<Id, String>, on_disk: HashMap<String, u64>) {
@@ -922,6 +963,32 @@ mod tests {
         assert!(!dir.join(PROJECT_DB_FILE).exists());
         assert_eq!(store.list_snapshots(scene_id).unwrap().len(), 1);
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn converting_a_copy_leaves_the_original_as_it_was() {
+        let (dir, scene_id, _) = format_1_project("copy");
+        fs::create_dir_all(dir.join("attachments").join("note")).unwrap();
+        fs::write(dir.join("attachments").join("note").join("map.png"), b"png").unwrap();
+        let target = temp("copy-target");
+
+        assert!(ProjectStore::convert_copy(&dir, &target).unwrap() >= 1);
+        // The original is still a format 1 project, with nothing added.
+        assert!(ProjectStore::needs_conversion(&dir));
+        assert!(!dir.join("project.json").exists() && !dir.join(".local").exists());
+        // The copy is format 2, opens, and has the text and the research file.
+        assert!(!ProjectStore::needs_conversion(&target));
+        let copy = ProjectStore::open(&target).unwrap();
+        assert_eq!(
+            copy.load_document(scene_id).unwrap().to_plain_text(),
+            "Written in the old format."
+        );
+        assert!(target.join("attachments").join("note").join("map.png").exists());
+        // A target that exists is refused.
+        assert!(ProjectStore::convert_copy(&dir, &target).is_err());
+        for folder in [dir, target] {
+            let _ = fs::remove_dir_all(folder);
+        }
     }
 
     #[test]
