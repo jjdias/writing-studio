@@ -242,6 +242,7 @@ JSON is for structure that is not read as prose. Where a file is a list, each it
 - Saving a scene writes that scene's file. Changing a title, synopsis, status, label, color, or beat writes the file of that item. Other scene files are not read or written.
 - `binder.json`, `bible.json`, `plot.json`, `project.json`, and the bible's files are written only when what they hold has changed.
 - `README.md`, `scene.css`, and `.gitignore` are written when they are missing and then left alone, so they can be edited.
+- **A file changed outside the program is never written over.** Before writing or deleting a file, the program checks that it still holds what the program last read or wrote. If not, what it holds is kept beside it as `name.conflict-<time>.ext`. When the window comes back to the front, the open scene's file is checked and read again if it changed and nothing is unsaved.
 - **Opening reads the files.** The cache is filled from them each time, so a scene edited in a text editor, or brought in by git, is what opens. A file that cannot be read stops the project from opening, and the message names the file.
 
 ## What deletes a file

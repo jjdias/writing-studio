@@ -29,12 +29,13 @@ Read this whole section before starting any item.
 **Rules the code keeps, and you must keep**
 
 1. A save writes the file first and the cache second. The cache never holds writing that is not in a file.
-2. Every file is written with `write_atomic`.
-3. Every path that comes from a project file goes through `inside` before it is used.
-4. A file is deleted only when the writer deleted the thing it holds: emptying the trash, or deleting a bible entry.
-5. A scene's text has the id of its binder item.
-6. A save writes only the files that changed. Do not read or write every scene on a save: saves run on a two-second idle timer.
-7. Nothing in a scene file is ever run.
+2. Every write and delete of a project file goes through `write_file` or `remove_file` in `mirror.rs`, which set aside a file that changed outside. Do not write project files around them.
+3. Every file is written with `write_atomic`.
+4. Every path that comes from a project file goes through `inside` before it is used.
+5. A file is deleted only when the writer deleted the thing it holds: emptying the trash, or deleting a bible entry.
+6. A scene's text has the id of its binder item.
+7. A save writes only the files that changed. Do not read or write every scene on a save: saves run on a two-second idle timer.
+8. Nothing in a scene file is ever run.
 
 **How to test**
 
@@ -99,8 +100,9 @@ Opening a project fills the cache from the files, so a scene edited in a text ed
 - For each one not listed, read it and add it: a scene goes into a folder named Recovered at the top of the manuscript, made when first needed; a bible entry goes into its own kind.
 - If the file has no `id`, or an id that is already in use, give it a new one and write the file with it.
 - Skip temporary files (`.name.id.tmp`, which `write_atomic` leaves only if it was interrupted) and remove those older than a day.
+- Skip `*.conflict-*` files; see c.
 
-**c. Changes while the project is open.** Today the program writes over a file that was changed outside while it was open. This is the most likely way to lose writing in format 2; it is item 2 of [phase-5.1.md](phase-5.1.md) and should be done there, first.
+**c. Changes while the project is open.** Done in Phase 5.1 item 2: a file changed outside is set aside as `name.conflict-<time>.ext` rather than written over, and the open scene is read again when the window comes back to the front. For item b below, do not take `.conflict-` files in as new scenes without asking: list them for the writer, who decides.
 
 **d. Check the binder after any outside change.** Write `check_binder(nodes) -> (nodes, problems)` and run it in `read_project_files`:
 

@@ -8,6 +8,8 @@
 mod files;
 mod mirror;
 mod recovery;
+
+pub use mirror::SetAside;
 mod schema;
 
 pub use files::{

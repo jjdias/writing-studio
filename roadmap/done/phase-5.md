@@ -66,9 +66,21 @@ A file can hold entries the program does not use: a person adds `<meta name="pov
 
 Checked by a test that adds an entry to a scene file, its binder line, a character file, and a plot line, then saves each through the store, and restores a backup.
 
+## Phase 5.1, item 2 — A file changed outside is never written over
+
+A project's files can change while it is open: an edit in a text editor, a `git pull` in a terminal, a sync tool. Before this, the program's next save of that item wrote over the change.
+
+- The store remembers what each file held when it last read or wrote it. Before writing a file it reads it. If it holds something else, what it holds is kept beside it as `name.conflict-<time>.ext`, and then the program's version is written. This is for every file the program writes: scenes, bible entries, and the JSON files.
+- Deleting a file works the same way: a scene file changed outside is kept under the conflict name, not deleted, when the trash is emptied.
+- The status line names the file and where the other version was kept.
+- When the window comes back to the front, the open scene's file is checked. If it changed and there is no unsaved typing in the editor, the scene is read again: its text, title, synopsis, status, label, color, and beats. With unsaved typing nothing is replaced, and the status line says the save will keep both. Only that one file is read; there is no watcher and no timer.
+- **One change from the plan.** The plan said the outside version should become the scene and the program's be set aside. It is the other way round: the program's version is the scene, because that is what the writer sees in the window. Either way nothing is lost.
+
+Checked by tests that change a scene file, `binder.json`, and a scene about to be deleted behind the store's back, and by a test of the window's state that reads a changed scene again, and keeps both when the writer is typing. **The focus event itself has not been tried in the window.**
+
 ## What was checked
 
-- 148 tests passed across the workspace at the end of stage 2. The storage crate's tests, 22 with the one for item 1, pass after it.
+- 148 tests passed across the workspace at the end of stage 2. The storage crate's 24 tests and the UI crate's 9 pass after items 1 and 2.
 - Scene files: every kind of block and formatting, with their awkward cases; randomly built documents (2,000 with every run, and more than a million in one-off runs); a project on disk.
 - The Markdown export, read with an independent Markdown reader (`pulldown-cmark`).
 - The store: making a project, saving, reopening after a file was changed outside, opening with no `.local/`, converting a format 1 project, a conversion cut short, opening without converting, deleting a bible entry, and restoring a backup.

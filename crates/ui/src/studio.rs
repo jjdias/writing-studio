@@ -46,6 +46,17 @@ fn Studio() -> Element {
     let chrome = use_context::<Signal<PanelChrome>>();
     let widths = use_context::<Signal<PanelWidths>>();
     let resize = use_context::<Signal<Option<ResizeDrag>>>();
+    // Coming back to the window is when a scene changed by a text editor or
+    // by git is read again, before the writer types over it.
+    dioxus::desktop::use_wry_event_handler(move |event, _| {
+        if let dioxus::desktop::tao::event::Event::WindowEvent {
+            event: dioxus::desktop::WindowEvent::Focused(true),
+            ..
+        } = event
+        {
+            state.write().check_open_scene_on_disk();
+        }
+    });
     use_future(move || async move {
         loop {
             tokio::time::sleep(std::time::Duration::from_millis(400)).await;

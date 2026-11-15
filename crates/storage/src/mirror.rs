@@ -23,6 +23,7 @@ use writing_studio_core::{
 };
 use writing_studio_diagnostics::SceneBeats;
 use writing_studio_document::Document;
+use writing_studio_format::SceneFile;
 use writing_studio_plotting::PlotGrid;
 use writing_studio_project::{BinderNode, BinderTree, ProjectMeta};
 use writing_studio_research::ResearchLibrary;
@@ -30,6 +31,7 @@ use writing_studio_templates::blank_novel;
 use writing_studio_worldbuilding::World;
 
 use crate::files::{
+    text_fingerprint, unknown_head, with_a_run_in_every_block, write_project_files_noted,
     bible_files, Extras, binder_json, inside, place, plot_json, read_project_files, scene_text, settings_json,
     verify_project_files, write_atomic, write_format_2_marker, write_project_files, ProjectContent,
     LOCAL_SETTINGS,
@@ -50,11 +52,26 @@ pub(crate) struct Mirror {
     extras: RefCell<HashMap<Id, Extras>>,
     /// A fingerprint of what each scene file's head was last written from.
     heads: RefCell<HashMap<Id, u64>>,
-    /// A fingerprint of the text each small file was last written with.
-    written: RefCell<HashMap<String, u64>>,
+    /// A fingerprint of what each file held when the program last read or
+    /// wrote it. A file that holds something else was changed outside.
+    on_disk: RefCell<HashMap<String, u64>>,
+    /// Files that were changed outside the program and would have been
+    /// written over, and where each was set aside, since the last time the
+    /// window asked.
+    set_aside: RefCell<Vec<SetAside>>,
     /// Files are left alone: while the cache is being filled from them, and
     /// for a project opened only to be read.
     paused: Cell<bool>,
+}
+
+/// A file that was changed outside the program, kept under another name so
+/// that a save could not write over it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SetAside {
+    /// The file, inside the project folder.
+    pub file: String,
+    /// Where what it held was kept.
+    pub kept_as: String,
 }
 
 fn fingerprint(parts: &[&str]) -> u64 {
@@ -183,7 +200,7 @@ impl ProjectStore {
         store.rekey_documents()?;
         let content = read_project_files(&store.root)?;
         store.fill_cache(&content)?;
-        store.mirror.remember(&content, content.files.clone());
+        store.mirror.remember(&content, content.files.clone(), content.read.clone());
         store.mirror.paused.set(false);
         Ok(store)
     }
@@ -325,8 +342,8 @@ impl ProjectStore {
         let mut content = ProjectContent::from_store(self)?;
         content.files = self.mirror.paths.borrow().clone();
         content.extras = self.mirror.extras.borrow().clone();
-        let files = write_project_files(&self.root, &content)?;
-        self.mirror.remember(&content, files);
+        let (files, written) = write_project_files_noted(&self.root, &content)?;
+        self.mirror.remember(&content, files, written);
         Ok(())
     }
 
@@ -334,30 +351,148 @@ impl ProjectStore {
         !self.mirror.paused.get()
     }
 
-    /// Write a file inside the project folder.
+    /// Write a file inside the project folder, unless it already holds this
+    /// text. If the file was changed outside the program since the program
+    /// last read or wrote it, what it holds is first kept under another name,
+    /// so that nothing written elsewhere is lost.
     fn write_file(&self, path: &str, text: &str) -> Result<()> {
-        write_atomic(&inside(&self.root, "the project", path)?, text.as_bytes())
-    }
-
-    /// Write one of the small files, unless it already holds this text.
-    fn write_small(&self, path: &str, text: &str) -> Result<()> {
-        let mark = fingerprint(&[text]);
-        if self.mirror.written.borrow().get(path) == Some(&mark) {
+        let mark = text_fingerprint(text);
+        let known = self.mirror.on_disk.borrow().get(path).copied();
+        if known == Some(mark) {
             return Ok(());
         }
-        let on_disk = fs::read_to_string(inside(&self.root, "the project", path)?).ok();
-        if on_disk.as_deref() != Some(text) {
-            self.write_file(path, text)?;
+        let full = inside(&self.root, "the project", path)?;
+        match fs::read_to_string(&full) {
+            Ok(current) => {
+                let current_mark = text_fingerprint(&current);
+                if current_mark == mark {
+                    self.mirror.on_disk.borrow_mut().insert(path.to_string(), mark);
+                    return Ok(());
+                }
+                if known != Some(current_mark) {
+                    self.set_aside(path, &current)?;
+                }
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+            Err(err) => return Err(err.into()),
         }
-        self.mirror.written.borrow_mut().insert(path.to_string(), mark);
+        write_atomic(&full, text.as_bytes())?;
+        self.mirror.on_disk.borrow_mut().insert(path.to_string(), mark);
         Ok(())
     }
 
+    fn write_small(&self, path: &str, text: &str) -> Result<()> {
+        self.write_file(path, text)
+    }
+
+    /// Delete a file the writer deleted the contents of. A file that was
+    /// changed outside since the program last saw it is kept under another
+    /// name instead.
     fn remove_file(&self, path: &str) -> Result<()> {
-        match fs::remove_file(inside(&self.root, "the project", path)?) {
+        let full = inside(&self.root, "the project", path)?;
+        let known = self.mirror.on_disk.borrow_mut().remove(path);
+        match fs::read_to_string(&full) {
+            Ok(current) if known != Some(text_fingerprint(&current)) => {
+                self.set_aside(path, &current)?;
+            }
+            Ok(_) => {}
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(err) => return Err(err.into()),
+        }
+        match fs::remove_file(full) {
             Err(err) if err.kind() != std::io::ErrorKind::NotFound => Err(err.into()),
             _ => Ok(()),
         }
+    }
+
+    /// Keep `text`, which `path` held, beside it as
+    /// `name.conflict-<time>.ext`.
+    fn set_aside(&self, path: &str, text: &str) -> Result<()> {
+        let stamp = writing_studio_core::Timestamp::now()
+            .inner()
+            .format("%Y-%m-%dT%H-%M-%S%.3fZ")
+            .to_string();
+        let (stem, extension) = match path.rsplit_once('.') {
+            Some((stem, extension)) if !stem.ends_with('/') && !extension.contains('/') => {
+                (stem, format!(".{extension}"))
+            }
+            _ => (path, String::new()),
+        };
+        let kept_as = format!("{stem}.conflict-{stamp}{extension}");
+        write_atomic(&inside(&self.root, "the project", &kept_as)?, text.as_bytes())?;
+        self.mirror.set_aside.borrow_mut().push(SetAside {
+            file: path.to_string(),
+            kept_as,
+        });
+        Ok(())
+    }
+
+    /// The files that were changed outside the program and set aside since
+    /// the last call.
+    pub fn take_set_aside(&self) -> Vec<SetAside> {
+        std::mem::take(&mut *self.mirror.set_aside.borrow_mut())
+    }
+
+    /// Whether the file of this item holds something other than what the
+    /// program last read or wrote. Reads that one file.
+    pub fn changed_outside(&self, id: Id) -> Result<bool> {
+        let Some(path) = self.mirror.paths.borrow().get(&id).cloned() else {
+            return Ok(false);
+        };
+        let known = self.mirror.on_disk.borrow().get(&path).copied();
+        match fs::read_to_string(inside(&self.root, "the project", &path)?) {
+            Ok(current) => Ok(known != Some(text_fingerprint(&current))),
+            // A file that is gone is not read again; the next save writes it.
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(err) => Err(err.into()),
+        }
+    }
+
+    /// Read the file of one scene again, after it was changed outside the
+    /// program, and put what it holds in the cache. Returns the item and its
+    /// beats and text as the file has them, or `None` if the item has no
+    /// file.
+    pub fn reread_scene(&self, id: Id) -> Result<Option<(BinderNode, SceneBeats, Document)>> {
+        let Some(path) = self.mirror.paths.borrow().get(&id).cloned() else {
+            return Ok(None);
+        };
+        let Some(mut node) = self.item_of_document(id)? else {
+            return Ok(None);
+        };
+        let text = fs::read_to_string(inside(&self.root, "the project", &path)?)?;
+        let file = SceneFile::parse_html(&text);
+        if file.header.id.is_some_and(|found| found != id) {
+            return Err(Error::message(format!(
+                "{path}: the id in the file is not the one it is listed under"
+            )));
+        }
+        node.title = file.header.title;
+        node.synopsis = file.header.synopsis;
+        node.status = file.header.status;
+        node.label = file.header.label;
+        node.color = file.header.color;
+        let beats = SceneBeats {
+            goal: file.header.goal,
+            conflict: file.header.conflict,
+            outcome: file.header.outcome,
+        };
+        let mut document = Document::new(id);
+        document.blocks = with_a_run_in_every_block(file.blocks);
+
+        self.upsert_node_cached(&node)?;
+        self.save_document_cached(&document)?;
+        let mut all_beats = self.load_scene_beats()?;
+        all_beats.insert(id, beats.clone());
+        self.persist_scene_beats_cached(&all_beats)?;
+
+        let extras_head = unknown_head(&file.header.other, &[]);
+        let mut extras = self.mirror.extras.borrow_mut();
+        let entry = extras.entry(id).or_default();
+        entry.head = extras_head;
+        drop(extras);
+        self.mirror.heads.borrow_mut().insert(id, head_fingerprint(&node, &beats));
+        self.mirror.on_disk.borrow_mut().insert(path, text_fingerprint(&text));
+        Ok(Some((node, beats, document)))
     }
 
     /// Write the scene file of every item whose title, synopsis, status,
@@ -413,7 +548,7 @@ impl ProjectStore {
         for (id, path) in gone {
             self.remove_file(&path)?;
             self.mirror.paths.borrow_mut().remove(&id);
-            self.mirror.written.borrow_mut().remove(&path);
+
         }
         Ok(())
     }
@@ -552,7 +687,7 @@ impl ProjectStore {
 
 impl Mirror {
     /// Take in what was just read from, or written to, the files.
-    fn remember(&self, content: &ProjectContent, files: HashMap<Id, String>) {
+    fn remember(&self, content: &ProjectContent, files: HashMap<Id, String>, on_disk: HashMap<String, u64>) {
         let none = SceneBeats::default();
         *self.heads.borrow_mut() = content
             .binder
@@ -563,7 +698,7 @@ impl Mirror {
             .collect();
         *self.paths.borrow_mut() = files;
         *self.extras.borrow_mut() = content.extras.clone();
-        self.written.borrow_mut().clear();
+        *self.on_disk.borrow_mut() = on_disk;
     }
 
     /// The file of an item, giving it one if it has none.
@@ -890,6 +1025,96 @@ mod tests {
         store.restore_backup(&backup).unwrap();
         assert!(fs::read_to_string(&scene_file).unwrap().contains("name=\"pov\""));
         assert!(fs::read_to_string(dir.join("binder.json")).unwrap().contains("draft-2"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// The outside version that was set aside for `file`, read back.
+    fn kept_text(store: &ProjectStore, set: &[SetAside], file: &Path) -> String {
+        let relative = file.strip_prefix(&store.root).unwrap().to_string_lossy().replace('\\', "/");
+        let found = set.iter().find(|item| item.file == relative).expect("set aside");
+        assert!(found.kept_as.contains(".conflict-"));
+        fs::read_to_string(store.root.join(&found.kept_as)).unwrap()
+    }
+
+    #[test]
+    fn a_file_changed_outside_is_set_aside_and_never_written_over() {
+        let dir = temp("outside");
+        let store = ProjectStore::create(&dir, "Outside").unwrap();
+        let scene = scene_of(&store);
+        let scene_file = file_of(&store, scene.id);
+        let mut document = store.load_document(scene.id).unwrap();
+        document.replace_plain_text("Typed in the program.");
+        store.save_document(&document).unwrap();
+        assert!(store.take_set_aside().is_empty());
+
+        // Another program changes the scene, then the program saves it.
+        let outside = fs::read_to_string(&scene_file)
+            .unwrap()
+            .replace("Typed in the program.", "Typed in a text editor.");
+        fs::write(&scene_file, &outside).unwrap();
+        document.replace_plain_text("Typed in the program, then more.");
+        store.save_document(&document).unwrap();
+        assert!(fs::read_to_string(&scene_file).unwrap().contains("then more."));
+        let set = store.take_set_aside();
+        assert_eq!(set.len(), 1);
+        assert_eq!(kept_text(&store, &set, &scene_file), outside);
+        // Saving again does not set it aside a second time.
+        document.replace_plain_text("And again.");
+        store.save_document(&document).unwrap();
+        assert!(store.take_set_aside().is_empty());
+
+        // The same for the binder file.
+        let binder = dir.join("binder.json");
+        let edited = fs::read_to_string(&binder).unwrap().replace("\"kind\"", "\"note\":\"x\",\"kind\"");
+        fs::write(&binder, &edited).unwrap();
+        let added = BinderNode::new(NodeKind::Scene, "Added", scene.parent_id, 9);
+        store.upsert_node(&added).unwrap();
+        let set = store.take_set_aside();
+        assert_eq!(kept_text(&store, &set, &binder), edited);
+        assert!(fs::read_to_string(&binder).unwrap().contains(&added.id.to_string()));
+
+        // A file changed outside is not deleted with its scene; it is kept.
+        let doomed = file_of(&store, scene.id);
+        let changed = fs::read_to_string(&doomed).unwrap().replace("And again.", "Changed before the delete.");
+        fs::write(&doomed, &changed).unwrap();
+        store.delete_document(scene.id).unwrap();
+        assert!(!doomed.exists());
+        let set = store.take_set_aside();
+        assert_eq!(kept_text(&store, &set, &doomed), changed);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_scene_changed_outside_can_be_read_again() {
+        let dir = temp("reread");
+        let store = ProjectStore::create(&dir, "Reread").unwrap();
+        let scene = scene_of(&store);
+        let scene_file = file_of(&store, scene.id);
+        assert!(!store.changed_outside(scene.id).unwrap());
+
+        let text = fs::read_to_string(&scene_file).unwrap();
+        let text = text
+            .replace("<title>Scene 1</title>", "<title>Harbor</title>")
+            .replace("<link rel=", "<meta name=\"goal\" content=\"Leave\">\n<link rel=");
+        let body_at = text.find("<body>").unwrap() + "<body>\n".len();
+        let end_at = text.find("</body>").unwrap();
+        let text = format!("{}<p>From git.</p>\n{}", &text[..body_at], &text[end_at..]);
+        fs::write(&scene_file, &text).unwrap();
+        assert!(store.changed_outside(scene.id).unwrap());
+
+        let (node, beats, document) = store.reread_scene(scene.id).unwrap().unwrap();
+        assert_eq!(node.title, "Harbor");
+        assert_eq!(beats.goal, "Leave");
+        assert_eq!(document.to_plain_text(), "From git.");
+        assert!(!store.changed_outside(scene.id).unwrap());
+        assert_eq!(store.load_document(scene.id).unwrap().to_plain_text(), "From git.");
+        assert_eq!(store.load_scene_beats().unwrap()[&scene.id].goal, "Leave");
+
+        // Saving after reading it again sets nothing aside.
+        let mut document = document;
+        document.replace_plain_text("From git, then edited.");
+        store.save_document(&document).unwrap();
+        assert!(store.take_set_aside().is_empty());
         let _ = fs::remove_dir_all(dir);
     }
 

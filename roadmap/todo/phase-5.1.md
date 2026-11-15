@@ -2,7 +2,7 @@
 
 Not started. These are gaps found while building Phase 5 stages 1 and 2. None of them is in the Phase 5 plan, and each one matters before writers keep real books in format 2.
 
-Items 1 to 4 are about not losing writing. Do them first, in order, before the rest of Phase 5. Item 1 is done. Items 5 to 10 can follow in any order.
+Items 1 to 4 are about not losing writing. Do them first, in order, before the rest of Phase 5. Items 1 and 2 are done. Items 5 to 10 can follow in any order.
 
 Read "Before you start" in [phase-5.md](phase-5.md) first: it lists the files, the rules the code keeps, and how to test.
 
@@ -15,18 +15,10 @@ Read "Before you start" in [phase-5.md](phase-5.md) first: it lists the files, t
 
 ## 2. Do not write over a file that was changed outside while the project is open
 
-**The problem.** The project is read when it opens. If a file changes after that (an edit in a text editor, a `git pull` in a terminal, a sync tool), the program does not notice, and its next save of that item writes over the change. This is the most likely way to lose writing in format 2.
+**Done.** See [../done/phase-5.md](../done/phase-5.md), "Phase 5.1". What is left of it:
 
-**How to fix it.**
-
-- When the store reads or writes a file, remember what it holds: in `Mirror`, a map from path to a fingerprint of the text that is on disk (it already keeps one for small files in `written`; extend it to scene files).
-- Before writing a file, read it and compare with what was remembered. If it is the same, write. If it is different, the file was changed outside: do not write it.
-- Then, for a scene, keep both: write the program's version beside it as `name.conflict-<time>.html`, keep the outside version as the scene, and tell the writer. Stage 4's way of settling a conflict (both versions in the scene, and the track-changes panel) can replace this once it exists.
-- For `binder.json`, `bible.json`, `plot.json`, and `project.json`, the outside change wins the same way, and the program's version is kept beside it.
-- Also check when the window comes back to the front, and before Sync, so that a change is found before the writer types over it. Reading only the files of the items that are open is enough there; do not read every scene on a timer.
-- The check costs one read of the file before each write. Saves of a scene are already one write; this makes them one read and one write, which is fine. Do not add a background watcher.
-
-**Tests.** Open a project, change a scene file with `fs::write`, then save that scene from the store: the outside text is still the scene, and the program's text is in the conflict file. The same for `binder.json`.
+- Set-aside files (`name.conflict-<time>.html`) are only named in the status line. A list of them in History, with a way to open or compare one, would make them easier to deal with. Stage 4's way of settling a conflict can replace this.
+- Only the open scene is read again when the window comes back to the front. A bible entry or the binder changed outside is caught when it is next saved (it is set aside, not lost), but not shown until the project is opened again.
 
 ## 3. Ask before converting a format 1 project
 

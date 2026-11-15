@@ -8,7 +8,10 @@
 //! Every file is written whole to a temporary name and then renamed over the
 //! old one, so a crash during a save leaves the old file or the new one.
 
+use std::cell::RefCell;
+use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
+use std::hash::{Hash, Hasher};
 use std::fs;
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
@@ -63,6 +66,16 @@ pub struct ProjectContent {
     /// What the files say about an item that the program does not use, by
     /// the item's id. Only items that have some are here.
     pub extras: HashMap<Id, Extras>,
+    /// A fingerprint of what each file held when it was read, by its path.
+    /// The store compares a file with this before writing over it.
+    pub read: HashMap<String, u64>,
+}
+
+/// A fingerprint of a file's text, to tell whether it has changed.
+pub(crate) fn text_fingerprint(text: &str) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    text.hash(&mut hasher);
+    hasher.finish()
 }
 
 /// Entries a file holds that this program does not know: added by a person,
@@ -109,7 +122,7 @@ fn unknown_keys(item: &Value, known: &[&str]) -> Map<String, Value> {
         .collect()
 }
 
-fn unknown_head(header: &Header, known: &[&str]) -> Header {
+pub(crate) fn unknown_head(header: &Header, known: &[&str]) -> Header {
     Header {
         entries: header
             .entries
@@ -170,6 +183,7 @@ impl ProjectContent {
             library: store.load_library()?,
             files: HashMap::new(),
             extras: HashMap::new(),
+            read: HashMap::new(),
         })
     }
 }
@@ -341,9 +355,19 @@ struct Rendered {
 /// marker. Files of items that are no longer in the project are left where
 /// they are; nothing is deleted. Returns the file each item was written to.
 pub fn write_project_files(root: &Path, content: &ProjectContent) -> Result<HashMap<Id, String>> {
+    Ok(write_project_files_noted(root, content)?.0)
+}
+
+/// The same, also returning a fingerprint of each file that was written.
+pub(crate) fn write_project_files_noted(
+    root: &Path,
+    content: &ProjectContent,
+) -> Result<(HashMap<Id, String>, HashMap<String, u64>)> {
     let rendered = render(content)?;
+    let mut written = HashMap::new();
     for (path, text) in &rendered.contents {
         write_atomic(&inside(root, "the project", path)?, text.as_bytes())?;
+        written.insert(path.clone(), text_fingerprint(text));
     }
     // What makes the folder readable and safe to share. The reader's guide
     // and the stylesheet are not overwritten, so they can be changed.
@@ -352,7 +376,7 @@ pub fn write_project_files(root: &Path, content: &ProjectContent) -> Result<Hash
             write_atomic(&root.join(name), text.as_bytes())?;
         }
     }
-    Ok(rendered.files)
+    Ok((rendered.files, written))
 }
 
 /// Mark the folder as a format 2 project. This is the last step of making
@@ -706,9 +730,16 @@ struct JsonFile<'a> {
     value: Value,
 }
 
+/// Read a file of the project, and note what it held.
+fn read_noted(path: &Path, name: &str, seen: &RefCell<HashMap<String, u64>>) -> Result<String> {
+    let text = fs::read_to_string(path).map_err(|err| bad(name, err))?;
+    seen.borrow_mut().insert(name.to_string(), text_fingerprint(&text));
+    Ok(text)
+}
+
 impl<'a> JsonFile<'a> {
-    fn read(root: &Path, name: &'a str) -> Result<Self> {
-        let text = fs::read_to_string(root.join(name)).map_err(|err| bad(name, err))?;
+    fn read(root: &Path, name: &'a str, seen: &RefCell<HashMap<String, u64>>) -> Result<Self> {
+        let text = read_noted(&root.join(name), name, seen)?;
         let value = serde_json::from_str(&text).map_err(|err| bad(name, err))?;
         Ok(Self { name, value })
     }
@@ -743,8 +774,14 @@ fn text_of(item: &Value, key: &str) -> String {
 
 /// An HTML file named by a JSON file, read and checked to be the entry it
 /// is listed as.
-fn read_entry(root: &Path, listed_in: &str, path: &str, id: Id) -> Result<SceneFile> {
-    let html = fs::read_to_string(inside(root, listed_in, path)?).map_err(|err| bad(path, err))?;
+fn read_entry(
+    root: &Path,
+    listed_in: &str,
+    path: &str,
+    id: Id,
+    seen: &RefCell<HashMap<String, u64>>,
+) -> Result<SceneFile> {
+    let html = read_noted(&inside(root, listed_in, path)?, path, seen)?;
     let file = SceneFile::parse_html(&html);
     match file.header.id {
         Some(found) if found != id => Err(bad(path, "the id in the file is not the one it is listed under")),
@@ -767,6 +804,7 @@ fn header_id(file: &SceneFile, path: &str, key: &str) -> Result<Option<Id>> {
 /// are not kept in the files, so every record reads as made now.
 pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
     let now = Timestamp::now();
+    let seen: RefCell<HashMap<String, u64>> = RefCell::new(HashMap::new());
     let mut files: HashMap<Id, String> = HashMap::new();
     let mut extras: HashMap<Id, Extras> = HashMap::new();
     let mut keep = |id: Id, found: Extras| {
@@ -776,12 +814,12 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
     };
 
     // Settings.
-    let project = JsonFile::read(root, "project.json")?;
+    let project = JsonFile::read(root, "project.json", &seen)?;
     let mut settings = serde_json::to_value(ProjectSettings::default())
         .ok()
         .and_then(|value| value.as_object().cloned())
         .unwrap_or_default();
-    let local: Value = fs::read_to_string(root.join(".local").join("settings.json"))
+    let local: Value = read_noted(&root.join(LOCAL_SETTINGS), LOCAL_SETTINGS, &seen)
         .ok()
         .and_then(|text| serde_json::from_str(&text).ok())
         .unwrap_or(Value::Null);
@@ -808,7 +846,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
     };
 
     // The binder and the manuscript.
-    let binder_file = JsonFile::read(root, "binder.json")?;
+    let binder_file = JsonFile::read(root, "binder.json", &seen)?;
     let mut nodes = Vec::new();
     let mut documents = Vec::new();
     let mut beats = HashMap::new();
@@ -840,7 +878,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
             ..Extras::default()
         };
         if let Some(path) = item.get("file").and_then(Value::as_str) {
-            let file = read_entry(root, "binder.json", path, id)?;
+            let file = read_entry(root, "binder.json", path, id, &seen)?;
             found.head = unknown_head(&file.header.other, &[]);
             node.title = file.header.title;
             node.synopsis = file.header.synopsis;
@@ -866,7 +904,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
     }
 
     // The bible.
-    let bible = JsonFile::read(root, "bible.json")?;
+    let bible = JsonFile::read(root, "bible.json", &seen)?;
     let mut scene_links: HashMap<Id, Vec<Id>> = HashMap::new();
     for link in bible.list("scene_links") {
         scene_links
@@ -880,7 +918,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
         for (index, item) in bible.list(key).into_iter().enumerate() {
             let id = bible.id(item, "id")?;
             let path = text_of(item, "file");
-            let file = read_entry(root, "bible.json", &path, id)?;
+            let file = read_entry(root, "bible.json", &path, id, &seen)?;
             files.insert(id, path.clone());
             keep(
                 id,
@@ -1025,7 +1063,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
     }
 
     // The plot grid.
-    let plot_file = JsonFile::read(root, "plot.json")?;
+    let plot_file = JsonFile::read(root, "plot.json", &seen)?;
     let mut plot = PlotGrid::default();
     for (index, line) in plot_file.list("plotlines").into_iter().enumerate() {
         let line_id = plot_file.id(line, "id")?;
@@ -1078,12 +1116,13 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
         library,
         files,
         extras,
+        read: seen.into_inner(),
     })
 }
 
 /// The rest of the program expects a block to hold at least one run, as the
 /// editor leaves it. A stored empty paragraph has none.
-fn with_a_run_in_every_block(mut blocks: Vec<Block>) -> Vec<Block> {
+pub(crate) fn with_a_run_in_every_block(mut blocks: Vec<Block>) -> Vec<Block> {
     for block in &mut blocks {
         match &mut block.kind {
             BlockKind::Paragraph { inlines }

@@ -1356,6 +1356,88 @@ impl StudioState {
                 Err(err) => self.status = format!("Save failed: {err}"),
             }
         }
+        self.report_set_aside();
+    }
+
+    /// Tell the writer about files that were changed outside the program and
+    /// kept under another name, so that a save did not write over them.
+    fn report_set_aside(&mut self) {
+        let Some(store) = &self.store else {
+            return;
+        };
+        let set = store.borrow().take_set_aside();
+        let Some(first) = set.first() else {
+            return;
+        };
+        self.status = if set.len() == 1 {
+            format!(
+                "{} was changed outside the program. Your version was saved, and the other was kept as {}.",
+                first.file, first.kept_as
+            )
+        } else {
+            format!(
+                "{} files were changed outside the program. Your versions were saved, and the others were kept beside them, the first as {}.",
+                set.len(),
+                first.kept_as
+            )
+        };
+    }
+
+    /// Read the open scene again if its file was changed outside the program,
+    /// by a text editor or by git. Called when the window comes back to the
+    /// front, so the change is seen before the writer types over it. Only the
+    /// open scene's file is read. With unsaved typing in the editor nothing
+    /// is replaced: the next save keeps the writer's version as the scene and
+    /// the other beside it.
+    pub fn check_open_scene_on_disk(&mut self) {
+        let (Some(store), Some(session)) = (self.store.clone(), self.session.as_ref()) else {
+            return;
+        };
+        let id = session.document_id();
+        let dirty = session.is_dirty();
+        let changed = store.borrow().changed_outside(id);
+        match changed {
+            Ok(true) => {}
+            Ok(false) => return,
+            Err(err) => {
+                self.status = format!("Could not check this scene's file: {err}");
+                return;
+            }
+        }
+        if dirty {
+            self.status = "This scene's file was changed outside the program. When you save, your version stays the scene and the other is kept beside it.".into();
+            return;
+        }
+        let reread = store.borrow().reread_scene(id);
+        match reread {
+            Ok(Some((node, beats, document))) => {
+                if let Some(current) = self.binder.nodes.iter_mut().find(|item| item.id == node.id) {
+                    current.title = node.title.clone();
+                    current.synopsis = node.synopsis;
+                    current.status = node.status;
+                    current.label = node.label;
+                    current.color = node.color;
+                }
+                if beats.is_empty() {
+                    self.beats.remove(&node.id);
+                } else {
+                    self.beats.insert(node.id, beats);
+                }
+                let indexed = self
+                    .manuscript_index
+                    .borrow_mut()
+                    .upsert(id, &document.to_plain_text());
+                let session = EditorSession::new(document);
+                self.sync_editor_from_session(&session);
+                self.session = Some(session);
+                self.status = match indexed {
+                    Ok(()) => format!("“{}” was changed outside the program, and has been read again.", node.title),
+                    Err(err) => format!("“{}” was read again, but search index failed: {err}", node.title),
+                };
+            }
+            Ok(None) => {}
+            Err(err) => self.status = format!("Could not read this scene again: {err}"),
+        }
     }
 
     pub fn save_all(&mut self) {
@@ -1399,6 +1481,7 @@ impl StudioState {
         self.settings_dirty = false;
         self.last_edit = None;
         self.status = "All changes saved locally.".into();
+        self.report_set_aside();
     }
 
     pub fn autosave_ready(&self) -> bool {
@@ -3260,6 +3343,54 @@ mod tests {
         let store = reopened.store.as_ref().unwrap().borrow();
         assert!(store.load_scene_beats().unwrap().is_empty());
         drop(store);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// The file of the open scene, found by the id in it.
+    fn open_scene_file(state: &StudioState) -> PathBuf {
+        let root = state.store.as_ref().unwrap().borrow().root.clone();
+        let id = state.session.as_ref().unwrap().document_id().to_string();
+        std::fs::read_dir(root.join("manuscript"))
+            .unwrap()
+            .flatten()
+            .map(|entry| entry.path())
+            .find(|path| std::fs::read_to_string(path).unwrap_or_default().contains(&id))
+            .unwrap()
+    }
+
+    #[test]
+    fn a_scene_changed_outside_is_read_again_unless_the_writer_is_typing() {
+        let (mut state, dir) = open_state("outside");
+        state.apply_editor_text("Written here.".into());
+        state.flush_editor();
+        let file = open_scene_file(&state);
+        let scene = state.selected.unwrap();
+
+        // Changed outside, nothing unsaved: the window shows the change.
+        let text = std::fs::read_to_string(&file).unwrap().replace("Written here.", "Written in git.");
+        std::fs::write(&file, text.replace("<title>Scene 1</title>", "<title>Pulled</title>")).unwrap();
+        state.check_open_scene_on_disk();
+        assert_eq!(state.editor_text, "Written in git.");
+        assert_eq!(state.binder.get(scene).unwrap().title, "Pulled");
+        assert!(state.status.contains("read again"), "{}", state.status);
+
+        // Changed outside while the writer has unsaved typing: nothing is
+        // replaced, and the save keeps both.
+        state.apply_editor_text("Typing, not saved.".into());
+        let outside = std::fs::read_to_string(&file).unwrap().replace("Written in git.", "Changed again outside.");
+        std::fs::write(&file, &outside).unwrap();
+        state.check_open_scene_on_disk();
+        assert_eq!(state.editor_text, "Typing, not saved.");
+        assert!(state.status.contains("changed outside"), "{}", state.status);
+        state.flush_editor();
+        assert!(std::fs::read_to_string(&file).unwrap().contains("Typing, not saved."));
+        assert!(state.status.contains(".conflict-"), "{}", state.status);
+        let kept = std::fs::read_dir(file.parent().unwrap())
+            .unwrap()
+            .flatten()
+            .find(|entry| entry.file_name().to_string_lossy().contains(".conflict-"))
+            .unwrap();
+        assert_eq!(std::fs::read_to_string(kept.path()).unwrap(), outside);
         let _ = std::fs::remove_dir_all(dir);
     }
 
