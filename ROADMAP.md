@@ -179,16 +179,29 @@ Done for scenes, on the `alternative-phase-5` branch. See [`documentation/PROJEC
 - Files hold no time of last save and no per-paragraph ids.
 - The round trip is tested: every kind of block and formatting, randomly built documents, and a project on disk. The Markdown export is also read with an independent Markdown reader. `check_project` runs the check on any project folder without changing it.
 
-Left for stage 2, where they are first needed: the bible and JSON files in code, order keys, and the stylesheet that scene files point at.
+Order keys were dropped from the plan. The order of the lines in a file is the order of the items, which needs nothing kept in step.
 
 #### 2. Project format 2: text files are the project
 
-- The HTML and JSON files are the source of truth. `FORMAT` says 2.
+In progress. The folder of files can be written and read; the program does not open a project that way yet.
+
+Done:
+
+- A whole project is written as the folder of HTML and JSON files and read back: the manuscript, the binder, scene beats, characters, the world, research, the plot grid, and settings. `FORMAT` says 2.
+- Saving writes each file safely: a crash during a save leaves the old file or the new one, never half of one.
+- Settings are split. The ones that go with the book are in `project.json`. The theme, panel layout, the book on screen, and writing sessions are in `.local/`, which git ignores.
+- The files can be checked against the project they were written from, by reading them back and comparing.
+- A path in a project file that points outside the project folder is refused.
+- A new project folder gets a `README.md` that explains the files to someone without this program, a stylesheet so a browser shows a scene as a page, and a `.gitignore`.
+- `to_format_2` writes a copy of any project in the new layout, to look at, without changing the project.
+
+Still to do:
+
+- The program opens and saves a format 2 project. SQLite stays as a cache on this machine: search, word counts, and fast opening. It is rebuilt from the files when it is missing or out of date, and it is never the only copy of anything written.
+- Snapshots, backups, and track-changes baselines move to this machine's `.local/`.
+- Opening a format 1 project converts it, after writing a backup of the SQLite file, and checks the conversion as above. An older version of the program refuses a format 2 project, as `FORMAT` already requires.
+- A rule for the file of a scene that was permanently deleted. Writing never deletes a file today.
 - The whole book can be exported as Markdown files, one for each scene and bible entry, and Markdown can be brought in.
-- SQLite stays as a cache on this machine: search, word counts, and fast opening. It is rebuilt from the files when it is missing or out of date, and it is never the only copy of anything written.
-- Saving writes the file safely: a crash during a save leaves the old file or the new one, never half of one.
-- What belongs to one machine stays on it and out of the shared files: theme, panel layout, the current book on screen, writing sessions and today's count, snapshots, backups, and track-changes baselines.
-- Opening a format 1 project converts it, after writing a backup of the SQLite file. The conversion is checked by reading the new files back and comparing them with the database. An older version of the program refuses a format 2 project, as `FORMAT` already requires.
 - Compile, search, snapshots, track changes, spellcheck, and diagnostics work as before.
 
 #### 3. Files changed outside the program
@@ -410,7 +423,7 @@ With or without sync, the source of truth is the `.writingstudio` folder on the 
 
 ## Immediate next steps
 
-Phase 4, local professional editing, is complete and merged into `master`: snapshot comparison, review notes and highlights, track changes, spellcheck, and scene diagnostics. Phase 5 is in progress on the `alternative-phase-5` branch: plain-text projects first, then sync through git. Stage 1 is done: the format is written down, and a scene is stored as an HTML file that reads back exactly, with Markdown as the export. Next is stage 2, where the text files become the project. The writing-surface UI is Phase 8. Richer front matter than the book title stays in Phase 6.
+Phase 4, local professional editing, is complete and merged into `master`: snapshot comparison, review notes and highlights, track changes, spellcheck, and scene diagnostics. Phase 5 is in progress on the `alternative-phase-5` branch: plain-text projects first, then sync through git. Stage 1 is done: the format is written down, and a scene is stored as an HTML file that reads back exactly, with Markdown as the export. Stage 2 has started: a whole project can be written as the folder of files and read back. Next is the program opening and saving a project that way, and converting a format 1 project. The writing-surface UI is Phase 8. Richer front matter than the book title stays in Phase 6.
 
 Bonus work, none of it started: editing at the same time; optional on-device assistance; reviewing a whole book at once; finer track changes; richer snapshot comparison; spelling at the word; diagnostics that fit the book; review marks in the compiled file; one place for the review panels; bringing an older project up to date on open; tests that drive the window; a separate bible project beside each book; backups that include research files; and tags.
 

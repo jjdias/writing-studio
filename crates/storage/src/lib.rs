@@ -5,9 +5,14 @@
 //! Backups copy the database into `backups/` without touching the live file
 //! until the copy succeeds.
 
+mod files;
 mod recovery;
 mod schema;
 
+pub use files::{
+    read_project_files, verify_project_files, write_atomic, write_project_files, ProjectContent,
+    FILES_FORMAT_VERSION,
+};
 pub use recovery::{BackupInfo, SnapshotInfo};
 
 use std::collections::HashMap;

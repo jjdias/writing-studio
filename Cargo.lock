@@ -6363,6 +6363,7 @@ dependencies = [
  "writing-studio-core",
  "writing-studio-diagnostics",
  "writing-studio-document",
+ "writing-studio-format",
  "writing-studio-plotting",
  "writing-studio-project",
  "writing-studio-research",

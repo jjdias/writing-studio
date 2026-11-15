@@ -4,8 +4,8 @@ Status: **draft**. The program still reads and writes format 1 ([PROJECT_FORMAT.
 
 Each section says how far it has got:
 
-- **Built and tested**: scene files, and their Markdown export and import. The code is in `crates/format`.
-- **Specified**: everything else. It is written down here so it can be argued with, and is built in the next stage.
+- **Built and tested**: scene files, and their Markdown export and import (`crates/format`); and the whole folder, written from a project and read back (`crates/storage`, `files.rs`).
+- **Not built**: the program opening and saving a project this way. It still uses the SQLite file.
 
 ## What the format is for
 
@@ -38,8 +38,8 @@ MyNovel.writingstudio/
     the-harbor-3f9a.html
   characters/             one HTML file for each character
   places/  cultures/  lore/  timeline/  research/
+  bible.json              the order of those entries, which scenes they point at, who is related to whom
   plot.json               plotlines and plot points
-  links.json              which bible entries point at which scenes; who is related to whom
   attachments/            research files, as now
   dictionaries/           optional Hunspell dictionaries, as now
   .gitignore              ignores .local/
@@ -196,35 +196,60 @@ Nobody waited.
 - Formatted prose, 20,000 paragraphs: the same words with the same bold, italic, and links every time.
 - Formatting pressed against awkward characters, 20,000 paragraphs: no letter or digit is ever lost. About one paragraph in three hundred shows different bold or italic.
 
-## Other HTML files — specified
+## Other HTML files — built and tested
 
 Characters, places, cultures, lore, timeline events, and research notes are files of the same kind: a head, then the entry's text, written and read by the same code as a scene. The name or title is the `<title>`.
 
 | Folder | Names in the head | Text |
 | --- | --- | --- |
-| `characters/` | `id`, `role`, `motivation` (once for each) | Summary |
+| `characters/` | `id`, `role`, `motivation` (once for each, in order) | Summary |
 | `places/` | `id`, `culture` (an id) | Summary |
 | `cultures/` | `id` | Summary |
 | `lore/` | `id`, `place`, `culture` (ids) | Body |
 | `timeline/` | `id`, `when`, `place` (an id) | Summary |
-| `research/` | `id`, `file` (once for each name under `attachments/`) | Notes |
+| `research/` | `id` | Notes |
 
-## JSON files — specified
+The text of an entry is plain paragraphs. Its files under `attachments/` are listed in `bible.json`.
 
-JSON is for structure that is not read as prose. Every file is written with two-space indentation, one item to a line where items are short, and keys in a fixed order, so that a change to one item changes one line.
+## JSON files — built and tested
 
-- **`project.json`** — `format`, `id`, `title`, and the shared settings: word targets, the compile book, spelling language and the project's accepted words, the compile title page.
-- **`binder.json`** — a list of items. Each has `id`, `kind`, `parent`, `order`, and either `file` (an item with text, whose title is in that file) or `title` (a folder, part, or book with no text of its own). A trashed item also has `deleted` and `restore_parent`.
-- **`plot.json`** — plotlines, each with its points; a point has `title`, `summary`, `order`, and an optional `scene`.
-- **`links.json`** — bible entries that point at scenes, and relationships between characters.
+JSON is for structure that is not read as prose. Where a file is a list, each item is on one line, so that adding, moving, or changing an item changes one line.
 
-**Order.** `order` is a short text key, not a number. A new item between two others gets a key that sorts between theirs, so moving one item changes one line and does not renumber its neighbors.
+- **`project.json`** — `format`, `id`, `title`, `created`, and `settings`: the daily and project word targets, each book's word target, whether compile writes a title page, and spelling (on or off, the dictionary, and the project's accepted words).
+- **`binder.json`** — `items`, one to a line. Each has `id` and `kind`, and `parent` unless it is at the top. An item with text has `file`; its title, synopsis, status, label, and color are in that file. An item with no text of its own (a book, a part, a folder) has them here. A trashed item also has `deleted`, the time it was trashed, and `restore_parent`.
+- **`bible.json`** — a list for each kind of entry (`characters`, `places`, `cultures`, `lore`, `timeline`, `research`), each item an `id` and its `file`; then `research_files`, `relationships`, and `scene_links`.
+- **`plot.json`** — `plotlines` in order, each with its `points` in order; a point has `title`, `summary`, and an optional `scene`.
+
+**Order is the order of the lines.** Nothing is numbered. In `binder.json` a parent comes before its children, and children are in reading order, so the file reads from the top as the book does. Moving a scene moves one line and changes nothing else. An earlier draft of this format gave each item an order key; line order does the same job with nothing to keep in step.
 
 **Ids.** An item with text has one id, the one in its file. Format 1 gives the binder item and its text separate ids; the conversion keeps the binder item's.
 
+**Paths.** A `file` is a path inside the project folder, with `/` between its parts. A path that is empty, absolute, or holds `..` is refused, and the project does not open.
+
+**Times.** Apart from `created` and `deleted`, no file holds a time. Records read from files have the time they were read.
+
+## This machine only
+
+`.local/settings.json` holds every setting that is not in `project.json`: the theme, panel layout, the book on screen, whether the whole series is shown, the autosave delay, and writing sessions. A project opened where there is no `.local/` uses the usual ones.
+
+## What is written when, and what is not
+
+- Every file is written whole under a temporary name and then renamed over the old one. A crash during a save leaves the old file or the new one.
+- `README.md`, `scene.css`, and `.gitignore` are written when they are missing and then left alone, so they can be edited.
+- Writing a project never deletes a file. The file of a scene that was permanently deleted stays in the folder, out of `binder.json`, until the program is given a rule for it.
+- After writing, the files can be checked against the project: they are read back, and what they would be written as is compared with what the project is written as.
+
+To see one of your own projects this way, as a copy in a new folder:
+
+```bash
+cargo run -p writing-studio-storage --example to_format_2 -- path/to/Novel.writingstudio path/to/new-folder
+```
+
+The project is only read. The desktop app cannot open the copy yet.
+
 ## Questions still open
 
-- Whether `README.md` and `scene.css` in the project folder are written once or kept up to date.
+- What happens to the file of a scene that was permanently deleted.
 - Whether the whole book is also offered as one Markdown file, beside one file for each scene.
 - Whether a scene's snapshots should be offered to another machine. They are local in this draft.
 - Lists inside lists. The editor cannot make them today, so the format does not hold them.
