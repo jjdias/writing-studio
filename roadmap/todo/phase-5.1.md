@@ -2,7 +2,7 @@
 
 Not started. These are gaps found while building Phase 5 stages 1 and 2. None of them is in the Phase 5 plan, and each one matters before writers keep real books in format 2.
 
-Items 1 to 4 are about not losing writing. Do them first, in order, before the rest of Phase 5. Items 1 and 2 are done, and item 3 was dropped. Items 5 to 10 can follow in any order.
+Items 1 and 2 are done. Items 3 and 4 were dropped. Items 5 to 10 are small; do each when the code it touches is next changed.
 
 Read "Before you start" in [phase-5.md](phase-5.md) first: it lists the files, the rules the code keeps, and how to test.
 
@@ -26,16 +26,7 @@ Read "Before you start" in [phase-5.md](phase-5.md) first: it lists the files, t
 
 ## 4. Try a book of real size in the window
 
-**The problem.** Nothing in Phase 4 or Phase 5 has been run in the desktop window, and no project larger than a few scenes has been opened. Opening reads every scene file to fill the cache.
-
-**How to do it.**
-
-- Make a project of 300 scenes of 2,000 words each in 30 chapters, with notes, highlights, and a bible of 50 entries. A small example program in `crates/storage/examples/` can build it with `ProjectStore::create` and the save functions; do not commit the project.
-- Time `ProjectStore::open` on it. It should open in well under a second. If it does not, the next step is to skip scenes whose file has not changed since the cache was filled (keep each file's fingerprint in the cache), not to stop reading the files.
-- Open it in the window. Go through the binder, a few scenes, the bible, the plot grid, History, and each Phase 4 tool: comparison, notes, track changes, spellcheck, diagnostics. Change a scene in a text editor and come back to the window (Phase 5.1 item 2).
-- Write down what was found in [../done/phase-5.md](../done/phase-5.md).
-
-**Done when** the large project opens quickly, every view works on it, and the results are written down.
+**Dropped.** There is no performance testing and no testing in the window at this point; the tests in this repository are the only testing. See "How the work is done now" in [../README.md](../README.md).
 
 ## 5. Write `.gitattributes` with every project
 
@@ -72,11 +63,11 @@ attachments/** -text
 
 **How to fix it.** In History, list the scenes of a backup and let one be restored. Open the backup read-only with `rusqlite`, read that scene's row from `documents`, and save it with `save_document`, after a snapshot of the current text, as `restore_snapshot` in `recovery.rs` does.
 
-## 9. Check that the editor keeps line breaks
+## 9. Show line breaks typed in a paragraph
 
-**The problem.** Noticed while writing the stored format and not confirmed: the HTML the editor is given (`to_html` in `crates/document/src/html.rs`) writes a line break inside a paragraph as a plain line break in the text, not as `<br>`. A browser shows that as a space. If so, a line break typed in a paragraph is kept in the file but looks like a space when the scene is opened again in the window. This is older than Phase 5, and the stored format is not affected.
+**The problem.** The HTML the editor is given (`to_html` in `crates/document/src/html.rs`) writes a line break inside a paragraph as a plain line break in the text, not as `<br>`. The editor's styles do not keep line breaks in text, so a browser shows it as a space. A line break typed in a paragraph is kept in the file, but looks like a space when the scene is opened again in the window. This is older than Phase 5; the stored format is not affected.
 
-**How to do it.** In the window, type two lines in one paragraph with Shift+Enter, change scene, and come back. If the break shows as a space, write `<br>` for `\n` in `inline_to_html` in `crates/document/src/html.rs`; the reader there already turns `<br>` back into a line break. Add a test next to `empty_browser_paragraph_stays_empty`.
+**How to fix it.** Write `<br>` for `\n` in `inline_to_html` in `crates/document/src/html.rs`; the reader there already turns `<br>` back into a line break. Add a test next to `empty_browser_paragraph_stays_empty` that a paragraph with a line break gives `<br>` and reads back the same.
 
 ## 10. Update the guides for format 2
 

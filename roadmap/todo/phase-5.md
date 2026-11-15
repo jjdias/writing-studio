@@ -11,7 +11,8 @@ Read this whole section before starting any item.
 - [`AGENTS.md`](../../AGENTS.md) and the rules in `.claude/rules/`. They limit scope, tests, and git use.
 - [`documentation/PROJECT_FORMAT_2.md`](../../documentation/PROJECT_FORMAT_2.md): the format, and what is written and deleted when.
 - [`documentation/ARCHITECTURE.md`](../../documentation/ARCHITECTURE.md): the crates and the data flow.
-- [phase-5.1.md](phase-5.1.md). Items 1 to 4 there are about not losing writing and should be done before the stages below.
+- "How the work is done now" in [../README.md](../README.md): the current focus, and what counts as tested.
+- [phase-5.1.md](phase-5.1.md): small items to do when the code they touch is next changed.
 
 **Where the code is**
 

@@ -16,7 +16,7 @@ Writing Studio is **open source** (MIT OR Apache-2.0) and **free for the communi
 | 3 | Story development: series, plot, characters, world, research | Done | [done/phase-3.md](done/phase-3.md) |
 | 4 | Professional editing: comparison, notes, track changes, spellcheck, diagnostics | Done | [done/phase-4.md](done/phase-4.md) |
 | 5 | Plain-text projects, and sync through git | Stages 1 and 2 done; 3 to 5 to do | [done/phase-5.md](done/phase-5.md), [todo/phase-5.md](todo/phase-5.md) |
-| 5.1 | What format 2 still needs to be safe to rely on | Items 1 and 2 done, item 3 dropped; items 4 to 10 to do | [todo/phase-5.1.md](todo/phase-5.1.md) |
+| 5.1 | What format 2 still needs to be safe to rely on | Items 1 and 2 done; 3 and 4 dropped; 5 to 10 to do | [todo/phase-5.1.md](todo/phase-5.1.md) |
 | 6 | Publishing: export profiles, PDF, EPUB | To do | [todo/phase-6.md](todo/phase-6.md) |
 | 7 | Cross-platform release | To do | [todo/phase-7.md](todo/phase-7.md) |
 | 8 | Writing surface | To do | [todo/phase-8.md](todo/phase-8.md) |
@@ -24,11 +24,29 @@ Writing Studio is **open source** (MIT OR Apache-2.0) and **free for the communi
 
 Phases 1 to 4 are on `master`. Phase 5 is on the `alternative-phase-5` branch.
 
+## How the work is done now
+
+The project is young and has no users yet. Until that changes:
+
+- **The focus is adding function, keeping the code short, and not taking on technical debt.** Prefer removing code to adding it. When a feature replaces something, remove what it replaced in the same change. Do not leave code that only a test uses.
+- **The tests in this repository are the only testing there is.** There is no manual testing, no testing in the desktop window, and no other test suite. If behavior is not covered by a test here, it is not tested. Every change that adds or changes behavior adds or changes a test for it.
+- **No performance testing for now.** Keep to the performance rules in `.claude/rules/`, and measure only when something is seen to be slow.
+- **No compatibility with earlier versions.** Earlier test versions had no downloads. When a format changes, do not write a conversion; refuse the old format with a clear message.
+
+### Known technical debt
+
+Clear these when the code around them is next changed, or on their own when there is time. Each is small.
+
+- `verify_project_files` in `crates/storage/src/files.rs` is used only by its own test since conversion was removed. Remove it, or use it in stage 4, where a merged project could be checked before it is written.
+- `crates/collaboration` and `crates/security` are placeholder crates that nothing uses. No work is planned for either (editing at the same time is bonus work; a project is as private as its folder and its git host). Remove both from the workspace. `crates/synchronization` stays: stages 4 and 5 use it.
+- There are two Markdown writers: `crates/export/src/markdown.rs` (compile, with notes as footnotes) and `crates/format/src/write.rs` (a scene, exact, with notes as CriticMarkup). Phase 5's Markdown export of a whole book should not add a third. Decide which one compile and the export share, and remove the other's duplicate code.
+- `documentation/PROJECT_FORMAT.md` is titled as format 1 but now only matters as the list of the cache's tables. Fold the table list into `PROJECT_FORMAT_2.md` and remove the file.
+
 ## What to do next
 
-1. Phase 5.1, item 4 (items 1 and 2 are done; item 3 was dropped). They are about not losing writing in a format 2 project, and they should come before more is built on it.
-2. The rest of Phase 5, in order: the Markdown export of a whole book, then stages 3, 4, and 5.
-3. The rest of Phase 5.1.
+1. The rest of Phase 5, in order: the Markdown export of a whole book, then stages 3, 4, and 5.
+2. The remaining items of Phase 5.1, each when the code it touches is next changed.
+3. The technical debt above, the same way.
 
 The other phases do not depend on Phase 5 and can be taken in any order after it.
 
