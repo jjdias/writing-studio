@@ -2,7 +2,7 @@
 
 Free, open-source, local-first. Your writing stays in a folder on your machine.
 
-Phases 1 through 4 are the app described here. What comes next is in [ROADMAP.md](../ROADMAP.md).
+This guide describes the program as it is: Phases 1 to 4, and the project folder from Phase 5. What comes next is in [the roadmap](../roadmap/README.md).
 
 ## Start
 
@@ -18,7 +18,7 @@ Phases 1 through 4 are the app described here. What comes next is in [ROADMAP.md
 - **Yellow**, **Green**, **Blue**, and **Pink** highlight the selection. **No highlight** takes the color off. Text can carry a highlight and a note together.
 - Notes and highlights are listed above the manuscript. Click the quoted text to select it in the manuscript. In a note's row, change its kind, edit its text, **Resolve** it, or **Remove** it. A resolved note stays on the text, dimmed, and leaves the list until **Show resolved** is on. **Remove resolved** takes every resolved note off the scene. Each of these is one undo step.
 - Compile writes open notes: footnotes in Markdown, bracketed text in DOCX. A kind other than Comment is named in front of the note. Resolved notes and highlights are left out of the compiled file.
-- **Track changes** starts tracking the open scene from the text it has now. After that, each paragraph you rewrite, add, or remove is listed above the manuscript. **Accept** keeps a change and takes it off the list. **Reject** puts that paragraph back as it was; **Ctrl+Z** undoes a reject. **Accept all** and **Reject all** do the whole list. **Stop tracking** keeps the text and drops the list. Tracked changes stay in the project when you close it. Only text is tracked, one scene at a time, and compile uses the text as it stands. See [PHASE4.md](PHASE4.md).
+- **Track changes** starts tracking the open scene from the text it has now. After that, each paragraph you rewrite, add, or remove is listed above the manuscript. **Accept** keeps a change and takes it off the list. **Reject** puts that paragraph back as it was; **Ctrl+Z** undoes a reject. **Accept all** and **Reject all** do the whole list. **Stop tracking** keeps the text and drops the list. Tracked changes stay in the project when you close it. Only text is tracked, one scene at a time, and compile uses the text as it stands. See [Phase 4](../roadmap/done/phase-4.md).
 - Changes save a few seconds after you stop typing, when you leave the field, or with **Ctrl+S**.
 - **Ctrl+Z** undoes. **Ctrl+Y** or **Ctrl+Shift+Z** redoes in the document session.
 
@@ -47,7 +47,7 @@ The index is built in memory from the project when it opens, and updated when a 
 
 **Outliner** is a table of chapters and scenes. Edit the chapter title, scene title, status, and synopsis in the row. The words column is that row's count. **Open** returns to Writing on that item.
 
-**Diagnostics**, beside **Outline** at the top, changes the table. Each scene shows its **Goal**, **Conflict**, and **Outcome**, which you type in the row, then its words, its share of dialogue, the characters from the bible it names, and the checks: a missing goal, conflict, or outcome; a scene with no text; a scene much longer or shorter than the book's usual one; no character named; long sentences. The same three fields and checks are in the inspector for the selected scene. The checks count what is in the text. They do not judge it. See [PHASE4.md](PHASE4.md) for exactly what is counted.
+**Diagnostics**, beside **Outline** at the top, changes the table. Each scene shows its **Goal**, **Conflict**, and **Outcome**, which you type in the row, then its words, its share of dialogue, the characters from the bible it names, and the checks: a missing goal, conflict, or outcome; a scene with no text; a scene much longer or shorter than the book's usual one; no character named; long sentences. The same three fields and checks are in the inspector for the selected scene. The checks count what is in the text. They do not judge it. See [Phase 4](../roadmap/done/phase-4.md) for exactly what is counted.
 
 ## Recover
 

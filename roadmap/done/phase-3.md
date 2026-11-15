@@ -4,7 +4,7 @@ Phase 3 is **local story development** for a series. One project folder holds ev
 
 The program stays **open source** (MIT OR Apache-2.0) and **free for the community**.
 
-This work landed from `phase-3` onto `master`. How to use it: [USAGE.md](USAGE.md). On-disk layout: [PROJECT_FORMAT.md](PROJECT_FORMAT.md).
+This work landed from `phase-3` onto `master`. How to use it: [USAGE.md](../../documentation/USAGE.md). On-disk layout: [PROJECT_FORMAT.md](../../documentation/PROJECT_FORMAT.md).
 
 ---
 
@@ -47,7 +47,7 @@ This work landed from `phase-3` onto `master`. How to use it: [USAGE.md](USAGE.m
 - A separate bible project beside each book (bonus)
 - Backups that include `attachments/` (bonus). A SQLite backup still leaves research files behind; copy the project folder to keep both.
 - Front matter richer than the book title (Phase 6)
-- Snapshot comparison, review annotations, highlights, track changes, and spellcheck (Phase 4). An inline comment on a selection already saves with the scene (Phase 2; see [PHASE2.md](PHASE2.md))
+- Snapshot comparison, review annotations, highlights, track changes, and spellcheck (Phase 4). An inline comment on a selection already saves with the scene (Phase 2; see [Phase 2](phase-2.md))
 - Cloud sync, accounts, or real-time collaboration (Phase 5)
 
 Those stay optional. They must not become required to write.

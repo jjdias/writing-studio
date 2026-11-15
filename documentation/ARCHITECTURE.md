@@ -42,7 +42,7 @@ Binder + stored documents → writing-studio-export → .md / .docx on disk
 
 The plot grid, character cast, world notes, and research library are stored in the same project database as the binder. Research files are copied into `attachments/`. Search is not stored there: the Tantivy index is memory only. Remaining crates are typed placeholders (collaboration, synchronization, security) so module boundaries stay stable.
 
-Inline comments, links, code blocks, and scene breaks are fields on the document JSON. A note sits on text runs (`marks.comment`, with `comment_kind` and `comment_resolved`), and so does a highlight (`marks.highlight`). `Document::review_items` lists them, joining neighboring runs that carry the same note. Tracked changes are the difference between the document and a baseline copy kept in `tracking_baselines`; nothing about them is stored in the document. See [PHASE4.md](PHASE4.md) and [ROADMAP.md](../ROADMAP.md).
+Inline comments, links, code blocks, and scene breaks are fields on the document JSON. A note sits on text runs (`marks.comment`, with `comment_kind` and `comment_resolved`), and so does a highlight (`marks.highlight`). `Document::review_items` lists them, joining neighboring runs that carry the same note. Tracked changes are the difference between the document and a baseline copy kept in `tracking_baselines`; nothing about them is stored in the document. See [Phase 4](../roadmap/done/phase-4.md) and [the roadmap](../roadmap/README.md).
 
 ## Data flow
 
@@ -51,7 +51,7 @@ Inline comments, links, code blocks, and scene breaks are fields on the document
 3. Typing updates the session; idle autosave, blur, scene change, and Ctrl+S write JSON back through `ProjectStore`. A save also updates the in-memory search index.
 4. Binder moves and trash update `binder_nodes` (parent, `sort_index`, `label`, `color`, `deleted_at`, `restore_parent_id`). Plot, characters, world notes, research, and scene links use the tables in [PROJECT_FORMAT.md](PROJECT_FORMAT.md). Opening a project copies leftover binder research notes into the research library and removes them from the binder. Emptying trash clears scene links to deleted scenes and drops a deleted book's word target.
 5. History restore either replaces one document from `snapshots` or copies a `.local/backups/*.sqlite` into the cache and writes the files again from it. That SQLite copy does not include `attachments/`.
-6. Compile loads documents, walks the chosen book, and writes a file the user chooses. Which book is compiled, and how today and the sitting follow that book, is in [PHASE3.md](PHASE3.md) and [PROJECT_FORMAT.md](PROJECT_FORMAT.md).
+6. Compile loads documents, walks the chosen book, and writes a file the user chooses. Which book is compiled, and how today and the sitting follow that book, is in [Phase 3](../roadmap/done/phase-3.md) and [PROJECT_FORMAT.md](PROJECT_FORMAT.md).
 
 ## Non-negotiables
 
@@ -61,4 +61,4 @@ Inline comments, links, code blocks, and scene breaks are fields on the document
 - Offline writing stays complete if a future optional sync service is unused or unavailable.
 - There is no account gate and no separate “community vs restricted” feature split in the core.
 
-See [PHASE1.md](PHASE1.md), [PHASE2.md](PHASE2.md), [PHASE3.md](PHASE3.md), and [PHASE4.md](PHASE4.md) for the feature lists and [PROJECT_FORMAT_2.md](PROJECT_FORMAT_2.md) for on-disk layout. Phase 4 is in [PHASE4.md](PHASE4.md). What comes next is in [ROADMAP.md](../ROADMAP.md).
+See [Phase 1](../roadmap/done/phase-1.md), [Phase 2](../roadmap/done/phase-2.md), [Phase 3](../roadmap/done/phase-3.md), and [Phase 4](../roadmap/done/phase-4.md) for what each phase added, and [PROJECT_FORMAT_2.md](PROJECT_FORMAT_2.md) for on-disk layout. What comes next is in [the roadmap](../roadmap/README.md).

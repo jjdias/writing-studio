@@ -107,7 +107,7 @@ A new local day sets each book's baseline to that book's current outline count. 
 
 Each document is a list of blocks. `schema_version` is currently 1. Block types are `paragraph`, `heading` (with `level`), `quote`, `list`, `code`, and `scene_break`. A block holds inline runs. Each run has marks: `bold`, `italic`, `underline`, `strikethrough`, an optional `link`, an optional `comment`, `comment_kind`, `comment_resolved`, and an optional `highlight`.
 
-`comment` is the note from the Note control. `comment_kind` is `comment`, `question`, `revise`, or `check`. `comment_resolved` is true once the note is resolved. `highlight` is `yellow`, `green`, `blue`, or `pink`. The last three fields came with Phase 4. A document saved before them loads with a plain, open comment and no highlight, and `schema_version` is still 1. Tracked changes are not stored in the document; see `tracking_baselines`. See [PHASE4.md](PHASE4.md).
+`comment` is the note from the Note control. `comment_kind` is `comment`, `question`, `revise`, or `check`. `comment_resolved` is true once the note is resolved. `highlight` is `yellow`, `green`, `blue`, or `pink`. The last three fields came with Phase 4. A document saved before them loads with a plain, open comment and no highlight, and `schema_version` is still 1. Tracked changes are not stored in the document; see `tracking_baselines`. See [Phase 4](../roadmap/done/phase-4.md).
 
 ```json
 {

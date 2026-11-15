@@ -14,7 +14,7 @@ A working desktop app:
 - Writing, corkboard, outliner, and history workspace modes
 - Compile one book to local Markdown or DOCX
 
-Full list: [`documentation/PHASE1.md`](documentation/PHASE1.md).
+Full list: [`roadmap/done/phase-1.md`](roadmap/done/phase-1.md).
 
 ## Phase 2
 
@@ -24,7 +24,7 @@ The writing environment around that studio:
 - Full-text search, binder labels and colors, corkboard grouping, and an editable outliner
 - Daily targets, sittings, themes, and a panel layout saved in the project
 
-Full list: [`documentation/PHASE2.md`](documentation/PHASE2.md).
+Full list: [`roadmap/done/phase-2.md`](roadmap/done/phase-2.md).
 
 ## Phase 3
 
@@ -36,7 +36,7 @@ Story development in the same local project:
 - Compile, the word target, today, and the sitting follow the current book
 - Bible entries can point at scenes. Research is edited only in Research
 
-Full list: [`documentation/PHASE3.md`](documentation/PHASE3.md).
+Full list: [`roadmap/done/phase-3.md`](roadmap/done/phase-3.md).
 
 ## Phase 4
 
@@ -48,9 +48,20 @@ Professional editing, still local:
 - Spellcheck on this computer, with a project dictionary
 - Scene diagnostics: goal, conflict, and outcome, with checks on the text
 
-Full list: [`documentation/PHASE4.md`](documentation/PHASE4.md).
+Full list: [`roadmap/done/phase-4.md`](roadmap/done/phase-4.md).
 
-Phases 1 through 4 are done. See the [roadmap](ROADMAP.md) for what is next.
+## Phase 5, in progress
+
+Projects as plain files:
+
+- Each scene is an HTML file that any browser opens, with the book's structure in JSON beside it
+- A SQLite cache on each computer, filled from the files when a project opens
+- Older projects are converted when they are opened, after a backup
+- Scenes can be written as Markdown for other writing tools
+
+What has shipped: [`roadmap/done/phase-5.md`](roadmap/done/phase-5.md). Still to come, including sync through git: [`roadmap/todo/phase-5.md`](roadmap/todo/phase-5.md).
+
+Phases 1 through 4 are done; Phase 5 is in progress. See the [roadmap](roadmap/README.md) for what is next.
 
 ## Requirements
 
@@ -76,14 +87,15 @@ Desktop/UI crates need a windowing runtime and are not part of the default libra
 
 ## Documentation
 
-- [Phase 1 features](documentation/PHASE1.md)
-- [Phase 2 features](documentation/PHASE2.md)
-- [Phase 3 features](documentation/PHASE3.md)
-- [Phase 4 features](documentation/PHASE4.md)
+- [Phase 1 features](roadmap/done/phase-1.md)
+- [Phase 2 features](roadmap/done/phase-2.md)
+- [Phase 3 features](roadmap/done/phase-3.md)
+- [Phase 4 features](roadmap/done/phase-4.md)
+- [Phase 5 so far](roadmap/done/phase-5.md)
 - [Usage](documentation/USAGE.md)
 - [Architecture](documentation/ARCHITECTURE.md)
 - [Project format](documentation/PROJECT_FORMAT.md)
-- [Roadmap](ROADMAP.md)
+- [Roadmap](roadmap/README.md)
 
 ## License
 

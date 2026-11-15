@@ -4,7 +4,7 @@ Phase 4 is **local professional editing**: comparing versions, reviewing, tracki
 
 The program stays **open source** (MIT OR Apache-2.0) and **free for the community**.
 
-This work landed from `phase-4` onto `master`. How to use it: [USAGE.md](USAGE.md). On-disk layout: [PROJECT_FORMAT.md](PROJECT_FORMAT.md).
+This work landed from `phase-4` onto `master`. How to use it: [USAGE.md](../../documentation/USAGE.md). On-disk layout: [PROJECT_FORMAT.md](../../documentation/PROJECT_FORMAT.md).
 
 ---
 
@@ -49,7 +49,7 @@ Limits:
 - Changing a note from the list redraws the manuscript, so the caret returns to the start.
 - **Note** still asks in a browser prompt. The in-window field is Phase 8.
 
-Where it lives: `marks.comment_kind`, `marks.comment_resolved`, and `marks.highlight` in the document JSON, beside the Phase 2 `marks.comment`. Older documents load unchanged and `schema_version` is still 1. See [PROJECT_FORMAT.md](PROJECT_FORMAT.md). `Document::review_items` lists them. The editor's selection handling is in `crates/ui/assets/review.js`.
+Where it lives: `marks.comment_kind`, `marks.comment_resolved`, and `marks.highlight` in the document JSON, beside the Phase 2 `marks.comment`. Older documents load unchanged and `schema_version` is still 1. See [PROJECT_FORMAT.md](../../documentation/PROJECT_FORMAT.md). `Document::review_items` lists them. The editor's selection handling is in `crates/ui/assets/review.js`.
 
 ### Track changes
 
