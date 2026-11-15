@@ -12,6 +12,11 @@ use writing_studio_document::{
 
 use crate::write::{kind_prefix, RESOLVED_PREFIX};
 
+/// What is taken off the ends of a line. Only these: the writer protects a
+/// space or tab that belongs to the text, and any other kind of space, such
+/// as a non-breaking one, is text.
+const EDGE: [char; 2] = [' ', '\t'];
+
 /// Read Markdown into blocks, in canonical form. There is always at least
 /// one block.
 pub fn markdown_to_blocks(text: &str) -> Vec<Block> {
@@ -23,7 +28,7 @@ pub fn markdown_to_blocks(text: &str) -> Vec<Block> {
     let mut at = 0;
     while at < lines.len() {
         let line = lines[at];
-        let trimmed = line.trim();
+        let trimmed = line.trim_matches(EDGE);
         if trimmed.is_empty() {
             at += 1;
             continue;
@@ -62,9 +67,9 @@ pub fn markdown_to_blocks(text: &str) -> Vec<Block> {
         }
         if trimmed.starts_with('>') {
             let mut body: Vec<&str> = Vec::new();
-            while at < lines.len() && lines[at].trim_start().starts_with('>') {
-                let rest = &lines[at].trim_start()[1..];
-                body.push(rest.strip_prefix(' ').unwrap_or(rest).trim());
+            while at < lines.len() && lines[at].trim_start_matches(EDGE).starts_with('>') {
+                let rest = &lines[at].trim_start_matches(EDGE)[1..];
+                body.push(rest.strip_prefix(' ').unwrap_or(rest).trim_matches(EDGE));
                 at += 1;
             }
             blocks.push(block(BlockKind::Quote {
@@ -76,13 +81,13 @@ pub fn markdown_to_blocks(text: &str) -> Vec<Block> {
             let mut items: Vec<String> = Vec::new();
             while at < lines.len() {
                 let here = lines[at];
-                match list_item(here.trim()) {
+                match list_item(here.trim_matches(EDGE)) {
                     Some((found, rest)) if found == marker => items.push(rest.to_string()),
                     // An indented line under an item carries that item on.
-                    None if here.starts_with("  ") && !here.trim().is_empty() => {
+                    None if here.starts_with("  ") && !here.trim_matches(EDGE).is_empty() => {
                         if let Some(last) = items.last_mut() {
                             last.push('\n');
-                            last.push_str(here.trim());
+                            last.push_str(here.trim_matches(EDGE));
                         }
                     }
                     _ => break,
@@ -103,8 +108,8 @@ pub fn markdown_to_blocks(text: &str) -> Vec<Block> {
         }
         let mut body: Vec<&str> = vec![trimmed];
         at += 1;
-        while at < lines.len() && !starts_block(lines[at].trim()) {
-            body.push(lines[at].trim());
+        while at < lines.len() && !starts_block(lines[at].trim_matches(EDGE)) {
+            body.push(lines[at].trim_matches(EDGE));
             at += 1;
         }
         blocks.push(block(BlockKind::Paragraph {
@@ -169,7 +174,7 @@ fn heading(trimmed: &str) -> Option<(u8, &str)> {
     if rest.is_empty() {
         return Some((level as u8, ""));
     }
-    rest.starts_with([' ', '\t']).then(|| (level as u8, rest.trim()))
+    rest.starts_with([' ', '\t']).then(|| (level as u8, rest.trim_matches(EDGE)))
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -186,7 +191,7 @@ fn list_item(trimmed: &str) -> Option<(Marker, &str)> {
         if rest.is_empty() {
             Some((marker, ""))
         } else {
-            rest.starts_with([' ', '\t']).then(|| (marker, rest.trim()))
+            rest.starts_with([' ', '\t']).then(|| (marker, rest.trim_matches(EDGE)))
         }
     }
     match trimmed.chars().next()? {

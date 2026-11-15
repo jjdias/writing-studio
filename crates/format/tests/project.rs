@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use writing_studio_core::Id;
 use writing_studio_diagnostics::SceneBeats;
-use writing_studio_format::{canonical_blocks, file_name, same_content, SceneFile, SceneHeader};
+use writing_studio_format::{file_name, same_content, stored_blocks, SceneFile, SceneHeader};
 use writing_studio_project::NodeKind;
 use writing_studio_storage::ProjectStore;
 
@@ -87,14 +87,14 @@ fn every_scene_of_a_project_reads_back_from_its_file() {
             },
             blocks: document.blocks.clone(),
         };
-        let text = file.to_text();
-        let read = SceneFile::parse(&text).unwrap();
+        let text = file.to_html();
+        let read = SceneFile::parse_html(&text);
         assert_eq!(read.header, file.header, "{text}");
         assert!(
-            same_content(&read.blocks, &canonical_blocks(&document.blocks)),
+            same_content(&read.blocks, &stored_blocks(&document.blocks)),
             "{text}"
         );
-        assert_eq!(read.to_text(), text);
+        assert_eq!(read.to_html(), text);
         assert!(names.insert(file_name(&node.title, node.id)));
         checked += 1;
     }

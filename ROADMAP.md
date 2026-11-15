@@ -106,7 +106,7 @@ These crates exist so module boundaries stay stable. They are **types or stubs**
 | Crate | Current state | Intended later work |
 | --- | --- | --- |
 | `writing-studio-collaboration` | Yrs placeholder constant | None planned. Editing at the same time is bonus work; Phase 5 does not use this crate |
-| `writing-studio-format` | Scenes to Markdown files and back, tested; not used by the app yet | Phase 5 stage 2: the files become the project |
+| `writing-studio-format` | Scenes to HTML files and back, with a Markdown export and import; tested, and not used by the app yet | Phase 5 stage 2: the files become the project |
 | `writing-studio-synchronization` | “optional = true” stub | Phase 5: merging two copies of a project, and sync through git |
 | `writing-studio-security` | Notes that local folders are unencrypted | None planned. A project is as private as the folder and the git host it is kept on |
 
@@ -169,22 +169,22 @@ The stages are in order. Each one is finished and useful before the next starts.
 
 Done for scenes, on the `alternative-phase-5` branch. See [`documentation/PROJECT_FORMAT_2.md`](documentation/PROJECT_FORMAT_2.md). Nothing the program stores has changed yet: it still reads and writes format 1.
 
-- The format is written down, with example files. Scene files are specified in full. The bible's Markdown files and the JSON files are specified more briefly, to be settled as stage 2 builds them.
-- A new crate, `writing-studio-format`, writes a scene as a Markdown file with a header and reads it back as the same document.
-- Scenes are Markdown, one file each. The header uses the `---` front-matter form, with plain `key: value` lines: title, synopsis, status, label, color, and the scene's goal, conflict, and outcome. Keys the program does not know are kept.
-- Notes and highlights use CriticMarkup, with a fixed spelling for the note's kind, a resolved note, and the highlight color. Underline is `<u>`.
-- What the writer typed is never read as formatting: characters that mean something to Markdown are escaped.
-- Where another Markdown reader would misread `**` or `*`, the file uses `<strong>` and `<em>` instead.
-- File names are a readable name and a short id, such as `the-harbor-3f9a.md`. A file is named once and not renamed.
+- The format is written down, with example files. Scene files are specified in full. The bible's files and the JSON files are specified more briefly, to be settled as stage 2 builds them.
+- **A scene is stored as an HTML file**, one file each, with every paragraph on its own line. Its title is the `<title>`; its synopsis, status, label, color, goal, conflict, and outcome are `<meta>` lines. Names the program does not know are kept. Any browser opens the file.
+- HTML holds a scene exactly, with one spelling for each thing and nothing escaped but `&`, `<`, and `>`. Markdown was built first and could not: it drops a few things the editor produces, and other Markdown readers disagree about `**` next to punctuation.
+- **Markdown is the export**, for taking a book to another writing tool, and an import. It uses `---` front matter and CriticMarkup for notes and highlights. What it cannot say is listed in the format.
+- Nothing in a scene file is ever run: scripts are skipped, and a link that is not a safe address is not written.
+- A new crate, `writing-studio-format`, does all of this.
+- File names are a readable name and a short id, such as `the-harbor-3f9a.html`. A file is named once and not renamed.
 - Files hold no time of last save and no per-paragraph ids.
-- The round trip is tested: every kind of block and formatting, randomly built documents, a project on disk, and the files as an independent Markdown reader sees them. `check_project` runs the same check on any project folder without changing it.
-- A few things a Markdown file cannot hold are dropped when a scene is written, and listed in the format: bold or italic on a space at the edge of a stretch, a line break at the very end of a paragraph, and formatting inside a code block.
+- The round trip is tested: every kind of block and formatting, randomly built documents, and a project on disk. The Markdown export is also read with an independent Markdown reader. `check_project` runs the check on any project folder without changing it.
 
-Left for stage 2, where they are first needed: the bible and JSON files in code, and order keys.
+Left for stage 2, where they are first needed: the bible and JSON files in code, order keys, and the stylesheet that scene files point at.
 
 #### 2. Project format 2: text files are the project
 
-- The Markdown and JSON files are the source of truth. `FORMAT` says 2.
+- The HTML and JSON files are the source of truth. `FORMAT` says 2.
+- The whole book can be exported as Markdown files, one for each scene and bible entry, and Markdown can be brought in.
 - SQLite stays as a cache on this machine: search, word counts, and fast opening. It is rebuilt from the files when it is missing or out of date, and it is never the only copy of anything written.
 - Saving writes the file safely: a crash during a save leaves the old file or the new one, never half of one.
 - What belongs to one machine stays on it and out of the shared files: theme, panel layout, the current book on screen, writing sessions and today's count, snapshots, backups, and track-changes baselines.
@@ -410,7 +410,7 @@ With or without sync, the source of truth is the `.writingstudio` folder on the 
 
 ## Immediate next steps
 
-Phase 4, local professional editing, is complete and merged into `master`: snapshot comparison, review notes and highlights, track changes, spellcheck, and scene diagnostics. Phase 5 is in progress on the `alternative-phase-5` branch: plain-text projects first, then sync through git. Stage 1 is done: the format is written down, and scenes convert to Markdown and back. Next is stage 2, where the text files become the project. The writing-surface UI is Phase 8. Richer front matter than the book title stays in Phase 6.
+Phase 4, local professional editing, is complete and merged into `master`: snapshot comparison, review notes and highlights, track changes, spellcheck, and scene diagnostics. Phase 5 is in progress on the `alternative-phase-5` branch: plain-text projects first, then sync through git. Stage 1 is done: the format is written down, and a scene is stored as an HTML file that reads back exactly, with Markdown as the export. Next is stage 2, where the text files become the project. The writing-surface UI is Phase 8. Richer front matter than the book title stays in Phase 6.
 
 Bonus work, none of it started: editing at the same time; optional on-device assistance; reviewing a whole book at once; finer track changes; richer snapshot comparison; spelling at the word; diagnostics that fit the book; review marks in the compiled file; one place for the review panels; bringing an older project up to date on open; tests that drive the window; a separate bible project beside each book; backups that include research files; and tags.
 

@@ -209,6 +209,8 @@ impl LineWriter {
                     self.out.push(ch);
                 }
                 '#' if self.escape_hash => self.out.push_str("\\#"),
+                // Written out, so that it can be seen and is not taken for a space.
+                '\u{a0}' => self.out.push_str("&nbsp;"),
                 // `![` starts an image, and a link may come straight after.
                 '!' if next.is_none() => self.out.push_str("\\!"),
                 '&' if looks_like_reference(&chars[index + 1..]) => self.out.push_str("\\&"),

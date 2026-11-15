@@ -2,7 +2,7 @@
 
 Version: **1**
 
-This is the format the program uses. Its planned replacement, with scenes as Markdown files, is the draft in [PROJECT_FORMAT_2.md](PROJECT_FORMAT_2.md).
+This is the format the program uses. Its planned replacement, with scenes as HTML files, is the draft in [PROJECT_FORMAT_2.md](PROJECT_FORMAT_2.md).
 
 A project is a directory you can copy, back up, and keep offline—not a single opaque file and not a cloud object.
 

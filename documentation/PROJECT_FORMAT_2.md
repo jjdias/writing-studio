@@ -4,14 +4,26 @@ Status: **draft**. The program still reads and writes format 1 ([PROJECT_FORMAT.
 
 Each section says how far it has got:
 
-- **Built and tested**: scene files. The code is in `crates/format`.
+- **Built and tested**: scene files, and their Markdown export and import. The code is in `crates/format`.
 - **Specified**: everything else. It is written down here so it can be argued with, and is built in the next stage.
 
 ## What the format is for
 
-1. **The book can be read without this program.** A scene is a Markdown file. Open it in any text editor, or in another writing tool, and the words are there, in order, with their formatting.
+1. **The book can be read without this program.** A scene is an HTML file. Any browser opens it as a page, and the words are there, in order, with their formatting. For another writing tool, the program also writes each scene as Markdown.
 2. **The book can be kept with git.** Text files can be compared and merged. One database file cannot.
-3. **Nothing is lost on the way in or out.** What the program writes, it reads back as the same document.
+3. **Nothing is lost.** A scene file holds the scene exactly. What the program writes, it reads back as the same document.
+
+### Why HTML is stored, and Markdown is exported
+
+Markdown was the first choice and was built and tested. It reads well as plain text, but it cannot hold a scene exactly: it has no way to say a few things the editor produces, and other Markdown readers disagree about what `**` means next to punctuation. HTML can say all of it, with one spelling for each thing, and needs nothing escaped but `&`, `<`, and `>`.
+
+So the stored file is HTML, and Markdown is an export: it has to be good to read and good for other programs, and it does not have to be exact. The Markdown reader stays, for bringing text in.
+
+| | Stored: HTML | Export: Markdown |
+| --- | --- | --- |
+| Holds the scene exactly | Yes | No; see the list below |
+| Opens without this program | In any browser | In any text editor or Markdown tool |
+| Read by the program | Always | To bring text in |
 
 ## The folder
 
@@ -19,11 +31,12 @@ Each section says how far it has got:
 MyNovel.writingstudio/
   FORMAT                  writing-studio-project 2
   README.md               what these files are, for someone without this program
+  scene.css               how a scene file looks in a browser
   project.json            the project's id and title, and settings every machine shares
   binder.json             every binder item: its kind, parent, order, and file
-  manuscript/             one Markdown file for each scene, and each chapter that holds text
-    the-harbor-3f9a.md
-  characters/             one Markdown file for each character
+  manuscript/             one HTML file for each scene, and each chapter that holds text
+    the-harbor-3f9a.html
+  characters/             one HTML file for each character
   places/  cultures/  lore/  timeline/  research/
   plot.json               plotlines and plot points
   links.json              which bible entries point at which scenes; who is related to whom
@@ -36,11 +49,111 @@ MyNovel.writingstudio/
     backups/
 ```
 
-The Markdown and JSON files are the project. `.local/` can be deleted; the program rebuilds what it can from the files, and what it cannot rebuild (snapshots, backups, writing sessions) was only ever on this machine.
+The HTML and JSON files are the project. `.local/` can be deleted; the program rebuilds what it can from the files, and what it cannot rebuild (snapshots, backups, writing sessions) was only ever on this machine.
 
 ## Scene files — built and tested
 
-A scene file is a header, a blank line, and the scene.
+```html
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>The Harbor</title>
+<meta name="id" content="3f9a2c1e-0b7d-4e55-9a10-6c2f8d4b1a77">
+<meta name="synopsis" content="Mara is late.&#10;The boat is leaving.">
+<meta name="status" content="draft">
+<meta name="goal" content="Reach the boat before the tide">
+<link rel="stylesheet" href="../scene.css">
+</head>
+<body>
+<p>Mara ran for the <strong>north</strong> quay. <em>Not again</em>, she thought.</p>
+<p>The <span class="note" data-note="which one?" data-kind="question">harbor</span> was quiet.</p>
+<p>“Wait,” said the pilot.<br>Nobody waited.</p>
+</body>
+</html>
+```
+
+### The head
+
+- `<title>` is the scene's title.
+- Everything else is a `<meta name="…" content="…">` line, one to a line. A line break inside a value is written `&#10;`.
+- A name with nothing to say is left out. Missing and empty mean the same.
+- Names the program does not know are kept, after the ones it does, and written back. The same name twice is a list.
+- The stylesheet line is the same in every file. It only affects how a browser shows the scene.
+- A file with no head, only the text, is read as a scene with no title. The program gives it an id when it takes the file in.
+
+| Name | Meaning |
+| --- | --- |
+| `id` | The binder item this file is the text of |
+| `synopsis`, `status`, `label`, `color` | As in the inspector |
+| `goal`, `conflict`, `outcome` | The scene's three beats |
+
+### The text
+
+Every block is on its own line, so a change to one paragraph changes one line of the file. A list has a line for each item. A code block has a line for each of its lines.
+
+| In the editor | In the file |
+| --- | --- |
+| Paragraph | `<p>…</p>`; an empty one is `<p></p>` |
+| Line break inside a block | `<br>` |
+| Heading 1 to 6 | `<h1>` to `<h6>` |
+| Quote | `<blockquote>…</blockquote>` |
+| List | `<ul>` or `<ol>` on a line, then one `<li>…</li>` line for each item |
+| Code | `<pre>`, a line break, the code as typed, `</pre>` |
+| Scene break | `<hr>` |
+| Bold, italic, strikethrough, underline | `<strong>`, `<em>`, `<s>`, `<u>` |
+| Link | `<a href="address">` |
+| Highlight, yellow | `<mark>` |
+| Highlight, another color | `<mark class="green">` — `green`, `blue`, or `pink` |
+| Note on text | `<span class="note" data-note="the note">` |
+| Note with a kind | `data-kind="question"` — `question`, `revise`, or `check` |
+| Resolved note | `data-resolved="true"` |
+
+- Formatting nests in one fixed order, outermost first: note, highlight, link, bold, italic, strikethrough, underline. A note over text that is partly bold or partly highlighted is written once, around all of it.
+- In the text, only `&`, `<`, and `>` are written differently: `&amp;`, `&lt;`, `&gt;`. A non-breaking space is written `&nbsp;` so that it can be seen.
+- Spaces are kept as typed, including several in a row and at the ends of a paragraph. The stylesheet tells a browser to show them.
+- There is no line break inside a block other than in code. A browser's view and the file agree.
+
+### What a scene file does not hold
+
+- The ids of paragraphs and runs. Nothing uses them.
+- The time of the last save. Git has it.
+- A link whose address is not `http`, `https`, `mailto`, or a plain path: the link is taken off and its text is kept. A file that a browser opens must not carry a `javascript:` address.
+
+Everything else is stored exactly, including the things Markdown cannot say.
+
+### Reading files changed by hand
+
+The reader accepts more than the writer produces:
+
+- A file that was tidied or indented: a line break and the spaces around it, inside a block, read as one space, and as nothing at the edge of a block.
+- `<b>`, `<i>`, `<del>`, and `<strike>`; `<div>` as a paragraph; text outside any block as a paragraph; tags and attributes in capitals; an attribute with no value.
+- A tag it does not know is passed over and its text is kept.
+- `&copy;` and other named characters it does not know stay as typed.
+
+Nothing in a scene file is ever run. `<script>` and `<style>` are skipped with everything inside them, and attributes such as `onclick` are ignored.
+
+It does not read lists inside lists, or blocks inside a quote; their text comes in as paragraphs.
+
+### File names
+
+`the-harbor-3f9a.html`: the title in lowercase with everything but letters and digits turned into `-`, at most 40 characters, then the first four characters of the id. A file gets its name when it is made. Changing the title, or moving the scene, does not rename the file; the `<title>` is the title.
+
+### What has been checked
+
+- Every kind of block and every piece of formatting is written and read back, with their awkward cases, including the ones Markdown drops.
+- Randomly built documents, made of the characters most likely to break HTML or Markdown, are written, read back, and compared. 2,000 run with every test run; 300,000 were run once when the HTML reader was written.
+- A project on disk is converted scene by scene and compared. To check one of your own, which only reads it:
+
+  ```bash
+  cargo run -p writing-studio-format --example check_project -- path/to/Novel.writingstudio
+  ```
+
+  Add `--write some/folder` to save each scene file, with its Markdown export beside it, and look at them.
+
+## Markdown export and import — built and tested
+
+The same scene, written for another program:
 
 ```markdown
 ---
@@ -51,126 +164,50 @@ synopsis: |-
   The boat is leaving.
 status: draft
 goal: Reach the boat before the tide
-outcome: The boat has gone
 ---
 
 Mara ran for the **north** quay. *Not again*, she thought.
+
+The {==harbor==}{>>Question: which one?<<} was quiet.
 
 “Wait,” said the pilot.\
 Nobody waited.
 ```
 
-### The header
+- The header is the `---` front matter that other writing tools read: `key: value` lines, quoted only where a YAML reader could misread the value, with text of several lines under `|-`.
+- Notes and highlights are CriticMarkup: `{==text==}` is a highlight, `{==text==}{.green}` a colored one, `{==text==}{>>the note<<}` a note, with `Question: `, `Revise: `, `Check: `, and `(resolved) ` in front of the note where they apply.
+- Underline is `<u>`. A scene break is `* * *`. An empty paragraph is `<br>` on a line.
+- What the writer typed is never read as formatting: characters that mean something to Markdown are written with a backslash.
+- Where another Markdown reader would misread `**`, `*`, or `~~`, the file uses `<strong>`, `<em>`, or `<s>`.
 
-The header is the `---` block that other writing tools call front matter. It uses a small part of YAML.
+**What the export leaves out**, because Markdown cannot say it:
 
-- Each line is `key: value`. A value is a piece of text, or a list of pieces of text.
-- A value is written bare when no YAML reader could take it for anything else. Otherwise it is in double quotes, with `\"`, `\\`, `\n`, and `\t`. `title: "The Harbor: Dawn"`, `label: "1984"`.
-- Text of several lines is written under `|-`, indented by two spaces.
-- A list is the key alone, then one `  - item` line for each item.
-- A key with nothing to say is left out. Missing and empty mean the same.
-- Keys the program does not know are kept, in their place after the ones it does, and written back.
-- A file with no header is read as a scene with no title. The program gives it an id when it takes the file in.
+- Bold, italic, and strikethrough on the spaces at the start or end of the formatted stretch.
+- A line break at the very end of a paragraph, heading, quote, or list item.
+- Formatting, links, notes, and highlights inside a code block.
+- A list with no items.
+- A note that crosses formatting or a highlight is written once for each piece.
 
-The reader also accepts single-quoted values, `#` comments, `|` and `|+` blocks, a byte-order mark, and Windows line endings.
+**Import.** The reader takes the export back, and reads Markdown written elsewhere: wrapped paragraphs, `***` or `---` as a scene break, `*` list items, `<b>` and `<i>`. It does not read `_italic_`, lists inside lists, or quotes inside quotes; those come in as text.
 
-Keys of a scene:
+**Checked against another reader.** The export is read with an independent Markdown reader (`pulldown-cmark`):
 
-| Key | Meaning |
-| --- | --- |
-| `id` | The binder item this file is the text of |
-| `title`, `synopsis`, `status`, `label`, `color` | As in the inspector |
-| `goal`, `conflict`, `outcome` | The scene's three beats |
+- Plain text, 20,000 paragraphs of awkward characters: the same text every time, and nothing read as formatting.
+- Formatted prose, 20,000 paragraphs: the same words with the same bold, italic, and links every time.
+- Formatting pressed against awkward characters, 20,000 paragraphs: no letter or digit is ever lost. About one paragraph in three hundred shows different bold or italic.
 
-### The text
+## Other HTML files — specified
 
-Blocks are separated by one blank line. The file ends with a line break.
+Characters, places, cultures, lore, timeline events, and research notes are files of the same kind: a head, then the entry's text, written and read by the same code as a scene. The name or title is the `<title>`.
 
-| In the editor | In the file |
-| --- | --- |
-| Paragraph | The text, on one line |
-| Line break inside a paragraph or quote | `\` at the end of the line |
-| Line break inside a heading or list item | `<br>` |
-| Empty paragraph | `<br>` alone on a line |
-| Heading 1 to 6 | `# ` to `###### ` |
-| Quote | `> ` at the start of each line |
-| List | `- item`; a numbered list is `1. item`, `2. item` |
-| A second list straight after a list of the same kind | `+ item`, or `1) item`, so the two stay two |
-| Code | Between lines of three or more backticks; more than any run of backticks inside |
-| Scene break | `* * *` |
-| Bold, italic, strikethrough | `**bold**`, `*italic*`, `~~struck~~` |
-| Underline | `<u>underlined</u>` |
-| Link | `[text](address)`; `[text](<address with spaces or (brackets)>)` |
-| Highlight, yellow | `{==text==}` |
-| Highlight, another color | `{==text==}{.green}` — `green`, `blue`, or `pink` |
-| Note on text | `{==text==}{>>the note<<}` |
-| Note with a kind | `{==text==}{>>Question: the note<<}` — `Question`, `Revise`, or `Check` |
-| Resolved note | `{==text==}{>>(resolved) Revise: the note<<}` |
-| Note and highlight together | `{==text==}{.yellow}{>>the note<<}` |
-
-Notes and highlights are CriticMarkup, an existing plain-text convention. The color and the words in front of the note are this program's additions to it.
-
-**What the writer typed is never read as formatting.** A character that means something to Markdown is written with a backslash in front: `\*`, `\_`, `` \` ``, `\[`, `\]`, `\<`, `\{`, `\}`, `\~`, `\\`. Some are escaped only where they would matter: `#`, `>`, `-`, `+`, and `=` at the start of a line; the `.` of `1.` at the start of a line; `=` next to another `=`; `&` in front of something that looks like `&amp;`; `!` at the end of a stretch of text; every `#` in a heading. Spaces and tabs at the start or end of a line are written `&#32;` and `&#9;`, because editors remove them and Markdown gives them meaning.
-
-**Where `**` would be misread, tags are used.** Other Markdown readers decide whether `**` opens or closes bold from the characters beside it. Where they would decide wrongly, the file says `<strong>`, `<em>`, or `<s>` instead. This happens when formatting ends exactly where other formatting begins, and when it presses punctuation against a letter, as in `word<strong>“quoted”</strong>`. In ordinary prose it is rare.
-
-### What a file cannot hold
-
-The file holds the document exactly, with these exceptions. They are removed when a scene is written, so the file and the document agree.
-
-- Bold, italic, and strikethrough do not cover the spaces at the start or end of the formatted stretch. `**word **` becomes `**word** `.
-- A line break at the very end of a paragraph, heading, quote, or list item is dropped. It shows nothing.
-- A code block is plain text. Formatting, links, notes, and highlights inside one are dropped.
-- A note that crosses formatting or a highlight is written once for each piece: `{==harbor ==}{>>check<<}{==was==}{.yellow}{>>check<<}`. The program reads it back as one note.
-- The ids of paragraphs and runs are not stored. Nothing uses them.
-- The time of the last save is not stored. Git has it.
-
-### Reading files changed by hand
-
-The reader accepts more than the writer produces, so that a file edited in another program still opens:
-
-- A paragraph wrapped over several lines is one paragraph.
-- `***`, `---`, and `___` are scene breaks. `*` starts a list item as `-` does. An indented line under a list item carries it on.
-- `<b>`, `<i>`, and `<del>` are bold, italic, and strikethrough.
-- `&amp;`, `&lt;`, `&gt;`, `&quot;`, `&nbsp;`, and numbered references are read as their characters.
-- Anything else it does not recognize stays in the text as it was typed: a table, a footnote, an image, a tag it does not know.
-
-It does not read `_italic_` or `__bold__`; use `*`. It does not read lists inside lists or quotes inside quotes; they come in as text.
-
-### What has been checked
-
-- Every kind of block and every piece of formatting is written and read back in the tests, with their awkward cases.
-- Randomly built documents, made of the characters most likely to break Markdown, are written, read back, and compared. 2,000 run with every test run. More than a million were run while this was written; they found one fault, in code blocks, which was fixed.
-- The files are read with an independent Markdown reader (`pulldown-cmark`), to see what another program makes of them:
-  - Plain text, 20,000 paragraphs of awkward characters: the same text every time, and nothing read as formatting.
-  - Formatted prose, 20,000 paragraphs: the same words with the same bold, italic, and links every time.
-  - Formatting pressed against awkward characters, 20,000 paragraphs: no letter or digit is ever lost. About one paragraph in three hundred shows different bold or italic.
-
-  This reader is where most of the escaping rules above come from. It found that a single `~word~` is strikethrough to some readers, that `!` before a link makes an image, that a paragraph cannot end with a line break, and where `**` is misread.
-- A project on disk is converted scene by scene and compared. To check one of your own, which only reads it:
-
-  ```bash
-  cargo run -p writing-studio-format --example check_project -- path/to/Novel.writingstudio
-  ```
-
-  Add `--write some/folder` to save the Markdown files and look at them.
-
-### File names
-
-`the-harbor-3f9a.md`: the title in lowercase with everything but letters and digits turned into `-`, at most 40 characters, then the first four characters of the id. A file gets its name when it is made. Changing the title, or moving the scene, does not rename the file; the title in the header is the title.
-
-## Other Markdown files — specified
-
-Characters, places, cultures, lore, timeline events, and research notes are files of the same kind: a header, then the entry's text as Markdown, written and read by the same code as a scene.
-
-| Folder | Header keys | Text |
+| Folder | Names in the head | Text |
 | --- | --- | --- |
-| `characters/` | `id`, `name`, `role`, `motivations` (a list) | Summary |
-| `places/` | `id`, `name`, `culture` (an id) | Summary |
-| `cultures/` | `id`, `name` | Summary |
-| `lore/` | `id`, `title`, `place`, `culture` (ids) | Body |
-| `timeline/` | `id`, `title`, `when`, `place` (an id) | Summary |
-| `research/` | `id`, `title`, `files` (a list of names under `attachments/`) | Notes |
+| `characters/` | `id`, `role`, `motivation` (once for each) | Summary |
+| `places/` | `id`, `culture` (an id) | Summary |
+| `cultures/` | `id` | Summary |
+| `lore/` | `id`, `place`, `culture` (ids) | Body |
+| `timeline/` | `id`, `when`, `place` (an id) | Summary |
+| `research/` | `id`, `file` (once for each name under `attachments/`) | Notes |
 
 ## JSON files — specified
 
@@ -187,6 +224,7 @@ JSON is for structure that is not read as prose. Every file is written with two-
 
 ## Questions still open
 
-- Whether `README.md` in the project folder is written once or kept up to date.
+- Whether `README.md` and `scene.css` in the project folder are written once or kept up to date.
+- Whether the whole book is also offered as one Markdown file, beside one file for each scene.
 - Whether a scene's snapshots should be offered to another machine. They are local in this draft.
 - Lists inside lists. The editor cannot make them today, so the format does not hold them.

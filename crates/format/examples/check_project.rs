@@ -1,18 +1,17 @@
-//! Check that every scene of a project can be kept as a Markdown file.
+//! Check that every scene of a project can be kept as an HTML scene file.
 //!
 //! ```text
 //! cargo run -p writing-studio-format --example check_project -- path/to/Novel.writingstudio
 //! ```
 //!
-//! Each scene is written as a scene file, read back, and compared with what
-//! was written. The project is only read. Add `--write folder` to also save
-//! the files, to look at them.
+//! Each scene is written as a scene file, read back, and compared with the
+//! scene in the project. The project is only read. Add `--write folder` to
+//! also save the files, each with its Markdown export beside it, to look at.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use writing_studio_document::Block;
-use writing_studio_format::{canonical_blocks, same_content, SceneFile, SceneHeader, file_name};
+use writing_studio_format::{file_name, same_content, stored_blocks, SceneFile, SceneHeader};
 use writing_studio_storage::ProjectStore;
 
 fn main() -> ExitCode {
@@ -42,7 +41,7 @@ fn check(project: &str, write_to: Option<PathBuf>) -> Result<bool, Box<dyn std::
     if let Some(folder) = &write_to {
         std::fs::create_dir_all(folder)?;
     }
-    let (mut scenes, mut adjusted, mut failed) = (0, 0, 0);
+    let (mut scenes, mut failed) = (0, 0);
     for node in &binder.nodes {
         let Some(document_id) = node.document_id else {
             continue;
@@ -67,80 +66,24 @@ fn check(project: &str, write_to: Option<PathBuf>) -> Result<bool, Box<dyn std::
             },
             blocks: document.blocks.clone(),
         };
-        let text = file.to_text();
+        let text = file.to_html();
         let name = file_name(&node.title, node.id);
         if let Some(folder) = &write_to {
             std::fs::write(folder.join(&name), &text)?;
+            std::fs::write(folder.join(&name).with_extension("md"), file.to_markdown())?;
         }
-        let wanted = canonical_blocks(&document.blocks);
-        let same = match SceneFile::parse(&text) {
-            Ok(read) => {
-                read.header == file.header
-                    && same_content(&read.blocks, &wanted)
-                    && read.to_text() == text
-            }
-            Err(err) => {
-                println!("FAILED  {name}: the header does not read back: {err}");
-                false
-            }
-        };
+        let read = SceneFile::parse_html(&text);
+        let same = read.header == file.header
+            && same_content(&read.blocks, &stored_blocks(&document.blocks))
+            && read.to_html() == text;
         if !same {
             failed += 1;
             println!("FAILED  {name}: “{}” does not read back the same", node.title);
-        } else if !same_content(&wanted, &merged(&document.blocks)) {
-            // The file is exact, but it holds a little less than the
-            // database did: see the list in `canonical.rs`.
-            adjusted += 1;
-            println!("adjusted {name}: “{}”", node.title);
         }
     }
     println!(
-        "{scenes} scenes checked. {} read back exactly. {adjusted} of those lose formatting that \
-         Markdown cannot hold (bold or italic on a space at the edge of a stretch, a line break at \
-         the end of a paragraph, or formatting inside a code block). {failed} failed.",
+        "{scenes} scenes checked. {} read back exactly. {failed} failed.",
         scenes - failed
     );
     Ok(failed == 0)
-}
-
-/// The document as stored, with nothing changed except that the comparison
-/// ignores how the text is cut into runs.
-fn merged(blocks: &[Block]) -> Vec<Block> {
-    use writing_studio_document::{BlockKind, Inline, ListItem};
-    fn join(inlines: &[Inline]) -> Vec<Inline> {
-        let mut out: Vec<Inline> = Vec::new();
-        for inline in inlines.iter().filter(|inline| !inline.text.is_empty()) {
-            match out.last_mut() {
-                Some(last) if last.marks == inline.marks => last.text.push_str(&inline.text),
-                _ => out.push(inline.clone()),
-            }
-        }
-        out
-    }
-    blocks
-        .iter()
-        .map(|block| Block {
-            id: block.id,
-            kind: match &block.kind {
-                BlockKind::Paragraph { inlines } => BlockKind::Paragraph { inlines: join(inlines) },
-                BlockKind::Heading { level, inlines } => BlockKind::Heading {
-                    level: *level,
-                    inlines: join(inlines),
-                },
-                BlockKind::Quote { inlines } => BlockKind::Quote { inlines: join(inlines) },
-                BlockKind::Code { inlines } => BlockKind::Code { inlines: join(inlines) },
-                BlockKind::List { ordered, items } => BlockKind::List {
-                    ordered: *ordered,
-                    items: items
-                        .iter()
-                        .map(|item| ListItem {
-                            id: item.id,
-                            inlines: join(&item.inlines),
-                        })
-                        .collect(),
-                },
-                BlockKind::SceneBreak => BlockKind::SceneBreak,
-            },
-        })
-        .collect()
 }
