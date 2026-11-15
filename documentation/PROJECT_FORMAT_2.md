@@ -1,11 +1,8 @@
-# Writing Studio project format 2 (draft)
+# Writing Studio project format 2
 
-Status: **draft**. The program still reads and writes format 1 ([PROJECT_FORMAT.md](PROJECT_FORMAT.md)). This is the format Phase 5 moves to. See [ROADMAP.md](../ROADMAP.md).
+Version: **2**. This is the format the program uses. A project made by an earlier version ([PROJECT_FORMAT.md](PROJECT_FORMAT.md)) is converted when it is opened; see the end of this page.
 
-Each section says how far it has got:
-
-- **Built and tested**: scene files, and their Markdown export and import (`crates/format`); and the whole folder, written from a project and read back (`crates/storage`, `files.rs`).
-- **Not built**: the program opening and saving a project this way. It still uses the SQLite file.
+The files in the project folder are the project. The code that writes a scene is in `crates/format`; the code that writes the folder and keeps it in step with every save is in `crates/storage` (`files.rs`, `mirror.rs`).
 
 ## What the format is for
 
@@ -51,7 +48,9 @@ MyNovel.writingstudio/
 
 The HTML and JSON files are the project. `.local/` can be deleted; the program rebuilds what it can from the files, and what it cannot rebuild (snapshots, backups, writing sessions) was only ever on this machine.
 
-## Scene files — built and tested
+The Markdown export is in the code and tested, scene by scene. The program does not yet have a command that exports a whole book.
+
+## Scene files
 
 ```html
 <!doctype html>
@@ -151,7 +150,7 @@ It does not read lists inside lists, or blocks inside a quote; their text comes 
 
   Add `--write some/folder` to save each scene file, with its Markdown export beside it, and look at them.
 
-## Markdown export and import — built and tested
+## Markdown export and import
 
 The same scene, written for another program:
 
@@ -196,7 +195,7 @@ Nobody waited.
 - Formatted prose, 20,000 paragraphs: the same words with the same bold, italic, and links every time.
 - Formatting pressed against awkward characters, 20,000 paragraphs: no letter or digit is ever lost. About one paragraph in three hundred shows different bold or italic.
 
-## Other HTML files — built and tested
+## Other HTML files
 
 Characters, places, cultures, lore, timeline events, and research notes are files of the same kind: a head, then the entry's text, written and read by the same code as a scene. The name or title is the `<title>`.
 
@@ -211,7 +210,7 @@ Characters, places, cultures, lore, timeline events, and research notes are file
 
 The text of an entry is plain paragraphs. Its files under `attachments/` are listed in `bible.json`.
 
-## JSON files — built and tested
+## JSON files
 
 JSON is for structure that is not read as prose. Where a file is a list, each item is on one line, so that adding, moving, or changing an item changes one line.
 
@@ -232,24 +231,47 @@ JSON is for structure that is not read as prose. Where a file is a list, each it
 
 `.local/settings.json` holds every setting that is not in `project.json`: the theme, panel layout, the book on screen, whether the whole series is shown, the autosave delay, and writing sessions. A project opened where there is no `.local/` uses the usual ones.
 
-## What is written when, and what is not
+`.local/cache.sqlite` is a database the program fills from the files every time the project opens. While the program runs it answers searches and word counts. It also holds what is this machine's alone: snapshots and track-changes baselines. `.local/backups/` holds copies of that database.
 
+## What is written when
+
+- **A save writes the file first, then the cache.** The cache never holds writing that is not in a file.
 - Every file is written whole under a temporary name and then renamed over the old one. A crash during a save leaves the old file or the new one.
+- Saving a scene writes that scene's file. Changing a title, synopsis, status, label, color, or beat writes the file of that item. Other scene files are not read or written.
+- `binder.json`, `bible.json`, `plot.json`, `project.json`, and the bible's files are written only when what they hold has changed.
 - `README.md`, `scene.css`, and `.gitignore` are written when they are missing and then left alone, so they can be edited.
-- Writing a project never deletes a file. The file of a scene that was permanently deleted stays in the folder, out of `binder.json`, until the program is given a rule for it.
-- After writing, the files can be checked against the project: they are read back, and what they would be written as is compared with what the project is written as.
+- **Opening reads the files.** The cache is filled from them each time, so a scene edited in a text editor, or brought in by git, is what opens. A file that cannot be read stops the project from opening, and the message names the file.
 
-To see one of your own projects this way, as a copy in a new folder:
+## What deletes a file
+
+- Emptying the trash deletes the files of the scenes in it. This is the step that already asks twice.
+- Deleting a character, a place, a culture, a lore entry, a timeline event, or a research note deletes its file.
+- Nothing else does. A file in the folder that no list mentions is left alone and is not part of the project.
+
+## Converting a format 1 project
+
+Opening a format 1 project converts it, in place, in this order:
+
+1. A backup of the database is written.
+2. The files are written.
+3. The files are read back and compared with the database. If they do not agree, the conversion stops here, the project is still format 1 with everything it had, and the message says so.
+4. `FORMAT` is changed to 2.
+5. The database is moved to `.local/cache.sqlite`, which keeps the project's snapshots and track-changes baselines. Earlier backups move to `.local/backups/`.
+
+If the program stops between steps 4 and 5, the next open finishes the move. A version of the program from before this format refuses a format 2 project.
+
+In format 1 a scene's text had an id of its own. In format 2 it has the id of its binder item. Snapshots and baselines are moved to the new id.
+
+To see one of your own projects in this format before converting it, as a copy in a new folder:
 
 ```bash
 cargo run -p writing-studio-storage --example to_format_2 -- path/to/Novel.writingstudio path/to/new-folder
 ```
 
-The project is only read. The desktop app cannot open the copy yet.
+The project is only read.
 
 ## Questions still open
 
-- What happens to the file of a scene that was permanently deleted.
 - Whether the whole book is also offered as one Markdown file, beside one file for each scene.
 - Whether a scene's snapshots should be offered to another machine. They are local in this draft.
 - Lists inside lists. The editor cannot make them today, so the format does not hold them.

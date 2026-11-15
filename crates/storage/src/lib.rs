@@ -6,12 +6,13 @@
 //! until the copy succeeds.
 
 mod files;
+mod mirror;
 mod recovery;
 mod schema;
 
 pub use files::{
-    read_project_files, verify_project_files, write_atomic, write_project_files, ProjectContent,
-    FILES_FORMAT_VERSION,
+    read_project_files, verify_project_files, write_atomic, write_format_2_marker,
+    write_project_files, ProjectContent, FILES_FORMAT_VERSION,
 };
 pub use recovery::{BackupInfo, SnapshotInfo};
 
@@ -21,65 +22,23 @@ use std::path::{Path, PathBuf};
 
 use rusqlite::{params, Connection, OptionalExtension};
 use writing_studio_core::{
-    Error, Id, Result, Timestamp, PROJECT_DB_FILE, PROJECT_FORMAT_FILE, PROJECT_FORMAT_VERSION,
+    Error, Id, Result, Timestamp,
 };
 use writing_studio_characters::{Cast, Character, CharacterRelationship, Motivation};
 use writing_studio_diagnostics::SceneBeats;
 use writing_studio_document::Document;
 use writing_studio_plotting::{PlotGrid, PlotPoint, Plotline};
 use writing_studio_project::{BinderNode, BinderTree, NodeKind, ProjectMeta, ProjectSettings};
-use writing_studio_templates::blank_novel;
 use writing_studio_worldbuilding::{Culture, Location, LoreEntry, TimelineEvent, World};
 use writing_studio_research::{ResearchFile, ResearchItem, ResearchLibrary, stored_attachment_name};
 
 pub struct ProjectStore {
     pub root: PathBuf,
     pub(crate) conn: Connection,
+    pub(crate) mirror: mirror::Mirror,
 }
 
 impl ProjectStore {
-    pub fn create(root: impl AsRef<Path>, title: &str) -> Result<Self> {
-        let root = root.as_ref().to_path_buf();
-        fs::create_dir_all(&root)?;
-        fs::create_dir_all(root.join("backups"))?;
-        fs::create_dir_all(root.join("attachments"))?;
-        fs::write(
-            root.join(PROJECT_FORMAT_FILE),
-            format!("writing-studio-project {PROJECT_FORMAT_VERSION}\n"),
-        )?;
-
-        let db_path = root.join(PROJECT_DB_FILE);
-        if db_path.exists() {
-            return Err(Error::message("a project already exists in this folder"));
-        }
-
-        let conn = open_connection(&db_path)?;
-        schema::install(&conn).map_err(sqlite)?;
-        let store = Self { root, conn };
-        let seeded = blank_novel(title);
-        store.persist_meta(&seeded.meta)?;
-        for node in &seeded.nodes {
-            store.upsert_node(node)?;
-        }
-        for document in &seeded.documents {
-            store.save_document(document)?;
-        }
-        Ok(store)
-    }
-
-    pub fn open(root: impl AsRef<Path>) -> Result<Self> {
-        let root = root.as_ref().to_path_buf();
-        let db_path = root.join(PROJECT_DB_FILE);
-        if !db_path.exists() {
-            return Err(Error::ProjectNotFound(root));
-        }
-        read_format_version(&root)?;
-        let conn = open_connection(&db_path)?;
-        schema::install(&conn).map_err(sqlite)?;
-        fs::create_dir_all(root.join("attachments"))?;
-        Ok(Self { root, conn })
-    }
-
     pub fn load_meta(&self) -> Result<ProjectMeta> {
         self.conn
             .query_row(
@@ -102,7 +61,7 @@ impl ProjectStore {
             .map_err(sqlite)
     }
 
-    pub fn persist_meta(&self, meta: &ProjectMeta) -> Result<()> {
+    pub(crate) fn persist_meta_cached(&self, meta: &ProjectMeta) -> Result<()> {
         let settings = serde_json::to_string(&meta.settings).map_err(|err| Error::message(err.to_string()))?;
         self.conn
             .execute(
@@ -142,7 +101,7 @@ impl ProjectStore {
         Ok(BinderTree::new(nodes))
     }
 
-    pub fn upsert_node(&self, node: &BinderNode) -> Result<()> {
+    pub(crate) fn upsert_node_cached(&self, node: &BinderNode) -> Result<()> {
         self.conn
             .execute(
                 "INSERT INTO binder_nodes (
@@ -182,9 +141,9 @@ impl ProjectStore {
         Ok(())
     }
 
-    pub fn persist_binder(&self, tree: &BinderTree) -> Result<()> {
+    pub(crate) fn persist_binder_cached(&self, tree: &BinderTree) -> Result<()> {
         for node in &tree.nodes {
-            self.upsert_node(node)?;
+            self.upsert_node_cached(node)?;
         }
         Ok(())
     }
@@ -244,7 +203,7 @@ impl ProjectStore {
 
     /// Replace the stored beats with `beats`. A scene with nothing written
     /// keeps no row.
-    pub fn persist_scene_beats(&self, beats: &HashMap<Id, SceneBeats>) -> Result<()> {
+    pub(crate) fn persist_scene_beats_cached(&self, beats: &HashMap<Id, SceneBeats>) -> Result<()> {
         let tx = self.conn.unchecked_transaction().map_err(sqlite)?;
         tx.execute("DELETE FROM scene_beats", []).map_err(sqlite)?;
         for (id, item) in beats.iter().filter(|(_, item)| !item.is_empty()) {
@@ -258,7 +217,7 @@ impl ProjectStore {
         Ok(())
     }
 
-    pub fn persist_plot(&self, grid: &PlotGrid) -> Result<()> {
+    pub(crate) fn persist_plot_cached(&self, grid: &PlotGrid) -> Result<()> {
         let tx = self.conn.unchecked_transaction().map_err(sqlite)?;
         tx.execute("DELETE FROM plot_points", []).map_err(sqlite)?;
         tx.execute("DELETE FROM plotlines", []).map_err(sqlite)?;
@@ -347,7 +306,7 @@ impl ProjectStore {
         })
     }
 
-    pub fn persist_cast(&self, cast: &Cast) -> Result<()> {
+    pub(crate) fn persist_cast_cached(&self, cast: &Cast) -> Result<()> {
         let tx = self.conn.unchecked_transaction().map_err(sqlite)?;
         tx.execute("DELETE FROM character_relationships", [])
             .map_err(sqlite)?;
@@ -463,7 +422,7 @@ impl ProjectStore {
         })
     }
 
-    pub fn persist_world(&self, world: &World) -> Result<()> {
+    pub(crate) fn persist_world_cached(&self, world: &World) -> Result<()> {
         let tx = self.conn.unchecked_transaction().map_err(sqlite)?;
         tx.execute("DELETE FROM timeline_events", []).map_err(sqlite)?;
         tx.execute("DELETE FROM lore_entries", []).map_err(sqlite)?;
@@ -579,7 +538,7 @@ impl ProjectStore {
         Ok(ResearchLibrary { items, files })
     }
 
-    pub fn persist_library(&self, library: &ResearchLibrary) -> Result<()> {
+    pub(crate) fn persist_library_cached(&self, library: &ResearchLibrary) -> Result<()> {
         let tx = self.conn.unchecked_transaction().map_err(sqlite)?;
         tx.execute("DELETE FROM research_files", []).map_err(sqlite)?;
         tx.execute("DELETE FROM research_items", []).map_err(sqlite)?;
@@ -734,7 +693,7 @@ impl ProjectStore {
         Ok(())
     }
 
-    pub fn delete_document(&self, id: Id) -> Result<()> {
+    pub(crate) fn delete_document_cached(&self, id: Id) -> Result<()> {
         self.conn
             .execute(
                 "DELETE FROM snapshots WHERE document_id = ?1",
@@ -800,7 +759,7 @@ impl ProjectStore {
         }
     }
 
-    pub fn save_document(&self, document: &Document) -> Result<()> {
+    pub(crate) fn save_document_cached(&self, document: &Document) -> Result<()> {
         let json = document
             .to_json()
             .map_err(|err| Error::message(err.to_string()))?;
@@ -853,7 +812,9 @@ impl ProjectStore {
             .to_rfc3339()
             .replace(':', "-")
             .replace('+', "_");
-        let dest = self.root.join("backups").join(format!("project-{stamp}.sqlite"));
+        let folder = self.backups_dir();
+        fs::create_dir_all(&folder)?;
+        let dest = folder.join(format!("project-{stamp}.sqlite"));
         let mut dest_conn = Connection::open(&dest).map_err(sqlite)?;
         let backup = rusqlite::backup::Backup::new(&self.conn, &mut dest_conn).map_err(sqlite)?;
         backup
@@ -882,27 +843,7 @@ pub(crate) fn open_connection(path: &Path) -> Result<Connection> {
     Ok(conn)
 }
 
-fn read_format_version(root: &Path) -> Result<u32> {
-    let path = root.join(PROJECT_FORMAT_FILE);
-    if !path.exists() {
-        return Ok(PROJECT_FORMAT_VERSION);
-    }
-    let text = fs::read_to_string(path)?;
-    let version = text
-        .split_whitespace()
-        .last()
-        .and_then(|part| part.parse().ok())
-        .unwrap_or(PROJECT_FORMAT_VERSION);
-    if version > PROJECT_FORMAT_VERSION {
-        return Err(Error::UnsupportedFormat {
-            found: version,
-            expected: PROJECT_FORMAT_VERSION,
-        });
-    }
-    Ok(version)
-}
-
-fn row_to_node(row: &rusqlite::Row<'_>) -> BinderNode {
+pub(crate) fn row_to_node(row: &rusqlite::Row<'_>) -> BinderNode {
     let parent: Option<String> = row.get(1).unwrap_or(None);
     let document: Option<String> = row.get(5).unwrap_or(None);
     let deleted: Option<String> = row.get(10).unwrap_or(None);
@@ -1272,7 +1213,15 @@ mod tests {
         let dir = env::temp_dir().join(format!("ws-beats-{}", Id::new()));
         let store = ProjectStore::create(&dir, "Beats Novel").unwrap();
         assert!(store.load_scene_beats().unwrap().is_empty());
-        let (kept, blank) = (Id::new(), Id::new());
+        // Beats are kept in a scene's own file, so they need real scenes.
+        let tree = store.load_binder().unwrap();
+        let with_text: Vec<Id> = tree
+            .nodes
+            .iter()
+            .filter(|node| node.document_id.is_some())
+            .map(|node| node.id)
+            .collect();
+        let (kept, blank) = (with_text[0], with_text[1]);
         let mut beats = HashMap::new();
         beats.insert(
             kept,

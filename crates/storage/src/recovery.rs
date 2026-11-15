@@ -161,7 +161,7 @@ impl ProjectStore {
     }
 
     pub fn list_backups(&self) -> Result<Vec<BackupInfo>> {
-        let dir = self.root.join("backups");
+        let dir = self.backups_dir();
         if !dir.exists() {
             return Ok(Vec::new());
         }
@@ -232,7 +232,8 @@ impl ProjectStore {
         }
         // A backup written by an older version lacks the tables added since.
         crate::schema::install(&self.conn).map_err(sqlite)?;
-        Ok(())
+        // The files are the project, so they follow what was restored.
+        self.write_files_from_cache()
     }
 }
 

@@ -35,7 +35,7 @@ fn main() -> ExitCode {
 }
 
 fn check(project: &str, write_to: Option<PathBuf>) -> Result<bool, Box<dyn std::error::Error>> {
-    let store = ProjectStore::open(project)?;
+    let store = ProjectStore::open_as_is(project)?;
     let binder = store.load_binder()?;
     let beats = store.load_scene_beats()?;
     if let Some(folder) = &write_to {

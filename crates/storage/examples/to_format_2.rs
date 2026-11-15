@@ -11,7 +11,9 @@
 use std::path::Path;
 use std::process::ExitCode;
 
-use writing_studio_storage::{verify_project_files, write_project_files, ProjectContent, ProjectStore};
+use writing_studio_storage::{
+    verify_project_files, write_format_2_marker, write_project_files, ProjectContent, ProjectStore,
+};
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -35,9 +37,10 @@ fn convert(project: &Path, target: &Path) -> Result<String, Box<dyn std::error::
     if target.exists() {
         return Err("the new folder already exists; choose a name that is not taken".into());
     }
-    let content = ProjectContent::from_store(&ProjectStore::open(project)?)?;
+    let content = ProjectContent::from_store(&ProjectStore::open_as_is(project)?)?;
     let files = write_project_files(target, &content)?;
     verify_project_files(target, &content)?;
+    write_format_2_marker(target)?;
     let mut copied = 0;
     for folder in ["attachments", "dictionaries"] {
         copied += copy_folder(&project.join(folder), &target.join(folder))?;

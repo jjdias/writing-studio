@@ -7,7 +7,7 @@ The program is open source and free for community use. The architecture is local
 ```text
 Dioxus UI
     → editor session, binder, compile input
-        → SQLite project folder (*.writingstudio)
+        → project folder (*.writingstudio): HTML and JSON files, with a SQLite cache in .local/
 ```
 
 Compile (Markdown / DOCX) reads the binder and `documents` table. It does not go through the rich-text widget.
@@ -26,7 +26,7 @@ Binder + stored documents → writing-studio-export → .md / .docx on disk
 | `writing-studio-project` | Binder tree, settings, drag-and-drop, trash/restore |
 | `writing-studio-manuscript` | Book/chapter/scene outline |
 | `writing-studio-templates` | Blank novel seed |
-| `writing-studio-storage` | SQLite, snapshots, folder backups, restore, load-all documents |
+| `writing-studio-storage` | The project folder: HTML and JSON files as the project, a SQLite cache beside them, snapshots, backups, restore, and conversion of format 1 projects |
 | `writing-studio-corkboard` | Scene cards from the binder |
 | `writing-studio-plotting` | Plotlines, plot points, and scene links |
 | `writing-studio-characters` | Profiles, motivations, and relationships |
@@ -34,7 +34,7 @@ Binder + stored documents → writing-studio-export → .md / .docx on disk
 | `writing-studio-research` | Research notes and files in `attachments/` |
 | `writing-studio-search` | In-memory full-text index of manuscript text, rebuilt from SQLite when a project opens |
 | `writing-studio-diagnostics` | Scene goal, conflict, and outcome, and the counts and checks made on a scene's text. No dependencies |
-| `writing-studio-format` | Project format 2: a scene as an HTML file, and back, exactly; and as Markdown for export and import. Tested, and not used by the app yet. See [PROJECT_FORMAT_2.md](PROJECT_FORMAT_2.md) |
+| `writing-studio-format` | A scene as an HTML file, and back, exactly; and as Markdown for export and import. See [PROJECT_FORMAT_2.md](PROJECT_FORMAT_2.md) |
 | `writing-studio-spellcheck` | Checks words against a Hunspell dictionary (English US is compiled in) and the project's own words; suggests replacements. No network |
 | `writing-studio-export` | Manuscript compile to Markdown and DOCX |
 | `writing-studio-ui` | Workspace UI |
@@ -46,19 +46,19 @@ Inline comments, links, code blocks, and scene breaks are fields on the document
 
 ## Data flow
 
-1. The UI holds a `StudioState` with an optional `ProjectStore` (SQLite connection in the project folder).
+1. The UI holds a `StudioState` with an optional `ProjectStore`. The files in the project folder are the project. The store also holds a SQLite cache in `.local/`, filled from the files when the project opens. Every save writes the file first and the cache second.
 2. Opening a scene loads JSON into an `EditorSession` wrapping a `Document`. Saved JSON is the block model, including links, code blocks, scene breaks, and inline comments. The desktop view is restricted HTML mapped back onto that JSON.
 3. Typing updates the session; idle autosave, blur, scene change, and Ctrl+S write JSON back through `ProjectStore`. A save also updates the in-memory search index.
 4. Binder moves and trash update `binder_nodes` (parent, `sort_index`, `label`, `color`, `deleted_at`, `restore_parent_id`). Plot, characters, world notes, research, and scene links use the tables in [PROJECT_FORMAT.md](PROJECT_FORMAT.md). Opening a project copies leftover binder research notes into the research library and removes them from the binder. Emptying trash clears scene links to deleted scenes and drops a deleted book's word target.
-5. History restore either replaces one document from `snapshots` or copies a `backups/*.sqlite` into the live connection. That SQLite copy does not include `attachments/`.
+5. History restore either replaces one document from `snapshots` or copies a `.local/backups/*.sqlite` into the cache and writes the files again from it. That SQLite copy does not include `attachments/`.
 6. Compile loads documents, walks the chosen book, and writes a file the user chooses. Which book is compiled, and how today and the sitting follow that book, is in [PHASE3.md](PHASE3.md) and [PROJECT_FORMAT.md](PROJECT_FORMAT.md).
 
 ## Non-negotiables
 
 - The UI never owns the document schema.
-- Saving is transactional. Backups copy SQLite via the backup API.
+- Saving is safe against a crash: each file is written whole and renamed into place, and cache writes are transactional. Backups copy SQLite via the backup API.
 - Cloud, collaboration, and export engines must consume the same document JSON.
 - Offline writing stays complete if a future optional sync service is unused or unavailable.
 - There is no account gate and no separate “community vs restricted” feature split in the core.
 
-See [PHASE1.md](PHASE1.md), [PHASE2.md](PHASE2.md), [PHASE3.md](PHASE3.md), and [PHASE4.md](PHASE4.md) for the feature lists and [PROJECT_FORMAT.md](PROJECT_FORMAT.md) for on-disk layout. Phase 4 is in [PHASE4.md](PHASE4.md). What comes next is in [ROADMAP.md](../ROADMAP.md).
+See [PHASE1.md](PHASE1.md), [PHASE2.md](PHASE2.md), [PHASE3.md](PHASE3.md), and [PHASE4.md](PHASE4.md) for the feature lists and [PROJECT_FORMAT_2.md](PROJECT_FORMAT_2.md) for on-disk layout. Phase 4 is in [PHASE4.md](PHASE4.md). What comes next is in [ROADMAP.md](../ROADMAP.md).

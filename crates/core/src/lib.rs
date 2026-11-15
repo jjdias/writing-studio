@@ -16,12 +16,13 @@ pub use id::{Id, NodeId};
 pub use time::{local_day, Timestamp};
 
 /// Current on-disk project format. Bump only with a documented migration.
-pub const PROJECT_FORMAT_VERSION: u32 = 1;
+pub const PROJECT_FORMAT_VERSION: u32 = 2;
 
 /// Marker filename stored beside the SQLite database.
 pub const PROJECT_FORMAT_FILE: &str = "FORMAT";
 
-/// SQLite database filename inside a project folder.
+/// SQLite database filename of a format 1 project. A format 2 project keeps
+/// its files as the project and a SQLite cache under `.local/`.
 pub const PROJECT_DB_FILE: &str = "project.sqlite";
 
 /// Human-readable product name.

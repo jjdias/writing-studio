@@ -110,14 +110,17 @@ impl BinderNode {
     pub fn new(kind: NodeKind, title: impl Into<String>, parent_id: Option<Id>, sort_index: i64) -> Self {
         let now = Timestamp::now();
         let kind_copy = kind;
+        let id = Id::new();
         Self {
-            id: Id::new(),
+            id,
             parent_id,
             kind,
             title: title.into(),
             sort_index,
+            // An item's text has the item's own id. Project format 2 stores
+            // the two as one file.
             document_id: if kind_copy.can_hold_document() {
-                Some(Id::new())
+                Some(id)
             } else {
                 None
             },

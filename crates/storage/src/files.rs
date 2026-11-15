@@ -120,7 +120,7 @@ pub fn write_atomic(path: &Path, contents: &[u8]) -> Result<()> {
 
 /// A path from inside a project file, checked so that it cannot name
 /// anything outside the project folder.
-fn inside(root: &Path, file: &str, relative: &str) -> Result<PathBuf> {
+pub(crate) fn inside(root: &Path, file: &str, relative: &str) -> Result<PathBuf> {
     let path = Path::new(relative);
     let plain = !relative.is_empty()
         && !relative.contains('\\')
@@ -133,7 +133,7 @@ fn inside(root: &Path, file: &str, relative: &str) -> Result<PathBuf> {
 
 /// Give an item its file. A name that is taken, which needs two titles and
 /// two ids that start alike, gets more of the id.
-fn place(
+pub(crate) fn place(
     files: &HashMap<Id, String>,
     used: &mut HashSet<String>,
     folder: &str,
@@ -249,9 +249,9 @@ struct Rendered {
     contents: Vec<(String, String)>,
 }
 
-/// Write a project into `root` as format 2 files. Files of items that are no
-/// longer in the project are left where they are; nothing is deleted.
-/// Returns the file each item was written to.
+/// Write a project into `root` as format 2 files, all but the `FORMAT`
+/// marker. Files of items that are no longer in the project are left where
+/// they are; nothing is deleted. Returns the file each item was written to.
 pub fn write_project_files(root: &Path, content: &ProjectContent) -> Result<HashMap<Id, String>> {
     let rendered = render(content)?;
     for (path, text) in &rendered.contents {
@@ -264,11 +264,16 @@ pub fn write_project_files(root: &Path, content: &ProjectContent) -> Result<Hash
             write_atomic(&root.join(name), text.as_bytes())?;
         }
     }
+    Ok(rendered.files)
+}
+
+/// Mark the folder as a format 2 project. This is the last step of making
+/// one, so that a folder that says 2 always has its files.
+pub fn write_format_2_marker(root: &Path) -> Result<()> {
     write_atomic(
         &root.join(PROJECT_FORMAT_FILE),
         format!("writing-studio-project {FILES_FORMAT_VERSION}\n").as_bytes(),
-    )?;
-    Ok(rendered.files)
+    )
 }
 
 /// Check that the files in `root` hold `content`: read them back and compare
@@ -296,15 +301,31 @@ pub fn verify_project_files(root: &Path, content: &ProjectContent) -> Result<()>
     Ok(())
 }
 
-fn render(content: &ProjectContent) -> Result<Rendered> {
-    let mut contents: Vec<(String, String)> = Vec::new();
-    let mut files: HashMap<Id, String> = HashMap::new();
-    let mut used: HashSet<String> = HashSet::new();
-    let documents: HashMap<Id, &Document> = content.documents.iter().map(|doc| (doc.id, doc)).collect();
+/// The file of one item with text: a scene, or a chapter written without
+/// scenes.
+pub(crate) fn scene_text(node: &BinderNode, beats: &SceneBeats, blocks: &[Block]) -> String {
+    SceneFile {
+        header: SceneHeader {
+            id: Some(node.id),
+            title: node.title.clone(),
+            synopsis: node.synopsis.clone(),
+            status: node.status.clone(),
+            label: node.label.clone(),
+            color: node.color.clone(),
+            goal: beats.goal.clone(),
+            conflict: beats.conflict.clone(),
+            outcome: beats.outcome.clone(),
+            other: Header::default(),
+        },
+        blocks: blocks.to_vec(),
+    }
+    .to_html()
+}
 
-    // The manuscript, and the binder that orders it.
+/// `binder.json`. `paths` has the file of every item with text.
+pub(crate) fn binder_json(tree: &BinderTree, paths: &HashMap<Id, String>) -> String {
     let mut items = Vec::new();
-    for node in in_tree_order(&content.binder) {
+    for node in in_tree_order(tree) {
         let mut item = Map::new();
         item.insert("id".into(), json!(node.id.to_string()));
         item.insert("kind".into(), json!(node.kind.as_str()));
@@ -317,48 +338,41 @@ fn render(content: &ProjectContent) -> Result<Rendered> {
         if let Some(parent) = node.restore_parent_id {
             item.insert("restore_parent".into(), json!(parent.to_string()));
         }
-        if node.document_id.is_some() {
-            let path = place(&content.files, &mut used, "manuscript", &node.title, node.id);
-            let beats = content.beats.get(&node.id).cloned().unwrap_or_default();
-            let scene = SceneFile {
-                header: SceneHeader {
-                    id: Some(node.id),
-                    title: node.title.clone(),
-                    synopsis: node.synopsis.clone(),
-                    status: node.status.clone(),
-                    label: node.label.clone(),
-                    color: node.color.clone(),
-                    goal: beats.goal,
-                    conflict: beats.conflict,
-                    outcome: beats.outcome,
-                    other: Header::default(),
-                },
-                blocks: documents
-                    .get(&node.id)
-                    .map(|document| document.blocks.clone())
-                    .unwrap_or_default(),
-            };
-            contents.push((path.clone(), scene.to_html()));
-            item.insert("file".into(), json!(path));
-            files.insert(node.id, path);
-        } else {
-            // An item with no text of its own has nowhere else to keep these.
-            item.insert("status".into(), json!(node.status));
-            for (key, value) in [
-                ("title", &node.title),
-                ("synopsis", &node.synopsis),
-                ("label", &node.label),
-                ("color", &node.color),
-            ] {
-                if !value.is_empty() {
-                    item.insert(key.into(), json!(value));
+        match paths.get(&node.id).filter(|_| node.document_id.is_some()) {
+            Some(path) => {
+                item.insert("file".into(), json!(path));
+            }
+            None => {
+                // An item with no text of its own has nowhere else to keep these.
+                item.insert("status".into(), json!(node.status));
+                for (key, value) in [
+                    ("title", &node.title),
+                    ("synopsis", &node.synopsis),
+                    ("label", &node.label),
+                    ("color", &node.color),
+                ] {
+                    if !value.is_empty() {
+                        item.insert(key.into(), json!(value));
+                    }
                 }
             }
         }
         items.push(Value::Object(item));
     }
-    contents.push(("binder.json".into(), lined(&[("items", items)])));
+    lined(&[("items", items)])
+}
 
+/// The bible: each entry's id, file, and text, and then `bible.json`, which
+/// orders them. `known` has the files entries already have; `used` gathers
+/// every name that is taken.
+pub(crate) fn bible_files(
+    cast: &Cast,
+    world: &World,
+    library: &ResearchLibrary,
+    known: &HashMap<Id, String>,
+    used: &mut HashSet<String>,
+) -> (Vec<(Id, String, String)>, String) {
+    let mut entries: Vec<(Id, String, String)> = Vec::new();
     // The bible: one file for each entry, and one list that orders them.
     let mut order: Vec<(&str, Vec<Value>)> = Vec::new();
     let mut links: Vec<Value> = Vec::new();
@@ -368,20 +382,19 @@ fn render(content: &ProjectContent) -> Result<Rendered> {
                      title: &str,
                      scenes: &[Id],
                      html: String| {
-        let path = place(&content.files, &mut used, folder, title, id);
-        contents.push((path.clone(), html));
+        let path = place(known, used, folder, title, id);
+        entries.push((id, path.clone(), html));
         list.push(json!({ "id": id.to_string(), "file": path }));
         links.extend(
             scenes
                 .iter()
                 .map(|scene| json!({ "from": id.to_string(), "scene": scene.to_string() })),
         );
-        files.insert(id, path);
     };
 
     let mut list = Vec::new();
-    for person in sorted(&content.cast.characters, |person| person.sort_index) {
-        let motivations: Vec<String> = sorted(&content.cast.motivations, |item| item.sort_index)
+    for person in sorted(&cast.characters, |person| person.sort_index) {
+        let motivations: Vec<String> = sorted(&cast.motivations, |item| item.sort_index)
             .into_iter()
             .filter(|item| item.character_id == person.id)
             .map(|item| item.body.clone())
@@ -399,7 +412,7 @@ fn render(content: &ProjectContent) -> Result<Rendered> {
     }
     order.push(("characters", std::mem::take(&mut list)));
 
-    for place_ in sorted(&content.world.locations, |item| item.sort_index) {
+    for place_ in sorted(&world.locations, |item| item.sort_index) {
         let html = entry_file(
             place_.id,
             &place_.name,
@@ -410,13 +423,13 @@ fn render(content: &ProjectContent) -> Result<Rendered> {
     }
     order.push(("places", std::mem::take(&mut list)));
 
-    for culture in sorted(&content.world.cultures, |item| item.sort_index) {
+    for culture in sorted(&world.cultures, |item| item.sort_index) {
         let html = entry_file(culture.id, &culture.name, &culture.summary, Vec::new());
         entry("cultures", &mut list, culture.id, &culture.name, &culture.scene_ids, html);
     }
     order.push(("cultures", std::mem::take(&mut list)));
 
-    for lore in sorted(&content.world.lore, |item| item.sort_index) {
+    for lore in sorted(&world.lore, |item| item.sort_index) {
         let html = entry_file(
             lore.id,
             &lore.title,
@@ -430,7 +443,7 @@ fn render(content: &ProjectContent) -> Result<Rendered> {
     }
     order.push(("lore", std::mem::take(&mut list)));
 
-    for event in sorted(&content.world.events, |item| item.sort_index) {
+    for event in sorted(&world.events, |item| item.sort_index) {
         let html = entry_file(
             event.id,
             &event.title,
@@ -444,7 +457,7 @@ fn render(content: &ProjectContent) -> Result<Rendered> {
     }
     order.push(("timeline", std::mem::take(&mut list)));
 
-    for note in sorted(&content.library.items, |item| item.sort_index) {
+    for note in sorted(&library.items, |item| item.sort_index) {
         let html = entry_file(note.id, &note.title, &note.notes, Vec::new());
         entry("research", &mut list, note.id, &note.title, &note.scene_ids, html);
     }
@@ -452,8 +465,7 @@ fn render(content: &ProjectContent) -> Result<Rendered> {
 
     order.push((
         "research_files",
-        content
-            .library
+        library
             .files
             .iter()
             .map(|file| {
@@ -468,7 +480,7 @@ fn render(content: &ProjectContent) -> Result<Rendered> {
     ));
     order.push((
         "relationships",
-        sorted(&content.cast.relationships, |item| item.sort_index)
+        sorted(&cast.relationships, |item| item.sort_index)
             .into_iter()
             .map(|item| {
                 json!({
@@ -480,13 +492,15 @@ fn render(content: &ProjectContent) -> Result<Rendered> {
             .collect(),
     ));
     order.push(("scene_links", links));
-    contents.push(("bible.json".into(), lined(&order)));
 
-    // The plot grid.
-    let plotlines: Vec<Value> = sorted(&content.plot.lines, |line| line.sort_index)
+    (entries, lined(&order))
+}
+
+pub(crate) fn plot_json(plot: &PlotGrid) -> Result<String> {
+    let plotlines: Vec<Value> = sorted(&plot.lines, |line| line.sort_index)
         .into_iter()
         .map(|line| {
-            let points: Vec<Value> = sorted(&content.plot.points, |point| point.sort_index)
+            let points: Vec<Value> = sorted(&plot.points, |point| point.sort_index)
                 .into_iter()
                 .filter(|point| point.plotline_id == line.id)
                 .map(|point| {
@@ -508,10 +522,12 @@ fn render(content: &ProjectContent) -> Result<Rendered> {
             })
         })
         .collect();
-    contents.push(("plot.json".into(), pretty(&json!({ "plotlines": plotlines }))?));
+    pretty(&json!({ "plotlines": plotlines }))
+}
 
-    // Settings: the shared ones with the project, the rest for this machine.
-    let settings = serde_json::to_value(&content.meta.settings).map_err(|err| Error::message(err.to_string()))?;
+/// `project.json`, and this machine's `.local/settings.json`.
+pub(crate) fn settings_json(meta: &ProjectMeta) -> Result<(String, String)> {
+    let settings = serde_json::to_value(&meta.settings).map_err(|err| Error::message(err.to_string()))?;
     let (mut shared, mut local) = (Map::new(), Map::new());
     for (key, value) in settings.as_object().cloned().unwrap_or_default() {
         if SHARED_SETTINGS.contains(&key.as_str()) {
@@ -522,13 +538,41 @@ fn render(content: &ProjectContent) -> Result<Rendered> {
     }
     let project = json!({
         "format": FILES_FORMAT_VERSION,
-        "id": content.meta.id.to_string(),
-        "title": content.meta.title,
-        "created": content.meta.created_at.to_rfc3339(),
+        "id": meta.id.to_string(),
+        "title": meta.title,
+        "created": meta.created_at.to_rfc3339(),
         "settings": shared,
     });
-    contents.push(("project.json".into(), pretty(&project)?));
-    contents.push((".local/settings.json".into(), pretty(&Value::Object(local))?));
+    Ok((pretty(&project)?, pretty(&Value::Object(local))?))
+}
+
+pub(crate) const LOCAL_SETTINGS: &str = ".local/settings.json";
+
+fn render(content: &ProjectContent) -> Result<Rendered> {
+    let mut contents: Vec<(String, String)> = Vec::new();
+    let mut files: HashMap<Id, String> = HashMap::new();
+    let mut used: HashSet<String> = HashSet::new();
+    let documents: HashMap<Id, &Document> = content.documents.iter().map(|doc| (doc.id, doc)).collect();
+
+    for node in content.binder.nodes.iter().filter(|node| node.document_id.is_some()) {
+        let path = place(&content.files, &mut used, "manuscript", &node.title, node.id);
+        let beats = content.beats.get(&node.id).cloned().unwrap_or_default();
+        let blocks = documents.get(&node.id).map(|document| document.blocks.as_slice()).unwrap_or_default();
+        contents.push((path.clone(), scene_text(node, &beats, blocks)));
+        files.insert(node.id, path);
+    }
+    contents.push(("binder.json".into(), binder_json(&content.binder, &files)));
+
+    let (entries, bible) = bible_files(&content.cast, &content.world, &content.library, &content.files, &mut used);
+    for (id, path, text) in entries {
+        contents.push((path.clone(), text));
+        files.insert(id, path);
+    }
+    contents.push(("bible.json".into(), bible));
+    contents.push(("plot.json".into(), plot_json(&content.plot)?));
+    let (project, local) = settings_json(&content.meta)?;
+    contents.push(("project.json".into(), project));
+    contents.push((LOCAL_SETTINGS.into(), local));
     Ok(Rendered { files, contents })
 }
 
@@ -599,14 +643,10 @@ fn header_id(file: &SceneFile, path: &str, key: &str) -> Result<Option<Id>> {
     }
 }
 
-/// Read a format 2 project from its files. Times of creation and change are
-/// not kept in the files, so every record reads as made now.
+/// Read a project from its format 2 files. It does not look at `FORMAT`;
+/// whoever opens the folder decides what it is. Times of creation and change
+/// are not kept in the files, so every record reads as made now.
 pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
-    let format = fs::read_to_string(root.join(PROJECT_FORMAT_FILE)).map_err(|err| bad(PROJECT_FORMAT_FILE, err))?;
-    let version = format.split_whitespace().nth(1).and_then(|n| n.parse::<u32>().ok());
-    if version != Some(FILES_FORMAT_VERSION) {
-        return Err(bad(PROJECT_FORMAT_FILE, "this folder is not a format 2 project"));
-    }
     let now = Timestamp::now();
     let mut files: HashMap<Id, String> = HashMap::new();
 
@@ -1105,7 +1145,8 @@ mod tests {
         assert_eq!(all_files(&first), all_files(&second));
 
         let files = all_files(&first);
-        assert_eq!(files["FORMAT"], "writing-studio-project 2\n");
+        write_format_2_marker(&first).unwrap();
+        assert_eq!(fs::read_to_string(first.join("FORMAT")).unwrap(), "writing-studio-project 2\n");
         assert_eq!(files[".gitignore"], ".local/\n");
         assert!(files.contains_key("README.md") && files.contains_key("scene.css"));
         assert!(!files.keys().any(|name| name.ends_with(".tmp")));
@@ -1187,14 +1228,6 @@ mod tests {
         for dir in [source, dir] {
             let _ = fs::remove_dir_all(dir);
         }
-    }
-
-    #[test]
-    fn a_format_1_folder_is_not_read_as_files() {
-        let (_, source) = sample();
-        let error = read_project_files(&source).unwrap_err().to_string();
-        assert!(error.contains("not a format 2 project"), "{error}");
-        let _ = fs::remove_dir_all(source);
     }
 
     #[test]

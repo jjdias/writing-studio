@@ -11,13 +11,12 @@ Status: Phases 1, 2, 3, and 4 are complete and on `master`. Details: [`documenta
 ## Product principles
 
 1. **Open and free for the community.** The full application stays open source. Optional future services must not lock manuscripts away from people who never connect.
-2. **Local storage first.** Projects are folders (`*.writingstudio`) with SQLite. Backups are timestamped copies of that database under `backups/`.
-3. **Never lose writing.** Transactional saves, WAL, crash-safe SQLite, and local backups come before sync.
+2. **Local storage first.** Projects are folders (`*.writingstudio`) of HTML and JSON files, with a SQLite cache for this machine. Backups are timestamped copies of that cache under `.local/backups/`.
+3. **Never lose writing.** Files written whole and renamed into place, a crash-safe cache, and local backups come before sync.
 4. **Shared Rust core.** UI, storage, compile, and later optional sync all consume the same document JSON and binder model.
 5. **Offline writing is complete.** If a network, account, or server is unavailable, the studio still works.
 6. **Easy to stay, easy to leave.** Every change should make writing a book here easier. None should make it harder to take the book somewhere else. A writer who stops using this program keeps files that another program, or a plain text editor, can read.
 
-Principles 2 to 4 describe the project as it is stored today. Phase 5 changes where the manuscript lives, from the SQLite file to text files, and keeps the rest.
 
 ---
 
@@ -84,7 +83,7 @@ These crates run in the current app. Phase 1 did not include plotting, character
 | `writing-studio-project` | Binder tree and settings |
 | `writing-studio-manuscript` | Book / chapter / scene outline |
 | `writing-studio-templates` | Blank novel seed |
-| `writing-studio-storage` | Local SQLite, save, snapshots, backups |
+| `writing-studio-storage` | The project folder: files as the project, a SQLite cache, snapshots, backups |
 | `writing-studio-corkboard` | Scene cards from the binder |
 | `writing-studio-export` | Local Markdown and DOCX compile |
 | `writing-studio-plotting` | Plotlines, plot points, and scene links |
@@ -94,6 +93,7 @@ These crates run in the current app. Phase 1 did not include plotting, character
 | `writing-studio-search` | In-memory full-text index of manuscript text, rebuilt when a project opens |
 | `writing-studio-spellcheck` | Hunspell dictionaries (English US bundled), project word list, suggestions |
 | `writing-studio-diagnostics` | Scene goal, conflict, and outcome; counts and checks on a scene's text |
+| `writing-studio-format` | A scene as an HTML file and back; Markdown export and import |
 | `writing-studio-ui` | Desktop workspace |
 | `writing-studio-desktop` | Native window |
 
@@ -106,7 +106,6 @@ These crates exist so module boundaries stay stable. They are **types or stubs**
 | Crate | Current state | Intended later work |
 | --- | --- | --- |
 | `writing-studio-collaboration` | Yrs placeholder constant | None planned. Editing at the same time is bonus work; Phase 5 does not use this crate |
-| `writing-studio-format` | Scenes to HTML files and back, with a Markdown export and import; tested, and not used by the app yet | Phase 5 stage 2: the files become the project |
 | `writing-studio-synchronization` | “optional = true” stub | Phase 5: merging two copies of a project, and sync through git |
 | `writing-studio-security` | Notes that local folders are unencrypted | None planned. A project is as private as the folder and the git host it is kept on |
 
@@ -161,7 +160,7 @@ In progress on the `alternative-phase-5` branch: stage 1 is done. This replaces 
 
 A writer who wants the book on two machines, or kept with a hosting provider, uses git. Any git host works, so the program does not need an integration for each storage service, and it runs no server of its own. Git is optional. Nobody needs it, or an account anywhere, to write.
 
-Git works on text files. Today a project is one SQLite file, which git can store but cannot compare or merge. So the first half of this phase changes how a project is stored, and that half is worth doing even for a writer who never uses git: the book becomes files that can be read without this program.
+Git works on text files. Before this phase a project was one SQLite file, which git can store but cannot compare or merge. So the first half of this phase changes how a project is stored, and that half is worth doing even for a writer who never uses git: the book becomes files that can be read without this program.
 
 The stages are in order. Each one is finished and useful before the next starts.
 
@@ -183,26 +182,23 @@ Order keys were dropped from the plan. The order of the lines in a file is the o
 
 #### 2. Project format 2: text files are the project
 
-In progress. The folder of files can be written and read; the program does not open a project that way yet.
+Done except for the Markdown export of a whole book. The program now makes, opens, and saves format 2 projects. See [`documentation/PROJECT_FORMAT_2.md`](documentation/PROJECT_FORMAT_2.md).
 
-Done:
-
-- A whole project is written as the folder of HTML and JSON files and read back: the manuscript, the binder, scene beats, characters, the world, research, the plot grid, and settings. `FORMAT` says 2.
-- Saving writes each file safely: a crash during a save leaves the old file or the new one, never half of one.
-- Settings are split. The ones that go with the book are in `project.json`. The theme, panel layout, the book on screen, and writing sessions are in `.local/`, which git ignores.
-- The files can be checked against the project they were written from, by reading them back and comparing.
+- The HTML and JSON files are the project: the manuscript, the binder, scene beats, characters, the world, research, the plot grid, and settings. `FORMAT` says 2.
+- Every save writes the file first and the cache second. Each file is written whole and renamed into place, so a crash leaves the old file or the new one.
+- A save writes only what changed: the scene being written, or the one item whose title or synopsis changed.
+- SQLite is a cache on this machine, in `.local/`. It is filled from the files every time a project opens, so a scene edited outside the program is what opens, and a project copied to another machine without `.local/` is complete.
+- What belongs to one machine stays in `.local/`, which git ignores: theme, panel layout, the book on screen, writing sessions, snapshots, backups, and track-changes baselines.
+- Opening a format 1 project converts it: a backup first, then the files, then a check of the files against the database, and only then the change of format. Snapshots and earlier backups are kept. A conversion that is interrupted is finished on the next open. An older version of the program refuses a format 2 project.
+- Emptying the trash deletes the files of the scenes in it. Deleting a bible entry deletes its file. Nothing else deletes a file.
 - A path in a project file that points outside the project folder is refused.
-- A new project folder gets a `README.md` that explains the files to someone without this program, a stylesheet so a browser shows a scene as a page, and a `.gitignore`.
-- `to_format_2` writes a copy of any project in the new layout, to look at, without changing the project.
+- A new project folder gets a `README.md` that explains the files, a stylesheet so a browser shows a scene as a page, and a `.gitignore`.
+- Restoring a backup writes the files again from what was restored.
+- Compile, search, snapshots, track changes, spellcheck, and diagnostics work on the new store. Their tests pass on it.
 
 Still to do:
 
-- The program opens and saves a format 2 project. SQLite stays as a cache on this machine: search, word counts, and fast opening. It is rebuilt from the files when it is missing or out of date, and it is never the only copy of anything written.
-- Snapshots, backups, and track-changes baselines move to this machine's `.local/`.
-- Opening a format 1 project converts it, after writing a backup of the SQLite file, and checks the conversion as above. An older version of the program refuses a format 2 project, as `FORMAT` already requires.
-- A rule for the file of a scene that was permanently deleted. Writing never deletes a file today.
-- The whole book can be exported as Markdown files, one for each scene and bible entry, and Markdown can be brought in.
-- Compile, search, snapshots, track changes, spellcheck, and diagnostics work as before.
+- The whole book can be exported as Markdown files, one for each scene and bible entry, and Markdown can be brought in. The conversion is written and tested for one scene; there is no command for a book yet.
 
 #### 3. Files changed outside the program
 
@@ -423,7 +419,7 @@ With or without sync, the source of truth is the `.writingstudio` folder on the 
 
 ## Immediate next steps
 
-Phase 4, local professional editing, is complete and merged into `master`: snapshot comparison, review notes and highlights, track changes, spellcheck, and scene diagnostics. Phase 5 is in progress on the `alternative-phase-5` branch: plain-text projects first, then sync through git. Stage 1 is done: the format is written down, and a scene is stored as an HTML file that reads back exactly, with Markdown as the export. Stage 2 has started: a whole project can be written as the folder of files and read back. Next is the program opening and saving a project that way, and converting a format 1 project. The writing-surface UI is Phase 8. Richer front matter than the book title stays in Phase 6.
+Phase 4, local professional editing, is complete and merged into `master`: snapshot comparison, review notes and highlights, track changes, spellcheck, and scene diagnostics. Phase 5 is in progress on the `alternative-phase-5` branch: plain-text projects first, then sync through git. Stage 1 is done: the format is written down, and a scene is stored as an HTML file that reads back exactly, with Markdown as the export. Stage 2 is done except for exporting a whole book as Markdown: the program makes, opens, and saves projects as files, with SQLite as a cache, and converts a format 1 project when it is opened. Next is that export, then stage 3. The writing-surface UI is Phase 8. Richer front matter than the book title stays in Phase 6.
 
 Bonus work, none of it started: editing at the same time; optional on-device assistance; reviewing a whole book at once; finer track changes; richer snapshot comparison; spelling at the word; diagnostics that fit the book; review marks in the compiled file; one place for the review panels; bringing an older project up to date on open; tests that drive the window; a separate bible project beside each book; backups that include research files; and tags.
 

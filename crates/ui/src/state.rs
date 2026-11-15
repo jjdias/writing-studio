@@ -702,7 +702,12 @@ impl StudioState {
     }
 
     pub fn open_project_at(&mut self, folder: PathBuf) {
+        let converting = ProjectStore::needs_conversion(&folder);
         match ProjectStore::open(&folder) {
+            Ok(store) if converting => self.attach_store(
+                store,
+                "Opened local project. It now keeps each scene as a file; a backup of the old database is in History.",
+            ),
             Ok(store) => self.attach_store(store, "Opened local project."),
             Err(err) => self.status = format!("Could not open project: {err}"),
         }

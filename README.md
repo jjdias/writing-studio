@@ -7,7 +7,7 @@ Open-source, local-first writing studio in Rust. Organize a manuscript, write sc
 A working desktop app:
 
 - Cargo workspace with a shared core and a Dioxus desktop shell
-- Versioned project folder (`*.writingstudio`) backed by SQLite
+- Versioned project folder (`*.writingstudio`): each scene is an HTML file, with a SQLite cache beside them
 - Binder: manuscript, chapters, scenes, drag-and-drop, trash/restore
 - Structured documents per scene, edited as rich text mapped onto the block model
 - Undo/redo, word counts, snapshots, folder backups, timed local autosave
