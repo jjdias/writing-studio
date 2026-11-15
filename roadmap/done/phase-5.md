@@ -37,7 +37,7 @@ Order keys were dropped from the plan. The order of the lines in a file is the o
 - A save writes only what changed: the scene being written, or the one item whose title or synopsis changed.
 - SQLite is a cache on this machine, in `.local/`. It is filled from the files every time a project opens, so a scene edited outside the program is what opens, and a project copied to another machine without `.local/` is complete.
 - What belongs to one machine stays in `.local/`, which git ignores: theme, panel layout, the book on screen, writing sessions, snapshots, backups, and track-changes baselines.
-- Opening a format 1 project converts it: a backup first, then the files, then a check of the files against the database, and only then the change of format. Snapshots and earlier backups are kept. A conversion that is interrupted is finished on the next open. An older version of the program refuses a format 2 project.
+- A folder made by an earlier test version, in format 1, is not opened or converted. Opening one says so and writes nothing.
 - Emptying the trash deletes the files of the scenes in it. Deleting a bible entry deletes its file. Nothing else deletes a file.
 - A path in a project file that points outside the project folder is refused.
 - A new project folder gets a `README.md` that explains the files, a stylesheet so a browser shows a scene as a page, and a `.gitignore`.
@@ -47,12 +47,12 @@ Order keys were dropped from the plan. The order of the lines in a file is the o
 
 ### Decisions made in stage 2
 
-- **A scene's text has the id of its binder item.** Format 1 gave them separate ids. New items are made this way, and a converted project is re-keyed, with its snapshots.
+- **A scene's text has the id of its binder item.** Format 1 gave them separate ids.
 - **The cache is filled from the files on every open**, not kept in step by comparing dates. It is simpler, and it is always right.
 - **The book on screen is this machine's setting**, with the theme and layout. Word targets and the spelling list go with the book.
 - **One `bible.json`** orders the bible's entries and holds their links, in place of a separate links file.
 - **Emptying the trash deletes scene files**, because that step already asks twice. Deleting a bible entry deletes its file.
-- **Conversion is one-way.** Since Phase 5.1 item 3 the writer is asked first.
+- **Format 1 projects are not converted.** Conversion was built, then removed: format 1 had no downloads, so there were no books to convert, and an in-place one-way rewrite of a project was the riskiest code in the phase.
 
 ## Phase 5.1, item 1 — Entries the program does not know are kept
 
@@ -78,22 +78,14 @@ A project's files can change while it is open: an edit in a text editor, a `git 
 
 Checked by tests that change a scene file, `binder.json`, and a scene about to be deleted behind the store's back, and by a test of the window's state that reads a changed scene again, and keeps both when the writer is typing. **The focus event itself has not been tried in the window.**
 
-## Phase 5.1, item 3 — The writer is asked before a project is converted
+## Phase 5.1, item 3 — Dropped, with conversion
 
-Converting a format 1 project cannot be undone: earlier versions of the program will not open it afterwards. Opening one now asks first, with three choices:
-
-- **Convert this project.** As before: a backup of the database, the files, the check, then the change of format.
-- **Convert a copy…** Choose a folder. A converted copy is written there as `Name (converted).writingstudio`, checked against the original, and opened. The original is not touched; its snapshots and backups stay with it. Research files and dictionaries are copied.
-- **Cancel.** Nothing is written.
-
-The copy is made by `ProjectStore::convert_copy`, which the `to_format_2` example now calls. The welcome screen no longer says a project is a SQLite database.
-
-Checked by a test of the window's state: the question writes nothing, cancel leaves the project as it was, a copy opens and leaves the original a format 1 project, a copy where one already exists is refused, and converting in place works. A storage test checks that the copy has the text and the research files, and that the original gains nothing. The question was looked at in the browser engine with the window's styles; **it has not been opened in the desktop window**.
+Item 3 asked the writer before converting a format 1 project. It was built, and then conversion itself was removed: the format 1 versions had no downloads, so there were no books to convert. Opening a format 1 folder now says it was made by an earlier test version, and writes nothing. The question, `convert_copy`, the `to_format_2` example, and the conversion code are gone; they are in the history before this change.
 
 ## What was checked
 
-- 148 tests passed across the workspace at the end of stage 2. The storage crate's 25 tests and the UI crate's 10 pass after items 1 to 3.
+- 148 tests passed across the workspace at the end of stage 2. The storage crate's 22 tests and the UI crate's 9 pass after item 3 was dropped.
 - Scene files: every kind of block and formatting, with their awkward cases; randomly built documents (2,000 with every run, and more than a million in one-off runs); a project on disk.
 - The Markdown export, read with an independent Markdown reader (`pulldown-cmark`).
-- The store: making a project, saving, reopening after a file was changed outside, opening with no `.local/`, converting a format 1 project, a conversion cut short, opening without converting, deleting a bible entry, and restoring a backup.
-- **Not checked: the desktop window.** Nothing in this phase, or in Phase 4, has been run by hand in the window. Only projects built by the tests have been converted; no real book has.
+- The store: making a project, saving, reopening after a file was changed outside, opening with no `.local/`, refusing a format 1 folder, deleting a bible entry, and restoring a backup.
+- **Not checked: the desktop window.** Nothing in this phase, or in Phase 4, has been run by hand in the window. No project larger than a few scenes has been opened.

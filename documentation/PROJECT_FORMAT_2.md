@@ -1,6 +1,6 @@
 # Writing Studio project format 2
 
-Version: **2**. This is the format the program uses. A project made by an earlier version ([PROJECT_FORMAT.md](PROJECT_FORMAT.md)) is converted when it is opened; see the end of this page.
+Version: **2**. This is the format the program uses. A project made by an earlier test version, in format 1 ([PROJECT_FORMAT.md](PROJECT_FORMAT.md)), is not opened or converted; see the end of this page.
 
 The files in the project folder are the project. The code that writes a scene is in `crates/format`; the code that writes the folder and keeps it in step with every save is in `crates/storage` (`files.rs`, `mirror.rs`).
 
@@ -142,7 +142,7 @@ It does not read lists inside lists, or blocks inside a quote; their text comes 
 
 - Every kind of block and every piece of formatting is written and read back, with their awkward cases, including the ones Markdown drops.
 - Randomly built documents, made of the characters most likely to break HTML or Markdown, are written, read back, and compared. 2,000 run with every test run; 300,000 were run once when the HTML reader was written.
-- A project on disk is converted scene by scene and compared. To check one of your own, which only reads it:
+- A project on disk is checked scene by scene. To check one of your own (opening it fills its cache in `.local/`; no scene or project file is written):
 
   ```bash
   cargo run -p writing-studio-format --example check_project -- path/to/Novel.writingstudio
@@ -223,7 +223,7 @@ JSON is for structure that is not read as prose. Where a file is a list, each it
 
 **Order is the order of the lines.** Nothing is numbered. In `binder.json` a parent comes before its children, and children are in reading order, so the file reads from the top as the book does. Moving a scene moves one line and changes nothing else. An earlier draft of this format gave each item an order key; line order does the same job with nothing to keep in step.
 
-**Ids.** An item with text has one id, the one in its file. Format 1 gives the binder item and its text separate ids; the conversion keeps the binder item's.
+**Ids.** An item with text has one id, the one in its file. It is also the id of its binder item.
 
 **Paths.** A `file` is a path inside the project folder, with `/` between its parts. A path that is empty, absolute, or holds `..` is refused, and the project does not open.
 
@@ -251,29 +251,9 @@ JSON is for structure that is not read as prose. Where a file is a list, each it
 - Deleting a character, a place, a culture, a lore entry, a timeline event, or a research note deletes its file.
 - Nothing else does. A file in the folder that no list mentions is left alone and is not part of the project.
 
-## Converting a format 1 project
+## Projects from earlier versions
 
-Opening a format 1 project asks first, because conversion cannot be undone. The writer can convert it, convert a copy into a folder they choose (the original is not touched, and keeps its snapshots and backups), or cancel.
-
-Converting in place happens in this order:
-
-1. A backup of the database is written.
-2. The files are written.
-3. The files are read back and compared with the database. If they do not agree, the conversion stops here, the project is still format 1 with everything it had, and the message says so.
-4. `FORMAT` is changed to 2.
-5. The database is moved to `.local/cache.sqlite`, which keeps the project's snapshots and track-changes baselines. Earlier backups move to `.local/backups/`.
-
-If the program stops between steps 4 and 5, the next open finishes the move. A version of the program from before this format refuses a format 2 project.
-
-In format 1 a scene's text had an id of its own. In format 2 it has the id of its binder item. Snapshots and baselines are moved to the new id.
-
-The same copy can be made from a terminal:
-
-```bash
-cargo run -p writing-studio-storage --example to_format_2 -- path/to/Novel.writingstudio path/to/new-folder
-```
-
-The project is only read.
+Test versions released before format 2 kept a project in one SQLite file (format 1). There were no downloads of them, so this version does not convert such a project. Opening one says it was made by an earlier test version, and writes nothing in the folder. Making a new project in that folder is refused too, so the old database is never written over.
 
 ## Questions still open
 

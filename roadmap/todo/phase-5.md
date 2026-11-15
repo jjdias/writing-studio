@@ -21,7 +21,7 @@ Read this whole section before starting any item.
 | `crates/format/src/scene.rs` | `SceneFile` and `SceneHeader`: `to_html` / `parse_html` for the stored file, `to_markdown` / `parse_markdown` for export and import. `file_name`. |
 | `crates/format/src/write.rs`, `read.rs`, `canonical.rs`, `header.rs` | The Markdown export and import, what Markdown cannot hold (`canonical_blocks`), and front matter. |
 | `crates/storage/src/files.rs` | The whole folder: `ProjectContent`, `write_project_files`, `read_project_files`, `verify_project_files`, `write_atomic`, and one function for each file (`scene_text`, `binder_json`, `bible_files`, `plot_json`, `settings_json`). `inside` checks that a path stays in the project. |
-| `crates/storage/src/mirror.rs` | `ProjectStore::create`, `open`, `open_as_is`, conversion of format 1, and every save: each public save writes the file and then calls the `_cached` function in `lib.rs` that writes SQLite. `Mirror` remembers which file each item has. |
+| `crates/storage/src/mirror.rs` | `ProjectStore::create`, `open` (which refuses a format 1 folder), and every save: each public save writes the file and then calls the `_cached` function in `lib.rs` that writes SQLite. `Mirror` remembers which file each item has. |
 | `crates/storage/src/lib.rs`, `recovery.rs`, `schema.rs` | The SQLite cache: the `_cached` writes, the loads, snapshots, backups. |
 | `crates/ui/src/state.rs` | `StudioState`: everything the window does goes through here, and it is where the tests for behavior live. |
 | `crates/ui/src/studio.rs` | The window. `pick_folder` and the save dialog near it show how a folder or file is chosen. |
@@ -41,7 +41,7 @@ Read this whole section before starting any item.
 
 - `cargo test -p writing-studio-format`, `cargo test -p writing-studio-storage`, `cargo test -p writing-studio-ui`. Run the crate you changed, not the workspace.
 - The UI crate needs GTK and WebKit development packages to compile. On Debian or Ubuntu: `libgtk-3-dev libwebkit2gtk-4.1-dev libxdo-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev`.
-- State tests in `crates/ui/src/state.rs` build a real project in a temporary folder with `open_state`. Storage tests in `mirror.rs` have `format_1_project` for a project in the old format.
+- State tests in `crates/ui/src/state.rs` build a real project in a temporary folder with `open_state`.
 - Nothing drives the desktop window. Say so in your summary when a change is only tested below the window.
 
 ## Stage 2, the one item left — Export a whole book as Markdown, and bring Markdown in
@@ -51,7 +51,7 @@ One scene already converts both ways (`SceneFile::to_markdown`, `SceneFile::pars
 **Export**
 
 - Add to `crates/storage`: `export_markdown(store: &ProjectStore, target: &Path) -> Result<usize>`, returning how many files were written. Build a `ProjectContent` with `ProjectContent::from_store` and write from that.
-- The target is a new folder. Refuse a folder that exists and is not empty, as `to_format_2` does.
+- The target is a new folder. Refuse a folder that exists and is not empty.
 - Write the manuscript so that it reads in order without this program: one file for each scene, named with its place in the book, such as `manuscript/01-chapter-one/003-the-harbor.md`. Use `in_tree_order` in `files.rs` for the order. Leave out the trash.
 - Write the bible the same way, one file for each entry, in the folders the project uses. `entry_file` in `files.rs` builds the stored file for an entry; split it so the same `SceneFile` can be written with `to_markdown`.
 - Write a `README.md` at the top that lists the books, chapters, and scenes in order, each as a link to its file.

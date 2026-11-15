@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Instant;
 
@@ -203,9 +203,6 @@ pub struct StudioState {
     /// The unknown word whose suggestions are on screen.
     pub spell_focus: Option<String>,
     pub show_project_words: bool,
-    /// A project made by an earlier version, waiting for the writer to say
-    /// whether to convert it, convert a copy, or leave it.
-    pub pending_conversion: Option<PathBuf>,
     /// Goal, conflict, and outcome by binder item.
     pub beats: HashMap<Id, SceneBeats>,
     pub beats_dirty: bool,
@@ -270,7 +267,6 @@ impl Default for StudioState {
             speller: None,
             spell_focus: None,
             show_project_words: false,
-            pending_conversion: None,
             beats: HashMap::new(),
             beats_dirty: false,
             outliner_diagnostics: false,
@@ -705,69 +701,10 @@ impl StudioState {
         }
     }
 
-    /// Open a project. A project made by an earlier version is not opened
-    /// yet: converting it cannot be undone, so the writer is asked first.
     pub fn open_project_at(&mut self, folder: PathBuf) {
-        if ProjectStore::needs_conversion(&folder) {
-            self.pending_conversion = Some(folder);
-            self.status = "This project was made by an earlier version. Choose how to open it.".into();
-            return;
-        }
-        self.pending_conversion = None;
         match ProjectStore::open(&folder) {
             Ok(store) => self.attach_store(store, "Opened local project."),
             Err(err) => self.status = format!("Could not open project: {err}"),
-        }
-    }
-
-    /// Convert the project the writer was asked about, in place, and open it.
-    pub fn convert_pending_project(&mut self) {
-        let Some(folder) = self.pending_conversion.take() else {
-            return;
-        };
-        match ProjectStore::open(&folder) {
-            Ok(store) => self.attach_store(
-                store,
-                "Converted and opened. Each scene is now a file; a backup of the old database is in History.",
-            ),
-            Err(err) => self.status = format!("Could not convert the project: {err}"),
-        }
-    }
-
-    /// The folder a converted copy of `source` goes in, inside `parent`.
-    pub fn conversion_copy_target(source: &Path, parent: &Path) -> PathBuf {
-        let name = source
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or("Project");
-        let stem = name.strip_suffix(".writingstudio").unwrap_or(name);
-        parent.join(format!("{stem} (converted).writingstudio"))
-    }
-
-    /// Write a converted copy of the project the writer was asked about into
-    /// `parent`, and open the copy. The original is not changed.
-    pub fn convert_pending_copy(&mut self, parent: PathBuf) {
-        let Some(source) = self.pending_conversion.clone() else {
-            return;
-        };
-        let target = Self::conversion_copy_target(&source, &parent);
-        if let Err(err) = ProjectStore::convert_copy(&source, &target) {
-            self.status = format!("Could not make a converted copy: {err}");
-            return;
-        }
-        self.pending_conversion = None;
-        match ProjectStore::open(&target) {
-            Ok(store) => self.attach_store(
-                store,
-                "Opened a converted copy. The original is unchanged; its snapshots and backups stay with it.",
-            ),
-            Err(err) => self.status = format!("The copy was made but could not be opened: {err}"),
-        }
-    }
-
-    pub fn cancel_conversion(&mut self) {
-        if self.pending_conversion.take().is_some() {
-            self.status = "Not opened. The project was left as it was.".into();
         }
     }
 
@@ -3449,71 +3386,6 @@ mod tests {
             .find(|entry| entry.file_name().to_string_lossy().contains(".conflict-"))
             .unwrap();
         assert_eq!(std::fs::read_to_string(kept.path()).unwrap(), outside);
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    /// A project as an earlier version left it: the database in the project
-    /// folder, and `FORMAT` saying 1. Made from a new project, by moving its
-    /// cache back to where format 1 kept the database.
-    fn format_1_folder(tag: &str) -> (PathBuf, PathBuf) {
-        let (state, dir) = open_state(tag);
-        let root = state.store.as_ref().unwrap().borrow().root.clone();
-        drop(state);
-        let cache = root.join(".local").join("cache.sqlite");
-        std::fs::rename(&cache, root.join("project.sqlite")).unwrap();
-        for name in std::fs::read_dir(&root).unwrap().flatten().map(|entry| entry.path()) {
-            let keep = name.file_name().is_some_and(|n| n == "project.sqlite");
-            if !keep {
-                if name.is_dir() {
-                    std::fs::remove_dir_all(&name).unwrap();
-                } else {
-                    std::fs::remove_file(&name).unwrap();
-                }
-            }
-        }
-        std::fs::write(root.join("FORMAT"), "writing-studio-project 1\n").unwrap();
-        (root, dir)
-    }
-
-    #[test]
-    fn an_older_project_is_only_converted_after_the_writer_chooses() {
-        let (old, dir) = format_1_folder("ask");
-        let mut state = StudioState::default();
-
-        // Opening asks, and writes nothing.
-        state.open_project_at(old.clone());
-        assert_eq!(state.pending_conversion.as_deref(), Some(old.as_path()));
-        assert!(!state.is_open());
-        assert!(!old.join("project.json").exists());
-
-        // Cancel leaves it as it was.
-        state.cancel_conversion();
-        assert!(state.pending_conversion.is_none() && !state.is_open());
-        assert!(ProjectStore::needs_conversion(&old));
-
-        // A copy opens, and the original is not changed.
-        state.open_project_at(old.clone());
-        let parent = old.parent().unwrap().join(format!("copies-{}", Id::new()));
-        std::fs::create_dir_all(&parent).unwrap();
-        state.convert_pending_copy(parent.clone());
-        assert!(state.is_open(), "{}", state.status);
-        let copy = StudioState::conversion_copy_target(&old, &parent);
-        assert_eq!(state.store.as_ref().unwrap().borrow().root, copy);
-        assert!(ProjectStore::needs_conversion(&old));
-        assert!(state.session.is_some());
-        // Asking for a copy where one already is says so and changes nothing.
-        let mut again = StudioState::default();
-        again.open_project_at(old.clone());
-        again.convert_pending_copy(parent.clone());
-        assert!(!again.is_open());
-        assert!(again.status.contains("already exists"), "{}", again.status);
-        assert!(again.pending_conversion.is_some());
-
-        // Converting in place.
-        again.convert_pending_project();
-        assert!(again.is_open(), "{}", again.status);
-        assert!(!ProjectStore::needs_conversion(&old));
-        assert!(old.join("project.json").exists());
         let _ = std::fs::remove_dir_all(dir);
     }
 

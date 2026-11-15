@@ -2,7 +2,7 @@
 
 Not started. These are gaps found while building Phase 5 stages 1 and 2. None of them is in the Phase 5 plan, and each one matters before writers keep real books in format 2.
 
-Items 1 to 4 are about not losing writing. Do them first, in order, before the rest of Phase 5. Items 1 to 3 are done. Items 5 to 10 can follow in any order.
+Items 1 to 4 are about not losing writing. Do them first, in order, before the rest of Phase 5. Items 1 and 2 are done, and item 3 was dropped. Items 5 to 10 can follow in any order.
 
 Read "Before you start" in [phase-5.md](phase-5.md) first: it lists the files, the rules the code keeps, and how to test.
 
@@ -22,23 +22,20 @@ Read "Before you start" in [phase-5.md](phase-5.md) first: it lists the files, t
 
 ## 3. Ask before converting a format 1 project
 
-**Done.** See [../done/phase-5.md](../done/phase-5.md), "Phase 5.1". What is left of it:
+**Dropped.** Conversion of format 1 projects was removed: format 1 had no downloads, so there are no books to convert. A format 1 folder is refused with a message instead. See [../done/phase-5.md](../done/phase-5.md), "Phase 5.1".
 
-- Escape does not close the question. Escape closing a confirmation is part of Phase 8.
-- Opening another project while one is open does not save the first one before the question appears. This was already so before; it is unchanged.
+## 4. Try a book of real size in the window
 
-## 4. Convert a real book before relying on the conversion
-
-**The problem.** Conversion has been tested on projects the tests build. No book written in the program has been converted. A project that has been used for months has things the tests do not make: research files, every kind of block, trashed books, very long scenes, titles in many scripts.
+**The problem.** Nothing in Phase 4 or Phase 5 has been run in the desktop window, and no project larger than a few scenes has been opened. Opening reads every scene file to fill the cache.
 
 **How to do it.**
 
-- With a copy of real projects (ask the people who own them; never commit them), run `to_format_2` and `check_project`. Both only read the project.
-- Open the converted copy in the window and look at the binder, a few scenes, the bible, the plot grid, and History.
-- Measure how long opening takes. Opening reads every scene file to fill the cache. A book of 300 scenes should open in well under a second; if it does not, the next step is to skip scenes whose file has not changed since the cache was filled (keep each file's fingerprint in the cache), not to stop reading the files.
+- Make a project of 300 scenes of 2,000 words each in 30 chapters, with notes, highlights, and a bible of 50 entries. A small example program in `crates/storage/examples/` can build it with `ProjectStore::create` and the save functions; do not commit the project.
+- Time `ProjectStore::open` on it. It should open in well under a second. If it does not, the next step is to skip scenes whose file has not changed since the cache was filled (keep each file's fingerprint in the cache), not to stop reading the files.
+- Open it in the window. Go through the binder, a few scenes, the bible, the plot grid, History, and each Phase 4 tool: comparison, notes, track changes, spellcheck, diagnostics. Change a scene in a text editor and come back to the window (Phase 5.1 item 2).
 - Write down what was found in [../done/phase-5.md](../done/phase-5.md).
 
-**Done when** at least one real book of more than 50 scenes converts, opens, and shows the same text, notes, and bible as before.
+**Done when** the large project opens quickly, every view works on it, and the results are written down.
 
 ## 5. Write `.gitattributes` with every project
 
@@ -73,7 +70,7 @@ attachments/** -text
 
 **The problem.** In format 2 a backup is a copy of the cache, and restoring it replaces the whole project, files and all. A writer who wants one scene back has to restore everything.
 
-**How to fix it.** In History, list the scenes of a backup and let one be restored. Open the backup read-only with `rusqlite`, read that scene's row from `documents`, and save it with `save_document`, after a snapshot of the current text, as `restore_snapshot` in `recovery.rs` does. A backup made before conversion has its own ids for texts: look the scene up by its binder item.
+**How to fix it.** In History, list the scenes of a backup and let one be restored. Open the backup read-only with `rusqlite`, read that scene's row from `documents`, and save it with `save_document`, after a snapshot of the current text, as `restore_snapshot` in `recovery.rs` does.
 
 ## 9. Check that the editor keeps line breaks
 
@@ -84,4 +81,4 @@ attachments/** -text
 ## 10. Update the guides for format 2
 
 - `documentation/USAGE.md` still says little about the folder. Add a section on what the folder holds, that it can be read without the program, that `.local/` is this computer's, and what happens when an older project is opened.
-- Conversion of a copy is now in the window (item 3). Decide whether the guides still need `to_format_2` and `check_project`, which do the same from a terminal, or only the window.
+- Decide whether the guides should mention `check_project`, which checks that every scene of a project reads back from its file.

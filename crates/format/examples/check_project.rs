@@ -5,8 +5,9 @@
 //! ```
 //!
 //! Each scene is written as a scene file, read back, and compared with the
-//! scene in the project. The project is only read. Add `--write folder` to
-//! also save the files, each with its Markdown export beside it, to look at.
+//! scene in the project. Opening the project fills its cache in `.local/`;
+//! no scene or project file is written. Add `--write folder` to also save the
+//! files, each with its Markdown export beside it, to look at.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -35,7 +36,7 @@ fn main() -> ExitCode {
 }
 
 fn check(project: &str, write_to: Option<PathBuf>) -> Result<bool, Box<dyn std::error::Error>> {
-    let store = ProjectStore::open_as_is(project)?;
+    let store = ProjectStore::open(project)?;
     let binder = store.load_binder()?;
     let beats = store.load_scene_beats()?;
     if let Some(folder) = &write_to {

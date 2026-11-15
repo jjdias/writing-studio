@@ -2,7 +2,7 @@
 
 Version: **1**
 
-This is the format earlier versions of the program used. The program now uses format 2, with scenes as HTML files: [PROJECT_FORMAT_2.md](PROJECT_FORMAT_2.md). A format 1 project is converted when it is opened. In format 2 the database described here is the cache in `.local/cache.sqlite`, with the same tables.
+Format 1 kept the whole project in one SQLite file. Test versions released before format 2 used it. This version does not open or convert a format 1 project: it says the project was made by an earlier test version. The program now uses format 2, with each scene as an HTML file: [PROJECT_FORMAT_2.md](PROJECT_FORMAT_2.md). The tables below are still the tables of the cache in `.local/cache.sqlite`.
 
 A project is a directory you can copy, back up, and keep offline—not a single opaque file and not a cloud object.
 

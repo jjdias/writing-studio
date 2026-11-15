@@ -138,59 +138,6 @@ fn Studio() -> Element {
                 }
             },
             if open { Workspace {} } else { Welcome {} }
-            ConversionQuestion {}
-        }
-    }
-}
-
-/// Asked when an older project is opened. Converting it cannot be undone,
-/// so the writer chooses: convert it, convert a copy, or leave it.
-#[component]
-fn ConversionQuestion() -> Element {
-    let mut state = use_context::<Signal<StudioState>>();
-    let chrome = use_context::<Signal<PanelChrome>>();
-    let widths = use_context::<Signal<PanelWidths>>();
-    let Some(folder) = state.read().pending_conversion.clone() else {
-        return rsx! {};
-    };
-    let name = folder
-        .file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    rsx! {
-        div { class: "question-backdrop",
-            div { class: "question", role: "dialog", "aria-label": "Convert an older project",
-                h2 { "“{name}” was made by an earlier version" }
-                p {
-                    "This version keeps each scene as its own file, so the book can be read without the program and kept with git. "
-                    "To open the project it has to be converted."
-                }
-                p { class: "hint",
-                    "Converting cannot be undone: earlier versions of the program will not open the project afterwards. "
-                    "A backup of the old database is written first. A copy leaves the original as it is; its snapshots and backups stay with the original."
-                }
-                div { class: "question-actions",
-                    button {
-                        class: "primary",
-                        onclick: move |_| {
-                            state.write().convert_pending_project();
-                            publish_layout(state, chrome, widths);
-                        },
-                        "Convert this project"
-                    }
-                    button {
-                        onclick: move |_| {
-                            let Some(parent) = pick_folder("Choose where to put the converted copy") else {
-                                return;
-                            };
-                            state.write().convert_pending_copy(parent);
-                            publish_layout(state, chrome, widths);
-                        },
-                        "Convert a copy…"
-                    }
-                    button { onclick: move |_| state.write().cancel_conversion(), "Cancel" }
-                }
-            }
         }
     }
 }

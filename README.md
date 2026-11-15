@@ -56,7 +56,6 @@ Projects as plain files:
 
 - Each scene is an HTML file that any browser opens, with the book's structure in JSON beside it
 - A SQLite cache on each computer, filled from the files when a project opens
-- Older projects are converted when they are opened, after a backup
 - Scenes can be written as Markdown for other writing tools
 
 What has shipped: [`roadmap/done/phase-5.md`](roadmap/done/phase-5.md). Still to come, including sync through git: [`roadmap/todo/phase-5.md`](roadmap/todo/phase-5.md).
