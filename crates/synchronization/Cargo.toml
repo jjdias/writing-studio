@@ -3,7 +3,14 @@ name = "writing-studio-synchronization"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Offline-first sync engine (Phase 5)"
+description = "Merging two copies of a project, and sync through git"
 
 [dependencies]
+serde.workspace = true
+serde_json.workspace = true
 writing-studio-core.workspace = true
+writing-studio-diagnostics.workspace = true
+writing-studio-document.workspace = true
+writing-studio-format.workspace = true
+writing-studio-project.workspace = true
+writing-studio-storage.workspace = true

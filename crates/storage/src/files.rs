@@ -1303,6 +1303,20 @@ fn recovered_folder(nodes: &mut Vec<BinderNode>) -> Option<Id> {
     Some(id)
 }
 
+/// Make a binder a tree again, as opening a project does: anything whose
+/// parent is not there, or that is in a loop, moves to Recovered. Returns
+/// what was moved.
+pub fn repair_binder(nodes: &mut Vec<BinderNode>) -> Result<Vec<Problem>> {
+    let mut problems = Vec::new();
+    check_binder(nodes, &mut |file: &str, message: &str| {
+        problems.push(Problem {
+            file: file.to_string(),
+            message: message.to_string(),
+        })
+    })?;
+    Ok(problems)
+}
+
 /// Make the binder a tree again after the files were changed outside the
 /// program. An item whose parent is not there, or that is inside a loop of
 /// parents, is moved into Recovered. Returns whether anything was moved.

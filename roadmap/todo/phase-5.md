@@ -1,6 +1,6 @@
 # Phase 5 — what is left
 
-Phase 5 is **plain-text projects, and sync through git**. Stages 1 to 3 have shipped: see [../done/phase-5.md](../done/phase-5.md). This file is the rest, stages 4 and 5, in the order to do them.
+Phase 5 is **plain-text projects, and sync through git**. Stages 1 to 4 have shipped: see [../done/phase-5.md](../done/phase-5.md). This file is the rest: stage 5.
 
 Read this whole section before starting any item.
 
@@ -45,60 +45,6 @@ Read this whole section before starting any item.
 - The UI crate needs GTK and WebKit development packages to compile. On Debian or Ubuntu: `libgtk-3-dev libwebkit2gtk-4.1-dev libxdo-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev`.
 - State tests in `crates/ui/src/state.rs` build a real project in a temporary folder with `open_state`.
 - Nothing drives the desktop window. Say so in your summary when a change is only tested below the window.
-
-## Stage 4 — Merge two copies of a project
-
-One person usually writes a book, sometimes on two machines. Two people in the same scene at the same moment is not what this is for.
-
-- The program merges two copies of a project itself, from the last version they shared. Git is not left to write conflict markers into a file.
-- Scenes merge by paragraph. Paragraphs changed on only one side are taken. A paragraph changed on both sides is a conflict.
-- A conflict is shown with the Phase 4 review tools: both versions, and a choice of one, the other, or both. Until the writer chooses, both are kept.
-- Binder rules: an item moved on one side and edited on the other keeps both changes. An item deleted on one side and edited on the other is kept. A merge that would leave a loop or an item with no parent puts that item in Recovered.
-- Attachments are whole files: the newer one is used and the other is kept beside it.
-- No merge discards text without showing it.
-
-### How to build it
-
-**Where.** The `writing-studio-synchronization` crate is a placeholder kept for this. It may depend on `writing-studio-storage`, `writing-studio-format`, and `writing-studio-document`. Do not put merge code in the storage crate.
-
-**The function.**
-
-```rust
-pub fn merge(base: &ProjectContent, ours: &ProjectContent, theirs: &ProjectContent) -> Merged
-
-pub struct Merged {
-    pub content: ProjectContent,
-    pub conflicts: Vec<Conflict>,   // what the writer has to look at
-}
-```
-
-It works on three `ProjectContent` values and touches no files. `read_project_files` makes one from a folder, so stage 5 can read three checkouts and call this.
-
-**Scenes.** Match scenes by id. For a scene changed on both sides, merge by paragraph:
-
-- `compare_units` in `crates/document/src/diff.rs` compares two lists of paragraphs and says where each one sits on both sides. It is `pub(crate)`; make what you need public rather than copying it.
-- Compare base with ours, and base with theirs. Walk the base paragraphs in order. A stretch changed on one side only takes that side. A stretch changed the same way on both takes it once. A stretch changed differently on both is a conflict.
-- Compare paragraphs with `stored_blocks`, so that formatting counts, not only words.
-
-**A conflict keeps both versions, and uses the track-changes panel to settle it.** Put our paragraphs in the merged scene, followed by theirs. Then set the scene's track-changes baseline to the scene with only our paragraphs (`ProjectStore::save_tracking_baseline`). The panel from Phase 4 then lists their paragraphs as added, and the writer accepts or rejects each one with the buttons that exist. The baseline is in `.local/`, which is right: settling a conflict is this machine's business until it is synced. Add a line to the panel that says the changes came from a merge.
-
-**The head of a scene** (title, synopsis, status, label, color, goal, conflict, outcome): merge each field on its own. One side changed it: take that. Both changed it differently: take ours and report theirs in `conflicts`.
-
-**The binder.** Match items by id.
-
-- Added on one side: add it, after the item it followed on that side.
-- Moved on one side and edited on the other: both.
-- Moved on both sides to different places: take ours, report it.
-- Deleted on one side (gone from `binder.json`, or `deleted` set) and edited on the other: keep it.
-- Then make the binder a tree again, as opening does (`check_binder` in `crates/storage/src/files.rs`): anything stranded goes to Recovered.
-
-**Lists in `bible.json` and `plot.json`:** by id, with the same rules. **`project.json`:** each setting on its own; the spelling words are the union of both lists.
-
-**Attachments** are whole files. If both sides changed the same one, keep ours under its name and theirs beside it with `-theirs` before the extension, and report it.
-
-**Tests.** Each rule above, as three small `ProjectContent` values and an expected result. Then properties: merging a side with itself gives that side; merging when only one side changed gives that side; and no paragraph of either side is missing from the result or its conflicts.
-
-**Done when** two copies of a project that were edited apart can be merged with no text lost, and a writer can settle every conflict in the window.
 
 ## Stage 5 — Sync through git
 

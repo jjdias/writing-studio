@@ -1,6 +1,6 @@
 # Phase 5 — what has shipped so far
 
-Phase 5 is **plain-text projects, and sync through git**. Stages 1 to 3 of its five are done. The rest is in [../todo/phase-5.md](../todo/phase-5.md), and what the done part still needs is in [../todo/phase-5.1.md](../todo/phase-5.1.md).
+Phase 5 is **plain-text projects, and sync through git**. Stages 1 to 4 of its five are done. The rest is in [../todo/phase-5.md](../todo/phase-5.md), and what the done part still needs is in [../todo/phase-5.1.md](../todo/phase-5.1.md).
 
 This work is on the `alternative-phase-5` branch. The format itself is described in [PROJECT_FORMAT_2.md](../../documentation/PROJECT_FORMAT_2.md).
 
@@ -74,6 +74,20 @@ A project's files can be changed by a person, a text editor, or git. Opening now
 - Whatever was repaired or recovered is written back into the files at once, so the files say what the window shows. The status line says how many files needed attention, and History lists each one with what was done.
 
 Checked by tests of a missing scene file and one with another item's id, files added by hand (with an id, without one, a copy with a used id, a set-aside file), a binder with a repeated line, a loop, and a missing parent, a binder without a root, a deleted character file, and the window's report and mark.
+
+## Stage 4 — Merging two copies of a project
+
+`merge(base, ours, theirs)` in `crates/synchronization` merges two copies of a project from the last version they shared. It works on three `ProjectContent` values and touches no files, so the sync can read three copies and call it.
+
+- **Scenes merge by paragraph.** Paragraphs changed on one side are taken. Paragraphs changed the same way on both are taken once. Paragraphs changed differently on both are **both kept**, this machine's first, and the merge returns a baseline for that scene with only this machine's paragraphs. Saved as the scene's track-changes baseline, it makes the other machine's paragraphs show in the track-changes panel, to accept or reject. No merge drops text without showing it.
+- **An item's details** (title, synopsis, status, label, color, parent, trash) and **its beats** merge one field at a time. A field changed differently on both sides keeps this machine's, and is reported.
+- **An item deleted on one side and changed on the other is kept**, and reported. Deleted on one side and unchanged on the other, it is deleted.
+- **Order:** this machine's, with an item added or moved on the other placed after the item it followed there (or before the one it preceded, or last).
+- **The binder is made a tree again** afterwards, as opening does, so opposite moves that would make a loop end in Recovered.
+- **The bible and the plot grid** merge by entry, by the same rules. Motivations and relationships, which have no lasting ids, merge by what they hold. The project's own words are the union of what each side added, less what either removed. Each setting merges on its own.
+- Records are compared without their times and positions, which differ between any two reads of the same files.
+
+Checked by tests of edits to different paragraphs, the same paragraph changed twice (both kept, with a baseline that shows one change), an added scene's place, a deletion against an edit both ways, details merged one by one, the bible and the project's words, moves that would make a loop, and that merging when only one side changed gives that side.
 
 ## Phase 5.1, item 1 — Entries the program does not know are kept
 

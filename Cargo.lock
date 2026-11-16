@@ -6376,7 +6376,14 @@ dependencies = [
 name = "writing-studio-synchronization"
 version = "0.1.0"
 dependencies = [
+ "serde",
+ "serde_json",
  "writing-studio-core",
+ "writing-studio-diagnostics",
+ "writing-studio-document",
+ "writing-studio-format",
+ "writing-studio-project",
+ "writing-studio-storage",
 ]
 
 [[package]]

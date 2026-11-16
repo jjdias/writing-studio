@@ -15,7 +15,7 @@ Writing Studio is **open source** (MIT OR Apache-2.0) and **free for the communi
 | 2 | Writing environment | Done | [done/phase-2.md](done/phase-2.md) |
 | 3 | Story development: series, plot, characters, world, research | Done | [done/phase-3.md](done/phase-3.md) |
 | 4 | Professional editing: comparison, notes, track changes, spellcheck, diagnostics | Done | [done/phase-4.md](done/phase-4.md) |
-| 5 | Plain-text projects, and sync through git | Stages 1 to 3 done; 4 and 5 to do | [done/phase-5.md](done/phase-5.md), [todo/phase-5.md](todo/phase-5.md) |
+| 5 | Plain-text projects, and sync through git | Stages 1 to 4 done; 5 to do | [done/phase-5.md](done/phase-5.md), [todo/phase-5.md](todo/phase-5.md) |
 | 5.1 | What format 2 still needs to be safe to rely on | Items 1 and 2 done; 3 and 4 dropped; 5 to 10 to do | [todo/phase-5.1.md](todo/phase-5.1.md) |
 | 6 | Publishing: export profiles, PDF, EPUB | To do | [todo/phase-6.md](todo/phase-6.md) |
 | 7 | Cross-platform release | To do | [todo/phase-7.md](todo/phase-7.md) |
@@ -43,7 +43,7 @@ Clear these when the code around them is next changed, or on their own when ther
 
 ## What to do next
 
-1. The rest of Phase 5, in order: stages 4 and 5.
+1. The rest of Phase 5: stage 5, sync through git.
 2. The remaining items of Phase 5.1, each when the code it touches is next changed.
 3. The technical debt above, the same way.
 
