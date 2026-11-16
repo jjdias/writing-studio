@@ -9,6 +9,13 @@ Not current work. This was part of the earlier plan for Phase 5, with a server. 
 - Two writers in the same project at the same moment, each seeing the other's changes as they are made.
 - This needs a connection between the two programs. It must stay optional, and a project used this way must stay the same plain-text project.
 
+## Guided sync setup
+
+Moved here from Phase 5. Today a writer makes the repository with their git host and sets up git's keys or token themselves, following `documentation/SYNC.md`.
+
+- Create or pick a repository, and sign in, from inside the program.
+- It needs an integration with each git host, which goes against syncing with any git host, and the program storing tokens, which needs an explicit decision (`.claude/rules/security.md`).
+
 ## Optional local assistance
 
 Not current work. This was the last item of Phase 4 and moved here so that Phase 4 could close on the editing tools.

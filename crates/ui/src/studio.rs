@@ -49,12 +49,17 @@ fn Studio() -> Element {
     // Coming back to the window is when a scene changed by a text editor or
     // by git is read again, before the writer types over it.
     dioxus::desktop::use_wry_event_handler(move |event, _| {
-        if let dioxus::desktop::tao::event::Event::WindowEvent {
-            event: dioxus::desktop::WindowEvent::Focused(true),
-            ..
-        } = event
-        {
-            state.write().check_open_scene_on_disk();
+        match event {
+            dioxus::desktop::tao::event::Event::WindowEvent {
+                event: dioxus::desktop::WindowEvent::Focused(true),
+                ..
+            } => state.write().check_open_scene_on_disk(),
+            // Closing commits for the next sync, without the network.
+            dioxus::desktop::tao::event::Event::WindowEvent {
+                event: dioxus::desktop::WindowEvent::CloseRequested,
+                ..
+            } => state.write().commit_on_close(),
+            _ => {}
         }
     });
     use_future(move || async move {
@@ -188,6 +193,8 @@ fn Workspace() -> Element {
     let unsaved = state.read().has_unsaved();
     let theme = state.read().theme();
     let spelling_value = state.read().spelling_language().unwrap_or_default();
+    let syncing = state.read().syncing;
+    let connected = state.read().sync_connected();
     let spelling_choices = state.read().spelling_choices();
     let chrome = use_context::<Signal<PanelChrome>>();
     let arrangement = chrome.read();
@@ -271,6 +278,14 @@ fn Workspace() -> Element {
                         CompileBookSelect {}
                         button { title: "Compile the chosen book to Markdown", onclick: move |_| export_project(state, CompiledFormat::Markdown), "Markdown" }
                         button { title: "Compile the chosen book to DOCX", onclick: move |_| export_project(state, CompiledFormat::Docx), "DOCX" }
+                        if connected {
+                            button {
+                                title: "Send this machine's changes and bring in the others', through git",
+                                disabled: syncing,
+                                onclick: move |_| run_sync(state),
+                                if syncing { "Syncing…" } else { "Sync" }
+                            }
+                        }
                         button {
                             title: "Export the whole project as a folder of Markdown files, one for each scene and entry, for another writing program",
                             onclick: move |_| {
@@ -701,7 +716,7 @@ fn EditorPane() -> Element {
         .unwrap_or("Document");
     let html = snapshot.editor_html.clone();
     let epoch = snapshot.editor_epoch;
-    let can_edit = snapshot.session.is_some();
+    let can_edit = snapshot.session.is_some() && !snapshot.syncing;
     // The words to underline. An empty list clears the underlines, which is
     // also what a project with spellcheck off sends.
     let unknown: Vec<String> = snapshot
@@ -1806,6 +1821,7 @@ fn HistoryPane() -> Element {
                 }
             }
             OpenProblems {}
+            SyncSection {}
             section {
                 h2 { "Writing sessions" }
                 p { class: "hint", "Sittings saved in this project. Today’s count starts again each local day." }
@@ -1837,6 +1853,75 @@ fn HistoryPane() -> Element {
                                 }
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Run a sync off the window's thread, then take in what it did.
+fn run_sync(mut state: Signal<StudioState>) {
+    let Some(root) = state.write().begin_sync() else {
+        return;
+    };
+    spawn(async move {
+        let result = tokio::task::spawn_blocking(move || writing_studio_synchronization::git::sync(&root))
+            .await
+            .unwrap_or_else(|err| Err(writing_studio_core::Error::message(err.to_string())));
+        state.write().finish_sync(result);
+    });
+}
+
+/// Connecting the project to a git repository, and where it stands.
+#[component]
+fn SyncSection() -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let status = state.read().sync_status();
+    let conflicts = state.read().sync_conflicts.clone();
+    let address = state.read().sync_address.clone();
+    let syncing = state.read().syncing;
+    rsx! {
+        section {
+            h2 { "Sync" }
+            if !writing_studio_synchronization::git::available() {
+                p { class: "hint", "Sync uses git, which is not installed on this computer. Everything else works without it." }
+            } else if let Some(status) = status {
+                p { class: "hint",
+                    "Connected to {status.remote}. "
+                    {match status.last_synced.and_then(|time| time.elapsed().ok()) {
+                        Some(ago) => format!("Last synced {} ago. ", format_elapsed(ago.as_secs())),
+                        None => "Not synced yet. ".to_string(),
+                    }}
+                    {match (status.to_send, status.to_receive) {
+                        (0, 0) => "Nothing to send or receive.".to_string(),
+                        (send, 0) => format!("{send} to send."),
+                        (0, receive) => format!("{receive} to receive."),
+                        (send, receive) => format!("{send} to send, {receive} to receive."),
+                    }}
+                }
+                div { class: "binder-tools",
+                    button { class: "primary", disabled: syncing, onclick: move |_| run_sync(state), if syncing { "Syncing…" } else { "Sync now" } }
+                }
+            } else {
+                p { class: "hint",
+                    "Keep this project on another computer, or with a git host, by connecting it to a git repository. Use a private repository: anyone who can read the repository can read the book. The guide in documentation/SYNC.md shows how to make one."
+                }
+                input {
+                    class: "search",
+                    placeholder: "Repository address, such as git@host:you/book.git",
+                    value: "{address}",
+                    oninput: move |event| state.write().sync_address = event.value(),
+                }
+                div { class: "binder-tools",
+                    button { class: "primary", onclick: move |_| state.write().connect_sync(), "Connect" }
+                }
+            }
+            if !conflicts.is_empty() {
+                p { class: "hint", "Changed on both machines in the last sync. Paragraphs kept in both versions are in the track-changes panel of their scene, to accept or reject." }
+                ul { class: "history-list wide",
+                    for conflict in conflicts {
+                        li { class: "history-item", "{conflict}" }
                     }
                 }
             }

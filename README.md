@@ -57,8 +57,9 @@ Projects as plain files:
 - Each scene is an HTML file that any browser opens, with the book's structure in JSON beside it
 - A SQLite cache on each computer, filled from the files when a project opens
 - Scenes can be written as Markdown for other writing tools
+- Optional sync between computers through git, with any git host ([how](documentation/SYNC.md))
 
-What has shipped: [`roadmap/done/phase-5.md`](roadmap/done/phase-5.md). Still to come, including sync through git: [`roadmap/todo/phase-5.md`](roadmap/todo/phase-5.md).
+What has shipped: [`roadmap/done/phase-5.md`](roadmap/done/phase-5.md). Still to come: [`roadmap/todo/phase-5.md`](roadmap/todo/phase-5.md).
 
 Phases 1 through 4 are done; Phase 5 is in progress. See the [roadmap](roadmap/README.md) for what is next.
 

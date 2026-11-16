@@ -1,6 +1,6 @@
 # Phase 5 — what has shipped so far
 
-Phase 5 is **plain-text projects, and sync through git**. Stages 1 to 4 of its five are done. The rest is in [../todo/phase-5.md](../todo/phase-5.md), and what the done part still needs is in [../todo/phase-5.1.md](../todo/phase-5.1.md).
+Phase 5 is **plain-text projects, and sync through git**. All five stages are done. The rest is in [../todo/phase-5.md](../todo/phase-5.md), and what the done part still needs is in [../todo/phase-5.1.md](../todo/phase-5.1.md).
 
 This work is on the `alternative-phase-5` branch. The format itself is described in [PROJECT_FORMAT_2.md](../../documentation/PROJECT_FORMAT_2.md).
 
@@ -89,6 +89,20 @@ Checked by tests of a missing scene file and one with another item's id, files a
 
 Checked by tests of edits to different paragraphs, the same paragraph changed twice (both kept, with a baseline that shows one change), an added scene's place, a deletion against an edit both ways, details merged one by one, the bible and the project's words, moves that would make a loop, and that merging when only one side changed gives that side.
 
+## Stage 5 — Sync through git
+
+- **Connect** in History's Sync section makes the project folder a git repository and connects it to an address the writer pastes. The section warns that anyone who can read the repository can read the book.
+- **Sync** in the top bar, and **Sync now** in History: save everything, commit with a message that names the scenes that changed, fetch, then either take the other side's commits (only they moved), send this side's (only it moved), or merge (both moved), and send.
+- **A merge** reads the shared version and the other side's into temporary git worktrees, runs the stage 4 merge with this side's files, records it as a merge commit, and removes the files of items the merge dropped. Research files merge as whole files; one changed on both keeps this side's, with the other's beside it as `-theirs`. If the push is refused because the remote moved meanwhile, sync fetches and merges once more.
+- **After a sync that brought changes in**, the project is opened again on the same scene and view. Each scene where both versions were kept gets its track-changes baseline, so the other machine's paragraphs are in the panel to accept or reject. History lists what both machines changed.
+- **History** shows the remote, when the project last synced (the time git last fetched), and how much there is to send and to receive.
+- **The manuscript cannot be edited while a sync runs**, and the sync runs off the window's thread. **Closing the window** commits what is saved, without the network.
+- **Safety:** git is run with prompts off, so it fails instead of waiting for a password; network steps give up after two minutes; Sync refuses a folder that is not the top of its own repository, and a repository in the middle of a merge or rebase. The program stores no passwords: git uses the keys or tokens the writer set up.
+- **Every project now gets `.gitattributes`**, which keeps line endings as written and research files as files (Phase 5.1 item 5).
+- `documentation/SYNC.md` is the guide: git, a private repository, keys or a token, connecting, what happens on conflicts, Git LFS, and what each message means.
+
+Checked by tests with a local bare repository and two working copies: the first send, a sync with nothing to do, changes going one way, both machines changing different scenes, both changing the same paragraph, the commit message, an unconnected project, a merge in progress, an empty address; and a test of the window's state that connects, syncs, takes in a merge, and shows the other machine's paragraph as a tracked change.
+
 ## Phase 5.1, item 1 — Entries the program does not know are kept
 
 A file can hold entries the program does not use: a person adds `<meta name="pov" content="Mara">` to a scene, a key to a line of `binder.json`, or a later version of the program writes a new one. Before this, the next save of that item removed them.
@@ -119,7 +133,7 @@ Item 3 asked the writer before converting a format 1 project. It was built, and 
 
 ## What was checked
 
-- 148 tests passed across the workspace at the end of stage 2. The storage crate's 28 tests, the UI crate's 11, the format crate's 25, and the export crate's 5 pass after stage 3.
+- 148 tests passed across the workspace at the end of stage 2. After stage 5: the storage crate's 28 tests, the UI crate's 12, the synchronization crate's 10, the format crate's 25, and the export crate's 5 pass.
 - Scene files: every kind of block and formatting, with their awkward cases; randomly built documents (2,000 with every run, and more than a million in one-off runs); a project on disk.
 - The Markdown export, read with an independent Markdown reader (`pulldown-cmark`).
 - The store: making a project, saving, reopening after a file was changed outside, opening with no `.local/`, refusing a format 1 folder, deleting a bible entry, and restoring a backup.

@@ -6417,6 +6417,7 @@ dependencies = [
  "writing-studio-search",
  "writing-studio-spellcheck",
  "writing-studio-storage",
+ "writing-studio-synchronization",
  "writing-studio-worldbuilding",
 ]
 

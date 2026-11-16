@@ -2,7 +2,7 @@
 
 Not started. These are gaps found while building Phase 5 stages 1 and 2. None of them is in the Phase 5 plan, and each one matters before writers keep real books in format 2.
 
-Items 1 and 2 are done. Items 3 and 4 were dropped. Items 5 to 10 are small; do each when the code it touches is next changed.
+Items 1, 2, and 5 are done. Items 3 and 4 were dropped. Items 6 to 10 are small; do each when the code it touches is next changed.
 
 Read "Before you start" in [phase-5.md](phase-5.md) first: it lists the files, the rules the code keeps, and how to test.
 
@@ -30,16 +30,7 @@ Read "Before you start" in [phase-5.md](phase-5.md) first: it lists the files, t
 
 ## 5. Write `.gitattributes` with every project
 
-**The problem.** Git on Windows can be set to change line endings to `\r\n` when it checks a file out. The program reads such files, but it writes `\n`, so every file it saves would show as changed in git. Research files under `attachments/` are images and PDFs, which git must not touch.
-
-**How to fix it.** Write `.gitattributes` with the other files a new project gets (`README.md`, `scene.css`, `.gitignore`, in `write_project_files`), and only when it is missing:
-
-```text
-* text=auto eol=lf
-attachments/** -text
-```
-
-**Tests.** A new project has the file. A project with its own `.gitattributes` keeps it.
+**Done** with Phase 5 stage 5. Every project gets `* text=auto eol=lf` and `attachments/** -text` when the file is missing.
 
 ## 6. File names that are the same on every computer
 

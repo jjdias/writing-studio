@@ -28,6 +28,7 @@ use writing_studio_spellcheck::{
     available_dictionaries, name_words, normalize_word, replace_in_document, DictionaryInfo,
     Speller, UnknownWord,
 };
+use writing_studio_synchronization::git::{self, SyncReport, SyncStatus};
 use writing_studio_storage::{BackupInfo, ProjectStore, SnapshotInfo};
 use writing_studio_worldbuilding::World;
 
@@ -203,6 +204,12 @@ pub struct StudioState {
     /// The unknown word whose suggestions are on screen.
     pub spell_focus: Option<String>,
     pub show_project_words: bool,
+    /// The address typed in to connect the project for sync.
+    pub sync_address: String,
+    /// A sync is running; the manuscript cannot be edited until it ends.
+    pub syncing: bool,
+    /// What the last sync could not combine, one line each.
+    pub sync_conflicts: Vec<String>,
     /// Goal, conflict, and outcome by binder item.
     pub beats: HashMap<Id, SceneBeats>,
     pub beats_dirty: bool,
@@ -267,6 +274,9 @@ impl Default for StudioState {
             speller: None,
             spell_focus: None,
             show_project_words: false,
+            sync_address: String::new(),
+            syncing: false,
+            sync_conflicts: Vec::new(),
             beats: HashMap::new(),
             beats_dirty: false,
             outliner_diagnostics: false,
@@ -1353,6 +1363,102 @@ impl StudioState {
             }
         }
         self.report_set_aside();
+    }
+
+    fn project_root(&self) -> Option<PathBuf> {
+        self.store.as_ref().map(|store| store.borrow().root.clone())
+    }
+
+    /// Where the project stands with its remote, or `None` when it is not
+    /// connected for sync. Asks git, not the network.
+    pub fn sync_status(&self) -> Option<SyncStatus> {
+        let root = self.project_root()?;
+        git::is_connected(&root).then(|| git::status(&root).ok()).flatten()
+    }
+
+    /// Whether the project is connected for sync. Cheap enough for every redraw.
+    pub fn sync_connected(&self) -> bool {
+        self.project_root().is_some_and(|root| git::is_connected(&root))
+    }
+
+    /// Connect the project to the repository at `sync_address`.
+    pub fn connect_sync(&mut self) {
+        let Some(root) = self.project_root() else {
+            return;
+        };
+        self.save_all();
+        self.status = match git::connect(&root, &self.sync_address) {
+            Ok(()) => "Connected. Sync sends the project there.".into(),
+            Err(err) => format!("Could not connect: {err}"),
+        };
+    }
+
+    /// Save everything and start a sync. Returns the project folder for the
+    /// sync to run on, or `None` when one is running or something is unsaved.
+    pub fn begin_sync(&mut self) -> Option<PathBuf> {
+        if self.syncing {
+            return None;
+        }
+        let root = self.project_root()?;
+        self.save_all();
+        if self.has_unsaved() {
+            self.status = "Not synced: something could not be saved first.".into();
+            return None;
+        }
+        self.syncing = true;
+        self.status = "Syncing…".into();
+        Some(root)
+    }
+
+    /// Take in what a sync did. If changes came in, the project is opened
+    /// again to show them, and each scene where both versions were kept gets
+    /// the track-changes baseline that lists the other machine's paragraphs.
+    pub fn finish_sync(&mut self, result: writing_studio_core::Result<SyncReport>) {
+        self.syncing = false;
+        let report = match result {
+            Ok(report) => report,
+            Err(err) => {
+                self.status = format!("Sync stopped: {err}");
+                return;
+            }
+        };
+        if report.received {
+            let (Some(root), selected, mode) = (self.project_root(), self.selected, self.mode) else {
+                return;
+            };
+            self.open_project_at(root);
+            if let Some(store) = &self.store {
+                for baseline in &report.baselines {
+                    if let Err(err) = store.borrow().save_tracking_baseline(baseline) {
+                        self.status = format!("Synced, but a merged scene could not be marked: {err}");
+                    }
+                }
+            }
+            self.mode = mode;
+            if let Some(id) = selected.filter(|id| self.binder.get(*id).is_some()) {
+                self.select_node(id);
+            }
+        }
+        self.sync_conflicts = report.conflicts.iter().map(|conflict| conflict.what.clone()).collect();
+        let what = match (report.sent, report.received) {
+            (true, true) => "sent and received changes",
+            (true, false) => "sent this machine's changes",
+            (false, true) => "received changes",
+            (false, false) => "nothing to send or receive",
+        };
+        self.status = match self.sync_conflicts.len() {
+            0 => format!("Synced: {what}."),
+            count => format!("Synced: {what}. {count} things were changed on both machines; History lists them."),
+        };
+    }
+
+    /// When the window closes: save, and commit for the next sync. Nothing
+    /// goes over the network.
+    pub fn commit_on_close(&mut self) {
+        self.save_all();
+        if let Some(root) = self.project_root().filter(|root| git::is_connected(root)) {
+            let _ = git::commit_all(&root);
+        }
     }
 
     /// What was wrong with the project's files when it opened, one line each.
@@ -3518,6 +3624,56 @@ mod tests {
         state.select_node(scene);
         assert!(state.status.contains("not written over"), "{}", state.status);
         assert!(!file.exists());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    fn git(dir: &std::path::Path, args: &[&str]) {
+        let done = std::process::Command::new("git").current_dir(dir).args(args).output().unwrap();
+        assert!(done.status.success(), "{}", String::from_utf8_lossy(&done.stderr));
+    }
+
+    #[test]
+    fn the_window_syncs_reopens_and_marks_what_both_machines_changed() {
+        let (mut state, dir) = open_state("sync");
+        let root = state.store.as_ref().unwrap().borrow().root.clone();
+        let remote = dir.join("remote.git");
+        git(&dir, &["init", "-q", "--bare", "--initial-branch=main", &remote.to_string_lossy()]);
+        assert!(state.sync_status().is_none());
+        state.sync_address = remote.to_string_lossy().into_owned();
+        state.connect_sync();
+        for (key, value) in [("user.name", "Test Writer"), ("user.email", "test@example.com")] {
+            git(&root, &["config", key, value]);
+        }
+        state.apply_editor_text("One.\nTwo.\nThree.".into());
+        let folder = state.begin_sync().unwrap();
+        assert!(state.syncing && state.begin_sync().is_none());
+        state.finish_sync(git::sync(&folder));
+        assert!(!state.syncing);
+        assert_eq!(state.status, "Synced: sent this machine's changes.");
+        assert!(state.sync_status().is_some());
+
+        // Another machine changes the same paragraph and sends it.
+        let other = dir.join("other.writingstudio");
+        git(&dir, &["clone", "-q", &remote.to_string_lossy(), &other.to_string_lossy()]);
+        for (key, value) in [("user.name", "Other"), ("user.email", "other@example.com")] {
+            git(&other, &["config", key, value]);
+        }
+        let scene = state.selected.unwrap();
+        {
+            let store = ProjectStore::open(&other).unwrap();
+            store.save_document(&writing_studio_document::Document::from_plain_text(scene, "One.\nTwo, there.\nThree.")).unwrap();
+        }
+        git::sync(&other).unwrap();
+
+        state.apply_editor_text("One.\nTwo, here.\nThree.".into());
+        let folder = state.begin_sync().unwrap();
+        state.finish_sync(git::sync(&folder));
+        assert!(state.status.contains("History lists them"), "{}", state.status);
+        assert_eq!(state.selected, Some(scene));
+        assert_eq!(state.editor_text, "One.\nTwo, here.\nTwo, there.\nThree.");
+        assert!(state.is_tracking());
+        assert_eq!(state.tracked_changes().len(), 1);
+        assert_eq!(state.sync_conflicts.len(), 1);
         let _ = std::fs::remove_dir_all(dir);
     }
 

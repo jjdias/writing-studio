@@ -40,6 +40,7 @@ MyNovel.writingstudio/
   attachments/            research files, as now
   dictionaries/           optional Hunspell dictionaries, as now
   .gitignore              ignores .local/
+  .gitattributes          keeps line endings as they are, and research files as files
   .local/                 this machine only; never shared
     cache.sqlite          search, word counts, snapshots, track-changes baselines
     settings.json         theme, panel layout, book on screen, writing sessions
@@ -259,7 +260,7 @@ JSON is for structure that is not read as prose. Where a file is a list, each it
 - Every file is written whole under a temporary name and then renamed over the old one. A crash during a save leaves the old file or the new one.
 - Saving a scene writes that scene's file. Changing a title, synopsis, status, label, color, or beat writes the file of that item. Other scene files are not read or written.
 - `binder.json`, `bible.json`, `plot.json`, `project.json`, and the bible's files are written only when what they hold has changed.
-- `README.md`, `scene.css`, and `.gitignore` are written when they are missing and then left alone, so they can be edited.
+- `README.md`, `scene.css`, `.gitignore`, and `.gitattributes` are written when they are missing and then left alone, so they can be edited.
 - **A file changed outside the program is never written over.** Before writing or deleting a file, the program checks that it still holds what the program last read or wrote. If not, what it holds is kept beside it as `name.conflict-<time>.ext`. When the window comes back to the front, the open scene's file is checked and read again if it changed and nothing is unsaved.
 - **Opening copes with files changed outside.** A scene whose file is missing, or holds another item's id, stays in the binder marked missing, and its file is never written over. A bible entry whose file is missing leaves the bible. An HTML file in `manuscript/` or a bible folder that no list names comes in, a scene into a Recovered folder at the top of the manuscript. An item whose parent is missing, or that is in a loop, moves to Recovered. What was repaired is written back at once, and History lists it. A JSON file that cannot be read, a path that leaves the project, or a binder without its three roots stops the project from opening, and the message names the file.
 - **Opening reads the files.** The cache is filled from them each time, so a scene edited in a text editor, or brought in by git, is what opens. A file that cannot be read stops the project from opening, and the message names the file.

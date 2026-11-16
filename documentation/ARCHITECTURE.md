@@ -36,6 +36,7 @@ Binder + stored documents → writing-studio-export → .md / .docx on disk
 | `writing-studio-diagnostics` | Scene goal, conflict, and outcome, and the counts and checks made on a scene's text. No dependencies |
 | `writing-studio-format` | A scene as an HTML file, and back, exactly; and as Markdown for export and import. See [PROJECT_FORMAT_2.md](PROJECT_FORMAT_2.md) |
 | `writing-studio-spellcheck` | Checks words against a Hunspell dictionary (English US is compiled in) and the project's own words; suggests replacements. No network |
+| `writing-studio-synchronization` | Merging two copies of a project by paragraph and by field, and sync through the `git` program. See [SYNC.md](SYNC.md) |
 | `writing-studio-export` | Manuscript compile to Markdown (with the format crate's writer) and DOCX |
 | `writing-studio-ui` | Workspace UI |
 | `writing-studio-desktop` | Native window |

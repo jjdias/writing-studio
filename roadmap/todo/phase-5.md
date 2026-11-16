@@ -1,6 +1,6 @@
 # Phase 5 — what is left
 
-Phase 5 is **plain-text projects, and sync through git**. Stages 1 to 4 have shipped: see [../done/phase-5.md](../done/phase-5.md). This file is the rest: stage 5.
+Phase 5 is **plain-text projects, and sync through git**. All five stages have shipped: see [../done/phase-5.md](../done/phase-5.md). This file is what is left: History from git.
 
 Read this whole section before starting any item.
 
@@ -46,73 +46,14 @@ Read this whole section before starting any item.
 - State tests in `crates/ui/src/state.rs` build a real project in a temporary folder with `open_state`.
 - Nothing drives the desktop window. Say so in your summary when a change is only tested below the window.
 
-## Stage 5 — Sync through git
-
-- **Sync** saves the project as a commit, fetches, merges with stage 4, and pushes. One button, and a line that says when the project was last synced and whether there is anything to send or receive.
-- The writer does not see branches, staging, or rebase. Commit messages are written by the program from what changed.
-- Autosave does not commit. Sync, closing the project, and a pause in writing do.
-- The first version uses the `git` program installed on the computer, and the keys or tokens the writer has already set up for it. The program stores no passwords.
-- A guide in `documentation/` explains how to create a private repository with a common host and connect a project to it.
-- Connecting a project warns that a public repository makes the manuscript public.
-- A new project gets a `.gitignore` for the cache, the local settings, snapshots, and backups, and a short `README` in the folder that says what the files are and how to read them without this program.
-- Large research files are stored as they are. The guide explains Git LFS for writers who need it.
-- If git is not installed, or there is no network, everything except Sync works, and Sync says why it cannot run.
-
-### How to build it
-
-**Where.** In `writing-studio-synchronization`, on top of stage 4. Run the `git` program with `std::process::Command`. Do not add a git library in this stage; that is under "Later" below.
-
-**Never store a password, a token, or a key.** The security rule in `.claude/rules/security.md` requires an explicit request for any credential handling. This stage has none: `git` uses what the writer set up for it.
-
-**Running git**
-
-- Set `GIT_TERMINAL_PROMPT=0` so that git fails instead of waiting for a password the window cannot show.
-- Give every network command a time limit, and run it off the window's thread.
-- Run every command with the project folder as its working directory, and check that the folder is the top of its repository (`git rev-parse --show-toplevel`), so that Sync never commits files outside the project.
-- Read the exit status and the error text. Show the writer a short sentence, and keep git's own words where they can be read.
-
-**Connecting a project**
-
-1. If the folder is not a repository: `git init`, and write `.gitattributes` (item 5 of [phase-5.1.md](phase-5.1.md)).
-2. Ask for the address of the remote, and add it as `origin`.
-3. Before the first push, warn that anyone who can read the repository can read the manuscript, and that a public repository makes it public. The program cannot tell whether a repository is private, so the warning is shown every time a project is connected.
-
-**Sync**, in this order:
-
-1. Save everything (`StudioState::save_all`).
-2. Stop if git is in the middle of something: a `MERGE_HEAD`, `rebase-merge`, or `rebase-apply` in `.git/`. Tell the writer to finish it with git.
-3. `git add -A`, then commit if anything is staged. `.gitignore` already leaves `.local/` out. Write the message from what changed: scenes added, changed, and removed, by title.
-4. `git fetch origin`.
-5. Compare with the remote branch:
-   - The remote has nothing new: go to 6.
-   - We have nothing new: `git merge --ff-only`, then open the project again so the cache is filled from the new files.
-   - Both have new commits: read three copies of the project (the merge base, ours, theirs) into temporary folders with `git worktree add --detach`, read each with `read_project_files`, and call `merge` from stage 4. Record the merge without letting git touch the files (`git merge -s ours --no-commit`), write the merged project with `write_project_files`, `git add -A`, and commit. Remove the temporary worktrees. Then open the project again.
-6. `git push`. If it is refused because the remote moved, start again from 4, once.
-
-**In the window**
-
-- A Sync button, and a line that says when the project was last synced and whether there is anything to send or receive (`git status --porcelain --branch` after a fetch).
-- Autosave does not commit. Sync does, and so does closing the project. A commit after a pause in writing is optional; if it is added, make the pause long (minutes) so the history is not one commit a sentence.
-- If git is not installed, or there is no network, everything else works and Sync says which it is.
-
-**Documents to write**
-
-- `documentation/SYNC.md`: how to make a private repository with a common host, set up a key or token for `git`, and connect a project. How to use Git LFS for large research files.
-- A section in `documentation/USAGE.md`.
-
-**Tests**
-
-- Use a bare repository in a temporary folder as the remote; no network is needed. Two working copies of one project stand in for two machines.
-- Sync with nothing to do; sync that only sends; sync that only receives; sync where both changed different scenes; sync where both changed the same paragraph, which must end with both versions in the scene and a baseline set.
-- A folder that is not a repository; a repository with a merge in progress; `git` not found (run with an empty `PATH`).
-
-**Done when** a writer can keep one project on two machines with the Sync button alone, and no sync loses a word.
-
 ## Later in this phase
 
-- A git engine built into the program, so that nothing has to be installed and Sync can work on phones and tablets.
-- Guided setup: create or pick a repository and sign in from inside the program.
 - History from git in the History view: open or compare a scene as it was at an earlier sync.
+
+Moved out of this phase:
+
+- A git engine built into the program, so that nothing has to be installed and Sync can work on phones and tablets: to [Phase 7](phase-7.md), where phones and tablets are. It means a large new dependency, and the program handling SSH keys or tokens itself, which needs an explicit decision (`.claude/rules/security.md`).
+- Guided setup, creating a repository and signing in from inside the program: to [bonus](bonus.md). It needs an integration with each git host, against "any git host", and stored tokens.
 
 ## Not in this phase
 

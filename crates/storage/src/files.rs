@@ -398,7 +398,14 @@ pub(crate) fn write_project_files_noted(
     }
     // What makes the folder readable and safe to share. The reader's guide
     // and the stylesheet are not overwritten, so they can be changed.
-    for (name, text) in [("README.md", README), ("scene.css", STYLESHEET), (".gitignore", ".local/\n")] {
+    // `.gitattributes` keeps git on any system from changing line endings,
+    // and from treating research files as text.
+    for (name, text) in [
+        ("README.md", README),
+        ("scene.css", STYLESHEET),
+        (".gitignore", ".local/\n"),
+        (".gitattributes", "* text=auto eol=lf\nattachments/** -text\n"),
+    ] {
         if !root.join(name).exists() {
             write_atomic(&root.join(name), text.as_bytes())?;
         }

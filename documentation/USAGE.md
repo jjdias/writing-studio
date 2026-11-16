@@ -58,6 +58,10 @@ The index is built in memory from the project when it opens, and updated when a 
 - A scene's file can be changed outside the program, in a text editor or by git. When you come back to the window, the open scene is read again if you have nothing unsaved. If a save would write over a file that was changed outside, the other version is kept beside it as `….conflict-<time>.html`, and the status line says so.
 - **Backup** writes `.local/backups/project-….sqlite` in the project folder. Restore from **History** (second click). A safety copy is written first, and the scene files are written again from what was restored. Backups and snapshots belong to this computer; they are not part of what git shares.
 
+## Sync
+
+Optional. Keep a project on more than one computer through git, with any git host. **History** → **Sync** connects the project to a repository; then **Sync** in the top bar sends this computer's changes and brings in the other's. Paragraphs both computers changed are both kept, as tracked changes to accept or reject. Setting it up: [SYNC.md](SYNC.md).
+
 ## Compile
 
 - **Markdown** or **DOCX** in the top bar. Choose where to save. In a Markdown compile, open notes are footnotes numbered across the book.
