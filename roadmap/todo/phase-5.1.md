@@ -9,7 +9,7 @@ Items 1, 2, and 5 are done. Items 3 and 4 were dropped. Items 6 to 10 are small;
 **Read first**
 
 - [`AGENTS.md`](../../AGENTS.md) and the rules in `.claude/rules/`. They limit scope, tests, and git use.
-- [`documentation/PROJECT_FORMAT_2.md`](../../documentation/PROJECT_FORMAT_2.md): the format, and what is written and deleted when.
+- [`documentation/PROJECT_FORMAT.md`](../../documentation/PROJECT_FORMAT.md): the format, and what is written and deleted when.
 - [`documentation/ARCHITECTURE.md`](../../documentation/ARCHITECTURE.md): the crates and the data flow.
 - "How the work is done now" in [../README.md](../README.md): the current focus, and what counts as tested.
 

@@ -9,7 +9,7 @@
 //! (`writing_studio_document`'s `to_html`). That one follows what a browser
 //! does to an editable page and loses a few things on the way, such as an
 //! empty paragraph. This one is a storage format with one spelling for each
-//! thing. The dialect is described in `documentation/PROJECT_FORMAT_2.md`.
+//! thing. The dialect is described in `documentation/PROJECT_FORMAT.md`.
 
 use writing_studio_core::Id;
 use writing_studio_document::{

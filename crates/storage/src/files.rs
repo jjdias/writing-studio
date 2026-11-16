@@ -1,9 +1,8 @@
 //! A project as a folder of HTML and JSON files: project format 2.
 //!
 //! This writes everything a project holds into the files described in
-//! `documentation/PROJECT_FORMAT_2.md`, and reads them back. The desktop app
-//! does not open a project this way yet; it still uses the SQLite file. This
-//! is the part that the switch will stand on.
+//! `documentation/PROJECT_FORMAT.md`, and reads them back. The store
+//! (`mirror.rs`) keeps them in step with every save.
 //!
 //! Every file is written whole to a temporary name and then renamed over the
 //! old one, so a crash during a save leaves the old file or the new one.
@@ -420,31 +419,6 @@ pub fn write_format_2_marker(root: &Path) -> Result<()> {
         &root.join(PROJECT_FORMAT_FILE),
         format!("writing-studio-project {FILES_FORMAT_VERSION}\n").as_bytes(),
     )
-}
-
-/// Check that the files in `root` hold `content`: read them back and compare
-/// what they would be written as with what `content` is written as. A
-/// conversion runs this before it trusts the new files.
-pub fn verify_project_files(root: &Path, content: &ProjectContent) -> Result<()> {
-    let mut wanted = content.clone();
-    let read = read_project_files(root)?;
-    // File names were chosen when the files were written.
-    wanted.files = read.files.clone();
-    let (wanted, found) = (render(&wanted)?, render(&read)?);
-    let found: HashMap<&str, &str> = found
-        .contents
-        .iter()
-        .map(|(path, text)| (path.as_str(), text.as_str()))
-        .collect();
-    for (path, text) in &wanted.contents {
-        if found.get(path.as_str()) != Some(&text.as_str()) {
-            return Err(bad(path, "the file does not hold what the project holds"));
-        }
-    }
-    if found.len() != wanted.contents.len() {
-        return Err(Error::message("the files hold more than the project does"));
-    }
-    Ok(())
 }
 
 /// The file of one item with text: a scene, or a chapter written without
@@ -1587,14 +1561,6 @@ mod tests {
         let first = temp("first");
         let placed = write_project_files(&first, &content).unwrap();
         let read = read_project_files(&first).unwrap();
-
-        verify_project_files(&first, &content).unwrap();
-        // A scene changed behind the program's back is caught.
-        let (_, scene_path) = placed.iter().find(|(_, path)| path.starts_with("manuscript/")).unwrap();
-        let kept = fs::read_to_string(first.join(scene_path)).unwrap();
-        fs::write(first.join(scene_path), kept.replace("</body>", "<p>extra</p></body>")).unwrap();
-        assert!(verify_project_files(&first, &content).is_err());
-        fs::write(first.join(scene_path), kept).unwrap();
 
         // The files say where each item is, and reading keeps those names.
         assert_eq!(read.files, placed);

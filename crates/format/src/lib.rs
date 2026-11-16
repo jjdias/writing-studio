@@ -4,7 +4,7 @@
 //! opens in any browser. The same scene can be written as Markdown, for
 //! taking a book to another program, and read from Markdown.
 //!
-//! The format is described in `documentation/PROJECT_FORMAT_2.md`.
+//! The format is described in `documentation/PROJECT_FORMAT.md`.
 
 mod canonical;
 mod header;

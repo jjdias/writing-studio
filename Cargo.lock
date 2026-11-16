@@ -6218,13 +6218,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "writing-studio-collaboration"
-version = "0.1.0"
-dependencies = [
- "writing-studio-core",
-]
-
-[[package]]
 name = "writing-studio-core"
 version = "0.1.0"
 dependencies = [
@@ -6334,13 +6327,6 @@ name = "writing-studio-search"
 version = "0.1.0"
 dependencies = [
  "tantivy",
- "writing-studio-core",
-]
-
-[[package]]
-name = "writing-studio-security"
-version = "0.1.0"
-dependencies = [
  "writing-studio-core",
 ]
 

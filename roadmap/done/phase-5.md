@@ -2,7 +2,7 @@
 
 Phase 5 is **plain-text projects, and sync through git**. It is complete. Small things it leaves for later are in [../todo/phase-5.1.md](../todo/phase-5.1.md).
 
-This work is on the `alternative-phase-5` branch. The format itself is described in [PROJECT_FORMAT_2.md](../../documentation/PROJECT_FORMAT_2.md).
+This work is on the `alternative-phase-5` branch. The format itself is described in [PROJECT_FORMAT.md](../../documentation/PROJECT_FORMAT.md).
 
 ## Why the phase changed
 

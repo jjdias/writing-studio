@@ -1,148 +1,328 @@
 # Writing Studio project format
 
-Version: **1**
+Version: **2**, written in `FORMAT` as `writing-studio-project 2`. A project made by an earlier test version, in format 1, is not opened; see the end of this page.
 
-Format 1 kept the whole project in one SQLite file. Test versions released before format 2 used it. This version does not open or convert a format 1 project: it says the project was made by an earlier test version. The program now uses format 2, with each scene as an HTML file: [PROJECT_FORMAT_2.md](PROJECT_FORMAT_2.md). The tables below are still the tables of the cache in `.local/cache.sqlite`.
+The files in the project folder are the project. The code that writes a scene is in `crates/format`; the code that writes the folder and keeps it in step with every save is in `crates/storage` (`files.rs`, `mirror.rs`).
 
-A project is a directory you can copy, back up, and keep offline—not a single opaque file and not a cloud object.
+## What the format is for
+
+1. **The book can be read without this program.** A scene is an HTML file. Any browser opens it as a page, and the words are there, in order, with their formatting. For another writing tool, the program also writes each scene as Markdown.
+2. **The book can be kept with git.** Text files can be compared and merged. One database file cannot.
+3. **Nothing is lost.** A scene file holds the scene exactly. What the program writes, it reads back as the same document.
+
+### Why HTML is stored, and Markdown is exported
+
+Markdown was the first choice and was built and tested. It reads well as plain text, but it cannot hold a scene exactly: it has no way to say a few things the editor produces, and other Markdown readers disagree about what `**` means next to punctuation. HTML can say all of it, with one spelling for each thing, and needs nothing escaped but `&`, `<`, and `>`.
+
+So the stored file is HTML, and Markdown is an export: it has to be good to read and good for other programs, and it does not have to be exact. The Markdown reader stays, for bringing text in.
+
+| | Stored: HTML | Export: Markdown |
+| --- | --- | --- |
+| Holds the scene exactly | Yes | No; see the list below |
+| Opens without this program | In any browser | In any text editor or Markdown tool |
+| Read by the program | Always | To bring text in |
+
+## The folder
 
 ```text
 MyNovel.writingstudio/
-  FORMAT                 # `writing-studio-project 1`
-  project.sqlite         # metadata, binder, documents, snapshots, plot, characters, world, research
-  backups/               # timestamped SQLite copies
-  attachments/           # copies of research files, one folder per note
-  dictionaries/          # optional: Hunspell `name.aff` + `name.dic` pairs for spellcheck
+  FORMAT                  writing-studio-project 2
+  README.md               what these files are, for someone without this program
+  scene.css               how a scene file looks in a browser
+  project.json            the project's id and title, and settings every machine shares
+  binder.json             every binder item: its kind, parent, order, and file
+  manuscript/             one HTML file for each scene, and each chapter that holds text
+    the-harbor-3f9a.html
+  characters/             one HTML file for each character
+  places/  cultures/  lore/  timeline/  research/
+  bible.json              the order of those entries, which scenes they point at, who is related to whom
+  plot.json               plotlines and plot points
+  attachments/            research files, as now
+  dictionaries/           optional Hunspell dictionaries, as now
+  .gitignore              ignores .local/
+  .gitattributes          keeps line endings as they are, and research files as files
+  .local/                 this machine only; never shared
+    cache.sqlite          search, word counts, snapshots, track-changes baselines
+    settings.json         theme, panel layout, book on screen, writing sessions
+    backups/
 ```
 
-`dictionaries/` is not created by the program. Add it by hand to check spelling in a language that is not built in. The spellcheck switch, the chosen dictionary name, and the project's accepted words are in `settings_json` under `spelling` (`enabled`, `language`, `words`). A project saved before Phase 4 opens with spellcheck on, English (US), and no words.
+The HTML and JSON files are the project. `.local/` can be deleted; the program rebuilds what it can from the files, and what it cannot rebuild (snapshots, backups, writing sessions) was only ever on this machine.
 
-## Rules
+**Markdown folder** in the window exports the whole project as Markdown, for reading it or for another program; see "Markdown export and import".
 
-1. Manuscript text lives in the `documents` table, one row per scene and per chapter that holds its own text. Research notes live in `research_items`, not as binder documents.
-2. Binder hierarchy lives in `binder_nodes` and references `document_id`.
-3. Never store the whole book as one text field.
-4. Soft deletion uses `deleted_at` tombstones. Trash also sets `parent_id` to the trash root and remembers `restore_parent_id`.
-5. Identifiers are UUIDs. Timestamps are RFC 3339 UTC.
-6. `FORMAT` is the compatibility gate. Newer apps may read older versions; older apps must refuse newer ones.
-7. The format does not depend on an account. Anyone with the folder can open it in this app.
+## Scene files
 
-## Tables (v1)
-
-- `project_meta` — id, format_version, title, created_at, updated_at, `settings_json`
-- `binder_nodes` — hierarchy, synopsis, status, `label`, `color`, `deleted_at`, `restore_parent_id`. `label` is a short tag. `color` is empty or one of `gold`, `green`, `red`, `blue`, `violet`
-- `documents` — `content_json` (block model), word_count, char_count
-- `snapshots` — per-document JSON copies with label (`manual`, `pre-restore`, …)
-- `scene_beats` — `node_id`, `goal`, `conflict`, `outcome`: the three beats of a scene, keyed by binder item. A scene with none written has no row. Added in Phase 4 on open
-- `tracking_baselines` — one row per tracked document: `document_id`, the document JSON from when tracking began (or from the last accept), and `started_at`. No row means the document is not tracked. Added in Phase 4 on open (`CREATE TABLE IF NOT EXISTS`)
-- `plotlines` — id, title, color, sort_index, created_at, updated_at
-- `plot_points` — plotline_id, title, summary, optional `scene_id` (a binder scene), sort_index, timestamps
-- `characters` — name, role, summary, sort_index, timestamps
-- `character_motivations` — character_id, body, sort_index, timestamps
-- `character_relationships` — from_id, to_id, kind, sort_index, timestamps
-- `cultures` — name, summary, sort_index, timestamps
-- `locations` — name, summary, optional `culture_id`, sort_index, timestamps
-- `lore_entries` — title, body, optional `location_id` and `culture_id`, sort_index, timestamps
-- `timeline_events` — title, `when_label`, summary, optional `location_id`, sort_index, timestamps
-- `research_items` — title, notes, sort_index, timestamps
-- `research_files` — id, item_id, display `file_name`, `stored_name` relative to `attachments/`, created_at
-- `bible_scene_links` — owner_kind, owner_id, scene_id, sort_index. A character, location, culture, lore entry, timeline event, or research note can point at several manuscript scenes. The records stay in the project; the scene text is not copied.
-
-Existing databases gain the plot, character, world, research, and `bible_scene_links` tables on open (`CREATE TABLE IF NOT EXISTS`). Databases created before `restore_parent_id` gain that column on open (`ALTER TABLE`). `label` and `color` are part of the current `binder_nodes` definition. Opening a project does not add those columns to a database created before they existed. Format version stays **1** because the added tables are additive.
-
-A research file is stored as `attachments/{note-id}/{file-id}` plus a short extension. The sqlite backup does not include `attachments/`. Copy the project folder when you want the files and the database together.
-
-## Settings JSON
-
-```json
-{
-  "daily_word_goal": 500,
-  "project_word_goal": 80000,
-  "compile_title_page": true,
-  "autosave_seconds": 2,
-  "theme": "dark",
-  "compile_book_id": null,
-  "book_word_goals": [],
-  "show_whole_series": true,
-  "layout": {
-    "sidebar_side": "left",
-    "sidebar_width": 260,
-    "inspector_width": 300,
-    "sidebar_visible": true,
-    "inspector_visible": true
-  },
-  "writing": {
-    "day": "2026-11-06",
-    "day_baseline": 1200,
-    "session_started_at": "2026-11-06T18:00:00Z",
-    "session_active_at": "2026-11-06T18:20:00Z",
-    "session_baseline": 1200,
-    "sessions": [],
-    "books": []
-  }
-}
+```html
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>The Harbor</title>
+<meta name="id" content="3f9a2c1e-0b7d-4e55-9a10-6c2f8d4b1a77">
+<meta name="synopsis" content="Mara is late.&#10;The boat is leaving.">
+<meta name="status" content="draft">
+<meta name="goal" content="Reach the boat before the tide">
+<link rel="stylesheet" href="../scene.css">
+</head>
+<body>
+<p>Mara ran for the <strong>north</strong> quay. <em>Not again</em>, she thought.</p>
+<p>The <span class="note" data-note="which one?" data-kind="question">harbor</span> was quiet.</p>
+<p>“Wait,” said the pilot.<br>Nobody waited.</p>
+</body>
+</html>
 ```
 
-`writing`, `layout`, `theme`, `compile_book_id`, `book_word_goals`, and `show_whole_series` are optional for older projects. `show_whole_series` defaults to true. When it is false, the binder, corkboard, outliner, and search show `compile_book_id`. `theme` is `dark`, `light`, or `paper`. `sidebar_side` is `left` or `right`. Widths are pixels. On open, the binder width is clamped to 180–480 and the inspector width to 220–560. `day_baseline` remains the older whole-manuscript count. `writing.books` stores each book's outline count at the start of `day` and at the start of the open sitting:
+### The head
 
-```json
-{ "book_id": "…", "day": "2026-11-06", "day_baseline": 1200, "session_baseline": 1200 }
+- `<title>` is the scene's title.
+- Everything else is a `<meta name="…" content="…">` line, one to a line. A line break inside a value is written `&#10;`.
+- A name with nothing to say is left out. Missing and empty mean the same.
+- Names the program does not know are kept, after the ones it does, and written back on every save. The same name twice is a list. A name the program does know always comes from the program.
+- The stylesheet line is the same in every file. It only affects how a browser shows the scene.
+- A file with no head, only the text, is read as a scene with no title. The program gives it an id when it takes the file in.
+
+| Name | Meaning |
+| --- | --- |
+| `id` | The binder item this file is the text of |
+| `synopsis`, `status`, `label`, `color` | As in the inspector |
+| `goal`, `conflict`, `outcome` | The scene's three beats |
+
+### The text
+
+Every block is on its own line, so a change to one paragraph changes one line of the file. A list has a line for each item. A code block has a line for each of its lines.
+
+| In the editor | In the file |
+| --- | --- |
+| Paragraph | `<p>…</p>`; an empty one is `<p></p>` |
+| Line break inside a block | `<br>` |
+| Heading 1 to 6 | `<h1>` to `<h6>` |
+| Quote | `<blockquote>…</blockquote>` |
+| List | `<ul>` or `<ol>` on a line, then one `<li>…</li>` line for each item |
+| Code | `<pre>`, a line break, the code as typed, `</pre>` |
+| Scene break | `<hr>` |
+| Bold, italic, strikethrough, underline | `<strong>`, `<em>`, `<s>`, `<u>` |
+| Link | `<a href="address">` |
+| Highlight, yellow | `<mark>` |
+| Highlight, another color | `<mark class="green">` — `green`, `blue`, or `pink` |
+| Note on text | `<span class="note" data-note="the note">` |
+| Note with a kind | `data-kind="question"` — `question`, `revise`, or `check` |
+| Resolved note | `data-resolved="true"` |
+
+- Formatting nests in one fixed order, outermost first: note, highlight, link, bold, italic, strikethrough, underline. A note over text that is partly bold or partly highlighted is written once, around all of it.
+- In the text, only `&`, `<`, and `>` are written differently: `&amp;`, `&lt;`, `&gt;`. A non-breaking space is written `&nbsp;` so that it can be seen.
+- Spaces are kept as typed, including several in a row and at the ends of a paragraph. The stylesheet tells a browser to show them.
+- There is no line break inside a block other than in code. A browser's view and the file agree.
+
+### What a scene file does not hold
+
+- The ids of paragraphs and runs. Nothing uses them.
+- The time of the last save. Git has it.
+- A link whose address is not `http`, `https`, `mailto`, or a plain path: the link is taken off and its text is kept. A file that a browser opens must not carry a `javascript:` address.
+
+Everything else is stored exactly, including the things Markdown cannot say.
+
+### Reading files changed by hand
+
+The reader accepts more than the writer produces:
+
+- A file that was tidied or indented: a line break and the spaces around it, inside a block, read as one space, and as nothing at the edge of a block.
+- `<b>`, `<i>`, `<del>`, and `<strike>`; `<div>` as a paragraph; text outside any block as a paragraph; tags and attributes in capitals; an attribute with no value.
+- A tag it does not know is passed over and its text is kept.
+- `&copy;` and other named characters it does not know stay as typed.
+
+Nothing in a scene file is ever run. `<script>` and `<style>` are skipped with everything inside them, and attributes such as `onclick` are ignored.
+
+It does not read lists inside lists, or blocks inside a quote; their text comes in as paragraphs.
+
+### File names
+
+`the-harbor-3f9a.html`: the title in lowercase with everything but letters and digits turned into `-`, at most 40 characters, then the first four characters of the id. A file gets its name when it is made. Changing the title, or moving the scene, does not rename the file; the `<title>` is the title.
+
+### What has been checked
+
+- Every kind of block and every piece of formatting is written and read back, with their awkward cases, including the ones Markdown drops.
+- Randomly built documents, made of the characters most likely to break HTML or Markdown, are written, read back, and compared. 2,000 run with every test run; 300,000 were run once when the HTML reader was written.
+- A project on disk is checked scene by scene. To check one of your own (opening it fills its cache in `.local/`; no scene or project file is written):
+
+  ```bash
+  cargo run -p writing-studio-format --example check_project -- path/to/Novel.writingstudio
+  ```
+
+  Add `--write some/folder` to save each scene file, with its Markdown export beside it, and look at them.
+
+## Markdown export and import
+
+**The whole project.** **Markdown folder** writes a new folder:
+
+```text
+Tide (Markdown)/
+  README.md                       the book's title, then every scene and entry, in order, as links
+  manuscript/
+    01-tide/                      a book
+      01-chapter-1/               a chapter that holds scenes
+        01-scene-1.md
+        02-the-quay.md
+  characters/01-mara.md           the bible, one file for each entry
+  places/  cultures/  lore/  timeline/  research/
 ```
 
-Today and the sitting shown for a book use those baselines. Completed sittings that added words, summed across books, are appended to `sessions` (newest at the end) the next time the project is opened. The list keeps the newest 40. Each sitting is:
+The numbers keep files in the order of the book in any file list. An item with text is a file; an item with children is a folder beside it with the same number and name; a chapter with no text of its own is only the folder. The trash is left out. Ids, the plot grid, settings, and `.local/` are not written: this is for reading and for other programs, not for coming back.
 
-```json
-{
-  "day": "2026-11-06",
-  "started_at": "2026-11-06T18:00:00Z",
-  "ended_at": "2026-11-06T18:20:00Z",
-  "words": 400,
-  "seconds": 1200
-}
+**Bringing scenes in.** **Import** in the binder brings `.md` files in as new scenes where a new scene would go, in the order chosen, each with a new id. The front matter gives the title and details; with none, the file's name is the title.
+
+**One scene**, as both the export and the import write and read it:
+
+```markdown
+---
+id: 3f9a2c1e-0b7d-4e55-9a10-6c2f8d4b1a77
+title: The Harbor
+synopsis: |-
+  Mara is late.
+  The boat is leaving.
+status: draft
+goal: Reach the boat before the tide
+---
+
+Mara ran for the **north** quay. *Not again*, she thought.
+
+The {==harbor==}{>>Question: which one?<<} was quiet.
+
+“Wait,” said the pilot.\
+Nobody waited.
 ```
 
-A new local day sets each book's baseline to that book's current outline count. `compile_book_id` is the book Markdown and DOCX export, and the book whose word count and target are shown. Each `book_word_goals` entry is `{ "book_id": "…", "goal": 80000 }`. The first book with no entry keeps `project_word_goal`. Later books with no entry use 80000. Permanently deleting a book removes its entry. If that book was `compile_book_id`, the field becomes the first remaining book.
+- The header is the `---` front matter that other writing tools read: `key: value` lines, quoted only where a YAML reader could misread the value, with text of several lines under `|-`.
+- Notes and highlights are CriticMarkup: `{==text==}` is a highlight, `{==text==}{.green}` a colored one, `{==text==}{>>the note<<}` a note, with `Question: `, `Revise: `, `Check: `, and `(resolved) ` in front of the note where they apply.
+- Underline is `<u>`. A scene break is `* * *`. An empty paragraph is `<br>` on a line.
+- What the writer typed is never read as formatting: characters that mean something to Markdown are written with a backslash.
+- Where another Markdown reader would misread `**`, `*`, or `~~`, the file uses `<strong>`, `<em>`, or `<s>`.
+
+**What the export leaves out**, because Markdown cannot say it:
+
+- Bold, italic, and strikethrough on the spaces at the start or end of the formatted stretch.
+- A line break at the very end of a paragraph, heading, quote, or list item.
+- Formatting, links, notes, and highlights inside a code block.
+- A list with no items.
+- A note that crosses formatting or a highlight is written once for each piece.
+
+**Import.** The reader takes the export back, and reads Markdown written elsewhere: wrapped paragraphs, `***` or `---` as a scene break, `*` list items, `<b>` and `<i>`. It does not read `_italic_`, lists inside lists, or quotes inside quotes; those come in as text.
+
+**Checked against another reader.** The export is read with an independent Markdown reader (`pulldown-cmark`):
+
+- Plain text, 20,000 paragraphs of awkward characters: the same text every time, and nothing read as formatting.
+- Formatted prose, 20,000 paragraphs: the same words with the same bold, italic, and links every time.
+- Formatting pressed against awkward characters, 20,000 paragraphs: no letter or digit is ever lost. About one paragraph in three hundred shows different bold or italic.
+
+## Other HTML files
+
+Characters, places, cultures, lore, timeline events, and research notes are files of the same kind: a head, then the entry's text, written and read by the same code as a scene. The name or title is the `<title>`.
+
+| Folder | Names in the head | Text |
+| --- | --- | --- |
+| `characters/` | `id`, `role`, `motivation` (once for each, in order) | Summary |
+| `places/` | `id`, `culture` (an id) | Summary |
+| `cultures/` | `id` | Summary |
+| `lore/` | `id`, `place`, `culture` (ids) | Body |
+| `timeline/` | `id`, `when`, `place` (an id) | Summary |
+| `research/` | `id` | Notes |
+
+The text of an entry is plain paragraphs. Its files under `attachments/` are listed in `bible.json`.
+
+## JSON files
+
+JSON is for structure that is not read as prose. Where a file is a list, each item is on one line, so that adding, moving, or changing an item changes one line.
+
+- **`project.json`** — `format`, `id`, `title`, `created`, and `settings`: the daily and project word targets, each book's word target, whether compile writes a title page, and spelling (on or off, the dictionary, and the project's accepted words).
+- **`binder.json`** — `items`, one to a line. Each has `id` and `kind`, and `parent` unless it is at the top. An item with text has `file`; its title, synopsis, status, label, and color are in that file. An item with no text of its own (a book, a part, a folder) has them here. A trashed item also has `deleted`, the time it was trashed, and `restore_parent`.
+- **`bible.json`** — a list for each kind of entry (`characters`, `places`, `cultures`, `lore`, `timeline`, `research`), each item an `id` and its `file`; then `research_files`, `relationships`, and `scene_links`.
+- **`plot.json`** — `plotlines` in order, each with its `points` in order; a point has `title`, `summary`, and an optional `scene`.
+
+**Keys the program does not know** on a line of `binder.json`, `plot.json`, or an entry or research file in `bible.json` are kept and written back. Unknown keys in `project.json`, and on the `relationships` and `scene_links` lines, are not yet kept.
+
+**Order is the order of the lines.** Nothing is numbered. In `binder.json` a parent comes before its children, and children are in reading order, so the file reads from the top as the book does. Moving a scene moves one line and changes nothing else. An earlier draft of this format gave each item an order key; line order does the same job with nothing to keep in step.
+
+**Ids.** An item with text has one id, the one in its file. It is also the id of its binder item.
+
+**Paths.** A `file` is a path inside the project folder, with `/` between its parts. A path that is empty, absolute, or holds `..` is refused, and the project does not open.
+
+**Times.** Apart from `created` and `deleted`, no file holds a time. Records read from files have the time they were read.
+
+## This machine only
+
+`.local/settings.json` holds every setting that is not in `project.json`: the theme, panel layout, the book on screen, whether the whole series is shown, the autosave delay, and writing sessions. A project opened where there is no `.local/` uses the usual ones.
+
+`.local/cache.sqlite` is a database the program fills from the files every time the project opens. While the program runs it answers searches and word counts. It also holds what is this machine's alone: snapshots and track-changes baselines. `.local/backups/` holds copies of that database.
+
+## What is written when
+
+- **A save writes the file first, then the cache.** The cache never holds writing that is not in a file.
+- Every file is written whole under a temporary name and then renamed over the old one. A crash during a save leaves the old file or the new one.
+- Saving a scene writes that scene's file. Changing a title, synopsis, status, label, color, or beat writes the file of that item. Other scene files are not read or written.
+- `binder.json`, `bible.json`, `plot.json`, `project.json`, and the bible's files are written only when what they hold has changed.
+- `README.md`, `scene.css`, `.gitignore`, and `.gitattributes` are written when they are missing and then left alone, so they can be edited.
+- **A file changed outside the program is never written over.** Before writing or deleting a file, the program checks that it still holds what the program last read or wrote. If not, what it holds is kept beside it as `name.conflict-<time>.ext`. When the window comes back to the front, the open scene's file is checked and read again if it changed and nothing is unsaved.
+- **Opening copes with files changed outside.** A scene whose file is missing, or holds another item's id, stays in the binder marked missing, and its file is never written over. A bible entry whose file is missing leaves the bible. An HTML file in `manuscript/` or a bible folder that no list names comes in, a scene into a Recovered folder at the top of the manuscript. An item whose parent is missing, or that is in a loop, moves to Recovered. What was repaired is written back at once, and History lists it. A JSON file that cannot be read, a path that leaves the project, or a binder without its three roots stops the project from opening, and the message names the file.
+- **Opening reads the files.** The cache is filled from them each time, so a scene edited in a text editor, or brought in by git, is what opens. A file that cannot be read stops the project from opening, and the message names the file.
+
+## What deletes a file
+
+- Emptying the trash deletes the files of the scenes in it. This is the step that already asks twice.
+- Deleting a character, a place, a culture, a lore entry, a timeline event, or a research note deletes its file.
+- Nothing else does. A file in the folder that no list mentions is left alone and is not part of the project.
+
+## The cache
+
+`.local/cache.sqlite` is filled from the files every time the project opens, and every save writes it after the file. It is never the only copy of anything in the files; deleting it loses only what is this machine's alone: snapshots and track-changes baselines. Its tables:
+
+- `project_meta`: id, format version, title, times, and `settings_json`, every setting (see below).
+- `binder_nodes`: id, parent, kind, title, position among its siblings, document id (the item's own id, for an item with text), synopsis, status, `label`, `color`, `deleted_at`, `restore_parent_id`.
+- `documents`: `content_json` (the document JSON below), word count, character count.
+- `scene_beats`: `node_id`, `goal`, `conflict`, `outcome`. A scene with none written has no row.
+- `plotlines`, `plot_points`; `characters`, `character_motivations`, `character_relationships`; `locations`, `cultures`, `lore_entries`, `timeline_events`; `research_items`, `research_files`; `bible_scene_links`, which bible entries point at which scenes.
+- This machine's only: `snapshots`, copies of a document with a label (`manual`, `pre-restore`, …); `tracking_baselines`, the document as it was when tracking began or at the last accept.
+
+Missing tables are added when a project opens (`CREATE TABLE IF NOT EXISTS`).
+
+## Settings
+
+`project.json` holds the settings that go with the book:
+
+- `daily_word_goal`, `project_word_goal`, and `book_word_goals`, one `{ "book_id": "…", "goal": 80000 }` for each book with its own target. The first book with no entry uses `project_word_goal`; later ones use 80000.
+- `compile_title_page`.
+- `spelling`: `enabled`, `language` (a dictionary name such as `en_US`), and `words`, the project's accepted words, lowercase and sorted.
+
+`.local/settings.json` holds the rest, this machine's:
+
+- `theme` (`dark`, `light`, or `paper`), `autosave_seconds`, `compile_book_id` (the book on screen, compiled, and counted in the status bar), and `show_whole_series`.
+- `layout`: `sidebar_side` (`left` or `right`), `sidebar_width` (180 to 480 pixels), `inspector_width` (220 to 560), and whether each panel is visible.
+- `writing`: today's date and each book's word count at the start of today and of the open sitting, and the last 40 completed sittings (`day`, `started_at`, `ended_at`, `words`, `seconds`). A sitting is stored the next time the project opens.
 
 ## Document JSON
 
-Each document is a list of blocks. `schema_version` is currently 1. Block types are `paragraph`, `heading` (with `level`), `quote`, `list`, `code`, and `scene_break`. A block holds inline runs. Each run has marks: `bold`, `italic`, `underline`, `strikethrough`, an optional `link`, an optional `comment`, `comment_kind`, `comment_resolved`, and an optional `highlight`.
-
-`comment` is the note from the Note control. `comment_kind` is `comment`, `question`, `revise`, or `check`. `comment_resolved` is true once the note is resolved. `highlight` is `yellow`, `green`, `blue`, or `pink`. The last three fields came with Phase 4. A document saved before them loads with a plain, open comment and no highlight, and `schema_version` is still 1. Tracked changes are not stored in the document; see `tracking_baselines`. See [Phase 4](../roadmap/done/phase-4.md).
+A scene's text, as the program holds it and as the cache stores it, is a list of blocks; `schema_version` is 1. Block types are `paragraph`, `heading` (with `level`), `quote`, `list` (with `ordered` and `items`, each item a list of runs), `code`, and `scene_break`. A block holds runs of text, each with marks: `bold`, `italic`, `underline`, `strikethrough`, an optional `link`, an optional `comment` with `comment_kind` (`comment`, `question`, `revise`, or `check`) and `comment_resolved`, and an optional `highlight` (`yellow`, `green`, `blue`, or `pink`). Tracked changes are not in the document; they are the difference from a baseline.
 
 ```json
 {
   "id": "…",
   "schema_version": 1,
-  "updated_at": "2026-11-06T18:20:00Z",
   "blocks": [
-    {
-      "id": "…",
-      "kind": {
-        "type": "heading",
-        "level": 1,
-        "inlines": [
-          {
-            "id": "…",
-            "text": "Dawn",
-            "marks": {
-              "bold": false,
-              "italic": false,
-              "underline": false,
-              "strikethrough": false,
-              "link": null,
-              "comment": "Check the tide"
-            }
-          }
-        ]
-      }
-    },
+    { "id": "…", "kind": { "type": "heading", "level": 1, "inlines": [
+      { "id": "…", "text": "Dawn", "marks": { "bold": false, "comment": "Check the tide", "comment_kind": "check" } }
+    ] } },
     { "id": "…", "kind": { "type": "scene_break" } }
   ]
 }
 ```
 
-A `code` block uses the same inline list as a paragraph. A `list` block has `ordered` and `items`, and each item has its own inline list. The desktop editor may use a restricted HTML view; what is saved is this JSON, not the HTML.
+The scene file holds the same document as HTML; see "Scene files".
 
-## Compile
+## Projects from earlier versions
 
-Markdown and DOCX compile one book in the **draft/manuscript** tree. The book's title is the front matter. Other books and Trash are omitted. Research notes are not binder items in that tree. Output is a normal file on disk chosen by the writer. A project with no chosen book compiles the first book.
+Test versions released before format 2 kept a project in one SQLite file (format 1). There were no downloads of them, so this version does not convert such a project. Opening one says it was made by an earlier test version, and writes nothing in the folder. Making a new project in that folder is refused too, so the old database is never written over.
+
+## Questions still open
+
+- Whether the whole book is also offered as one Markdown file, beside one file for each scene.
+- Whether a scene's snapshots should be offered to another machine. They are this machine's only.
+- Lists inside lists. The editor cannot make them today, so the format does not hold them.

@@ -14,7 +14,7 @@ pub use mirror::SetAside;
 mod schema;
 
 pub use files::{
-    read_project_files, repair_binder, scene_document, verify_project_files, write_atomic, write_format_2_marker,
+    read_project_files, repair_binder, scene_document, write_atomic, write_format_2_marker,
     write_project_files, Extras, Problem, ProjectContent, FILES_FORMAT_VERSION,
 };
 pub use recovery::{BackupInfo, SnapshotInfo};

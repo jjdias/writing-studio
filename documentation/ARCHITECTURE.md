@@ -34,14 +34,14 @@ Binder + stored documents → writing-studio-export → .md / .docx on disk
 | `writing-studio-research` | Research notes and files in `attachments/` |
 | `writing-studio-search` | In-memory full-text index of manuscript text, rebuilt from SQLite when a project opens |
 | `writing-studio-diagnostics` | Scene goal, conflict, and outcome, and the counts and checks made on a scene's text. No dependencies |
-| `writing-studio-format` | A scene as an HTML file, and back, exactly; and as Markdown for export and import. See [PROJECT_FORMAT_2.md](PROJECT_FORMAT_2.md) |
+| `writing-studio-format` | A scene as an HTML file, and back, exactly; and as Markdown for export and import. See [PROJECT_FORMAT.md](PROJECT_FORMAT.md) |
 | `writing-studio-spellcheck` | Checks words against a Hunspell dictionary (English US is compiled in) and the project's own words; suggests replacements. No network |
 | `writing-studio-synchronization` | Merging two copies of a project by paragraph and by field, and sync through the `git` program. See [SYNC.md](SYNC.md) |
 | `writing-studio-export` | Manuscript compile to Markdown (with the format crate's writer) and DOCX |
 | `writing-studio-ui` | Workspace UI |
 | `writing-studio-desktop` | Native window |
 
-The plot grid, character cast, world notes, and research library are stored in the same project database as the binder. Research files are copied into `attachments/`. Search is not stored there: the Tantivy index is memory only. Remaining crates are typed placeholders (collaboration, synchronization, security) so module boundaries stay stable.
+The plot grid, character cast, world notes, and research library are files in the project folder beside the manuscript, and rows in the cache. Research files are copied into `attachments/`. Search is not stored: the Tantivy index is memory only.
 
 Inline comments, links, code blocks, and scene breaks are fields on the document JSON. A note sits on text runs (`marks.comment`, with `comment_kind` and `comment_resolved`), and so does a highlight (`marks.highlight`). `Document::review_items` lists them, joining neighboring runs that carry the same note. Tracked changes are the difference between the document and a baseline copy kept in `tracking_baselines`; nothing about them is stored in the document. See [Phase 4](../roadmap/done/phase-4.md) and [the roadmap](../roadmap/README.md).
 
@@ -58,8 +58,8 @@ Inline comments, links, code blocks, and scene breaks are fields on the document
 
 - The UI never owns the document schema.
 - Saving is safe against a crash: each file is written whole and renamed into place, and cache writes are transactional. Backups copy SQLite via the backup API.
-- Cloud, collaboration, and export engines must consume the same document JSON.
+- Sync, merge, and export work on the same document model as the editor.
 - Offline writing stays complete if a future optional sync service is unused or unavailable.
 - There is no account gate and no separate “community vs restricted” feature split in the core.
 
-See [Phase 1](../roadmap/done/phase-1.md), [Phase 2](../roadmap/done/phase-2.md), [Phase 3](../roadmap/done/phase-3.md), and [Phase 4](../roadmap/done/phase-4.md) for what each phase added, and [PROJECT_FORMAT_2.md](PROJECT_FORMAT_2.md) for on-disk layout. What comes next is in [the roadmap](../roadmap/README.md).
+See [Phase 1](../roadmap/done/phase-1.md), [Phase 2](../roadmap/done/phase-2.md), [Phase 3](../roadmap/done/phase-3.md), and [Phase 4](../roadmap/done/phase-4.md) for what each phase added, and [PROJECT_FORMAT.md](PROJECT_FORMAT.md) for on-disk layout. What comes next is in [the roadmap](../roadmap/README.md).

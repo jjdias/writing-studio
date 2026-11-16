@@ -1,6 +1,6 @@
 //! Document blocks to Markdown.
 //!
-//! The dialect is described in `documentation/PROJECT_FORMAT_2.md`. Blocks
+//! The dialect is described in `documentation/PROJECT_FORMAT.md`. Blocks
 //! are separated by one blank line. Text is escaped so that a character the
 //! writer typed is never read as formatting, here or in another program.
 

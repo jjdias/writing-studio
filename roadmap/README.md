@@ -35,16 +35,12 @@ The project is young and has no users yet. Until that changes:
 
 ### Known technical debt
 
-Clear these when the code around them is next changed, or on their own when there is time. Each is small.
-
-- `verify_project_files` in `crates/storage/src/files.rs` is used only by its own test since conversion was removed. Remove it, or use it in stage 4, where a merged project could be checked before it is written.
-- `crates/collaboration` and `crates/security` are placeholder crates that nothing uses. No work is planned for either (editing at the same time is bonus work; a project is as private as its folder and its git host). Remove both from the workspace. `crates/synchronization` holds the merge and sync.
-- `documentation/PROJECT_FORMAT.md` is titled as format 1 but now only matters as the list of the cache's tables. Fold the table list into `PROJECT_FORMAT_2.md` and remove the file.
+None listed. The last three items were cleared at the end of Phase 5: a check used only by its own test, the unused `collaboration` and `security` crates, and the old format 1 document, folded into `documentation/PROJECT_FORMAT.md`.
 
 ## What to do next
 
 1. Merge Phase 5 into `master`.
-2. The remaining items of Phase 5.1, each when the code it touches is next changed, and the technical debt above, the same way.
+2. The remaining items of Phase 5.1, each when the code it touches is next changed. Item 7 (links out of the project) matters more now that a project can come from someone else's repository.
 3. Then any of Phases 6, 7, and 8; they do not depend on each other.
 
 The other phases do not depend on Phase 5 and can be taken in any order after it.
@@ -72,13 +68,3 @@ Do **not** require any of these to write or compile:
 - Server-side search or storage as the source of truth
 
 With or without sync, the source of truth is the `.writingstudio` folder on the writer's disk. A git host holds a copy of it.
-
-
-## Scaffolded but not built
-
-These crates exist so module boundaries stay stable. They are **types or stubs**, not product features.
-
-| Crate | Current state | Intended later work |
-| --- | --- | --- |
-| `writing-studio-collaboration` | Yrs placeholder constant | None planned. Editing at the same time is bonus work; Phase 5 does not use this crate |
-| `writing-studio-security` | Notes that local folders are unencrypted | None planned. A project is as private as the folder and the git host it is kept on |
