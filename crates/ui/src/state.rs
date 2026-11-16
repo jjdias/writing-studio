@@ -746,6 +746,7 @@ impl StudioState {
                 self.begin_writing_session();
                 self.load_speller();
                 self.load_beats();
+                self.note_open_problems();
             }
             (Err(err), _, _, _, _, _)
             | (_, Err(err), _, _, _, _)
@@ -1354,6 +1355,28 @@ impl StudioState {
         self.report_set_aside();
     }
 
+    /// What was wrong with the project's files when it opened, one line each.
+    pub fn open_problems(&self) -> Vec<String> {
+        self.store
+            .as_ref()
+            .map(|store| store.borrow().problems().iter().map(ToString::to_string).collect())
+            .unwrap_or_default()
+    }
+
+    /// Whether this item's file could not be read when the project opened.
+    pub fn is_missing(&self, id: Id) -> bool {
+        self.store.as_ref().is_some_and(|store| store.borrow().is_missing(id))
+    }
+
+    fn note_open_problems(&mut self) {
+        let count = self.open_problems().len();
+        if count > 0 {
+            self.status = format!(
+                "Opened, but {count} of the project's files needed attention. History lists what was found and done."
+            );
+        }
+    }
+
     /// Tell the writer about files that were changed outside the program and
     /// kept under another name, so that a save did not write over them.
     fn report_set_aside(&mut self) {
@@ -1897,6 +1920,7 @@ impl StudioState {
                 self.begin_writing_session();
                 self.load_speller();
                 self.load_beats();
+                self.note_open_problems();
             }
             (Err(err), _, _, _, _, _)
             | (_, Err(err), _, _, _, _)
@@ -3474,6 +3498,26 @@ mod tests {
         // The two scenes, and the seed research note, which opening moved into
         // the research library.
         assert!(state.status.starts_with("Exported 3 files"), "{}", state.status);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn problems_found_on_opening_are_reported_and_a_missing_scene_is_marked() {
+        let (state, dir) = open_state("problems");
+        let scene = state.selected.unwrap();
+        let file = open_scene_file(&state);
+        let root = state.store.as_ref().unwrap().borrow().root.clone();
+        drop(state);
+        std::fs::remove_file(&file).unwrap();
+
+        let mut state = StudioState::default();
+        state.open_project_at(root);
+        assert!(state.status.contains("needed attention"), "{}", state.status);
+        assert_eq!(state.open_problems().len(), 1);
+        assert!(state.is_missing(scene));
+        state.select_node(scene);
+        assert!(state.status.contains("not written over"), "{}", state.status);
+        assert!(!file.exists());
         let _ = std::fs::remove_dir_all(dir);
     }
 

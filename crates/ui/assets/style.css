@@ -273,6 +273,7 @@ button.primary:hover { background: var(--primary-hover); }
 .binder-item.drop-target { outline: 1px solid var(--gold); }
 .binder-item.drop-invalid { outline: 1px dashed var(--danger); }
 .binder-item.trashed { opacity: 0.55; font-style: italic; }
+.binder-item.missing .binder-title { color: var(--danger); }
 .binder-item {
   display: flex;
   gap: 6px;

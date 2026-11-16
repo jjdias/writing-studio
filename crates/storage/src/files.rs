@@ -69,7 +69,32 @@ pub struct ProjectContent {
     /// A fingerprint of what each file held when it was read, by its path.
     /// The store compares a file with this before writing over it.
     pub read: HashMap<String, u64>,
+    /// What was wrong with the files, and what was done about it.
+    pub problems: Vec<Problem>,
+    /// Items whose file could not be read. They stay in the binder, and
+    /// their file is never written over.
+    pub missing: HashSet<Id>,
+    /// Something was recovered or repaired while reading, so the files must
+    /// be written again to say so.
+    pub repaired: bool,
 }
+
+/// Something wrong with a project's files, found when it was read.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Problem {
+    /// The file, inside the project folder.
+    pub file: String,
+    pub message: String,
+}
+
+impl std::fmt::Display for Problem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {}", self.file, self.message)
+    }
+}
+
+/// The folder at the top of the manuscript that recovered items go in.
+const RECOVERED: &str = "Recovered";
 
 /// A fingerprint of a file's text, to tell whether it has changed.
 pub(crate) fn text_fingerprint(text: &str) -> u64 {
@@ -184,6 +209,9 @@ impl ProjectContent {
             files: HashMap::new(),
             extras: HashMap::new(),
             read: HashMap::new(),
+            problems: Vec::new(),
+            missing: HashSet::new(),
+            repaired: false,
         })
     }
 }
@@ -691,6 +719,10 @@ fn render(content: &ProjectContent) -> Result<Rendered> {
 
     for node in content.binder.nodes.iter().filter(|node| node.document_id.is_some()) {
         let path = place(&content.files, &mut used, "manuscript", &node.title, node.id);
+        if content.missing.contains(&node.id) {
+            files.insert(node.id, path);
+            continue;
+        }
         let beats = content.beats.get(&node.id).cloned().unwrap_or_default();
         let blocks = documents.get(&node.id).map(|document| document.blocks.as_slice()).unwrap_or_default();
         contents.push((path.clone(), scene_text(node, &beats, blocks, content.extras.get(&node.id))));
@@ -773,19 +805,25 @@ fn text_of(item: &Value, key: &str) -> String {
 
 /// An HTML file named by a JSON file, read and checked to be the entry it
 /// is listed as.
+/// Read an item's file. A path that leaves the project is an error; a file
+/// that is missing or belongs to another item is the inner error, which the
+/// caller reports and goes on.
 fn read_entry(
     root: &Path,
     listed_in: &str,
     path: &str,
     id: Id,
     seen: &RefCell<HashMap<String, u64>>,
-) -> Result<SceneFile> {
-    let html = read_noted(&inside(root, listed_in, path)?, path, seen)?;
+) -> Result<std::result::Result<SceneFile, String>> {
+    let full = inside(root, listed_in, path)?;
+    let Ok(html) = read_noted(&full, path, seen) else {
+        return Ok(Err("the file is missing or could not be read".into()));
+    };
     let file = SceneFile::parse_html(&html);
-    match file.header.id {
-        Some(found) if found != id => Err(bad(path, "the id in the file is not the one it is listed under")),
+    Ok(match file.header.id {
+        Some(found) if found != id => Err("the id in the file is not the one it is listed under".into()),
         _ => Ok(file),
-    }
+    })
 }
 
 fn header_id(file: &SceneFile, path: &str, key: &str) -> Result<Option<Id>> {
@@ -810,6 +848,16 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
         if !found.is_empty() {
             extras.insert(id, found);
         }
+    };
+    let mut problems: Vec<Problem> = Vec::new();
+    let mut missing: HashSet<Id> = HashSet::new();
+    let mut ids: HashSet<Id> = HashSet::new();
+    let mut repaired = false;
+    let mut problem = |file: &str, message: &str| {
+        problems.push(Problem {
+            file: file.to_string(),
+            message: message.to_string(),
+        })
     };
 
     // Settings.
@@ -852,6 +900,11 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
     let mut next_index: HashMap<Option<Id>, i64> = HashMap::new();
     for item in binder_file.list("items") {
         let id = binder_file.id(item, "id")?;
+        if !ids.insert(id) {
+            problem("binder.json", &format!("item {id} was listed twice; the second line was left out"));
+            repaired = true;
+            continue;
+        }
         let kind_name = text_of(item, "kind");
         let kind = NodeKind::parse(&kind_name)
             .ok_or_else(|| bad("binder.json", format!("“{kind_name}” is not a kind of item")))?;
@@ -877,14 +930,28 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
             ..Extras::default()
         };
         if let Some(path) = item.get("file").and_then(Value::as_str) {
-            let file = read_entry(root, "binder.json", path, id, &seen)?;
+            files.insert(id, path.to_string());
+            node.document_id = Some(id);
+            let file = match read_entry(root, "binder.json", path, id, &seen)? {
+                Ok(file) => file,
+                Err(why) => {
+                    // The item stays, marked, and its file is never written
+                    // over. Its title was in the file, so it shows the file's
+                    // name, which says what to restore.
+                    problem(path, &why);
+                    node.title = path.rsplit('/').next().unwrap_or(path).to_string();
+                    missing.insert(id);
+                    keep(id, found);
+                    nodes.push(node);
+                    continue;
+                }
+            };
             found.head = unknown_head(&file.header.other, &[]);
             node.title = file.header.title;
             node.synopsis = file.header.synopsis;
             node.status = file.header.status;
             node.label = file.header.label;
             node.color = file.header.color;
-            node.document_id = Some(id);
             let scene_beats = SceneBeats {
                 goal: file.header.goal,
                 conflict: file.header.conflict,
@@ -896,10 +963,45 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
             let mut document = Document::new(id);
             document.blocks = with_a_run_in_every_block(file.blocks);
             documents.push(document);
-            files.insert(id, path.to_string());
         }
         keep(id, found);
         nodes.push(node);
+    }
+
+    // Scene files no line of the binder names: added by hand, or by git.
+    for (path, file) in unlisted(root, "manuscript", &files, &seen, &mut problem) {
+        let id = file.header.id.filter(|id| !ids.contains(id)).unwrap_or_else(Id::new);
+        ids.insert(id);
+        let parent = recovered_folder(&mut nodes);
+        let fallback = path.rsplit('/').next().unwrap_or(&path).trim_end_matches(".html").to_string();
+        let title = if file.header.title.trim().is_empty() { fallback } else { file.header.title.clone() };
+        let mut node = BinderNode::new(NodeKind::Scene, title, parent, i64::MAX);
+        node.id = id;
+        node.document_id = Some(id);
+        node.synopsis = file.header.synopsis.clone();
+        node.label = file.header.label.clone();
+        node.color = file.header.color.clone();
+        if !file.header.status.is_empty() {
+            node.status = file.header.status.clone();
+        }
+        let scene_beats = SceneBeats {
+            goal: file.header.goal.clone(),
+            conflict: file.header.conflict.clone(),
+            outcome: file.header.outcome.clone(),
+        };
+        if !scene_beats.is_empty() {
+            beats.insert(id, scene_beats);
+        }
+        let mut document = Document::new(id);
+        document.blocks = with_a_run_in_every_block(file.blocks);
+        documents.push(document);
+        nodes.push(node);
+        files.insert(id, path.clone());
+        problem(&path, "was not in the binder; it was added to Recovered");
+        repaired = true;
+    }
+    if check_binder(&mut nodes, &mut problem)? {
+        repaired = true;
     }
 
     // The bible.
@@ -917,7 +1019,21 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
         for (index, item) in bible.list(key).into_iter().enumerate() {
             let id = bible.id(item, "id")?;
             let path = text_of(item, "file");
-            let file = read_entry(root, "bible.json", &path, id, &seen)?;
+            if !ids.insert(id) {
+                problem("bible.json", &format!("entry {id} was listed twice; the second line was left out"));
+                repaired = true;
+                continue;
+            }
+            let file = match read_entry(root, "bible.json", &path, id, &seen)? {
+                Ok(file) => file,
+                Err(why) => {
+                    // Taken out of the list. A file that is still there comes
+                    // back below, as a file no list names.
+                    problem(&path, &format!("{why}; it was taken out of the bible"));
+                    repaired = true;
+                    continue;
+                }
+            };
             files.insert(id, path.clone());
             keep(
                 id,
@@ -927,6 +1043,21 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
                 },
             );
             out.push((id, index as i64, path, file));
+        }
+        for (path, file) in unlisted(root, key, &files, &seen, &mut problem) {
+            let id = file.header.id.filter(|id| !ids.contains(id)).unwrap_or_else(Id::new);
+            ids.insert(id);
+            files.insert(id, path.clone());
+            keep(
+                id,
+                Extras {
+                    head: unknown_head(&file.header.other, head),
+                    ..Extras::default()
+                },
+            );
+            problem(&path, "was not in bible.json; it was added");
+            repaired = true;
+            out.push((id, out.len() as i64, path, file));
         }
         Ok(out)
     };
@@ -1116,7 +1247,105 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
         files,
         extras,
         read: seen.into_inner(),
+        problems,
+        missing,
+        repaired,
     })
+}
+
+/// The HTML files in `folder` that no list names. Temporary files and
+/// versions set aside after a change outside the program are not items.
+fn unlisted(
+    root: &Path,
+    folder: &str,
+    files: &HashMap<Id, String>,
+    seen: &RefCell<HashMap<String, u64>>,
+    problem: &mut impl FnMut(&str, &str),
+) -> Vec<(String, SceneFile)> {
+    let listed: HashSet<&String> = files.values().collect();
+    let Ok(entries) = fs::read_dir(root.join(folder)) else {
+        return Vec::new();
+    };
+    let mut names: Vec<String> = entries
+        .flatten()
+        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_file()))
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| name.ends_with(".html") && !name.starts_with('.') && !name.contains(".conflict-"))
+        .map(|name| format!("{folder}/{name}"))
+        .filter(|path| !listed.contains(path))
+        .collect();
+    names.sort();
+    names
+        .into_iter()
+        .filter_map(|path| match read_noted(&root.join(&path), &path, seen) {
+            Ok(text) => Some((path, SceneFile::parse_html(&text))),
+            Err(_) => {
+                problem(&path, "could not be read, and was left out");
+                None
+            }
+        })
+        .collect()
+}
+
+/// The Recovered folder at the top of the manuscript, made if it is not
+/// there yet. `None` when there is no manuscript to put it in.
+fn recovered_folder(nodes: &mut Vec<BinderNode>) -> Option<Id> {
+    let draft = nodes.iter().find(|node| node.kind == NodeKind::DraftRoot)?.id;
+    let found = nodes
+        .iter()
+        .find(|node| node.kind == NodeKind::Folder && node.title == RECOVERED && node.parent_id == Some(draft));
+    if let Some(folder) = found {
+        return Some(folder.id);
+    }
+    let folder = BinderNode::new(NodeKind::Folder, RECOVERED, Some(draft), -1);
+    let id = folder.id;
+    nodes.push(folder);
+    Some(id)
+}
+
+/// Make the binder a tree again after the files were changed outside the
+/// program. An item whose parent is not there, or that is inside a loop of
+/// parents, is moved into Recovered. Returns whether anything was moved.
+/// A binder without exactly one of each root is not a project.
+fn check_binder(nodes: &mut Vec<BinderNode>, problem: &mut impl FnMut(&str, &str)) -> Result<bool> {
+    for kind in [NodeKind::DraftRoot, NodeKind::ResearchRoot, NodeKind::TrashRoot] {
+        let count = nodes.iter().filter(|node| node.kind == kind).count();
+        if count != 1 {
+            return Err(bad(
+                "binder.json",
+                format!("there must be one “{}” item, and there are {count}", kind.as_str()),
+            ));
+        }
+    }
+    let roots: HashSet<Id> = nodes.iter().filter(|node| node.kind.is_root()).map(|node| node.id).collect();
+    let mut moved = false;
+    // Move one stranded item at a time: moving one item of a loop is enough
+    // to break it, and leaves the rest where it was.
+    loop {
+        let parents: HashMap<Id, Option<Id>> = nodes.iter().map(|node| (node.id, node.parent_id)).collect();
+        let reaches_a_root = |id: Id| {
+            let mut at = Some(id);
+            for _ in 0..=parents.len() {
+                match at {
+                    Some(here) if roots.contains(&here) => return parents.get(&here) == Some(&None),
+                    Some(here) => at = parents.get(&here).copied().flatten(),
+                    None => return false,
+                }
+            }
+            false
+        };
+        let Some(stranded) = nodes.iter().position(|node| !node.kind.is_root() && !reaches_a_root(node.id)) else {
+            return Ok(moved);
+        };
+        let folder = recovered_folder(nodes);
+        let node = &mut nodes[stranded];
+        node.parent_id = folder;
+        problem(
+            "binder.json",
+            &format!("“{}” was not inside the manuscript, research, or trash; it was moved to Recovered", node.title),
+        );
+        moved = true;
+    }
 }
 
 /// The rest of the program expects a block to hold at least one run, as the

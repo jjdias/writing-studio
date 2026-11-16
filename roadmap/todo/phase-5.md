@@ -1,6 +1,6 @@
 # Phase 5 — what is left
 
-Phase 5 is **plain-text projects, and sync through git**. Stages 1 and 2 have shipped: see [../done/phase-5.md](../done/phase-5.md). This file is the rest, stages 3 to 5, in the order to do them.
+Phase 5 is **plain-text projects, and sync through git**. Stages 1 to 3 have shipped: see [../done/phase-5.md](../done/phase-5.md). This file is the rest, stages 4 and 5, in the order to do them.
 
 Read this whole section before starting any item.
 
@@ -46,49 +46,6 @@ Read this whole section before starting any item.
 - State tests in `crates/ui/src/state.rs` build a real project in a temporary folder with `open_state`.
 - Nothing drives the desktop window. Say so in your summary when a change is only tested below the window.
 
-## Stage 3 — Files changed outside the program
-
-- A writer can edit a scene in any text editor. The program reads the change the next time the project opens, and while it is open.
-- Text the program does not understand is kept as written, never dropped.
-- A file that cannot be read is reported by name, and the rest of the project still opens.
-- After any outside change the binder is checked: a file the binder does not list is added to a Recovered folder, and a binder entry whose file is gone is shown as missing, not deleted.
-
-### What is already true
-
-Opening a project fills the cache from the files, so a scene edited in a text editor, or changed by git, is what opens. The reader keeps the text of tags it does not know.
-
-### What is not, and how to do it
-
-**a. One bad file must not stop the project from opening.** Today `read_project_files` returns the first error and the project does not open.
-
-- Give `ProjectContent` a list of problems, each a path and a message, and return the content with the list.
-- A scene file that is missing or cannot be read: keep its binder item, mark it as missing, and show it in the binder with a mark. Do not make an empty text for it, and never write an empty file over it. `Mirror` needs a set of missing items, and `save_document`, `write_changed_scenes`, and `fill_cache` must skip them.
-- A JSON file that cannot be read is different. Without `binder.json` or `project.json` there is no project: keep that an error. `bible.json` and `plot.json` can be reported and skipped, but then they must not be written either until the writer has seen the problem, or the save would replace them with empty ones.
-- In the window, list the problems after opening. The status line holds one message; this needs its own place, such as a section in History.
-
-**b. Recovered.** A `.html` file in `manuscript/` or a bible folder that no list mentions is not part of the project today.
-
-- After reading, list the files in those folders and compare with `content.files`.
-- For each one not listed, read it and add it: a scene goes into a folder named Recovered at the top of the manuscript, made when first needed; a bible entry goes into its own kind.
-- If the file has no `id`, or an id that is already in use, give it a new one and write the file with it.
-- Skip temporary files (`.name.id.tmp`, which `write_atomic` leaves only if it was interrupted) and remove those older than a day.
-- Skip `*.conflict-*` files; see c.
-
-**c. Changes while the project is open.** Done in Phase 5.1 item 2: a file changed outside is set aside as `name.conflict-<time>.ext` rather than written over, and the open scene is read again when the window comes back to the front. For item b below, do not take `.conflict-` files in as new scenes without asking: list them for the writer, who decides.
-
-**d. Check the binder after any outside change.** Write `check_binder(nodes) -> (nodes, problems)` and run it in `read_project_files`:
-
-- An id that appears twice: keep the first.
-- A parent that is not in the file: move the item to the top level of its section.
-- A loop of parents: move one item of the loop into Recovered.
-- More or fewer than one of each root (`draft_root`, `research_root`, `trash_root`): this is not a project the program can open; say which.
-
-**e. Names the program does not know.** `SceneHeader.other` keeps them, but the store drops them on the next save. This is item 1 of [phase-5.1.md](phase-5.1.md).
-
-**Tests**, in `mirror.rs`, each on a project made by `ProjectStore::create` and then edited with `fs::write`: a scene file deleted; a scene file with a broken head; a file added to `manuscript/` by hand, with and without an id; a duplicated line in `binder.json`; a parent that does not exist; a loop.
-
-**Done when** each of those opens the project, with everything else intact and the problem named.
-
 ## Stage 4 — Merge two copies of a project
 
 One person usually writes a book, sometimes on two machines. Two people in the same scene at the same moment is not what this is for.
@@ -133,7 +90,7 @@ It works on three `ProjectContent` values and touches no files. `read_project_fi
 - Moved on one side and edited on the other: both.
 - Moved on both sides to different places: take ours, report it.
 - Deleted on one side (gone from `binder.json`, or `deleted` set) and edited on the other: keep it.
-- Then run `check_binder` from stage 3. Anything it has to move goes to Recovered.
+- Then make the binder a tree again, as opening does (`check_binder` in `crates/storage/src/files.rs`): anything stranded goes to Recovered.
 
 **Lists in `bible.json` and `plot.json`:** by id, with the same rules. **`project.json`:** each setting on its own; the spelling words are the union of both lists.
 

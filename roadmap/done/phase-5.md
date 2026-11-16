@@ -1,6 +1,6 @@
 # Phase 5 — what has shipped so far
 
-Phase 5 is **plain-text projects, and sync through git**. Two of its five stages are done, the second with its Markdown export and import. The rest is in [../todo/phase-5.md](../todo/phase-5.md), and what the done part still needs is in [../todo/phase-5.1.md](../todo/phase-5.1.md).
+Phase 5 is **plain-text projects, and sync through git**. Stages 1 to 3 of its five are done. The rest is in [../todo/phase-5.md](../todo/phase-5.md), and what the done part still needs is in [../todo/phase-5.1.md](../todo/phase-5.1.md).
 
 This work is on the `alternative-phase-5` branch. The format itself is described in [PROJECT_FORMAT_2.md](../../documentation/PROJECT_FORMAT_2.md).
 
@@ -62,6 +62,19 @@ Order keys were dropped from the plan. The order of the lines in a file is the o
 
 Checked by tests of compile (footnotes across a book, a title that needs escaping), of the footnote style, of the export (order, the trash left out, the README, a full folder refused), of import (text and details come back, no header, a broken header), and of the window's state for both.
 
+## Stage 3 — Files changed outside the program
+
+A project's files can be changed by a person, a text editor, or git. Opening now copes with what that can leave behind, and says what it found.
+
+- **A scene file that is missing or holds another item's id** does not stop the project from opening. The item stays in its place, shows its file's name and a "missing" mark in the binder, and its file is never written over: the save is refused with a message. Restoring the file and opening again brings it back.
+- **A bible entry whose file is missing** is taken out of the bible. If its file is still there under another id, it comes back as an unlisted file (next point).
+- **An HTML file no list names** comes in: a scene into a Recovered folder at the top of the manuscript, a bible entry into its kind. It keeps its id unless the id is missing or already used, in which case it gets a new one and its file is written with it. Temporary files and files set aside after a change outside (`.conflict-`) are left alone.
+- **The binder is made a tree again.** A line listed twice keeps the first. An item whose parent is not there, or that is in a loop of parents, is moved to Recovered, one at a time, so a loop is broken with the least moved. A binder without exactly one manuscript, research, and trash root is not opened, and the message says which.
+- **A JSON file that cannot be read** still stops the project from opening, with the file named: opening anyway would mean writing that file from nothing on the next save. This is narrower than the plan, which suggested skipping a broken `bible.json` or `plot.json`.
+- Whatever was repaired or recovered is written back into the files at once, so the files say what the window shows. The status line says how many files needed attention, and History lists each one with what was done.
+
+Checked by tests of a missing scene file and one with another item's id, files added by hand (with an id, without one, a copy with a used id, a set-aside file), a binder with a repeated line, a loop, and a missing parent, a binder without a root, a deleted character file, and the window's report and mark.
+
 ## Phase 5.1, item 1 — Entries the program does not know are kept
 
 A file can hold entries the program does not use: a person adds `<meta name="pov" content="Mara">` to a scene, a key to a line of `binder.json`, or a later version of the program writes a new one. Before this, the next save of that item removed them.
@@ -92,7 +105,7 @@ Item 3 asked the writer before converting a format 1 project. It was built, and 
 
 ## What was checked
 
-- 148 tests passed across the workspace at the end of stage 2. The storage crate's 24 tests, the UI crate's 10, the format crate's 25, and the export crate's 5 pass after the Markdown export.
+- 148 tests passed across the workspace at the end of stage 2. The storage crate's 28 tests, the UI crate's 11, the format crate's 25, and the export crate's 5 pass after stage 3.
 - Scene files: every kind of block and formatting, with their awkward cases; randomly built documents (2,000 with every run, and more than a million in one-off runs); a project on disk.
 - The Markdown export, read with an independent Markdown reader (`pulldown-cmark`).
 - The store: making a project, saving, reopening after a file was changed outside, opening with no `.local/`, refusing a format 1 folder, deleting a bible entry, and restoring a backup.

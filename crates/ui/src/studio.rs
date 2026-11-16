@@ -643,6 +643,8 @@ fn BinderNodeView(id: Id, depth: u32, hits: Rc<HashSet<Id>>) -> Element {
         .collect();
     let pad = 8 + depth * 16;
     let class = binder_item_class(selected, dragging, drop_target, drop_ok, trashed);
+    let missing = snapshot.is_missing(id);
+    let class = if missing { format!("{class} missing") } else { class };
     let color = binder_color_hex(&node.color);
     let label = node.label.clone();
 
@@ -672,6 +674,9 @@ fn BinderNodeView(id: Id, depth: u32, hits: Rc<HashSet<Id>>) -> Element {
             }
             span { class: "kind", "{node.kind.icon_label()}" }
             span { class: "binder-title", "{node.title}" }
+            if missing {
+                span { class: "binder-label", title: "This item's file could not be read. History says which file.", "missing" }
+            }
             if !label.is_empty() {
                 span { class: "binder-label", "{label}" }
             }
@@ -1800,6 +1805,7 @@ fn HistoryPane() -> Element {
                     SnapshotCompare {}
                 }
             }
+            OpenProblems {}
             section {
                 h2 { "Writing sessions" }
                 p { class: "hint", "Sittings saved in this project. Today’s count starts again each local day." }
@@ -1832,6 +1838,28 @@ fn HistoryPane() -> Element {
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+/// What was wrong with the files when the project opened, and what was done.
+#[component]
+fn OpenProblems() -> Element {
+    let problems = use_context::<Signal<StudioState>>().read().open_problems();
+    if problems.is_empty() {
+        return rsx! {};
+    }
+    rsx! {
+        section {
+            h2 { "Found when the project opened" }
+            p { class: "hint",
+                "The project's files were changed outside the program. Items that came in are in Recovered at the top of the manuscript. An item marked missing keeps its place, and its file is never written over: restore the file, then open the project again."
+            }
+            ul { class: "history-list wide",
+                for problem in problems {
+                    li { class: "history-item", "{problem}" }
                 }
             }
         }

@@ -32,7 +32,7 @@ use writing_studio_worldbuilding::World;
 
 use crate::files::{
     text_fingerprint, unknown_head, with_a_run_in_every_block, write_project_files_noted,
-    bible_files, Extras, binder_json, inside, place, plot_json, read_project_files, scene_text, settings_json,
+    bible_files, Extras, Problem, binder_json, inside, place, plot_json, read_project_files, scene_text, settings_json,
     write_atomic, write_format_2_marker, ProjectContent,
     LOCAL_SETTINGS,
 };
@@ -59,6 +59,11 @@ pub(crate) struct Mirror {
     /// written over, and where each was set aside, since the last time the
     /// window asked.
     set_aside: RefCell<Vec<SetAside>>,
+    /// Items whose file could not be read when the project opened. Their
+    /// file is never written over.
+    missing: RefCell<HashSet<Id>>,
+    /// What was wrong with the files when the project opened.
+    problems: RefCell<Vec<Problem>>,
     /// Files are left alone: while the cache is being filled from them, and
     /// for a project opened only to be read.
     paused: Cell<bool>,
@@ -177,7 +182,13 @@ impl ProjectStore {
         let content = read_project_files(&store.root)?;
         store.fill_cache(&content)?;
         store.mirror.remember(&content, content.files.clone(), content.read.clone());
+        *store.mirror.problems.borrow_mut() = content.problems.clone();
         store.mirror.paused.set(false);
+        if content.repaired {
+            // Recovered and moved items are written into the files now, so the
+            // files say what the window shows.
+            store.write_files_from_cache()?;
+        }
         Ok(store)
     }
 
@@ -222,6 +233,7 @@ impl ProjectStore {
         let mut content = ProjectContent::from_store(self)?;
         content.files = self.mirror.paths.borrow().clone();
         content.extras = self.mirror.extras.borrow().clone();
+        content.missing = self.mirror.missing.borrow().clone();
         let (files, written) = write_project_files_noted(&self.root, &content)?;
         self.mirror.remember(&content, files, written);
         Ok(())
@@ -307,6 +319,17 @@ impl ProjectStore {
         Ok(())
     }
 
+    /// What was wrong with the files when the project opened, and what was
+    /// done about it.
+    pub fn problems(&self) -> Vec<Problem> {
+        self.mirror.problems.borrow().clone()
+    }
+
+    /// Whether this item's file could not be read when the project opened.
+    pub fn is_missing(&self, id: Id) -> bool {
+        self.mirror.missing.borrow().contains(&id)
+    }
+
     /// The files that were changed outside the program and set aside since
     /// the last call.
     pub fn take_set_aside(&self) -> Vec<SetAside> {
@@ -384,6 +407,9 @@ impl ProjectStore {
             let Some(document_id) = node.document_id else {
                 continue;
             };
+            if self.is_missing(node.id) {
+                continue;
+            }
             let scene_beats = beats.get(&node.id).unwrap_or(&none);
             let mark = head_fingerprint(node, scene_beats);
             let has_file = self.mirror.paths.borrow().contains_key(&node.id);
@@ -467,6 +493,12 @@ impl ProjectStore {
     }
 
     pub fn save_document(&self, document: &Document) -> Result<()> {
+        if self.is_missing(document.id) {
+            let path = self.mirror.paths.borrow().get(&document.id).cloned().unwrap_or_default();
+            return Err(Error::message(format!(
+                "{path} could not be read when the project opened, so it is not written over; fix or restore the file, then open the project again"
+            )));
+        }
         if self.mirroring() {
             if let Some(node) = self.item_of_document(document.id)? {
                 let beats = self.beats_of(node.id)?;
@@ -489,6 +521,7 @@ impl ProjectStore {
     /// Permanently delete a text. Its file goes with it; this is what
     /// emptying the trash asks for.
     pub fn delete_document(&self, id: Id) -> Result<()> {
+        self.mirror.missing.borrow_mut().remove(&id);
         if self.mirroring() {
             let path = self.mirror.paths.borrow_mut().remove(&id);
             if let Some(path) = path.filter(|path| path.starts_with("manuscript/")) {
@@ -578,6 +611,7 @@ impl Mirror {
             .collect();
         *self.paths.borrow_mut() = files;
         *self.extras.borrow_mut() = content.extras.clone();
+        *self.missing.borrow_mut() = content.missing.clone();
         *self.on_disk.borrow_mut() = on_disk;
     }
 
@@ -737,6 +771,144 @@ mod tests {
         // Making a new project there is refused too, so the database stays.
         assert!(ProjectStore::create(&dir, "Over it").is_err());
         assert_eq!(fs::read(dir.join(PROJECT_DB_FILE)).unwrap(), b"the old database");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// The text of a scene file for `id`, as a person might write one.
+    fn scene_html(id: Option<Id>, title: &str, text: &str) -> String {
+        let id = id.map(|id| format!("<meta name=\"id\" content=\"{id}\">\n")).unwrap_or_default();
+        format!("<html><head><title>{title}</title>\n{id}</head><body>\n<p>{text}</p>\n</body></html>\n")
+    }
+
+    fn titles_in(store: &ProjectStore, folder: Id) -> Vec<String> {
+        let tree = store.load_binder().unwrap();
+        tree.children(Some(folder)).iter().map(|node| node.title.clone()).collect()
+    }
+
+    fn recovered(store: &ProjectStore) -> Id {
+        let tree = store.load_binder().unwrap();
+        tree.nodes.iter().find(|node| node.title == "Recovered").expect("a Recovered folder").id
+    }
+
+    #[test]
+    fn a_missing_scene_file_is_marked_and_never_written_over() {
+        let dir = temp("missing");
+        let store = ProjectStore::create(&dir, "Gaps").unwrap();
+        let scene = scene_of(&store);
+        let path = file_of(&store, scene.id);
+        let note = store.load_binder().unwrap().nodes.into_iter().find(|node| node.kind == NodeKind::Note).unwrap();
+        let other = file_of(&store, note.id);
+        drop(store);
+
+        fs::remove_file(&path).unwrap();
+        // A file that holds another item's id is not this item's either.
+        fs::write(&other, scene_html(Some(Id::new()), "Someone else", "Not mine.")).unwrap();
+        let store = ProjectStore::open(&dir).unwrap();
+        assert!(store.is_missing(scene.id) && store.is_missing(note.id));
+        assert_eq!(store.problems().len(), 2, "{:?}", store.problems());
+        assert_eq!(scene_of(&store).title, path.file_name().unwrap().to_string_lossy());
+        let error = store.save_document(&Document::from_plain_text(scene.id, "x")).unwrap_err();
+        assert!(error.to_string().contains("not written over"), "{error}");
+        assert!(store.load_or_create_document(scene.id).is_err());
+        assert!(!path.exists());
+        assert!(fs::read_to_string(&other).unwrap().contains("Not mine."));
+        // The binder still lists both, so restoring the files brings them back.
+        let binder = fs::read_to_string(dir.join("binder.json")).unwrap();
+        assert!(binder.contains(&scene.id.to_string()) && binder.contains(&note.id.to_string()));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn files_added_by_hand_come_into_recovered() {
+        let dir = temp("hand");
+        let store = ProjectStore::create(&dir, "Found").unwrap();
+        let scene = scene_of(&store);
+        drop(store);
+        let fresh = Id::new();
+        fs::write(dir.join("manuscript/a-new.html"), scene_html(Some(fresh), "With an id", "One.")).unwrap();
+        fs::write(dir.join("manuscript/b-plain.html"), "<p>Two.</p>\n").unwrap();
+        fs::write(dir.join("manuscript/c-copy.html"), scene_html(Some(scene.id), "A copy", "Three.")).unwrap();
+        fs::write(dir.join("manuscript/x.conflict-2026.html"), scene_html(None, "Set aside", "Skip.")).unwrap();
+        fs::create_dir_all(dir.join("characters")).unwrap();
+        fs::write(dir.join("characters/rose.html"), scene_html(None, "Rose", "A pilot.")).unwrap();
+
+        let store = ProjectStore::open(&dir).unwrap();
+        assert_eq!(store.problems().len(), 4, "{:?}", store.problems());
+        assert_eq!(titles_in(&store, recovered(&store)), ["With an id", "b-plain", "A copy"]);
+        let tree = store.load_binder().unwrap();
+        let copy = tree.nodes.iter().find(|node| node.title == "A copy").unwrap();
+        assert_ne!(copy.id, scene.id);
+        assert!(tree.get(fresh).is_some());
+        assert_eq!(store.load_document(copy.id).unwrap().to_plain_text(), "Three.");
+        assert_eq!(store.load_cast().unwrap().characters[0].name, "Rose");
+        // The copy's file now carries its own id, and the binder lists all three.
+        assert!(fs::read_to_string(dir.join("manuscript/c-copy.html")).unwrap().contains(&copy.id.to_string()));
+        assert!(!fs::read_to_string(dir.join("binder.json")).unwrap().contains("conflict"));
+        drop(store);
+        let again = ProjectStore::open(&dir).unwrap();
+        assert!(again.problems().is_empty(), "{:?}", again.problems());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_binder_changed_by_hand_is_made_a_tree_again() {
+        let dir = temp("tree");
+        let store = ProjectStore::create(&dir, "Tree").unwrap();
+        let scene = scene_of(&store);
+        let chapter = scene.parent_id.unwrap();
+        drop(store);
+        let path = dir.join("binder.json");
+        let text = fs::read_to_string(&path).unwrap();
+        let lines: Vec<&str> = text.lines().collect();
+        let scene_line = lines.iter().find(|line| line.contains(&format!("\"id\":\"{}\"", scene.id))).unwrap();
+        let chapter_line = lines.iter().find(|line| line.contains(&format!("\"id\":\"{chapter}\""))).unwrap();
+        // The scene twice, the chapter its own parent's child in a loop, and
+        // an item whose parent is nowhere.
+        let ghost = Id::new();
+        let looped = chapter_line.replace(r#""parent":""#, &format!(r#""parent":"{}","old":""#, scene.id));
+        let stray = format!(r#"    {{"id":"{}","kind":"folder","parent":"{ghost}","status":"draft","title":"Stray"}},"#, Id::new());
+        let edited = text
+            .replace(chapter_line, &looped)
+            .replace(scene_line, &format!("{scene_line}\n{scene_line}\n{stray}"));
+        fs::write(&path, edited).unwrap();
+
+        let store = ProjectStore::open(&dir).unwrap();
+        let problems: Vec<String> = store.problems().iter().map(ToString::to_string).collect();
+        assert!(problems.iter().any(|p| p.contains("listed twice")), "{problems:?}");
+        // One item of the loop is moved, which is enough; the scene stays in
+        // its chapter.
+        let mut moved = titles_in(&store, recovered(&store));
+        moved.sort();
+        assert_eq!(moved, ["Chapter 1", "Stray"]);
+        assert_eq!(store.load_binder().unwrap().get(scene.id).unwrap().parent_id, Some(chapter));
+        assert_eq!(store.load_document(scene.id).unwrap().to_plain_text(), "Start writing this scene.\n\nEvery scene is saved independently.");
+        drop(store);
+        assert!(ProjectStore::open(&dir).unwrap().problems().is_empty());
+
+        // Without its roots it is not a project.
+        let mut binder: serde_json::Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        binder["items"].as_array_mut().unwrap().retain(|item| item["kind"] != "trash_root");
+        fs::write(&path, binder.to_string()).unwrap();
+        let error = ProjectStore::open(&dir).err().expect("refused").to_string();
+        assert!(error.contains("trash_root"), "{error}");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_deleted_character_file_takes_the_character_out() {
+        let dir = temp("cast-gone");
+        let store = ProjectStore::create(&dir, "Cast").unwrap();
+        let mut cast = Cast::new();
+        let mara = cast.add_character();
+        cast.set_name(mara, "Mara".into());
+        store.persist_cast(&cast).unwrap();
+        let path = file_of(&store, mara);
+        drop(store);
+        fs::remove_file(path).unwrap();
+        let store = ProjectStore::open(&dir).unwrap();
+        assert!(store.load_cast().unwrap().characters.is_empty());
+        assert_eq!(store.problems().len(), 1);
+        assert!(!fs::read_to_string(dir.join("bible.json")).unwrap().contains(&mara.to_string()));
         let _ = fs::remove_dir_all(dir);
     }
 
