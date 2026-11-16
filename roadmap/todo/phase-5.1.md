@@ -1,6 +1,6 @@
 # Phase 5.1 — What format 2 still needs to be safe to rely on
 
-Not started. These are gaps found while building Phase 5 stages 1 and 2. None of them is in the Phase 5 plan, and each one matters before writers keep real books in format 2.
+In progress. These are gaps found while building Phase 5. None of them is in the Phase 5 plan, and each one matters before writers keep real books in format 2.
 
 Items 1, 2, and 5 are done. Items 3 and 4 were dropped. Items 6 to 10 are small; do each when the code it touches is next changed.
 
