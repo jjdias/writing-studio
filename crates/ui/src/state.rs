@@ -28,8 +28,8 @@ use writing_studio_spellcheck::{
     available_dictionaries, name_words, normalize_word, replace_in_document, DictionaryInfo,
     Speller, UnknownWord,
 };
-use writing_studio_synchronization::git::{self, SyncReport, SyncStatus};
-use writing_studio_storage::{BackupInfo, ProjectStore, SnapshotInfo};
+use writing_studio_synchronization::git::{self, Revision, SyncReport, SyncStatus};
+use writing_studio_storage::{scene_document, BackupInfo, ProjectStore, SnapshotInfo};
 use writing_studio_worldbuilding::World;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -197,6 +197,8 @@ pub struct StudioState {
     pub compare_snapshot: Option<Id>,
     pub compare_against: Option<Id>,
     pub compare_changes_only: bool,
+    /// A commit whose version of the selected scene is being compared.
+    pub compare_revision: Option<String>,
     pub show_resolved_notes: bool,
     pub tracking: Option<Tracking>,
     /// The dictionary in use. `None` while spellcheck is off or before a project is open.
@@ -269,6 +271,7 @@ impl Default for StudioState {
             compare_snapshot: None,
             compare_against: None,
             compare_changes_only: false,
+            compare_revision: None,
             show_resolved_notes: false,
             tracking: None,
             speller: None,
@@ -1849,6 +1852,57 @@ impl StudioState {
         }
         self.compare_snapshot = Some(snapshot_id);
         self.compare_against = None;
+        self.compare_revision = None;
+    }
+
+    /// The earlier synced versions of the selected scene, newest first.
+    /// Empty when the project is not synced.
+    pub fn scene_revisions(&self) -> Vec<Revision> {
+        let (Some(root), Some(path)) = (self.project_root(), self.selected_file()) else {
+            return Vec::new();
+        };
+        if !git::is_connected(&root) {
+            return Vec::new();
+        }
+        git::revisions(&root, &path).unwrap_or_default()
+    }
+
+    fn selected_file(&self) -> Option<String> {
+        let id = self.selected_node()?.document_id?;
+        self.store.as_ref()?.borrow().file_of(id)
+    }
+
+    /// The selected scene as it was at `commit`.
+    fn revision_document(&self, commit: &str) -> writing_studio_core::Result<Document> {
+        let missing = || writing_studio_core::Error::message("no scene is selected");
+        let root = self.project_root().ok_or_else(missing)?;
+        let path = self.selected_file().ok_or_else(missing)?;
+        let id = self.selected_node().and_then(|node| node.document_id).ok_or_else(missing)?;
+        Ok(scene_document(&git::file_at(&root, commit, &path)?, id))
+    }
+
+    /// Compare the selected scene with its version at `commit`. Asking for
+    /// the one already open closes the comparison.
+    pub fn compare_with_revision(&mut self, commit: String) {
+        if self.compare_revision.as_deref() == Some(commit.as_str()) {
+            self.close_comparison();
+            return;
+        }
+        self.compare_snapshot = None;
+        self.compare_against = None;
+        self.compare_revision = Some(commit);
+    }
+
+    /// Put the selected scene's text back as it was at `commit`. One undo
+    /// step, so Ctrl+Z brings the current text back.
+    pub fn restore_revision(&mut self, commit: &str) {
+        match self.revision_document(commit) {
+            Ok(earlier) => self.edit_text("Restored the scene as it was at that sync. Undo brings the current text back.", |document| {
+                document.blocks = earlier.blocks;
+                true
+            }),
+            Err(err) => self.status = format!("Could not restore that version: {err}"),
+        }
     }
 
     /// Compare the open snapshot with another snapshot of the same document.
@@ -1860,11 +1914,29 @@ impl StudioState {
     pub fn close_comparison(&mut self) {
         self.compare_snapshot = None;
         self.compare_against = None;
+        self.compare_revision = None;
     }
 
     /// Nothing is written: both sides are read, and the live document and the
     /// snapshots stay as they are.
     pub fn snapshot_comparison(&self) -> Option<Result<SnapshotComparison, String>> {
+        if let Some(commit) = &self.compare_revision {
+            let doc_id = self.selected_node().and_then(|node| node.document_id)?;
+            let label = self
+                .scene_revisions()
+                .into_iter()
+                .find(|revision| &revision.commit == commit)
+                .map(|revision| format!("Synced {}", revision.date))
+                .unwrap_or_else(|| "An earlier sync".into());
+            let result = self.revision_document(commit).and_then(|old| {
+                self.current_document(doc_id).map(|new| SnapshotComparison {
+                    older: label,
+                    newer: "Current text".into(),
+                    diff: compare_documents(&old, &new),
+                })
+            });
+            return Some(result.map_err(|err| err.to_string()));
+        }
         let chosen = self.compare_snapshot?;
         let store = self.store.as_ref()?;
         let doc_id = self.selected_node().and_then(|node| node.document_id)?;
@@ -3674,6 +3746,41 @@ mod tests {
         assert!(state.is_tracking());
         assert_eq!(state.tracked_changes().len(), 1);
         assert_eq!(state.sync_conflicts.len(), 1);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_scene_can_be_compared_with_and_restored_from_an_earlier_sync() {
+        let (mut state, dir) = open_state("revisions");
+        let root = state.store.as_ref().unwrap().borrow().root.clone();
+        let remote = dir.join("remote.git");
+        git(&dir, &["init", "-q", "--bare", "--initial-branch=main", &remote.to_string_lossy()]);
+        state.sync_address = remote.to_string_lossy().into_owned();
+        state.connect_sync();
+        for (key, value) in [("user.name", "Test Writer"), ("user.email", "test@example.com")] {
+            git(&root, &["config", key, value]);
+        }
+        for text in ["First draft.", "Second draft."] {
+            state.apply_editor_text(text.into());
+            let folder = state.begin_sync().unwrap();
+            state.finish_sync(git::sync(&folder));
+        }
+        let revisions = state.scene_revisions();
+        assert_eq!(revisions.len(), 2);
+        assert!(revisions[0].message.contains("Scene 1"), "{revisions:?}");
+
+        let older = revisions[1].commit.clone();
+        state.compare_with_revision(older.clone());
+        let comparison = state.snapshot_comparison().unwrap().unwrap();
+        assert!(comparison.older.starts_with("Synced "), "{}", comparison.older);
+        assert!(!comparison.diff.is_unchanged());
+
+        state.restore_revision(&older);
+        assert_eq!(state.editor_text, "First draft.");
+        state.undo();
+        assert_eq!(state.editor_text, "Second draft.");
+        state.restore_revision("not-a-commit");
+        assert!(state.status.contains("not a commit"), "{}", state.status);
         let _ = std::fs::remove_dir_all(dir);
     }
 

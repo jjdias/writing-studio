@@ -1817,9 +1817,12 @@ fn HistoryPane() -> Element {
                             }
                         }
                     }
-                    SnapshotCompare {}
+                    if comparing.is_some() {
+                        SnapshotCompare {}
+                    }
                 }
             }
+            EarlierSyncs {}
             OpenProblems {}
             SyncSection {}
             section {
@@ -1855,6 +1858,53 @@ fn HistoryPane() -> Element {
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/// The selected scene's versions at earlier syncs, from git.
+#[component]
+fn EarlierSyncs() -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let revisions = state.read().scene_revisions();
+    if revisions.is_empty() {
+        return rsx! {};
+    }
+    let comparing = state.read().compare_revision.clone();
+    rsx! {
+        section {
+            h2 { "Earlier syncs" }
+            p { class: "hint", "This scene as it was each time it was synced. Restore is one step that Ctrl+Z undoes." }
+            ul { class: "history-list wide",
+                for revision in revisions {
+                    li { class: "history-item",
+                        div {
+                            strong { "{revision.date}" }
+                            p { class: "preview", "{revision.message}" }
+                        }
+                        div { class: "history-actions",
+                            button {
+                                class: if comparing.as_deref() == Some(revision.commit.as_str()) { "primary" } else { "" },
+                                onclick: {
+                                    let commit = revision.commit.clone();
+                                    move |_| state.write().compare_with_revision(commit.clone())
+                                },
+                                if comparing.as_deref() == Some(revision.commit.as_str()) { "Comparing" } else { "Compare" }
+                            }
+                            button {
+                                onclick: {
+                                    let commit = revision.commit.clone();
+                                    move |_| state.write().restore_revision(&commit)
+                                },
+                                "Restore"
+                            }
+                        }
+                    }
+                }
+            }
+            if comparing.is_some() {
+                SnapshotCompare {}
             }
         }
     }

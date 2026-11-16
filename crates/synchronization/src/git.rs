@@ -228,6 +228,45 @@ fn commit_message(root: &Path, staged: &str) -> String {
     format!("Writing Studio: {}", parts.join(" "))
 }
 
+/// One commit that changed a file.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Revision {
+    pub commit: String,
+    pub date: String,
+    pub message: String,
+}
+
+/// The commits that changed `path`, newest first, at most fifty. Nothing
+/// goes over the network.
+pub fn revisions(root: &Path, path: &str) -> Result<Vec<Revision>> {
+    check_repository(root)?;
+    let log = run(
+        root,
+        &["log", "-n", "50", "--date=format:%Y-%m-%d %H:%M", "--format=%H%x1f%cd%x1f%s", "--", path],
+        None,
+    )?;
+    Ok(log
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.split('\u{1f}');
+            Some(Revision {
+                commit: parts.next()?.to_string(),
+                date: parts.next()?.to_string(),
+                message: parts.next().unwrap_or_default().to_string(),
+            })
+        })
+        .collect())
+}
+
+/// What `path` held at `commit`.
+pub fn file_at(root: &Path, commit: &str, path: &str) -> Result<String> {
+    if commit.is_empty() || !commit.chars().all(|ch| ch.is_ascii_hexdigit()) {
+        return Err(Error::message("that is not a commit"));
+    }
+    check_repository(root)?;
+    run(root, &["show", &format!("{commit}:{path}")], None)
+}
+
 fn branch(root: &Path) -> Result<String> {
     run(root, &["symbolic-ref", "--short", "HEAD"], None)
 }

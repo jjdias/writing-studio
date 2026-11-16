@@ -2,7 +2,7 @@
 
 Free, open-source, local-first. Your writing stays in a folder on your machine.
 
-This guide describes the program as it is: Phases 1 to 4, and the project folder from Phase 5. What comes next is in [the roadmap](../roadmap/README.md).
+This guide describes the program as it is, Phases 1 to 5. What comes next is in [the roadmap](../roadmap/README.md).
 
 ## Start
 
@@ -61,6 +61,8 @@ The index is built in memory from the project when it opens, and updated when a 
 ## Sync
 
 Optional. Keep a project on more than one computer through git, with any git host. **History** → **Sync** connects the project to a repository; then **Sync** in the top bar sends this computer's changes and brings in the other's. Paragraphs both computers changed are both kept, as tracked changes to accept or reject. Setting it up: [SYNC.md](SYNC.md).
+
+Once a project is synced, **History** → **Earlier syncs** lists the selected scene as it was at each sync. **Compare** shows what changed since; **Restore** puts that text back, and Ctrl+Z undoes it.
 
 ## Compile
 

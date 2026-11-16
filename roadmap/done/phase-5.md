@@ -1,6 +1,6 @@
-# Phase 5 — what has shipped so far
+# Phase 5 — what shipped
 
-Phase 5 is **plain-text projects, and sync through git**. All five stages are done. The rest is in [../todo/phase-5.md](../todo/phase-5.md), and what the done part still needs is in [../todo/phase-5.1.md](../todo/phase-5.1.md).
+Phase 5 is **plain-text projects, and sync through git**. It is complete. Small things it leaves for later are in [../todo/phase-5.1.md](../todo/phase-5.1.md).
 
 This work is on the `alternative-phase-5` branch. The format itself is described in [PROJECT_FORMAT_2.md](../../documentation/PROJECT_FORMAT_2.md).
 
@@ -103,6 +103,25 @@ Checked by tests of edits to different paragraphs, the same paragraph changed tw
 
 Checked by tests with a local bare repository and two working copies: the first send, a sync with nothing to do, changes going one way, both machines changing different scenes, both changing the same paragraph, the commit message, an unconnected project, a merge in progress, an empty address; and a test of the window's state that connects, syncs, takes in a merge, and shows the other machine's paragraph as a tracked change.
 
+## History from git
+
+- **Earlier syncs** in History lists the selected scene's versions from git, newest first: when, and the commit's message.
+- **Compare** shows what changed since that version, in the same view as a snapshot comparison.
+- **Restore** puts that version's text back as one step, which Ctrl+Z undoes.
+
+Checked by a test of the window's state that syncs two drafts, lists them, compares with the older, restores it, undoes the restore, and refuses something that is not a commit.
+
+## Moved out of Phase 5
+
+- **A git engine built into the program**, so that nothing has to be installed and Sync works on phones and tablets: to [Phase 7](../todo/phase-7.md). It means a large new dependency, and the program handling SSH keys or tokens itself, which needs an explicit decision.
+- **Guided setup**, creating a repository and signing in from inside the program: to [bonus](../todo/bonus.md). It needs an integration with each git host, against syncing with any git host, and stored tokens.
+
+## Not in Phase 5
+
+- An account, a server run by this project, or shared-project permissions. Who can read or write a project is decided by the git host.
+- Two people editing at the same time. This is bonus work.
+- Encrypting a project. A private repository is as private as its host makes it.
+
 ## Phase 5.1, item 1 — Entries the program does not know are kept
 
 A file can hold entries the program does not use: a person adds `<meta name="pov" content="Mara">` to a scene, a key to a line of `binder.json`, or a later version of the program writes a new one. Before this, the next save of that item removed them.
@@ -133,7 +152,7 @@ Item 3 asked the writer before converting a format 1 project. It was built, and 
 
 ## What was checked
 
-- 148 tests passed across the workspace at the end of stage 2. After stage 5: the storage crate's 28 tests, the UI crate's 12, the synchronization crate's 10, the format crate's 25, and the export crate's 5 pass.
+- 148 tests passed across the workspace at the end of stage 2. At the end of the phase all 171 tests in the workspace pass, with no warnings.
 - Scene files: every kind of block and formatting, with their awkward cases; randomly built documents (2,000 with every run, and more than a million in one-off runs); a project on disk.
 - The Markdown export, read with an independent Markdown reader (`pulldown-cmark`).
 - The store: making a project, saving, reopening after a file was changed outside, opening with no `.local/`, refusing a format 1 folder, deleting a bible entry, and restoring a backup.

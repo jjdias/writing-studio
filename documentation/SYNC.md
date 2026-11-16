@@ -50,6 +50,10 @@ The manuscript cannot be edited while a sync runs. Closing the window commits wh
 
 History shows when the project last synced, and how much there is to send or receive.
 
+## Earlier versions
+
+**History** → **Earlier syncs** lists the selected scene as it was each time it was synced. **Compare** shows what changed since then; **Restore** puts that text back as one step that Ctrl+Z undoes.
+
 ## When both computers changed the same thing
 
 Nothing written on either computer is dropped.

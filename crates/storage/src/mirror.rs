@@ -325,6 +325,11 @@ impl ProjectStore {
         self.mirror.problems.borrow().clone()
     }
 
+    /// The file this item is kept in, inside the project folder.
+    pub fn file_of(&self, id: Id) -> Option<String> {
+        self.mirror.paths.borrow().get(&id).cloned()
+    }
+
     /// Whether this item's file could not be read when the project opened.
     pub fn is_missing(&self, id: Id) -> bool {
         self.mirror.missing.borrow().contains(&id)

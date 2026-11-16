@@ -50,7 +50,7 @@ Professional editing, still local:
 
 Full list: [`roadmap/done/phase-4.md`](roadmap/done/phase-4.md).
 
-## Phase 5, in progress
+## Phase 5
 
 Projects as plain files:
 
@@ -59,9 +59,9 @@ Projects as plain files:
 - Scenes can be written as Markdown for other writing tools
 - Optional sync between computers through git, with any git host ([how](documentation/SYNC.md))
 
-What has shipped: [`roadmap/done/phase-5.md`](roadmap/done/phase-5.md). Still to come: [`roadmap/todo/phase-5.md`](roadmap/todo/phase-5.md).
+Full list: [`roadmap/done/phase-5.md`](roadmap/done/phase-5.md).
 
-Phases 1 through 4 are done; Phase 5 is in progress. See the [roadmap](roadmap/README.md) for what is next.
+Phases 1 through 5 are done. See the [roadmap](roadmap/README.md) for what is next.
 
 ## Requirements
 
@@ -91,7 +91,7 @@ Desktop/UI crates need a windowing runtime and are not part of the default libra
 - [Phase 2 features](roadmap/done/phase-2.md)
 - [Phase 3 features](roadmap/done/phase-3.md)
 - [Phase 4 features](roadmap/done/phase-4.md)
-- [Phase 5 so far](roadmap/done/phase-5.md)
+- [Phase 5 features](roadmap/done/phase-5.md)
 - [Usage](documentation/USAGE.md)
 - [Architecture](documentation/ARCHITECTURE.md)
 - [Project format](documentation/PROJECT_FORMAT.md)

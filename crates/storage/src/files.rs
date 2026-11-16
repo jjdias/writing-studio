@@ -1371,6 +1371,14 @@ fn check_binder(nodes: &mut Vec<BinderNode>, problem: &mut impl FnMut(&str, &str
 
 /// The rest of the program expects a block to hold at least one run, as the
 /// editor leaves it. A stored empty paragraph has none.
+/// The text of a scene file, such as one from an earlier commit, as the
+/// document with the id `id`.
+pub fn scene_document(html: &str, id: Id) -> Document {
+    let mut document = Document::new(id);
+    document.blocks = with_a_run_in_every_block(SceneFile::parse_html(html).blocks);
+    document
+}
+
 pub(crate) fn with_a_run_in_every_block(mut blocks: Vec<Block>) -> Vec<Block> {
     for block in &mut blocks {
         match &mut block.kind {
