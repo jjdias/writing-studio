@@ -59,7 +59,9 @@ The index is built in memory from the project when it opens, and updated when a 
 
 ## Compile
 
-- **Markdown** or **DOCX** in the top bar. Choose where to save.
+- **Markdown** or **DOCX** in the top bar. Choose where to save. In a Markdown compile, open notes are footnotes numbered across the book.
+- **Markdown folder** in the top bar writes the whole project as a folder of Markdown files: every scene in reading order, the bible, and a `README.md` that lists them. Use it to read the book anywhere, or to take it to another writing program.
+- **Import** in the binder brings Markdown files in as new scenes, where a new scene would go. A title in the file's front matter is used; otherwise the file's name.
 - The book menu next to those buttons chooses which novel is compiled. Other books stay out of the file. The title page uses that book's title.
 - Research and trash are not included.
 

@@ -26,7 +26,7 @@ Binder + stored documents → writing-studio-export → .md / .docx on disk
 | `writing-studio-project` | Binder tree, settings, drag-and-drop, trash/restore |
 | `writing-studio-manuscript` | Book/chapter/scene outline |
 | `writing-studio-templates` | Blank novel seed |
-| `writing-studio-storage` | The project folder: HTML and JSON files as the project, a SQLite cache beside them, snapshots, backups, and restore |
+| `writing-studio-storage` | The project folder: HTML and JSON files as the project, a SQLite cache beside them, snapshots, backups, and restore; the project exported as a folder of Markdown, and Markdown brought in |
 | `writing-studio-corkboard` | Scene cards from the binder |
 | `writing-studio-plotting` | Plotlines, plot points, and scene links |
 | `writing-studio-characters` | Profiles, motivations, and relationships |
@@ -36,7 +36,7 @@ Binder + stored documents → writing-studio-export → .md / .docx on disk
 | `writing-studio-diagnostics` | Scene goal, conflict, and outcome, and the counts and checks made on a scene's text. No dependencies |
 | `writing-studio-format` | A scene as an HTML file, and back, exactly; and as Markdown for export and import. See [PROJECT_FORMAT_2.md](PROJECT_FORMAT_2.md) |
 | `writing-studio-spellcheck` | Checks words against a Hunspell dictionary (English US is compiled in) and the project's own words; suggests replacements. No network |
-| `writing-studio-export` | Manuscript compile to Markdown and DOCX |
+| `writing-studio-export` | Manuscript compile to Markdown (with the format crate's writer) and DOCX |
 | `writing-studio-ui` | Workspace UI |
 | `writing-studio-desktop` | Native window |
 

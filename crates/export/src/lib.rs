@@ -67,41 +67,51 @@ mod tests {
         assert!(!markdown.to_lowercase().contains("story notes"));
     }
 
+    /// Compile used to number footnotes from 1 in every scene, so a book had
+    /// several `[^1]`. They are numbered across the book now.
     #[test]
-    fn markdown_exports_links_comments_code_and_scene_breaks() {
-        let mut document = Document::new(writing_studio_core::Id::new());
-        document.blocks = vec![
-            Block {
+    fn markdown_numbers_footnotes_across_the_book_and_escapes_titles() {
+        let seeded = blank_novel("Notes *Novel*");
+        let mut tree = BinderTree::new(seeded.nodes);
+        let chapter = tree.nodes.iter().find(|n| n.kind == NodeKind::Chapter).unwrap().id;
+        let first = tree.nodes.iter().find(|n| n.kind == NodeKind::Scene).unwrap().clone();
+        let mut second = BinderNode::new(NodeKind::Scene, "# Second", Some(chapter), 1);
+        second.document_id = Some(second.id);
+        tree.nodes.push(second.clone());
+        let noted = |id, text: &str, note: &str| {
+            let mut document = Document::new(id);
+            document.blocks = vec![Block {
                 id: writing_studio_core::Id::new(),
                 kind: BlockKind::Paragraph {
                     inlines: vec![Inline {
                         id: writing_studio_core::Id::new(),
-                        text: "harbor".into(),
+                        text: text.into(),
                         marks: Marks {
+                            comment: Some(note.into()),
                             link: Some("https://example.com/tide".into()),
-                            comment: Some("check the tide".into()),
                             ..Marks::default()
                         },
                     }],
                 },
-            },
-            Block {
-                id: writing_studio_core::Id::new(),
-                kind: BlockKind::Code {
-                    inlines: vec![Inline::text("let x = 1;")],
-                },
-            },
-            Block {
-                id: writing_studio_core::Id::new(),
-                kind: BlockKind::SceneBreak,
-            },
+            }];
+            document
+        };
+        let documents = vec![
+            noted(first.document_id.unwrap(), "harbor", "check the tide"),
+            noted(second.id, "quay", "which one?"),
         ];
-        let markdown = crate::markdown::document_markdown(&document);
-        assert!(markdown.contains("[harbor](https://example.com/tide)[^1]"));
-        assert!(markdown.contains("[^1]: check the tide"));
-        assert!(markdown.contains("```\nlet x = 1;\n```"));
-        assert!(markdown.contains("* * *"));
-        assert!(!markdown.contains("javascript:"));
+        let markdown = compile_markdown(&CompileInput {
+            title: "Notes *Novel*",
+            include_title_page: true,
+            book_id: None,
+            tree: &tree,
+            documents: &documents,
+        });
+        assert!(markdown.starts_with("# Notes \\*Novel\\*\n"), "{markdown}");
+        assert!(markdown.contains("### \\# Second\n"), "{markdown}");
+        assert!(markdown.contains("[harbor](https://example.com/tide)[^1]"), "{markdown}");
+        assert!(markdown.contains("[quay](https://example.com/tide)[^2]"), "{markdown}");
+        assert!(markdown.ends_with("[^1]: check the tide\n\n[^2]: which one?\n"), "{markdown}");
     }
 
     #[test]

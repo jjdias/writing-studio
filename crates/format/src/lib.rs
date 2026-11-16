@@ -19,5 +19,5 @@ pub use canonical::{canonical_blocks, same_content};
 pub use header::{split_header, Header, HeaderError, Value};
 pub use html::{blocks_to_html, html_to_blocks, stored_blocks};
 pub use read::markdown_to_blocks;
-pub use scene::{file_name, SceneFile, SceneHeader, STYLESHEET};
-pub use write::blocks_to_markdown;
+pub use scene::{file_name, slug, SceneFile, SceneHeader, STYLESHEET};
+pub use write::{blocks_to_markdown, write_markdown, NoteStyle};

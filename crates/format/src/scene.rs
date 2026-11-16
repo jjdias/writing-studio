@@ -191,6 +191,14 @@ const NAME_LENGTH: usize = 40;
 /// is chosen once, when the file is made. It does not follow later changes
 /// to the title, so that a rename never moves a file.
 pub fn file_name(title: &str, id: Id) -> String {
+    let id = id.to_string();
+    format!("{}-{}.html", slug(title), &id[..4])
+}
+
+/// The readable part of a file name: the title in lowercase, with anything
+/// but letters and digits turned into `-`, at most 40 characters, and
+/// `untitled` when nothing is left.
+pub fn slug(title: &str) -> String {
     let mut name = String::new();
     for ch in title.chars().flat_map(char::to_lowercase) {
         if ch.is_alphanumeric() {
@@ -203,9 +211,7 @@ pub fn file_name(title: &str, id: Id) -> String {
         }
     }
     let name = name.trim_end_matches('-');
-    let name = if name.is_empty() { "untitled" } else { name };
-    let id = id.to_string();
-    format!("{name}-{}.html", &id[..4])
+    if name.is_empty() { "untitled".into() } else { name.to_string() }
 }
 
 #[cfg(test)]

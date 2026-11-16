@@ -1,6 +1,6 @@
 # Phase 5 — what is left
 
-Phase 5 is **plain-text projects, and sync through git**. What has shipped is in [../done/phase-5.md](../done/phase-5.md). This file is the rest, in the order to do it.
+Phase 5 is **plain-text projects, and sync through git**. Stages 1 and 2 have shipped: see [../done/phase-5.md](../done/phase-5.md). This file is the rest, stages 3 to 5, in the order to do them.
 
 Read this whole section before starting any item.
 
@@ -20,7 +20,8 @@ Read this whole section before starting any item.
 | --- | --- |
 | `crates/format/src/html.rs` | Blocks to the stored HTML and back, exactly. `blocks_to_html`, `html_to_blocks`, `stored_blocks`. Also the tokenizer used for a scene file's head. |
 | `crates/format/src/scene.rs` | `SceneFile` and `SceneHeader`: `to_html` / `parse_html` for the stored file, `to_markdown` / `parse_markdown` for export and import. `file_name`. |
-| `crates/format/src/write.rs`, `read.rs`, `canonical.rs`, `header.rs` | The Markdown export and import, what Markdown cannot hold (`canonical_blocks`), and front matter. |
+| `crates/format/src/write.rs`, `read.rs`, `canonical.rs`, `header.rs` | Markdown: the one writer (`write_markdown`, with notes as CriticMarkup or as footnotes for compile), the reader, what Markdown cannot hold (`canonical_blocks`), and front matter. |
+| `crates/storage/src/markdown.rs` | The whole project exported as a folder of Markdown files, and Markdown files brought in as scenes. |
 | `crates/storage/src/files.rs` | The whole folder: `ProjectContent`, `write_project_files`, `read_project_files`, `verify_project_files`, `write_atomic`, and one function for each file (`scene_text`, `binder_json`, `bible_files`, `plot_json`, `settings_json`). `inside` checks that a path stays in the project. |
 | `crates/storage/src/mirror.rs` | `ProjectStore::create`, `open` (which refuses a format 1 folder), and every save: each public save writes the file and then calls the `_cached` function in `lib.rs` that writes SQLite. `Mirror` remembers which file each item has. |
 | `crates/storage/src/lib.rs`, `recovery.rs`, `schema.rs` | The SQLite cache: the `_cached` writes, the loads, snapshots, backups. |
@@ -44,36 +45,6 @@ Read this whole section before starting any item.
 - The UI crate needs GTK and WebKit development packages to compile. On Debian or Ubuntu: `libgtk-3-dev libwebkit2gtk-4.1-dev libxdo-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev`.
 - State tests in `crates/ui/src/state.rs` build a real project in a temporary folder with `open_state`.
 - Nothing drives the desktop window. Say so in your summary when a change is only tested below the window.
-
-## Stage 2, the one item left — Export a whole book as Markdown, and bring Markdown in
-
-One scene already converts both ways (`SceneFile::to_markdown`, `SceneFile::parse_markdown`), and what Markdown cannot hold is listed in the format. What is missing is a command.
-
-**Export**
-
-- Add to `crates/storage`: `export_markdown(store: &ProjectStore, target: &Path) -> Result<usize>`, returning how many files were written. Build a `ProjectContent` with `ProjectContent::from_store` and write from that.
-- The target is a new folder. Refuse a folder that exists and is not empty.
-- Write the manuscript so that it reads in order without this program: one file for each scene, named with its place in the book, such as `manuscript/01-chapter-one/003-the-harbor.md`. Use `in_tree_order` in `files.rs` for the order. Leave out the trash.
-- Write the bible the same way, one file for each entry, in the folders the project uses. `entry_file` in `files.rs` builds the stored file for an entry; split it so the same `SceneFile` can be written with `to_markdown`.
-- Write a `README.md` at the top that lists the books, chapters, and scenes in order, each as a link to its file.
-- Do not write `.local/`, the ids of plot points, or settings. This is for reading and for other programs, not for coming back.
-- In the window, put the command beside Markdown and DOCX compile. `prepare_export` and `CompiledFormat` in `state.rs` show how compile is wired; `pick_folder` in `studio.rs` chooses the folder.
-
-**Import**
-
-- Bring one or more `.md` files in as new scenes, in the chapter that is selected, in the order they were chosen.
-- `SceneFile::parse_markdown` gives the header and the blocks. The title is the header's `title`, or the file's name when there is none.
-- Always give the scene a new id. An `id` in the file is ignored, so that importing a file twice, or a file from another project, cannot replace a scene.
-- Make the item with `BinderNode::new`, save it with `ProjectStore::upsert_node`, then `save_document`, as `add_node` in `state.rs` does.
-- A header that cannot be read is an error that names the file and the line (`HeaderError`). The other files are still brought in.
-
-**Tests**
-
-- Export a project with two books, a trashed scene, and a bible, then check the folder: the order, that the trash is not there, and that a scene's text is what `to_markdown` gives.
-- Import the exported scenes into an empty chapter and compare each with `canonical_blocks` of the original.
-- Import a file with no header, and a file with a broken header.
-
-**Done when** a book can be exported to a folder a person can read top to bottom, the files open in another Markdown tool, and Markdown files can be brought in as scenes. Then mark stage 2 complete in [../done/phase-5.md](../done/phase-5.md) and add the commands to `documentation/USAGE.md`.
 
 ## Stage 3 — Files changed outside the program
 

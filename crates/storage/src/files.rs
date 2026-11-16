@@ -264,7 +264,7 @@ fn entry_file(
     text: &str,
     other: Vec<(&str, HeaderValue)>,
     extras: Option<&Extras>,
-) -> String {
+) -> SceneFile {
     let mut header = Header::default();
     let known: Vec<&str> = other.iter().map(|(key, _)| *key).collect();
     for (key, value) in other {
@@ -283,7 +283,6 @@ fn entry_file(
         },
         blocks: text_blocks(text),
     }
-    .to_html()
 }
 
 fn optional_id(id: Option<Id>) -> HeaderValue {
@@ -496,8 +495,8 @@ pub(crate) fn bible_files(
     known: &HashMap<Id, String>,
     used: &mut HashSet<String>,
     extras: &HashMap<Id, Extras>,
-) -> (Vec<(Id, String, String)>, String) {
-    let mut entries: Vec<(Id, String, String)> = Vec::new();
+) -> (Vec<(Id, String, SceneFile)>, String) {
+    let mut entries: Vec<(Id, String, SceneFile)> = Vec::new();
     // The bible: one file for each entry, and one list that orders them.
     let mut order: Vec<(&str, Vec<Value>)> = Vec::new();
     let mut links: Vec<Value> = Vec::new();
@@ -506,9 +505,9 @@ pub(crate) fn bible_files(
                      id: Id,
                      title: &str,
                      scenes: &[Id],
-                     html: String| {
+                     file: SceneFile| {
         let path = place(known, used, folder, title, id);
-        entries.push((id, path.clone(), html));
+        entries.push((id, path.clone(), file));
         let mut item = Map::new();
         item.insert("id".into(), json!(id.to_string()));
         item.insert("file".into(), json!(path));
@@ -528,7 +527,7 @@ pub(crate) fn bible_files(
             .filter(|item| item.character_id == person.id)
             .map(|item| item.body.clone())
             .collect();
-        let html = entry_file(
+        let file = entry_file(
             person.id,
             &person.name,
             &person.summary,
@@ -538,30 +537,30 @@ pub(crate) fn bible_files(
             ],
             extras.get(&person.id),
         );
-        entry("characters", &mut list, person.id, &person.name, &person.scene_ids, html);
+        entry("characters", &mut list, person.id, &person.name, &person.scene_ids, file);
     }
     order.push(("characters", std::mem::take(&mut list)));
 
     for place_ in sorted(&world.locations, |item| item.sort_index) {
-        let html = entry_file(
+        let file = entry_file(
             place_.id,
             &place_.name,
             &place_.summary,
             vec![("culture", optional_id(place_.culture_id))],
             extras.get(&place_.id),
         );
-        entry("places", &mut list, place_.id, &place_.name, &place_.scene_ids, html);
+        entry("places", &mut list, place_.id, &place_.name, &place_.scene_ids, file);
     }
     order.push(("places", std::mem::take(&mut list)));
 
     for culture in sorted(&world.cultures, |item| item.sort_index) {
-        let html = entry_file(culture.id, &culture.name, &culture.summary, Vec::new(), extras.get(&culture.id));
-        entry("cultures", &mut list, culture.id, &culture.name, &culture.scene_ids, html);
+        let file = entry_file(culture.id, &culture.name, &culture.summary, Vec::new(), extras.get(&culture.id));
+        entry("cultures", &mut list, culture.id, &culture.name, &culture.scene_ids, file);
     }
     order.push(("cultures", std::mem::take(&mut list)));
 
     for lore in sorted(&world.lore, |item| item.sort_index) {
-        let html = entry_file(
+        let file = entry_file(
             lore.id,
             &lore.title,
             &lore.body,
@@ -571,12 +570,12 @@ pub(crate) fn bible_files(
             ],
             extras.get(&lore.id),
         );
-        entry("lore", &mut list, lore.id, &lore.title, &lore.scene_ids, html);
+        entry("lore", &mut list, lore.id, &lore.title, &lore.scene_ids, file);
     }
     order.push(("lore", std::mem::take(&mut list)));
 
     for event in sorted(&world.events, |item| item.sort_index) {
-        let html = entry_file(
+        let file = entry_file(
             event.id,
             &event.title,
             &event.summary,
@@ -586,13 +585,13 @@ pub(crate) fn bible_files(
             ],
             extras.get(&event.id),
         );
-        entry("timeline", &mut list, event.id, &event.title, &event.scene_ids, html);
+        entry("timeline", &mut list, event.id, &event.title, &event.scene_ids, file);
     }
     order.push(("timeline", std::mem::take(&mut list)));
 
     for note in sorted(&library.items, |item| item.sort_index) {
-        let html = entry_file(note.id, &note.title, &note.notes, Vec::new(), extras.get(&note.id));
-        entry("research", &mut list, note.id, &note.title, &note.scene_ids, html);
+        let file = entry_file(note.id, &note.title, &note.notes, Vec::new(), extras.get(&note.id));
+        entry("research", &mut list, note.id, &note.title, &note.scene_ids, file);
     }
     order.push(("research", std::mem::take(&mut list)));
 
@@ -707,8 +706,8 @@ fn render(content: &ProjectContent) -> Result<Rendered> {
         &mut used,
         &content.extras,
     );
-    for (id, path, text) in entries {
-        contents.push((path.clone(), text));
+    for (id, path, file) in entries {
+        contents.push((path.clone(), file.to_html()));
         files.insert(id, path);
     }
     contents.push(("bible.json".into(), bible));

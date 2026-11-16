@@ -20,9 +20,30 @@ pub(crate) fn kind_prefix(kind: NoteKind) -> &'static str {
 
 pub(crate) const RESOLVED_PREFIX: &str = "(resolved) ";
 
-/// Write blocks as Markdown. The blocks are put in canonical form first.
+/// How a note on text, and a highlight, are written.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NoteStyle {
+    /// As CriticMarkup, with highlights, note kinds, and resolved notes:
+    /// everything the scene holds.
+    Critic,
+    /// For a reader: open notes as numbered footnotes, defined after all
+    /// the text. Resolved notes and highlights are left out, and so are
+    /// empty paragraphs, which Markdown would show as `<br>`.
+    Footnotes,
+}
+
+/// Write blocks as Markdown, with notes as CriticMarkup. The blocks are put
+/// in canonical form first.
 pub fn blocks_to_markdown(blocks: &[Block]) -> String {
-    let blocks = canonical_blocks(blocks);
+    write_markdown(blocks, NoteStyle::Critic)
+}
+
+pub fn write_markdown(blocks: &[Block], style: NoteStyle) -> String {
+    let blocks = match style {
+        NoteStyle::Critic => canonical_blocks(blocks),
+        NoteStyle::Footnotes => canonical_blocks(&for_a_reader(blocks)),
+    };
+    let mut notes: Vec<String> = Vec::new();
     let mut chunks: Vec<String> = Vec::new();
     // The marker the previous list used, so that two lists in a row are not
     // read as one.
@@ -30,11 +51,12 @@ pub fn blocks_to_markdown(blocks: &[Block]) -> String {
     for block in &blocks {
         let mut this_list = None;
         let chunk = match &block.kind {
+            BlockKind::Paragraph { inlines } if inlines.is_empty() && style == NoteStyle::Footnotes => continue,
             BlockKind::Paragraph { inlines } => {
                 if inlines.is_empty() {
                     "<br>".to_string()
                 } else {
-                    write_line(inlines, Breaks::Backslash(""), false)
+                    write_line(inlines, Breaks::Backslash(""), false, style, &mut notes)
                 }
             }
             BlockKind::Heading { level, inlines } => {
@@ -42,11 +64,11 @@ pub fn blocks_to_markdown(blocks: &[Block]) -> String {
                 if inlines.is_empty() {
                     marks
                 } else {
-                    format!("{marks} {}", write_line(inlines, Breaks::Tag, true))
+                    format!("{marks} {}", write_line(inlines, Breaks::Tag, true, style, &mut notes))
                 }
             }
             BlockKind::Quote { inlines } => {
-                format!("> {}", write_line(inlines, Breaks::Backslash("> "), false))
+                format!("> {}", write_line(inlines, Breaks::Backslash("> "), false, style, &mut notes))
                     .trim_end_matches(' ')
                     .to_string()
             }
@@ -76,7 +98,7 @@ pub fn blocks_to_markdown(blocks: &[Block]) -> String {
                         if item.inlines.is_empty() {
                             marker
                         } else {
-                            format!("{marker} {}", write_line(&item.inlines, Breaks::Tag, false))
+                            format!("{marker} {}", write_line(&item.inlines, Breaks::Tag, false, style, &mut notes))
                         }
                     })
                     .collect::<Vec<_>>()
@@ -86,6 +108,11 @@ pub fn blocks_to_markdown(blocks: &[Block]) -> String {
         };
         last_list = this_list;
         chunks.push(chunk);
+    }
+    for (index, note) in notes.iter().enumerate() {
+        let text = vec![Inline::text(note.replace('\n', " "))];
+        let body = write_line(&text, Breaks::Tag, false, NoteStyle::Critic, &mut Vec::new());
+        chunks.push(format!("[^{}]: {body}", index + 1));
     }
     let mut out = chunks.join("\n\n");
     out.push('\n');
@@ -236,7 +263,28 @@ fn looks_like_reference(rest: &[char]) -> bool {
     false
 }
 
-fn write_line(inlines: &[Inline], breaks: Breaks, escape_hash: bool) -> String {
+/// The blocks with only what a reader is shown: highlights and resolved
+/// notes are taken off, and a note's kind is written into its text.
+fn for_a_reader(blocks: &[Block]) -> Vec<Block> {
+    let mut document = writing_studio_document::Document::new(writing_studio_core::Id::new());
+    document.blocks = blocks.to_vec();
+    document.edit_marks(|marks| {
+        marks.highlight = None;
+        let note = marks.compile_note();
+        marks.comment = note;
+        marks.comment_kind = NoteKind::Comment;
+        marks.comment_resolved = false;
+    });
+    document.blocks
+}
+
+fn write_line(
+    inlines: &[Inline],
+    breaks: Breaks,
+    escape_hash: bool,
+    style: NoteStyle,
+    notes: &mut Vec<String>,
+) -> String {
     let mut writer = LineWriter {
         out: String::new(),
         breaks,
@@ -249,7 +297,7 @@ fn write_line(inlines: &[Inline], breaks: Breaks, escape_hash: bool) -> String {
     while start < inlines.len() {
         let marks = &inlines[start].marks;
         let end = run_end(inlines, start, inlines.len(), same_review);
-        let wrapped = marks.comment.is_some() || marks.highlight.is_some();
+        let wrapped = style == NoteStyle::Critic && (marks.comment.is_some() || marks.highlight.is_some());
         if wrapped {
             writer.raw("{==");
         }
@@ -269,6 +317,10 @@ fn write_line(inlines: &[Inline], breaks: Breaks, escape_hash: bool) -> String {
         if wrapped {
             writer.raw("==}");
             writer.raw(&review_suffix(marks));
+        }
+        if let (NoteStyle::Footnotes, Some(note)) = (style, marks.comment.as_ref()) {
+            notes.push(note.clone());
+            writer.raw(&format!("[^{}]", notes.len()));
         }
         start = end;
     }

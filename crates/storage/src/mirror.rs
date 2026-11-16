@@ -415,8 +415,8 @@ impl ProjectStore {
         let mut used: HashSet<String> = known.values().cloned().collect();
         let (entries, bible) = bible_files(cast, world, library, &known, &mut used, &self.mirror.extras.borrow());
         let mut present = HashSet::new();
-        for (id, path, text) in &entries {
-            self.write_small(path, text)?;
+        for (id, path, file) in &entries {
+            self.write_small(path, &file.to_html())?;
             self.mirror.paths.borrow_mut().insert(*id, path.clone());
             present.insert(*id);
         }

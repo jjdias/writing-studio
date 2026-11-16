@@ -386,6 +386,17 @@ impl Document {
         changed
     }
 
+    /// Let `change` adjust the marks of each run.
+    pub fn edit_marks(&mut self, mut change: impl FnMut(&mut Marks)) {
+        for block in &mut self.blocks {
+            for inlines in inline_runs_mut(&mut block.kind) {
+                for inline in inlines.iter_mut() {
+                    change(&mut inline.marks);
+                }
+            }
+        }
+    }
+
     /// Let `change` rewrite the text of each run. It returns whether it
     /// changed that run. Formatting, notes, and highlights stay on the run.
     pub fn edit_text_runs(&mut self, mut change: impl FnMut(&mut String) -> bool) -> bool {

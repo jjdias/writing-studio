@@ -1986,6 +1986,67 @@ impl StudioState {
         self.status = "Added to binder.".into();
     }
 
+    /// Write the whole project as a folder of Markdown files inside `parent`,
+    /// for reading it or for another writing program.
+    pub fn export_markdown_folder(&mut self, parent: PathBuf) {
+        self.save_all();
+        let (Some(store), Some(meta)) = (&self.store, &self.meta) else {
+            return;
+        };
+        let target = parent.join(format!("{} (Markdown)", sanitize(&meta.title)));
+        let exported = store.borrow().export_markdown(&target);
+        self.status = match exported {
+            Ok(count) => format!("Exported {count} files as Markdown to {}.", target.display()),
+            Err(err) => format!("Could not export as Markdown: {err}"),
+        };
+    }
+
+    /// Bring Markdown files in as new scenes, in the order given, where a new
+    /// scene would go. A file that cannot be read is named in the status
+    /// line, and the others are still brought in.
+    pub fn import_markdown_files(&mut self, paths: Vec<PathBuf>) {
+        self.flush_editor();
+        let Some(store) = self.store.clone() else {
+            return;
+        };
+        let parent = self.infer_parent(NodeKind::Scene);
+        let (mut last, mut failed) = (None, Vec::new());
+        for path in &paths {
+            let name = path
+                .file_stem()
+                .map(|stem| stem.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let sort = self.binder.next_sort_index(parent);
+            let imported = std::fs::read_to_string(path)
+                .map_err(|err| err.to_string())
+                .and_then(|text| {
+                    store
+                        .borrow()
+                        .import_markdown_scene(&text, &name, parent, sort)
+                        .map_err(|err| err.to_string())
+                });
+            match imported {
+                Ok((node, beats, document)) => {
+                    let _ = self.manuscript_index.borrow_mut().upsert(node.id, &document.to_plain_text());
+                    if !beats.is_empty() {
+                        self.beats.insert(node.id, beats);
+                    }
+                    last = Some(node.id);
+                    self.binder.nodes.push(node);
+                }
+                Err(err) => failed.push(format!("{name}: {err}")),
+            }
+        }
+        if let Some(id) = last {
+            self.select_node(id);
+        }
+        let count = paths.len() - failed.len();
+        self.status = match failed.as_slice() {
+            [] => format!("Imported {count} scenes from Markdown."),
+            _ => format!("Imported {count} scenes. Not imported: {}", failed.join("; ")),
+        };
+    }
+
     pub fn add_plotline(&mut self) {
         self.confirm_plotline = None;
         let mut grid = self.plot.clone();
@@ -3386,6 +3447,33 @@ mod tests {
             .find(|entry| entry.file_name().to_string_lossy().contains(".conflict-"))
             .unwrap();
         assert_eq!(std::fs::read_to_string(kept.path()).unwrap(), outside);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn markdown_files_come_in_as_scenes_where_a_new_scene_would_go() {
+        let (mut state, dir) = open_state("import");
+        let chapter = state.binder.get(state.selected.unwrap()).unwrap().parent_id;
+        let files = dir.join("incoming");
+        std::fs::create_dir_all(&files).unwrap();
+        let good = files.join("arrival.md");
+        std::fs::write(&good, "---\ngoal: Land\n---\n\nThe ship came in.\n").unwrap();
+        let broken = files.join("broken.md");
+        std::fs::write(&broken, "---\ntitle: never closed\n").unwrap();
+
+        state.import_markdown_files(vec![good, broken]);
+        let scene = state.binder.get(state.selected.unwrap()).unwrap().clone();
+        assert_eq!((scene.title.as_str(), scene.parent_id), ("arrival", chapter));
+        assert_eq!(state.editor_text, "The ship came in.");
+        assert_eq!(state.scene_beats(scene.id).goal, "Land");
+        assert!(state.status.starts_with("Imported 1 scenes. Not imported: broken:"), "{}", state.status);
+
+        let parent = dir.join("exports");
+        std::fs::create_dir_all(&parent).unwrap();
+        state.export_markdown_folder(parent.clone());
+        // The two scenes, and the seed research note, which opening moved into
+        // the research library.
+        assert!(state.status.starts_with("Exported 3 files"), "{}", state.status);
         let _ = std::fs::remove_dir_all(dir);
     }
 

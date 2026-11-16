@@ -116,6 +116,39 @@ fn notes_and_highlights_use_critic_markup() {
     );
 }
 
+/// For a reader: open notes become footnotes, with their kind; resolved
+/// notes, highlights, and empty paragraphs are left out.
+#[test]
+fn footnote_style_shows_a_reader_only_the_open_notes() {
+    let note = |text: &str, kind, resolved| Marks {
+        comment: Some(text.into()),
+        comment_kind: kind,
+        comment_resolved: resolved,
+        highlight: Some(Highlight::Green),
+        ..Marks::default()
+    };
+    let blocks = vec![
+        paragraph(vec![
+            run("The ", Marks::default()),
+            run("harbor", note("which one?", NoteKind::Question, false)),
+            run(" and ", Marks::default()),
+            run("quay", note("done", NoteKind::Comment, true)),
+            run(".", Marks::default()),
+        ]),
+        Block::paragraph(""),
+        Block {
+            id: Id::new(),
+            kind: BlockKind::Code {
+                inlines: vec![run("let x = 1;", Marks::default())],
+            },
+        },
+    ];
+    assert_eq!(
+        crate::write_markdown(&blocks, crate::NoteStyle::Footnotes),
+        "The harbor[^1] and quay.\n\n```\nlet x = 1;\n```\n\n[^1]: Question: which one?\n"
+    );
+}
+
 #[test]
 fn a_note_over_text_that_is_partly_formatted_is_still_one_note() {
     let noted = Marks {

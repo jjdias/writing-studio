@@ -271,6 +271,15 @@ fn Workspace() -> Element {
                         CompileBookSelect {}
                         button { title: "Compile the chosen book to Markdown", onclick: move |_| export_project(state, CompiledFormat::Markdown), "Markdown" }
                         button { title: "Compile the chosen book to DOCX", onclick: move |_| export_project(state, CompiledFormat::Docx), "DOCX" }
+                        button {
+                            title: "Export the whole project as a folder of Markdown files, one for each scene and entry, for another writing program",
+                            onclick: move |_| {
+                                if let Some(parent) = pick_folder("Choose where to put the Markdown folder") {
+                                    state.write().export_markdown_folder(parent);
+                                }
+                            },
+                            "Markdown folder"
+                        }
                     }
                 }
                 main { class: "center",
@@ -543,6 +552,16 @@ fn Explorer() -> Element {
                 button { title: "New chapter (Ctrl+Shift+N)", onclick: move |_| state.write().add_node(NodeKind::Chapter), "Chapter" }
                 button { title: "New scene (Ctrl+N)", onclick: move |_| state.write().add_node(NodeKind::Scene), "Scene" }
                 button { title: "New folder", onclick: move |_| state.write().add_node(NodeKind::Folder), "Folder" }
+                button {
+                    title: "Bring Markdown files in as new scenes",
+                    onclick: move |_| {
+                        let files = pick_markdown_files();
+                        if !files.is_empty() {
+                            state.write().import_markdown_files(files);
+                        }
+                    },
+                    "Import"
+                }
             }
             div { class: "binder-tools",
                 button { onclick: move |_| state.write().trash_selected(), "Trash" }
@@ -1885,6 +1904,19 @@ fn pick_file(title: &str) -> Option<std::path::PathBuf> {
         .join()
         .ok()
         .flatten()
+}
+
+fn pick_markdown_files() -> Vec<std::path::PathBuf> {
+    std::thread::spawn(|| {
+        rfd::FileDialog::new()
+            .set_title("Choose Markdown files to bring in as scenes")
+            .add_filter("Markdown", &["md", "markdown", "txt"])
+            .pick_files()
+    })
+    .join()
+    .ok()
+    .flatten()
+    .unwrap_or_default()
 }
 
 fn pick_folder(title: &str) -> Option<std::path::PathBuf> {

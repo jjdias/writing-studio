@@ -6279,6 +6279,7 @@ dependencies = [
  "docx-rs",
  "writing-studio-core",
  "writing-studio-document",
+ "writing-studio-format",
  "writing-studio-project",
  "writing-studio-templates",
 ]

@@ -9,6 +9,7 @@ description = "Independent compile/export pipeline for Markdown and DOCX"
 docx-rs.workspace = true
 writing-studio-core.workspace = true
 writing-studio-document.workspace = true
+writing-studio-format.workspace = true
 writing-studio-project.workspace = true
 
 [dev-dependencies]

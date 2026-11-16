@@ -39,12 +39,11 @@ Clear these when the code around them is next changed, or on their own when ther
 
 - `verify_project_files` in `crates/storage/src/files.rs` is used only by its own test since conversion was removed. Remove it, or use it in stage 4, where a merged project could be checked before it is written.
 - `crates/collaboration` and `crates/security` are placeholder crates that nothing uses. No work is planned for either (editing at the same time is bonus work; a project is as private as its folder and its git host). Remove both from the workspace. `crates/synchronization` stays: stages 4 and 5 use it.
-- There are two Markdown writers: `crates/export/src/markdown.rs` (compile, with notes as footnotes) and `crates/format/src/write.rs` (a scene, exact, with notes as CriticMarkup). Phase 5's Markdown export of a whole book should not add a third. Decide which one compile and the export share, and remove the other's duplicate code.
 - `documentation/PROJECT_FORMAT.md` is titled as format 1 but now only matters as the list of the cache's tables. Fold the table list into `PROJECT_FORMAT_2.md` and remove the file.
 
 ## What to do next
 
-1. The rest of Phase 5, in order: the Markdown export of a whole book, then stages 3, 4, and 5.
+1. The rest of Phase 5, in order: stages 3, 4, and 5.
 2. The remaining items of Phase 5.1, each when the code it touches is next changed.
 3. The technical debt above, the same way.
 

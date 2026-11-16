@@ -6,6 +6,7 @@
 //! until the copy succeeds.
 
 mod files;
+mod markdown;
 mod mirror;
 mod recovery;
 

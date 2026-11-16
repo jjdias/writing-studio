@@ -48,7 +48,7 @@ MyNovel.writingstudio/
 
 The HTML and JSON files are the project. `.local/` can be deleted; the program rebuilds what it can from the files, and what it cannot rebuild (snapshots, backups, writing sessions) was only ever on this machine.
 
-The Markdown export is in the code and tested, scene by scene. The program does not yet have a command that exports a whole book.
+**Markdown folder** in the window exports the whole project as Markdown, for reading it or for another program; see "Markdown export and import".
 
 ## Scene files
 
@@ -152,7 +152,25 @@ It does not read lists inside lists, or blocks inside a quote; their text comes 
 
 ## Markdown export and import
 
-The same scene, written for another program:
+**The whole project.** **Markdown folder** writes a new folder:
+
+```text
+Tide (Markdown)/
+  README.md                       the book's title, then every scene and entry, in order, as links
+  manuscript/
+    01-tide/                      a book
+      01-chapter-1/               a chapter that holds scenes
+        01-scene-1.md
+        02-the-quay.md
+  characters/01-mara.md           the bible, one file for each entry
+  places/  cultures/  lore/  timeline/  research/
+```
+
+The numbers keep files in the order of the book in any file list. An item with text is a file; an item with children is a folder beside it with the same number and name; a chapter with no text of its own is only the folder. The trash is left out. Ids, the plot grid, settings, and `.local/` are not written: this is for reading and for other programs, not for coming back.
+
+**Bringing scenes in.** **Import** in the binder brings `.md` files in as new scenes where a new scene would go, in the order chosen, each with a new id. The front matter gives the title and details; with none, the file's name is the title.
+
+**One scene**, as both the export and the import write and read it:
 
 ```markdown
 ---

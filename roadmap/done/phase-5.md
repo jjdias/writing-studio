@@ -1,6 +1,6 @@
 # Phase 5 — what has shipped so far
 
-Phase 5 is **plain-text projects, and sync through git**. Two of its five stages are done. The rest is in [../todo/phase-5.md](../todo/phase-5.md), and what the done part still needs is in [../todo/phase-5.1.md](../todo/phase-5.1.md).
+Phase 5 is **plain-text projects, and sync through git**. Two of its five stages are done, the second with its Markdown export and import. The rest is in [../todo/phase-5.md](../todo/phase-5.md), and what the done part still needs is in [../todo/phase-5.1.md](../todo/phase-5.1.md).
 
 This work is on the `alternative-phase-5` branch. The format itself is described in [PROJECT_FORMAT_2.md](../../documentation/PROJECT_FORMAT_2.md).
 
@@ -54,6 +54,14 @@ Order keys were dropped from the plan. The order of the lines in a file is the o
 - **Emptying the trash deletes scene files**, because that step already asks twice. Deleting a bible entry deletes its file.
 - **Format 1 projects are not converted.** Conversion was built, then removed: format 1 had no downloads, so there were no books to convert, and an in-place one-way rewrite of a project was the riskiest code in the phase.
 
+## Stage 2, last item — The whole book as Markdown, and Markdown brought in
+
+- **Markdown folder**, beside Markdown and DOCX compile, writes the whole project into a new folder: the manuscript in reading order (`manuscript/01-tide/01-chapter-1/01-scene-1.md`), the bible one file for each entry, and a `README.md` that lists everything in order with links. The trash is left out. A chapter that only holds scenes is a folder, not an empty file. Scenes keep their notes and highlights as CriticMarkup, and their details as front matter. It is for reading the book or taking it to another program, so ids and settings are not written.
+- **Import** in the binder brings Markdown files in as new scenes, where a new scene would go, in the order chosen. The front matter gives the title and details; with none, the file's name is the title. Every scene gets a new id, so a file brought in twice is two scenes. A file that cannot be read is named in the status line, and the others still come in.
+- **One Markdown writer.** Compile had its own writer, which escaped only four characters, so a `#` or `1.` typed at the start of a line came out as a heading or a list; and it numbered footnotes from 1 in every scene, so a compiled book had several `[^1]`. Compile now uses the format crate's writer, in a style for readers: open notes as footnotes numbered across the book, without resolved notes or highlights. Its own writer, about 90 lines, is gone.
+
+Checked by tests of compile (footnotes across a book, a title that needs escaping), of the footnote style, of the export (order, the trash left out, the README, a full folder refused), of import (text and details come back, no header, a broken header), and of the window's state for both.
+
 ## Phase 5.1, item 1 — Entries the program does not know are kept
 
 A file can hold entries the program does not use: a person adds `<meta name="pov" content="Mara">` to a scene, a key to a line of `binder.json`, or a later version of the program writes a new one. Before this, the next save of that item removed them.
@@ -84,7 +92,7 @@ Item 3 asked the writer before converting a format 1 project. It was built, and 
 
 ## What was checked
 
-- 148 tests passed across the workspace at the end of stage 2. The storage crate's 22 tests and the UI crate's 9 pass after item 3 was dropped.
+- 148 tests passed across the workspace at the end of stage 2. The storage crate's 24 tests, the UI crate's 10, the format crate's 25, and the export crate's 5 pass after the Markdown export.
 - Scene files: every kind of block and formatting, with their awkward cases; randomly built documents (2,000 with every run, and more than a million in one-off runs); a project on disk.
 - The Markdown export, read with an independent Markdown reader (`pulldown-cmark`).
 - The store: making a project, saving, reopening after a file was changed outside, opening with no `.local/`, refusing a format 1 folder, deleting a bible entry, and restoring a backup.
