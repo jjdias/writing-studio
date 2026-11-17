@@ -46,24 +46,27 @@ The index is built in memory from the project when it opens, and updated when a 
 
 ## Organize
 
-- **Book**, **Part**, **Chapter**, **Scene**, and **Folder** add manuscript items. **Book** adds another novel under the same manuscript. **Ctrl+N** adds a scene when a project is open. **Ctrl+Shift+N** adds a chapter. Characters, world notes, plot, and research stay with the project. Research notes are edited in **Research**, not in the binder.
+- **Chapter** and **Scene** above the binder add those. **Add** holds **Book**, **Part**, and **Folder**. **Book** adds another novel under the same manuscript. **Ctrl+N** adds a scene when a project is open. **Ctrl+Shift+N** adds a chapter. Characters, world notes, plot, and research stay with the project. Research notes are edited in **Research**, not in the binder.
+- Each binder row shows its kind as a small icon. The book menu above the binder shows the book on screen, or **Whole series**.
 - **Whole series** in the binder, corkboard, and outliner shows every book. Pick a book there, or in the compile menu, to make that book the one on screen, the one compiled, and the one in the status bar. The project remembers that choice. **Whole series** shows every book again and leaves compile and the status bar on the last book. Selecting a scene points compile and the status bar at that scene's book. New chapters, parts, scenes, and manuscript folders are added inside the book on screen. A scene with nothing selected goes in its last chapter. New folders go in the book on screen.
-- The inspector edits title, synopsis, status, label, and color. Label and color are for items that are not roots. Colors are None, Gold, Green, Red, Blue, and Violet. The label shows on the binder row. The inspector is on screen in Writing and History. Other modes hide it. **Ctrl+Alt+I** still shows or hides it for when you return to Writing or History.
+- The inspector edits title, synopsis, status, label, and color, at the top. Label and color are for items that are not roots. Colors are None, Gold, Green, Red, Blue, and Violet. The label shows on the binder row. Below them, **Beats and diagnostics** and **Snapshots** fold away from their headings. **Move to trash** sits apart at the bottom. The inspector is on screen in Writing only; **Ctrl+Alt+I** still shows or hides it for when you return.
 - Drag items to reorder or nest. Drop on **Trash** to discard.
-- **Restore** returns a trashed item to its previous parent when that parent still exists.
+- The **⋯** on the **Trash** row holds **Move selected here**, **Restore selected**, and **Empty trash**, away from the buttons that add. **Restore** returns a trashed item to its previous parent when that parent still exists.
 - **Empty trash** asks for a second click, then deletes those items from the local database. Permanently deleting a book drops its word target. If it was the compile book, compile and the status bar move to the first book that remains.
 
 ## Corkboard
 
-**Corkboard** shows a card per scene: title, synopsis, status, word count, and label. Drag a card onto another scene to place it just after that scene. Filter the cards. Group them by order, chapter, label, color, or status. Card color comes from the binder color. Click a card to open that scene in Writing.
+**Corkboard** shows a card per scene: title, synopsis, status, word count, and label. Drag a card onto another scene to place it just after that scene. Filter the cards. **Group by** sorts them by order, chapter, label, color, or status. The band across the top of a card is its binder color. With no scenes yet, the corkboard says so and has **Add a scene**. Click a card to open that scene in Writing.
 
 ## Outliner
 
-**Outliner** is a table of chapters and scenes. Edit the chapter title, scene title, status, and synopsis in the row. The words column is that row's count. **Open** returns to Writing on that item.
+**Outliner** is a table of chapters and scenes. Each chapter is a group row, with its title to edit, above its scenes. Click a scene's title to open it in Writing; rename a scene in the inspector or the binder. Edit status and synopsis in the row. The words column is that row's count. Columns take the room their content needs.
 
 **Diagnostics**, beside **Outline** at the top, changes the table. Each scene shows its **Goal**, **Conflict**, and **Outcome**, which you type in the row, then its words, its share of dialogue, the characters from the bible it names, and the checks: a missing goal, conflict, or outcome; a scene with no text; a scene much longer or shorter than the book's usual one; no character named; long sentences. The same three fields and checks are in the inspector for the selected scene. The checks count what is in the text. They do not judge it. See [Phase 4](../roadmap/done/phase-4.md) for exactly what is counted.
 
 ## Recover
+
+**History** shows the selected scene first (Snapshots, Earlier syncs, Kept from outside), then the project (Backups, Sync, Found when the project opened, Writing sessions). Each section folds from its heading.
 
 - Inspector → **Snapshot this document**, or **Ctrl+Shift+S**. Restore from the inspector list or **History**.
 - **Compare** on a snapshot shows, in **History**, what changed between that snapshot and the current text. Added text is marked green and removed text is struck through. **Compare with** picks a second snapshot instead of the current text. **Changed paragraphs only** hides the rest. Only text is compared, not formatting, links, or inline notes. Comparing changes nothing.
@@ -95,11 +98,11 @@ The status bar shows the current book's words and target first, then in Writing 
 
 ## Modes
 
-Writing, Corkboard, Outliner, Plot, Characters, World, Research, History. The activity bar lists them by name in that order, and **Ctrl+1** to **Ctrl+8** follow it. In a short window the names show on hover and focus. Choosing the mode that is open does nothing. Below the modes, **Binder** and **Inspector** show or hide those panels, and **Focus** hides everything but the page and a word count. **Escape** leaves it.
+Writing, Corkboard, Outliner, Plot, Characters, World, Research, History. The binder is on screen in Writing, Corkboard, Outliner, and History; Plot, Characters, World, and Research are each a list beside an editor. A mode with nothing in it says what goes there and has the button that adds the first one. The activity bar lists them by name in that order, and **Ctrl+1** to **Ctrl+8** follow it. In a short window the names show on hover and focus. Choosing the mode that is open does nothing. Below the modes, **Binder** and **Inspector** show or hide those panels, and **Focus** hides everything but the page and a word count. **Escape** leaves it.
 
 ## Plot
 
-**Plot** is a local grid of plotlines. Add a plotline, then add plot points along that line. Each point has a title, a short summary, and an optional link to a manuscript scene. The scene list is labeled book / chapter / scene, so the same chapter in two books stays distinct. **Open** jumps to that scene. **Earlier** and **Later** change the order on the line. Deleting a plotline asks for a second click and removes its points. The grid is saved in the project folder. Emptying trash drops links to scenes that were permanently deleted.
+**Plot** lists the plotlines beside the one that is open. Add a plotline, then add plot points along that line. Each point has a title, a short summary, and an optional link to a manuscript scene. The scene list is labeled book / chapter / scene, so the same chapter in two books stays distinct. **Open** jumps to that scene. **Earlier** and **Later** change the order on the line. Deleting a plotline asks for a second click and removes its points. The grid is saved in the project folder. Emptying trash drops links to scenes that were permanently deleted.
 
 ## Characters
 
@@ -137,6 +140,8 @@ In a narrow window the inspector folds away first, then the binder, so the page 
 
 ## Keyboard
 
+**Help** in the top bar, or **Ctrl+/**, lists every shortcut. **Tab** moves through the window in the order it is laid out, and every control shows a ring when it has the focus. Text and controls meet WCAG AA contrast in every theme.
+
 | Chord | Action |
 | --- | --- |
 | **Ctrl+S** | Save |
@@ -160,3 +165,4 @@ In a narrow window the inspector folds away first, then the binder, so the page 
 | **Ctrl+O** | Open project |
 | **Ctrl+Alt+B** | Show or hide the binder |
 | **Ctrl+Alt+I** | Show or hide the inspector |
+| **Ctrl+/** | List every shortcut |

@@ -43,21 +43,48 @@ pub(super) fn PlotPane() -> Element {
                 .collect(),
         })
         .collect();
+    let shown = snapshot
+        .selected_plotline
+        .filter(|id| lines.iter().any(|line| line.id == *id))
+        .or_else(|| lines.first().map(|line| line.id));
+    let list: Vec<(Id, String, String)> = lines
+        .iter()
+        .map(|line| (line.id, line.title.clone(), binder_color_hex(&line.color).to_string()))
+        .collect();
+    let open = lines.into_iter().find(|line| Some(line.id) == shown);
     rsx! {
-        div { class: "plot-pane",
-            div { class: "plot-toolbar",
+        div { class: "cast-pane",
+            aside { class: "cast-list", aria_label: "Plotlines",
                 button {
                     class: "primary",
                     onclick: move |_| state.write().add_plotline(),
                     "Add plotline"
                 }
+                for (id, title, hex) in list {
+                    button {
+                        key: "{id}",
+                        class: if shown == Some(id) { "cast-name active" } else { "cast-name" },
+                        onclick: move |_| state.write().selected_plotline = Some(id),
+                        if !hex.is_empty() {
+                            span { class: "swatch", style: "background: {hex}" }
+                        }
+                        if title.trim().is_empty() { "Untitled plotline" } else { "{title}" }
+                    }
+                }
             }
-            p { class: "hint", "Each row is a plotline. Plot points stay in order on that line and can open a manuscript scene. Titles save with the project." }
-            if lines.is_empty() {
-                p { class: "hint", "No plotlines yet." }
-            }
-            for line in lines {
-                PlotLineRow { line, scenes: scenes.clone(), confirm, binder_scenes: linked_scene_labels(&snapshot, &scenes) }
+            div { class: "cast-profile plot-pane",
+                if let Some(line) = open {
+                    p { class: "hint", "Plot points stay in order on this line and can open a manuscript scene." }
+                    PlotLineRow { line, scenes: scenes.clone(), confirm, binder_scenes: linked_scene_labels(&snapshot, &scenes) }
+                } else {
+                    EmptyState {
+                        mode: WorkspaceMode::Plot,
+                        title: "No plotlines yet",
+                        body: "A plotline is one thread through the book. Its plot points stay in order and can open the scenes they happen in.",
+                        action: "Add plotline",
+                        onclick: move |_| state.write().add_plotline(),
+                    }
+                }
             }
         }
     }
@@ -116,17 +143,12 @@ pub(super) fn PlotLineRow(line: PlotLineView, scenes: Vec<(Id, String)>, confirm
                         state.write().set_plotline_color(line_id, event.value());
                     },
                     for swatch in BINDER_COLORS {
-                        option { value: "{swatch.id}", "{swatch.name}" }
+                        option { value: "{swatch.id}", selected: color == swatch.id, "{swatch.name}" }
                     }
                 }
                 button {
                     onclick: move |_| state.write().add_plot_point(line_id),
                     "Add point"
-                }
-                button {
-                    class: danger(confirm == Some(line_id)),
-                    onclick: move |_| state.write().remove_plotline(line_id),
-                    "{delete_label}"
                 }
             }
             div { class: "plot-points",
@@ -135,6 +157,13 @@ pub(super) fn PlotLineRow(line: PlotLineView, scenes: Vec<(Id, String)>, confirm
                 }
                 for point in points {
                     PlotPointCard { point, scenes: scenes.clone(), border: border.clone(), extras: binder_scenes.clone() }
+                }
+            }
+            div { class: "cast-actions",
+                button {
+                    class: danger(confirm == Some(line_id)),
+                    onclick: move |_| state.write().remove_plotline(line_id),
+                    "{delete_label}"
                 }
             }
         }
@@ -177,9 +206,9 @@ pub(super) fn PlotPointCard(point: PlotPointView, scenes: Vec<(Id, String)>, bor
                 onchange: move |event| {
                     state.write().set_plot_point_scene(point_id, parse_scene_id(&event.value()));
                 },
-                option { value: "", "No scene" }
+                option { value: "", selected: scene_value.is_empty(), "No scene" }
                 for (id, label) in options {
-                    option { value: "{id}", "{label}" }
+                    option { value: "{id}", selected: id.to_string() == scene_value, "{label}" }
                 }
             }
             div { class: "plot-card-actions",

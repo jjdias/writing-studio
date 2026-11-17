@@ -59,9 +59,6 @@ pub(super) fn WorldPane() -> Element {
                     onclick: move |_| state.write().add_world_item(),
                     "{add_label}"
                 }
-                if items.is_empty() {
-                    p { class: "hint", "Nothing in this section yet." }
-                }
                 for item in items {
                     {
                         let id = item.id;
@@ -82,7 +79,13 @@ pub(super) fn WorldPane() -> Element {
                 if let Some(form) = form {
                     WorldEditor { form, places, cultures, confirm }
                 } else {
-                    p { class: "hint", "Locations, cultures, lore, and the timeline stay in this project. Pick a section and add an entry." }
+                    EmptyState {
+                        mode: WorkspaceMode::World,
+                        title: format!("No {} yet", section.label().to_lowercase()),
+                        body: "Locations, cultures, lore, and the timeline stay in this project, and each entry can link the scenes it appears in.",
+                        action: add_label,
+                        onclick: move |_| state.write().add_world_item(),
+                    }
                 }
             }
         }
@@ -228,9 +231,9 @@ pub(super) fn WorldEditor(form: WorldForm, places: Vec<NamedId>, cultures: Vec<N
                 select {
                     value: "{culture_id}",
                     onchange: move |event| state.write().set_location_culture(id, parse_optional_id(&event.value())),
-                    option { value: "", "No culture" }
+                    option { value: "", selected: culture_id.is_empty(), "No culture" }
                     for culture in cultures {
-                        option { value: "{culture.id}", "{culture.name}" }
+                        option { value: "{culture.id}", selected: culture.id.to_string() == culture_id, "{culture.name}" }
                     }
                 }
             },
@@ -261,18 +264,18 @@ pub(super) fn WorldEditor(form: WorldForm, places: Vec<NamedId>, cultures: Vec<N
                 select {
                     value: "{location_id}",
                     onchange: move |event| state.write().set_lore_location(id, parse_optional_id(&event.value())),
-                    option { value: "", "No location" }
+                    option { value: "", selected: location_id.is_empty(), "No location" }
                     for place in places.clone() {
-                        option { value: "{place.id}", "{place.name}" }
+                        option { value: "{place.id}", selected: place.id.to_string() == location_id, "{place.name}" }
                     }
                 }
                 label { "Culture" }
                 select {
                     value: "{culture_id}",
                     onchange: move |event| state.write().set_lore_culture(id, parse_optional_id(&event.value())),
-                    option { value: "", "No culture" }
+                    option { value: "", selected: culture_id.is_empty(), "No culture" }
                     for culture in cultures.clone() {
-                        option { value: "{culture.id}", "{culture.name}" }
+                        option { value: "{culture.id}", selected: culture.id.to_string() == culture_id, "{culture.name}" }
                     }
                 }
             },
@@ -297,9 +300,9 @@ pub(super) fn WorldEditor(form: WorldForm, places: Vec<NamedId>, cultures: Vec<N
                 select {
                     value: "{location_id}",
                     onchange: move |event| state.write().set_event_location(id, parse_optional_id(&event.value())),
-                    option { value: "", "No location" }
+                    option { value: "", selected: location_id.is_empty(), "No location" }
                     for place in places.clone() {
-                        option { value: "{place.id}", "{place.name}" }
+                        option { value: "{place.id}", selected: place.id.to_string() == location_id, "{place.name}" }
                     }
                 }
                 div { class: "cast-actions",

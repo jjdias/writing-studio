@@ -59,9 +59,6 @@ pub(super) fn CharactersPane() -> Element {
                     onclick: move |_| state.write().add_character(),
                     "Add character"
                 }
-                if people.is_empty() {
-                    p { class: "hint", "No characters yet." }
-                }
                 for person in people {
                     {
                         let id = person.id;
@@ -82,7 +79,13 @@ pub(super) fn CharactersPane() -> Element {
                 if let Some(profile) = profile {
                     CharacterProfile { profile, others, confirm }
                 } else {
-                    p { class: "hint", "Add a character to write a profile, motivations, and relationships. They stay in this project." }
+                    EmptyState {
+                        mode: WorkspaceMode::Characters,
+                        title: "No characters yet",
+                        body: "Each character has a profile, motivations, relationships, and the scenes they appear in. The cast stays in this project.",
+                        action: "Add character",
+                        onclick: move |_| state.write().add_character(),
+                    }
                 }
             }
         }
@@ -219,7 +222,7 @@ pub(super) fn CharacterProfile(profile: ProfileView, others: Vec<CastListItem>, 
                                     }
                                 },
                                 for person in choices {
-                                    option { value: "{person.id}", "{person.name}" }
+                                    option { value: "{person.id}", selected: person.id == to_id, "{person.name}" }
                                 }
                             }
                             button {

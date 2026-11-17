@@ -22,7 +22,7 @@ use writing_studio_diagnostics::{BookContext, SceneFacts};
 use writing_studio_search::matches_query;
 use writing_studio_spellcheck::UnknownWord;
 
-use crate::shortcuts::{app_shortcut, AppShortcut};
+use crate::shortcuts::{app_shortcut, AppShortcut, IN_THE_MANUSCRIPT, LISTED};
 use crate::state::{
     Beat, BibleLink, CompiledFormat, Earlier, FoldedPanel, FrameMenu, ReviewTab, StudioState, WorkspaceMode,
     WorldSection,
@@ -131,13 +131,15 @@ fn Studio() -> Element {
         }
     });
     let open = state.read().is_open();
+    let show_shortcuts = state.read().show_shortcuts;
     let theme = state.read().theme();
     let font = state.read().prose_font();
 
     rsx! {
         div {
             class: "shell theme-{theme.as_str()} prose-{font.as_str()}",
-            tabindex: 0,
+            // Focusable by a click, so keys reach the handler, but not a stop for Tab.
+            tabindex: -1,
             onmousemove: move |event| {
                 let Some(drag) = *resize.peek() else {
                     return;
@@ -183,6 +185,7 @@ fn Studio() -> Element {
                 }
             },
             if open { Workspace {} } else { Welcome {} }
+            if show_shortcuts { ShortcutsDialog {} }
         }
     }
 }
@@ -228,15 +231,17 @@ fn Workspace() -> Element {
     let arrangement = *chrome.read();
     let fold = current_fold();
     let sidebar_left = arrangement.sidebar_side == SidebarSide::Left;
-    let inspector_mode = matches!(mode, WorkspaceMode::Writing | WorkspaceMode::History);
-    let show_sidebar = !focus && arrangement.sidebar_visible && !fold.binder;
+    let inspector_mode = mode.shows_inspector();
+    let binder_mode = mode.shows_binder();
+    let show_sidebar = !focus && arrangement.sidebar_visible && binder_mode && !fold.binder;
     let show_inspector =
         !focus && arrangement.inspector_visible && inspector_mode && !fold.inspector;
-    let overlay_binder = !focus && fold.binder && overlay == Some(FoldedPanel::Binder);
+    let overlay_binder =
+        !focus && fold.binder && binder_mode && overlay == Some(FoldedPanel::Binder);
     let overlay_inspector =
         !focus && fold.inspector && inspector_mode && overlay == Some(FoldedPanel::Inspector);
-    let binder_on = if fold.binder { overlay_binder } else { arrangement.sidebar_visible };
-    let inspector_on = if fold.inspector { overlay_inspector } else { arrangement.inspector_visible };
+    let binder_on = binder_mode && if fold.binder { overlay_binder } else { arrangement.sidebar_visible };
+    let inspector_on = inspector_mode && if fold.inspector { overlay_inspector } else { arrangement.inspector_visible };
     // The binder keeps its side over the page; the inspector takes the other.
     let overlay_left = (overlay_binder && sidebar_left) || (overlay_inspector && !sidebar_left);
     let tab_title = {
@@ -278,6 +283,7 @@ fn Workspace() -> Element {
                         title: "Binder (Ctrl+Alt+B)",
                         aria_label: "Binder",
                         aria_pressed: "{binder_on}",
+                        disabled: !binder_mode,
                         onclick: move |_| toggle_binder(state, chrome, fold),
                         svg { class: "glyph", view_box: "0 0 16 16",
                             path { d: "M1.5 2.5h13v11h-13zM6 2.5v11", fill: "none", stroke: "currentColor", stroke_width: "1.2" }
@@ -289,6 +295,7 @@ fn Workspace() -> Element {
                         title: "Inspector (Ctrl+Alt+I)",
                         aria_label: "Inspector",
                         aria_pressed: "{inspector_on}",
+                        disabled: !inspector_mode,
                         onclick: move |_| toggle_inspector_panel(state, chrome, fold),
                         svg { class: "glyph", view_box: "0 0 16 16",
                             path { d: "M1.5 2.5h13v11h-13zM10 2.5v11", fill: "none", stroke: "currentColor", stroke_width: "1.2" }
@@ -311,6 +318,15 @@ fn Workspace() -> Element {
                     }
                 }
             }
+            // A panel over the page comes where it shows, so Tab reaches it
+            // in the order it is seen: left of the page here, right of it
+            // after the page.
+            if (overlay_binder || overlay_inspector) && overlay_left {
+                div { class: "overlay-backdrop", onclick: move |_| state.write().overlay = None }
+                div { class: "overlay overlay-left",
+                    if overlay_binder { Explorer {} } else { InspectorPane {} }
+                }
+            }
             if show_sidebar && sidebar_left {
                 Explorer {}
                 Sash { kind: ResizeKind::Sidebar, positive: true }
@@ -324,7 +340,7 @@ fn Workspace() -> Element {
                     div { class: "tab active",
                         span { class: "tab-label", "{tab_title}" }
                         if unsaved {
-                            span { class: "tab-dirty", title: "Unsaved changes" }
+                            span { class: "tab-dirty", role: "img", aria_label: "Unsaved changes", title: "Unsaved changes" }
                         }
                     }
                 }
@@ -349,9 +365,9 @@ fn Workspace() -> Element {
                 Sash { kind: ResizeKind::Sidebar, positive: false }
                 Explorer {}
             }
-            if overlay_binder || overlay_inspector {
+            if (overlay_binder || overlay_inspector) && !overlay_left {
                 div { class: "overlay-backdrop", onclick: move |_| state.write().overlay = None }
-                div { class: if overlay_left { "overlay overlay-left" } else { "overlay overlay-right" },
+                div { class: "overlay overlay-right",
                     if overlay_binder { Explorer {} } else { InspectorPane {} }
                 }
             }
@@ -407,6 +423,62 @@ fn TopBar() -> Element {
                     "Settings"
                 }
                 if settings_open { SettingsPanel {} }
+            }
+            button {
+                title: "Keyboard shortcuts (Ctrl+/)",
+                aria_haspopup: "dialog",
+                onclick: move |_| {
+                    let mut current = state.write();
+                    current.open_menu = None;
+                    current.show_shortcuts = true;
+                },
+                "Help"
+            }
+        }
+    }
+}
+
+/// Every shortcut, from Help or Ctrl+/. Escape or Close puts it away.
+#[component]
+fn ShortcutsDialog() -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    rsx! {
+        div { class: "dialog-backdrop", onclick: move |_| state.write().show_shortcuts = false }
+        div { class: "dialog", role: "dialog", aria_modal: "true", aria_labelledby: "shortcuts-title",
+            div { class: "dialog-head",
+                h2 { id: "shortcuts-title", "Keyboard shortcuts" }
+                button {
+                    onmounted: move |event| async move {
+                        let _ = event.set_focus(true).await;
+                    },
+                    onclick: move |_| state.write().show_shortcuts = false,
+                    "Close"
+                }
+            }
+            table { class: "shortcut-table",
+                tbody {
+                    for item in LISTED {
+                        tr {
+                            td { "{item.what}" }
+                            td { kbd { "{item.chord()}" } }
+                        }
+                    }
+                    tr {
+                        td { "Close a menu or a panel, cancel a waiting delete, leave focus mode, or clear a search" }
+                        td { kbd { "Escape" } }
+                    }
+                }
+            }
+            h3 { "In the manuscript" }
+            table { class: "shortcut-table",
+                tbody {
+                    for (what, chord) in IN_THE_MANUSCRIPT {
+                        tr {
+                            td { "{what}" }
+                            td { kbd { "{chord}" } }
+                        }
+                    }
+                }
             }
         }
     }

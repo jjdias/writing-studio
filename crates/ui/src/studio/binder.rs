@@ -10,9 +10,13 @@ pub(super) fn Explorer() -> Element {
     let mode = state.read().mode;
     let search = state.read().search.clone();
     let side = chrome.read().sidebar_side;
-    let selected = state.read().selected;
-    let selected_in_trash = selected.is_some_and(|id| state.read().binder.is_in_trash(id));
-    let confirm_empty = state.read().confirm_empty_trash;
+    let add_open = state.read().open_menu == Some(FrameMenu::Add);
+    let add = move |kind: NodeKind| {
+        move |_| {
+            state.write().open_menu = None;
+            state.write().add_node(kind);
+        }
+    };
     rsx! {
         aside {
             class: "sidebar",
@@ -22,6 +26,7 @@ pub(super) fn Explorer() -> Element {
                 button {
                     class: "view-action",
                     title: "Move the binder to the other side",
+                    aria_label: "Move the binder to the other side",
                     onclick: move |_| flip_sidebar(state, chrome),
                     if side == SidebarSide::Left { "→" } else { "←" }
                 }
@@ -36,26 +41,27 @@ pub(super) fn Explorer() -> Element {
                 oninput: move |event| state.write().search = event.value(),
             }
             div { class: "binder-tools",
-                button { title: "New book under the manuscript", onclick: move |_| state.write().add_node(NodeKind::Book), "Book" }
-                SeriesScopeSelect {}
-            }
-            div { class: "binder-tools",
-                button { title: "New part", onclick: move |_| state.write().add_node(NodeKind::Part), "Part" }
                 button { title: "New chapter (Ctrl+Shift+N)", onclick: move |_| state.write().add_node(NodeKind::Chapter), "Chapter" }
                 button { title: "New scene (Ctrl+N)", onclick: move |_| state.write().add_node(NodeKind::Scene), "Scene" }
-                button { title: "New folder", onclick: move |_| state.write().add_node(NodeKind::Folder), "Folder" }
-            }
-            div { class: "binder-tools",
-                button { onclick: move |_| state.write().trash_selected(), "Trash" }
-                if selected_in_trash {
-                    button { class: "primary", onclick: move |_| state.write().restore_selected(), "Restore" }
+                div { class: "menu-anchor",
+                    button {
+                        class: if add_open { "menu-btn open" } else { "menu-btn" },
+                        title: "Add a book, a part, or a folder",
+                        aria_haspopup: "menu",
+                        aria_expanded: "{add_open}",
+                        onclick: move |_| state.write().toggle_menu(FrameMenu::Add),
+                        "Add"
+                    }
+                    if add_open {
+                        div { class: "menu", role: "menu", aria_label: "Add",
+                            button { class: "menu-item", role: "menuitem", title: "Another novel under the manuscript", onclick: add(NodeKind::Book), "Book" }
+                            button { class: "menu-item", role: "menuitem", onclick: add(NodeKind::Part), "Part" }
+                            button { class: "menu-item", role: "menuitem", onclick: add(NodeKind::Folder), "Folder" }
+                        }
+                    }
                 }
-                button {
-                    class: danger(confirm_empty),
-                    onclick: move |_| state.write().empty_trash(),
-                    if confirm_empty { "Confirm empty" } else { "Empty trash" }
-                }
             }
+            div { class: "binder-tools", SeriesScopeSelect {} }
             BinderTreeView {}
         }
     }
@@ -115,8 +121,10 @@ pub(super) fn BinderNodeView(id: Id, depth: u32, hits: Rc<HashSet<Id>>) -> Eleme
     let class = if missing { format!("{class} missing") } else { class };
     let color = binder_color_hex(&node.color);
     let label = node.label.clone();
+    let is_trash = node.kind == NodeKind::TrashRoot;
 
     rsx! {
+        div { class: "binder-row",
         button {
             class: "{class}",
             style: "padding-left: {pad}px",
@@ -140,7 +148,7 @@ pub(super) fn BinderNodeView(id: Id, depth: u32, hits: Rc<HashSet<Id>>) -> Eleme
             if !color.is_empty() {
                 span { class: "swatch", style: "background: {color}", title: "{label}" }
             }
-            span { class: "kind", "{node.kind.icon_label()}" }
+            KindGlyph { kind: node.kind }
             span { class: "binder-title", "{node.title}" }
             if missing {
                 span { class: "binder-label", title: "This item's file could not be read. History says which file.", "missing" }
@@ -148,6 +156,10 @@ pub(super) fn BinderNodeView(id: Id, depth: u32, hits: Rc<HashSet<Id>>) -> Eleme
             if !label.is_empty() {
                 span { class: "binder-label", "{label}" }
             }
+        }
+        if is_trash {
+            TrashActions {}
+        }
         }
         for child in children {
             BinderNodeView { id: child, depth: depth + 1, hits: hits.clone() }
@@ -219,4 +231,74 @@ pub(super) fn binder_item_class(
         class.push_str(" trashed");
     }
     class
+}
+
+/// The kind of a binder item, as a small icon with the kind as its name.
+#[component]
+pub(super) fn KindGlyph(kind: NodeKind) -> Element {
+    let shape = match kind {
+        NodeKind::DraftRoot | NodeKind::Book => "M3 2.5h8.5a1 1 0 011 1v10H4a1 1 0 01-1-1zM3 12.5a1 1 0 011-1h8.5",
+        NodeKind::Part => "M2.5 4h11M2.5 8h11M2.5 12h11",
+        NodeKind::Chapter => "M3.5 2.5h9v11h-9zM6 5.5h4M6 8h4",
+        NodeKind::Scene | NodeKind::Note => "M4 2.5h5.2L12 5.3v8.2H4zM9 2.7v2.8h2.8",
+        NodeKind::Folder | NodeKind::ResearchRoot => "M2 4.5h4l1.2 1.5H14v6.5H2z",
+        NodeKind::TrashRoot => "M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.7 9h5.6l.7-9",
+    };
+    rsx! {
+        svg {
+            class: "kind-glyph",
+            view_box: "0 0 16 16",
+            role: "img",
+            "aria-label": "{kind.icon_label()}",
+            title { "{kind.icon_label()}" }
+            path { d: "{shape}", fill: "none", stroke: "currentColor", stroke_width: "1.2", stroke_linejoin: "round" }
+        }
+    }
+}
+
+/// Moving to the trash, restoring, and emptying it, on the Trash row and
+/// away from the buttons that add.
+#[component]
+pub(super) fn TrashActions() -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let mut open = use_signal(|| false);
+    let selected = state.read().selected;
+    let can_trash = selected.is_some_and(|id| {
+        let current = state.read();
+        current.binder.get(id).is_some_and(|node| !node.kind.is_root()) && !current.binder.is_in_trash(id)
+    });
+    let selected_in_trash = selected.is_some_and(|id| {
+        let current = state.read();
+        current.binder.is_in_trash(id) && current.binder.get(id).is_some_and(|node| !node.kind.is_root())
+    });
+    let confirm_empty = state.read().confirm_empty_trash;
+    rsx! {
+        button {
+            class: if open() { "row-menu open" } else { "row-menu" },
+            title: "Trash actions",
+            aria_label: "Trash actions",
+            aria_expanded: "{open()}",
+            onclick: move |_| open.set(!open()),
+            "⋯"
+        }
+        if open() {
+            div { class: "row-actions",
+                button {
+                    disabled: !can_trash,
+                    title: "Move the selected item to the trash",
+                    onclick: move |_| state.write().trash_selected(),
+                    "Move selected here"
+                }
+                if selected_in_trash {
+                    button { class: "primary", onclick: move |_| state.write().restore_selected(), "Restore selected" }
+                }
+                button {
+                    class: danger(confirm_empty),
+                    title: "Delete everything in the trash for good. Asks for a second click.",
+                    onclick: move |_| state.write().empty_trash(),
+                    if confirm_empty { "Confirm empty" } else { "Empty trash" }
+                }
+            }
+        }
+    }
 }

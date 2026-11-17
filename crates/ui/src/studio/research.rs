@@ -41,9 +41,6 @@ pub(super) fn ResearchPane() -> Element {
                     onclick: move |_| state.write().add_research_item(),
                     "Add note"
                 }
-                if notes.is_empty() {
-                    p { class: "hint", "No research notes yet." }
-                }
                 for note in notes {
                     {
                         let id = note.id;
@@ -64,7 +61,13 @@ pub(super) fn ResearchPane() -> Element {
                 if let Some(note) = note {
                     ResearchNote { note, confirm }
                 } else {
-                    p { class: "hint", "Research notes and their files stay in this project. Files are copied into attachments/." }
+                    EmptyState {
+                        mode: WorkspaceMode::Research,
+                        title: "No research notes yet",
+                        body: "A research note keeps what you found and the files that go with it. Files are copied into this project's attachments folder.",
+                        action: "Add note",
+                        onclick: move |_| state.write().add_research_item(),
+                    }
                 }
             }
         }

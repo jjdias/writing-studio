@@ -57,6 +57,17 @@ impl WorkspaceMode {
         WorkspaceMode::History,
     ];
 
+    /// The binder is on screen where the manuscript is arranged or written,
+    /// and in History, which is about the scene chosen there.
+    pub fn shows_binder(self) -> bool {
+        matches!(self, Self::Writing | Self::Corkboard | Self::Outliner | Self::History)
+    }
+
+    /// The inspector edits the item being written, so it is only in Writing.
+    pub fn shows_inspector(self) -> bool {
+        self == Self::Writing
+    }
+
     pub fn label(self) -> &'static str {
         match self {
             Self::Writing => "Writing",
@@ -94,6 +105,8 @@ pub enum FrameMenu {
     Heading,
     /// The format toolbar's less common marks.
     More,
+    /// The binder's Book, Part, and Folder.
+    Add,
 }
 
 /// A tab of the review panel under or beside the manuscript.
@@ -245,6 +258,8 @@ pub struct StudioState {
     pub cast: Cast,
     pub cast_dirty: bool,
     pub selected_character: Option<Id>,
+    /// The plotline open beside the list in Plot.
+    pub selected_plotline: Option<Id>,
     pub confirm_character: Option<Id>,
     pub world: World,
     pub world_dirty: bool,
@@ -258,6 +273,8 @@ pub struct StudioState {
     pub mode: WorkspaceMode,
     pub focus_mode: bool,
     pub open_menu: Option<FrameMenu>,
+    /// The window that lists every shortcut.
+    pub show_shortcuts: bool,
     /// A folded panel shown over the page until it is closed.
     pub overlay: Option<FoldedPanel>,
     /// The review panel's chosen tab, whether it is folded to its tab row,
@@ -329,6 +346,7 @@ impl Default for StudioState {
             cast: Cast::new(),
             cast_dirty: false,
             selected_character: None,
+            selected_plotline: None,
             confirm_character: None,
             world: World::new(),
             world_dirty: false,
@@ -342,6 +360,7 @@ impl Default for StudioState {
             mode: WorkspaceMode::Writing,
             focus_mode: false,
             open_menu: None,
+            show_shortcuts: false,
             overlay: None,
             review_tab: None,
             review_folded: false,
@@ -1832,10 +1851,13 @@ impl StudioState {
         self.overlay = if self.overlay == Some(panel) { None } else { Some(panel) };
     }
 
-    /// Close the open menu, or else the panel shown over the page. Escape
-    /// does this before anything else. Returns whether one was open.
+    /// Close the shortcuts window, or else the open menu, or else the panel
+    /// shown over the page. Escape does this before anything else. Returns
+    /// whether one was open.
     pub fn close_popup(&mut self) -> bool {
-        self.open_menu.take().is_some() || self.overlay.take().is_some()
+        std::mem::take(&mut self.show_shortcuts)
+            || self.open_menu.take().is_some()
+            || self.overlay.take().is_some()
     }
 
     /// Cancel a delete or restore that is waiting for its second click.
@@ -2502,8 +2524,9 @@ impl StudioState {
     pub fn add_plotline(&mut self) {
         self.confirm_plotline = None;
         let mut grid = self.plot.clone();
-        grid.add_line();
+        let id = grid.add_line();
         self.store_plot(grid, true);
+        self.selected_plotline = Some(id);
     }
 
     pub fn set_plotline_title(&mut self, id: Id, title: String) {
@@ -3886,6 +3909,17 @@ mod tests {
     }
 
     #[test]
+    fn each_mode_shows_only_the_panels_it_needs() {
+        let with_binder: Vec<_> = WorkspaceMode::ALL.into_iter().filter(|mode| mode.shows_binder()).collect();
+        assert_eq!(
+            with_binder,
+            [WorkspaceMode::Writing, WorkspaceMode::Corkboard, WorkspaceMode::Outliner, WorkspaceMode::History]
+        );
+        let with_inspector: Vec<_> = WorkspaceMode::ALL.into_iter().filter(|mode| mode.shows_inspector()).collect();
+        assert_eq!(with_inspector, [WorkspaceMode::Writing]);
+    }
+
+    #[test]
     fn the_review_panel_keeps_its_tab_while_that_tab_has_items() {
         use ReviewTab::*;
         assert_eq!(ReviewTab::shown(None, &[]), None);
@@ -3917,6 +3951,10 @@ mod tests {
         state.toggle_overlay(FoldedPanel::Binder);
         state.toggle_menu(FrameMenu::Project);
         state.toggle_menu(FrameMenu::Settings);
+        state.show_shortcuts = true;
+        assert_eq!(state.open_menu, Some(FrameMenu::Settings));
+        assert!(state.close_popup());
+        assert!(!state.show_shortcuts);
         assert_eq!(state.open_menu, Some(FrameMenu::Settings));
         assert!(state.close_popup());
         assert_eq!(state.overlay, Some(FoldedPanel::Binder));

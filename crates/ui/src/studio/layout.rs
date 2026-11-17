@@ -188,6 +188,8 @@ pub(super) fn Sash(kind: ResizeKind, positive: bool) -> Element {
     rsx! {
         div {
             class: "sash",
+            // Resizing is by mouse; Tab passes over it and the width stays as set.
+            aria_hidden: "true",
             title: "Drag to resize. Double-click to reset.",
             onmousedown: move |event| {
                 event.prevent_default();

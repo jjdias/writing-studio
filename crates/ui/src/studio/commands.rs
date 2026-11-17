@@ -126,6 +126,12 @@ pub(super) fn apply_shortcut(
             }
             toggle_binder(state, chrome, fold);
         }
+        AppShortcut::ShowShortcuts => {
+            let next = !state.read().show_shortcuts;
+            let mut current = state.write();
+            current.open_menu = None;
+            current.show_shortcuts = next;
+        }
         AppShortcut::ToggleInspector => {
             if !open {
                 return false;
@@ -172,6 +178,10 @@ pub(super) fn focus_find(mut state: Signal<StudioState>, chrome: Signal<PanelChr
     }
     if state.read().mode == WorkspaceMode::Corkboard {
         focus_dom("cork-filter", false);
+        return;
+    }
+    // Search is in the binder, and modes without one have nothing to search.
+    if !state.read().mode.shows_binder() {
         return;
     }
     let mut wait = false;

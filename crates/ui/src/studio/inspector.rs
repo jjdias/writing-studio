@@ -39,9 +39,6 @@ pub(super) fn Inspector() -> Element {
                 oninput: move |event| state.write().update_selected_status(event.value()),
                 onblur: move |_| state.write().save_all(),
             }
-            if state.read().has_scene_diagnostics(node.id) {
-                SceneDiagnostics { node_id: node.id }
-            }
             if !node.kind.is_root() {
                 label { "Label" }
                 input {
@@ -65,13 +62,27 @@ pub(super) fn Inspector() -> Element {
                     }
                 }
             }
-            if state.read().binder.is_in_trash(node.id) && node.kind != NodeKind::TrashRoot {
-                button { class: "primary", onclick: move |_| state.write().restore_selected(), "Restore from trash" }
-            } else if !node.kind.is_root() {
-                button { class: "danger", onclick: move |_| state.write().trash_selected(), "Move to trash" }
+            if state.read().has_scene_diagnostics(node.id) {
+                details { class: "inspector-section", open: true,
+                    summary { "Beats and diagnostics" }
+                    SceneDiagnostics { node_id: node.id }
+                }
             }
-            button { onclick: move |_| state.write().snapshot(), "Snapshot this document" }
-            SnapshotList {}
+            details { class: "inspector-section", open: true,
+                summary { "Snapshots" }
+                button { onclick: move |_| state.write().snapshot(), "Snapshot this document" }
+                SnapshotList {}
+            }
+            // Set apart from the fields, at the bottom.
+            if state.read().binder.is_in_trash(node.id) && node.kind != NodeKind::TrashRoot {
+                div { class: "inspector-end",
+                    button { class: "primary", onclick: move |_| state.write().restore_selected(), "Restore from trash" }
+                }
+            } else if !node.kind.is_root() {
+                div { class: "inspector-end",
+                    button { class: "danger", onclick: move |_| state.write().trash_selected(), "Move to trash" }
+                }
+            }
         } else {
             p { class: "hint", "Select a binder item to edit metadata." }
         }
@@ -118,7 +129,7 @@ pub(super) fn SceneDiagnostics(node_id: Id) -> Element {
     let facts = report.facts.clone();
     let cast = cast_summary(&facts);
     rsx! {
-        div { class: "pane-title history-title", "Scene diagnostics" }
+
         for beat in [Beat::Goal, Beat::Conflict, Beat::Outcome] {
             label { "{beat_label(beat)}" }
             textarea {
@@ -158,7 +169,7 @@ pub(super) fn SnapshotList() -> Element {
     let mut state = use_context::<Signal<StudioState>>();
     let snapshots = state.read().snapshots_for_selected();
     rsx! {
-        div { class: "pane-title history-title", "Snapshots" }
+
         if snapshots.is_empty() {
             p { class: "hint", "No snapshots yet. Capture one to keep a local copy of this document." }
         } else {
@@ -221,9 +232,9 @@ pub(super) fn SnapshotCompare() -> Element {
                     onchange: move |event| {
                         state.write().set_compare_against(event.value().parse::<Id>().ok());
                     },
-                    option { value: "", "Current text" }
+                    option { value: "", selected: against.is_none(), "Current text" }
                     for item in others {
-                        option { value: "{item.id}", "{item.label} · {item.created_label()}" }
+                        option { value: "{item.id}", selected: against == Some(item.id), "{item.label} · {item.created_label()}" }
                     }
                 }
                 label { class: "compare-toggle",

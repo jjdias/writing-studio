@@ -3,13 +3,8 @@ use super::*;
 #[component]
 pub(super) fn HistoryPane() -> Element {
     let mut state = use_context::<Signal<StudioState>>();
-    let chrome = use_context::<Signal<PanelChrome>>();
-    let widths = use_context::<Signal<PanelWidths>>();
     let snapshots = state.read().snapshots_for_selected();
     let comparing = state.read().compare_snapshot;
-    let backups = state.read().backups();
-    let confirm = state.read().confirm_backup.clone();
-    let has_text = state.read().selected_node().is_some_and(|node| node.document_id.is_some());
     let heading = state
         .read()
         .selected_node()
@@ -17,11 +12,12 @@ pub(super) fn HistoryPane() -> Element {
         .unwrap_or_else(|| "No document selected".into());
     rsx! {
         div { class: "history-pane",
-            section {
-                h2 { "Document snapshots" }
+            h2 { class: "history-group", "This scene: {heading}" }
+            details { class: "history-section", open: true,
+                summary { class: "history-summary", "Snapshots" }
                 p { class: "hint", "Local copies of “{heading}”. Compare shows what changed since a snapshot. Restoring writes the previous text as a pre-restore snapshot." }
                 if snapshots.is_empty() {
-                    p { class: "hint", "Select a scene or note, then snapshot it from the inspector." }
+                    p { class: "hint", "Select a scene or note, then snapshot it with Ctrl+Shift+S or from the inspector in Writing." }
                 } else {
                     ul { class: "history-list wide",
                         for item in snapshots {
@@ -53,15 +49,36 @@ pub(super) fn HistoryPane() -> Element {
             }
             EarlierSyncs {}
             KeptFromOutside {}
-            OpenProblems {}
+            h2 { class: "history-group", "This project" }
+            BackupsSection {}
             SyncSection {}
-            section {
-                h2 { "Writing sessions" }
+            OpenProblems {}
+            details { class: "history-section", open: true,
+                summary { class: "history-summary", "Writing sessions" }
                 p { class: "hint", "Sittings saved in this project. Today’s count starts again each local day." }
                 WritingSessions {}
             }
-            section {
-                h2 { "Project backups" }
+        }
+    }
+}
+
+/// Copies of the project in its backups folder, to restore one scene or all.
+#[component]
+pub(super) fn BackupsSection() -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let chrome = use_context::<Signal<PanelChrome>>();
+    let widths = use_context::<Signal<PanelWidths>>();
+    let backups = state.read().backups();
+    let confirm = state.read().confirm_backup.clone();
+    let has_text = state.read().selected_node().is_some_and(|node| node.document_id.is_some());
+    let heading = state
+        .read()
+        .selected_node()
+        .map(|node| node.title.clone())
+        .unwrap_or_default();
+    rsx! {
+            details { class: "history-section", open: true,
+                summary { class: "history-summary", "Backups" }
                 p { class: "hint", "Copies of this project in its backups folder. Restore this scene puts back the selected scene only. Restore all replaces the whole project and asks for a second click." }
                 div { class: "binder-tools",
                     button { class: "primary", onclick: move |_| state.write().backup(), "Write backup now" }
@@ -102,7 +119,6 @@ pub(super) fn HistoryPane() -> Element {
                     }
                 }
             }
-        }
     }
 }
 
@@ -116,8 +132,8 @@ pub(super) fn EarlierSyncs() -> Element {
     }
     let comparing = state.read().compare_revision.clone();
     rsx! {
-        section {
-            h2 { "Earlier syncs" }
+        details { class: "history-section", open: true,
+            summary { class: "history-summary", "Earlier syncs" }
             p { class: "hint", "This scene as it was each time it was synced. Restore is one step that Ctrl+Z undoes." }
             ul { class: "history-list wide",
                 for revision in revisions {
@@ -166,8 +182,8 @@ pub(super) fn KeptFromOutside() -> Element {
     let confirm = state.read().confirm_kept.clone();
     let showing = matches!(comparing, Some(Earlier::Kept(_)));
     rsx! {
-        section {
-            h2 { "Kept from outside" }
+        details { class: "history-section", open: true,
+            summary { class: "history-summary", "Kept from outside" }
             p { class: "hint", "A file changed outside the program while it was open, kept beside the one the program wrote. Select a scene to compare or restore its kept versions." }
             ul { class: "history-list wide",
                 for (item, mine) in kept {
@@ -235,8 +251,8 @@ pub(super) fn SyncSection() -> Element {
     let address = state.read().sync_address.clone();
     let syncing = state.read().syncing;
     rsx! {
-        section {
-            h2 { "Sync" }
+        details { class: "history-section", open: true,
+            summary { class: "history-summary", "Sync" }
             if !writing_studio_synchronization::git::available() {
                 p { class: "hint", "Sync uses git, which is not installed on this computer. Everything else works without it." }
             } else if let Some(status) = status {
@@ -290,8 +306,8 @@ pub(super) fn OpenProblems() -> Element {
         return rsx! {};
     }
     rsx! {
-        section {
-            h2 { "Found when the project opened" }
+        details { class: "history-section", open: true,
+            summary { class: "history-summary", "Found when the project opened" }
             p { class: "hint",
                 "The project's files were changed outside the program. Items that came in are in Recovered at the top of the manuscript. An item marked missing keeps its place, and its file is never written over: restore the file, then open the project again."
             }

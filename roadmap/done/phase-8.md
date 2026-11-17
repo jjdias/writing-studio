@@ -1,6 +1,6 @@
 # Phase 8 — UI and UX overhaul
 
-In progress: stages 1 to 3 are done.
+Done.
 
 The window works, but it is hard to use. It looks and behaves like a code editor: a monospace font for prose, an "Explorer", a bright blue status bar, buttons that look like plain text, and three columns in every mode, whether the mode needs them or not. This phase rebuilds the window around writing. It changes how the window looks and behaves, not what a project holds: no file format, storage, or sync change belongs here.
 
@@ -94,24 +94,30 @@ Moved to the stage that first uses them: the type scale goes with the reading fo
 
 ### 4. The binder and the inspector
 
-- The binder shows each item's kind as a small icon, so the title has the room. No repeated names. Chapter and Scene stay as buttons above it; Book, Part, and Folder go into an "Add" menu (Import moved to the Project menu in stage 2). Trash and Empty trash go to the Trash row's own menu, away from adding.
-- The book filter is a styled menu with the current book shown, not an empty box.
-- The inspector shows only Writing's needs: title, synopsis, status, label, and color at the top; scene beats and diagnostics in a section that can be folded. Move to trash is a danger button at the bottom, set apart.
+**Done.**
+
+- Each binder row shows its kind as a small icon with the kind as its name (`KindGlyph`), so roots no longer read "Manuscript Manuscript". Chapter and Scene stay as buttons; Book, Part, and Folder are in an Add menu (Import moved to the Project menu in stage 2). Moving to the trash, restoring, and emptying it are on the Trash row's own ⋯ (`TrashActions`), away from adding.
+- The book filter shows the book on screen. The box was empty because the webview ignores `value` on a menu; every menu in the window now marks its current choice with `selected`.
+- The inspector has title, synopsis, status, label, and color at the top, then Beats and diagnostics and Snapshots as sections that fold (`details`). Move to trash is a danger button at the bottom, set apart.
 
 ### 5. The other modes
 
-- **Corkboard.** Cards that look like index cards: readable titles, the binder color as a band, synopsis, status, and word count. Sort and group as a styled menu.
-- **Outliner.** Chapter as a group row, not repeated. The title opens the scene; no separate Open link. Columns size to their content.
-- **Plot, Characters, World, Research.** Each is a list beside an editor, without the binder. Delete is a danger button set apart from the fields. Scene links use the shared menu.
-- **History.** Sections that fold, in order of use: this scene (snapshots, earlier syncs, versions kept from outside), then the project (backups, sync, problems, writing sessions). No inspector.
-- **Empty states.** Every mode with nothing in it says what goes there and has the button that adds the first one.
+**Done.**
+
+- **Corkboard.** Cards are index cards on the page color, with the binder color as a band, the title and synopsis in the prose font, then status and words. Group by is a menu.
+- **Outliner.** Each chapter is one group row above its scenes. A scene's title opens it; renaming a scene is in the inspector or the binder. The diagnostics table opens a scene the same way. Columns size to their content and the synopsis takes the rest.
+- **Plot, Characters, World, Research.** Each is a list beside an editor, without the binder (`WorkspaceMode::shows_binder`). Plot became a list of plotlines beside the open one (`selected_plotline`). Delete is a danger button set apart from the fields.
+- **History.** Sections that fold, under "This scene" (snapshots, earlier syncs, kept from outside) and then "This project" (backups, sync, problems, writing sessions). No inspector (`WorkspaceMode::shows_inspector`).
+- **Empty states.** Corkboard, Outliner, Plot, Characters, World, and Research each say what goes there, with the mode's picture and the button that adds the first one (`EmptyState`).
 
 ### 6. Keyboard and accessibility
 
-- Every icon button has a name, not only a tooltip, and a visible focus ring.
-- A window that lists the shortcuts, opened from Help and by a shortcut.
-- Contrast that meets WCAG AA for text and controls in both themes.
-- The order of Tab through the window follows the layout.
+**Done.**
+
+- Every icon button has a name: the activity bar, the toolbar, the kind icons, the row menus, and the binder's side arrow. Focus rings come from the shared button, field, and summary rules.
+- Help in the top bar, or Ctrl+/, opens a window that lists every shortcut (`LISTED` in `shortcuts.rs`). A test checks that each listed chord does something and none is listed twice.
+- Contrast meets WCAG AA in all three themes: 4.5:1 for text and 3:1 for control edges and the focus ring. `contrast.rs` reads the theme colors from `style.css` and checks each pair, so a color change that breaks it fails the tests. Meeting it raised the muted and danger colors and made control and field edges darker; filled danger buttons and links on the page have their own tokens (`--danger-fill`, `--page-link`).
+- Tab follows the layout: the shell is no longer a Tab stop, and a panel shown over the page comes in Tab order where it is seen.
 
 ## How changes are checked
 

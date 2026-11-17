@@ -14,8 +14,9 @@ pub(super) fn CorkboardPane() -> Element {
                 .map(|book| snapshot.binder.book_of(card.node_id) == Some(book))
                 .unwrap_or(true)
         })
-        .filter(|card| card_matches(card, &query))
         .collect();
+    let has_scenes = !cards.is_empty();
+    let cards: Vec<_> = cards.into_iter().filter(|card| card_matches(card, &query)).collect();
     let sections = group_cards(&cards, group);
     rsx! {
         div { class: "cork-pane",
@@ -29,16 +30,34 @@ pub(super) fn CorkboardPane() -> Element {
                     value: "{query}",
                     oninput: move |event| state.write().cork_query = event.value(),
                 }
-                for candidate in CorkGroup::ALL {
-                    button {
-                        class: if group == candidate { "mode active" } else { "mode" },
-                        onclick: move |_| state.write().cork_group = candidate,
-                        "{candidate.label()}"
+                label { class: "inline-label", r#for: "cork-group", "Group by" }
+                select {
+                    id: "cork-group",
+                    title: "How the cards are grouped",
+                    onchange: move |event| {
+                        if let Some(next) = CorkGroup::ALL.into_iter().find(|item| item.label() == event.value()) {
+                            state.write().cork_group = next;
+                        }
+                    },
+                    for candidate in CorkGroup::ALL {
+                        option { value: "{candidate.label()}", selected: group == candidate, "{candidate.label()}" }
                     }
                 }
             }
-            p { class: "hint", "Drag a card onto another scene to place it just after that scene. Colors come from the binder." }
-            if sections.is_empty() {
+            if has_scenes {
+                p { class: "hint", "Drag a card onto another scene to place it just after that scene. Colors come from the binder." }
+            }
+            if !has_scenes {
+                EmptyState {
+                    mode: WorkspaceMode::Corkboard,
+                    title: "No scenes yet",
+                    body: "Each scene in the manuscript is a card here, with its synopsis, status, and word count.",
+                    action: "Add a scene",
+                    onclick: move |_| {
+                        state.write().add_node(NodeKind::Scene);
+                    },
+                }
+            } else if sections.is_empty() {
                 p { class: "hint", "No scenes match this filter." }
             }
             for section in sections {
@@ -74,10 +93,12 @@ pub(super) fn CorkCardView(card: writing_studio_corkboard::CorkCard) -> Element 
     if drop_target && !drop_ok {
         class.push_str(" drop-invalid");
     }
+    // The binder color is the card's band. A card with no color keeps a
+    // plain band, so every card has the same shape.
     let stripe = if hex.is_empty() {
         String::new()
     } else {
-        format!("border-top: 6px solid {hex}")
+        format!("--band: {hex}")
     };
     rsx! {
         button {
@@ -109,15 +130,21 @@ pub(super) fn CorkCardView(card: writing_studio_corkboard::CorkCard) -> Element 
                 state.write().drop_on(id);
             },
             ondragend: move |_| state.write().end_drag(),
-            h3 { "{card.title}" }
-            p {
+            h3 { class: "card-title", "{card.title}" }
+            p { class: if card.synopsis.is_empty() { "card-synopsis empty" } else { "card-synopsis" },
                 if card.synopsis.is_empty() {
                     "No synopsis yet."
                 } else {
                     "{card.synopsis}"
                 }
             }
-            span { class: "card-meta", "{card.status} · {card.word_count} words" }
+            span { class: "card-meta",
+                if card.status.is_empty() {
+                    "{card.word_count} words"
+                } else {
+                    "{card.status} · {card.word_count} words"
+                }
+            }
             if !card.label.is_empty() {
                 span { class: "card-label", "{card.label}" }
             }

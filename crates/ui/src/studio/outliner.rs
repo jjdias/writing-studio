@@ -24,6 +24,7 @@ pub(super) fn OutlinerPane() -> Element {
             status: meta.status.clone(),
             synopsis: meta.synopsis.clone(),
             words: row_word_count(line.document_id, |id| words_for_document(&snapshot, id)),
+            starts_chapter: false,
         };
         if books.last().map(|book| book.id) != Some(line.book_id) {
             let title = snapshot
@@ -38,6 +39,8 @@ pub(super) fn OutlinerPane() -> Element {
             });
         }
         if let Some(book) = books.last_mut() {
+            let mut row = row;
+            row.starts_chapter = book.rows.last().map(|last| last.chapter_id) != Some(row.chapter_id);
             book.rows.push(row);
         }
     }
@@ -59,76 +62,66 @@ pub(super) fn OutlinerPane() -> Element {
                 }
             }
             if books.is_empty() {
-                p { class: "hint", "Add a chapter in the binder to outline it here." }
+                EmptyState {
+                    mode: WorkspaceMode::Outliner,
+                    title: "Nothing to outline yet",
+                    body: "Chapters and their scenes are rows here, with status, synopsis, and words, to edit in place.",
+                    action: "Add a chapter",
+                    onclick: move |_| {
+                        state.write().add_node(NodeKind::Chapter);
+                    },
+                }
             }
             if diagnostics {
                 DiagnosticsTables { books: books.clone() }
             }
             for book in books.into_iter().filter(|_| !diagnostics) {
                 h3 { "{book.title}" }
-                table {
+                table { class: "outline-table",
                     thead {
                         tr {
-                            th { "Chapter" }
-                            th { "Scene" }
+                            th { "Title" }
                             th { "Status" }
-                            th { "Synopsis" }
-                            th { "Words" }
-                            th {}
+                            th { class: "wide", "Synopsis" }
+                            th { class: "words", "Words" }
                         }
                     }
                     tbody {
                         for row in book.rows {
-                            tr {
-                                td {
-                                    input {
-                                        class: "cell-input",
-                                        value: "{row.chapter_title}",
-                                        oninput: move |event| {
-                                            state.write().update_node_title(row.chapter_id, event.value());
-                                        },
-                                    }
-                                }
-                                td {
-                                    if let Some(scene_id) = row.scene_id {
+                            // A chapter is one group row, above its scenes. A
+                            // chapter without scenes keeps its own status,
+                            // synopsis, and words on that row.
+                            if row.starts_chapter {
+                                tr { class: "chapter-row",
+                                    td { colspan: if row.scene_id.is_some() { "4" } else { "1" },
                                         input {
-                                            class: "cell-input",
-                                            value: "{row.scene_title}",
+                                            class: "cell-input chapter-input",
+                                            aria_label: "Chapter title",
+                                            value: "{row.chapter_title}",
                                             oninput: move |event| {
-                                                state.write().update_node_title(scene_id, event.value());
+                                                state.write().update_node_title(row.chapter_id, event.value());
                                             },
                                         }
-                                    } else {
-                                        span { class: "hint", "—" }
+                                    }
+                                    if row.scene_id.is_none() {
+                                        OutlineCells { row: row.clone() }
                                     }
                                 }
-                                td {
-                                    input {
-                                        class: "cell-input",
-                                        value: "{row.status}",
-                                        oninput: move |event| {
-                                            state.write().update_node_status(row.open_id, event.value());
-                                        },
+                            }
+                            if let Some(scene_id) = row.scene_id {
+                                tr {
+                                    td { class: "scene-cell",
+                                        button {
+                                            class: "row-open",
+                                            title: "Open this scene in Writing",
+                                            onclick: move |_| {
+                                                state.write().select_node(scene_id);
+                                                state.write().mode = WorkspaceMode::Writing;
+                                            },
+                                            if row.scene_title.trim().is_empty() { "Untitled scene" } else { "{row.scene_title}" }
+                                        }
                                     }
-                                }
-                                td {
-                                    input {
-                                        class: "cell-input",
-                                        value: "{row.synopsis}",
-                                        oninput: move |event| {
-                                            state.write().update_node_synopsis(row.open_id, event.value());
-                                        },
-                                    }
-                                }
-                                td { class: "words", "{row.words}" }
-                                td {
-                                    button {
-                                        onclick: move |_| {
-                                            state.write().select_node(row.open_id);
-                                            state.write().mode = WorkspaceMode::Writing;
-                                        },
-                                        "Open"
-                                    }
+                                    OutlineCells { row: row.clone() }
                                 }
                             }
                         }
@@ -136,6 +129,32 @@ pub(super) fn OutlinerPane() -> Element {
                 }
             }
         }
+    }
+}
+
+/// Status, synopsis, and words for one outline row, edited in place.
+#[component]
+pub(super) fn OutlineCells(row: OwnedOutlineRow) -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let id = row.open_id;
+    rsx! {
+        td {
+            input {
+                class: "cell-input",
+                aria_label: "Status",
+                value: "{row.status}",
+                oninput: move |event| state.write().update_node_status(id, event.value()),
+            }
+        }
+        td { class: "wide",
+            input {
+                class: "cell-input",
+                aria_label: "Synopsis",
+                value: "{row.synopsis}",
+                oninput: move |event| state.write().update_node_synopsis(id, event.value()),
+            }
+        }
+        td { class: "words", "{row.words}" }
     }
 }
 
@@ -189,7 +208,6 @@ pub(super) fn DiagnosticsBook(book: OwnedOutlineBook, context: BookContext) -> E
                     th { "Dialogue" }
                     th { "Named" }
                     th { "Checks" }
-                    th {}
                 }
             }
             tbody {
@@ -197,8 +215,14 @@ pub(super) fn DiagnosticsBook(book: OwnedOutlineBook, context: BookContext) -> E
                     tr { key: "{row.open_id}",
                         td { class: "diag-scene",
                             span { class: "card-meta", "{row.chapter_title}" }
-                            if !row.scene_title.is_empty() {
-                                div { "{row.scene_title}" }
+                            button {
+                                class: "row-open",
+                                title: "Open this scene in Writing",
+                                onclick: move |_| {
+                                    state.write().select_node(row.open_id);
+                                    state.write().mode = WorkspaceMode::Writing;
+                                },
+                                if row.scene_title.is_empty() { "{row.chapter_title}" } else { "{row.scene_title}" }
                             }
                         }
                         for beat in [Beat::Goal, Beat::Conflict, Beat::Outcome] {
@@ -232,15 +256,6 @@ pub(super) fn DiagnosticsBook(book: OwnedOutlineBook, context: BookContext) -> E
                                 }
                             }
                         }
-                        td {
-                            button {
-                                onclick: move |_| {
-                                    state.write().select_node(row.open_id);
-                                    state.write().mode = WorkspaceMode::Writing;
-                                },
-                                "Open"
-                            }
-                        }
                     }
                 }
             }
@@ -265,4 +280,6 @@ pub(super) struct OwnedOutlineRow {
     pub(super) status: String,
     pub(super) synopsis: String,
     pub(super) words: u32,
+    /// The first row of its chapter, which draws the chapter's group row.
+    pub(super) starts_chapter: bool,
 }

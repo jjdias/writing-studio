@@ -36,9 +36,12 @@ pub(super) fn SeriesScopeSelect() -> Element {
                 };
                 state.write().set_series_scope(next);
             },
-            option { value: "", "Whole series" }
+            aria_label: "Book shown",
+            // The webview ignores `value` on a menu, so each choice says
+            // whether it is the one shown.
+            option { value: "", selected: current.is_none(), "Whole series" }
             for (id, title) in books {
-                option { value: "{id}", "{title}" }
+                option { value: "{id}", selected: current == Some(id), "{title}" }
             }
         }
     }
@@ -93,7 +96,7 @@ pub(super) fn SceneLinks(owner: Id, kind: BibleLink) -> Element {
                             state.write().link_bible_scene(kind, owner, scene_id);
                         }
                     },
-                    option { value: "", "Link a scene…" }
+                    option { value: "", selected: true, "Link a scene…" }
                     for (scene_id, label) in choices {
                         option { value: "{scene_id}", "{label}" }
                     }
@@ -140,4 +143,24 @@ pub(super) fn words_for_document(snapshot: &StudioState, id: Id) -> u32 {
         .as_ref()
         .map(|store| store.borrow().document_word_count(id))
         .unwrap_or(0)
+}
+
+/// What goes in an empty mode, with its picture and the button that adds
+/// the first one.
+#[component]
+pub(super) fn EmptyState(
+    mode: WorkspaceMode,
+    #[props(into)] title: String,
+    #[props(into)] body: String,
+    #[props(into)] action: String,
+    onclick: EventHandler<MouseEvent>,
+) -> Element {
+    rsx! {
+        div { class: "empty-state",
+            div { class: "empty-picture", aria_hidden: "true", ModeGlyph { mode } }
+            h3 { "{title}" }
+            p { "{body}" }
+            button { class: "primary", onclick: move |event| onclick.call(event), "{action}" }
+        }
+    }
 }
