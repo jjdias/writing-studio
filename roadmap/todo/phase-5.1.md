@@ -2,7 +2,7 @@
 
 In progress. These are gaps found while building Phase 5. None of them is in the Phase 5 plan, and each one matters before writers keep real books in format 2.
 
-Items 1, 2, and 5 are done. Items 3 and 4 were dropped. Items 6 to 10 are small; do each when the code it touches is next changed.
+Items 1, 2, 5, and 7 are done. Items 3 and 4 were dropped. Items 6, 8, 9, and 10 are small; do each when the code it touches is next changed.
 
 ## Before you start
 
@@ -81,11 +81,7 @@ Items 1, 2, and 5 are done. Items 3 and 4 were dropped. Items 6 to 10 are small;
 
 ## 7. Refuse a path that leaves the project through a link
 
-**The problem.** `inside` in `files.rs` refuses `..` and absolute paths. It does not refuse a folder in the project that is a symbolic link to somewhere else, so a project from someone else could make the program read or write outside its folder.
-
-**How to fix it.** Before reading or writing a path from a project file, resolve it (`fs::canonicalize` on the parent folder) and check that it is still under the project folder, also resolved. For a file that does not exist yet, check its parent.
-
-**Tests.** On Unix: a project whose `manuscript` folder is a link to a folder outside; opening it refuses with a message, and nothing outside is written.
+**Done.** See [../done/phase-5.md](../done/phase-5.md), "Phase 5.1, item 7".
 
 ## 8. Restore one scene from a backup
 

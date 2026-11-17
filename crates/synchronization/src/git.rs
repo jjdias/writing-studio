@@ -13,7 +13,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use writing_studio_core::{Error, Id, Result};
 use writing_studio_document::Document;
-use writing_studio_storage::{read_project_files, write_project_files};
+use writing_studio_storage::{project_path, read_project_files, write_project_files};
 
 use crate::{merge, Conflict};
 
@@ -358,7 +358,8 @@ fn merge_with(root: &Path, upstream: &str, report: &mut SyncReport) -> Result<()
 
 /// Research files are whole files. One changed on one side is taken; one
 /// changed differently on both keeps this machine's, and the other's is put
-/// beside it with `-theirs` before the extension.
+/// beside it with `-theirs` before the extension. A link is never followed:
+/// one that came through git could point anywhere.
 fn merge_attachments(base: &Path, ours: &Path, theirs: &Path, conflicts: &mut Vec<Conflict>) -> Result<()> {
     let list = |root: &Path| -> HashMap<String, Vec<u8>> {
         let mut out = HashMap::new();
@@ -366,8 +367,11 @@ fn merge_attachments(base: &Path, ours: &Path, theirs: &Path, conflicts: &mut Ve
         while let Some(dir) = stack.pop() {
             for entry in fs::read_dir(&dir).into_iter().flatten().flatten() {
                 let path = entry.path();
-                if path.is_dir() {
+                let Ok(kind) = entry.file_type() else { continue };
+                if kind.is_dir() {
                     stack.push(path);
+                } else if !kind.is_file() {
+                    continue;
                 } else if let (Ok(bytes), Ok(relative)) = (fs::read(&path), path.strip_prefix(root)) {
                     out.insert(relative.to_string_lossy().replace('\\', "/"), bytes);
                 }
@@ -378,7 +382,7 @@ fn merge_attachments(base: &Path, ours: &Path, theirs: &Path, conflicts: &mut Ve
     let (b, o, t) = (list(base), list(ours), list(theirs));
     let names: HashSet<&String> = b.keys().chain(o.keys()).chain(t.keys()).collect();
     for name in names {
-        let target = ours.join(name);
+        let target = project_path(ours, name)?;
         match (b.get(name), o.get(name), t.get(name)) {
             (Some(bv), Some(ov), None) if ov == bv => fs::remove_file(&target)?,
             (_, None, Some(tv)) if b.get(name) != Some(tv) || b.get(name).is_none() => {
@@ -392,8 +396,8 @@ fn merge_attachments(base: &Path, ours: &Path, theirs: &Path, conflicts: &mut Ve
                     fs::write(&target, tv)?;
                 } else if bv != Some(tv) {
                     let beside: PathBuf = match name.rsplit_once('.') {
-                        Some((stem, ext)) if !ext.contains('/') => ours.join(format!("{stem}-theirs.{ext}")),
-                        _ => ours.join(format!("{name}-theirs")),
+                        Some((stem, ext)) if !ext.contains('/') => project_path(ours, &format!("{stem}-theirs.{ext}"))?,
+                        _ => project_path(ours, &format!("{name}-theirs"))?,
                     };
                     fs::write(&beside, tv)?;
                     conflicts.push(Conflict {
@@ -509,6 +513,36 @@ mod tests {
         assert!(!clash.conflicts.is_empty());
         assert_eq!(read(&b), "One, from A.\nTwo, from B.\nTwo, from A.\nThree.");
         assert!(status(&b).unwrap().to_send == 0 && status(&b).unwrap().last_synced.is_some());
+        let _ = fs::remove_dir_all(top);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn research_files_that_are_links_are_not_followed() {
+        use std::os::unix::fs::symlink;
+        let top = temp();
+        let (base, ours, theirs, outside) = (top.join("base"), top.join("ours"), top.join("theirs"), top.join("outside"));
+        for dir in [&base, &ours, &theirs] {
+            fs::create_dir_all(dir.join("attachments/note")).unwrap();
+        }
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("secret.txt"), "not the book's").unwrap();
+        // The other machine's copy holds a link to a file, and to a folder, outside.
+        symlink(outside.join("secret.txt"), theirs.join("attachments/note/secret.txt")).unwrap();
+        symlink(&outside, theirs.join("attachments/elsewhere")).unwrap();
+        fs::write(theirs.join("attachments/note/map.png"), "a map").unwrap();
+        merge_attachments(&base, &ours, &theirs, &mut Vec::new()).unwrap();
+        assert!(ours.join("attachments/note/map.png").exists());
+        assert!(!ours.join("attachments/note/secret.txt").exists());
+        assert!(!ours.join("attachments/elsewhere").exists());
+
+        // Here, a folder that is a link outside: a file arriving into it is refused.
+        symlink(&outside, ours.join("attachments/out")).unwrap();
+        fs::create_dir_all(theirs.join("attachments/out")).unwrap();
+        fs::write(theirs.join("attachments/out/new.txt"), "new").unwrap();
+        let error = merge_attachments(&base, &ours, &theirs, &mut Vec::new()).unwrap_err().to_string();
+        assert!(error.contains("through a link"), "{error}");
+        assert!(!outside.join("new.txt").exists());
         let _ = fs::remove_dir_all(top);
     }
 

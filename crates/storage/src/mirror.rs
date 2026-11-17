@@ -114,6 +114,16 @@ fn format_version(root: &Path) -> Result<u32> {
     Ok(version)
 }
 
+/// Make `.local/` and `attachments/`, after checking that neither is a link
+/// out of the project: `.local` holds the cache and backups, and git does not
+/// ignore a link of that name.
+fn local_folders(root: &Path) -> Result<()> {
+    for folder in [LOCAL_DIR, "attachments"] {
+        fs::create_dir_all(inside(root, "the project", folder)?)?;
+    }
+    Ok(())
+}
+
 fn cache_path(root: &Path) -> PathBuf {
     root.join(LOCAL_DIR).join(CACHE_FILE)
 }
@@ -142,8 +152,7 @@ impl ProjectStore {
         if root.join("project.json").exists() || root.join(PROJECT_DB_FILE).exists() || cache_path(&root).exists() {
             return Err(Error::message("a project already exists in this folder"));
         }
-        fs::create_dir_all(root.join(LOCAL_DIR))?;
-        fs::create_dir_all(root.join("attachments"))?;
+        local_folders(&root)?;
 
         let cache = cache_path(&root);
         let store = Self::with_cache(root, &cache, true)?;
@@ -175,8 +184,7 @@ impl ProjectStore {
         if !root.join("project.json").exists() {
             return Err(Error::ProjectNotFound(root));
         }
-        fs::create_dir_all(root.join(LOCAL_DIR))?;
-        fs::create_dir_all(root.join("attachments"))?;
+        local_folders(&root)?;
         let cache = cache_path(&root);
         let store = Self::with_cache(root, &cache, true)?;
         let content = read_project_files(&store.root)?;
@@ -897,6 +905,76 @@ mod tests {
         let error = ProjectStore::open(&dir).err().expect("refused").to_string();
         assert!(error.contains("trash_root"), "{error}");
         let _ = fs::remove_dir_all(dir);
+    }
+
+    /// Every file under a folder, to show nothing was written there.
+    #[cfg(unix)]
+    fn listing(dir: &Path) -> Vec<PathBuf> {
+        let mut out = Vec::new();
+        let mut stack = vec![dir.to_path_buf()];
+        while let Some(folder) = stack.pop() {
+            for entry in fs::read_dir(&folder).into_iter().flatten().flatten() {
+                if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+                    stack.push(entry.path());
+                }
+                out.push(entry.path());
+            }
+        }
+        out.sort();
+        out
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn links_that_lead_out_of_the_project_are_refused() {
+        use std::os::unix::fs::symlink;
+        let outside = temp("outside");
+        fs::create_dir_all(&outside).unwrap();
+        let refused = |dir: &Path| {
+            let before = listing(&outside);
+            let error = ProjectStore::open(dir).err().expect("refused").to_string();
+            assert!(error.contains("through a link"), "{error}");
+            assert_eq!(listing(&outside), before, "something was written outside");
+        };
+
+        // The manuscript folder is a link to a folder outside.
+        let dir = temp("linked-folder");
+        drop(ProjectStore::create(&dir, "Linked").unwrap());
+        fs::rename(dir.join("manuscript"), outside.join("manuscript")).unwrap();
+        symlink(outside.join("manuscript"), dir.join("manuscript")).unwrap();
+        refused(&dir);
+
+        // A scene file is a link to a file outside, or to nothing.
+        let dir = temp("linked-file");
+        let store = ProjectStore::create(&dir, "Linked").unwrap();
+        let file = file_of(&store, scene_of(&store).id);
+        drop(store);
+        fs::rename(&file, outside.join("secret.html")).unwrap();
+        symlink(outside.join("secret.html"), &file).unwrap();
+        refused(&dir);
+        fs::remove_file(&file).unwrap();
+        symlink(outside.join("nothing.html"), &file).unwrap();
+        refused(&dir);
+
+        // `.local`, where the cache is written, is a link outside.
+        let dir = temp("linked-local");
+        drop(ProjectStore::create(&dir, "Linked").unwrap());
+        fs::remove_dir_all(dir.join(".local")).unwrap();
+        fs::create_dir_all(outside.join("local")).unwrap();
+        symlink(outside.join("local"), dir.join(".local")).unwrap();
+        refused(&dir);
+        assert!(!outside.join("local/cache.sqlite").exists());
+
+        // A link that stays inside the project is fine.
+        let dir = temp("linked-inside");
+        let store = ProjectStore::create(&dir, "Inside").unwrap();
+        let scene = scene_of(&store);
+        let file = file_of(&store, scene.id);
+        drop(store);
+        fs::rename(&file, dir.join("kept.html")).unwrap();
+        symlink(dir.join("kept.html"), &file).unwrap();
+        assert!(ProjectStore::open(&dir).unwrap().load_document(scene.id).is_ok());
+        let _ = fs::remove_dir_all(outside);
     }
 
     #[test]

@@ -241,6 +241,10 @@ pub fn write_atomic(path: &Path, contents: &[u8]) -> Result<()> {
 
 /// A path from inside a project file, checked so that it cannot name
 /// anything outside the project folder.
+///
+/// A project can come from someone else, through git, and git carries
+/// symbolic links. So the path is also followed on disk: if a link on the
+/// way leads out of the project folder, or nowhere, the path is refused.
 pub(crate) fn inside(root: &Path, file: &str, relative: &str) -> Result<PathBuf> {
     let path = Path::new(relative);
     let plain = !relative.is_empty()
@@ -249,7 +253,30 @@ pub(crate) fn inside(root: &Path, file: &str, relative: &str) -> Result<PathBuf>
     if !plain {
         return Err(bad(file, format!("“{relative}” is not a path inside the project")));
     }
-    Ok(root.join(path))
+    let full = root.join(path);
+    // A folder that does not exist yet has no links in it.
+    let Ok(top) = fs::canonicalize(root) else {
+        return Ok(full);
+    };
+    let mut nearest = full.as_path();
+    while fs::symlink_metadata(nearest).is_err() {
+        match nearest.parent() {
+            Some(parent) if parent.starts_with(root) => nearest = parent,
+            _ => break,
+        }
+    }
+    let through_a_link = || bad(file, format!("“{relative}” leads outside the project through a link"));
+    let resolved = fs::canonicalize(nearest).map_err(|_| through_a_link())?;
+    if !resolved.starts_with(&top) {
+        return Err(through_a_link());
+    }
+    Ok(full)
+}
+
+/// A path inside the project folder, checked as every path from a project
+/// file is: no `..`, nothing absolute, and no link that leads outside.
+pub fn project_path(root: &Path, relative: &str) -> Result<PathBuf> {
+    inside(root, "the project", relative)
 }
 
 /// Give an item its file. A name that is taken, which needs two titles and
@@ -950,7 +977,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
     }
 
     // Scene files no line of the binder names: added by hand, or by git.
-    for (path, file) in unlisted(root, "manuscript", &files, &seen, &mut problem) {
+    for (path, file) in unlisted(root, "manuscript", &files, &seen, &mut problem)? {
         let id = file.header.id.filter(|id| !ids.contains(id)).unwrap_or_else(Id::new);
         ids.insert(id);
         let parent = recovered_folder(&mut nodes);
@@ -1025,7 +1052,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
             );
             out.push((id, index as i64, path, file));
         }
-        for (path, file) in unlisted(root, key, &files, &seen, &mut problem) {
+        for (path, file) in unlisted(root, key, &files, &seen, &mut problem)? {
             let id = file.header.id.filter(|id| !ids.contains(id)).unwrap_or_else(Id::new);
             ids.insert(id);
             files.insert(id, path.clone());
@@ -1242,10 +1269,10 @@ fn unlisted(
     files: &HashMap<Id, String>,
     seen: &RefCell<HashMap<String, u64>>,
     problem: &mut impl FnMut(&str, &str),
-) -> Vec<(String, SceneFile)> {
+) -> Result<Vec<(String, SceneFile)>> {
     let listed: HashSet<&String> = files.values().collect();
-    let Ok(entries) = fs::read_dir(root.join(folder)) else {
-        return Vec::new();
+    let Ok(entries) = fs::read_dir(inside(root, folder, folder)?) else {
+        return Ok(Vec::new());
     };
     let mut names: Vec<String> = entries
         .flatten()
@@ -1256,7 +1283,7 @@ fn unlisted(
         .filter(|path| !listed.contains(path))
         .collect();
     names.sort();
-    names
+    Ok(names
         .into_iter()
         .filter_map(|path| match read_noted(&root.join(&path), &path, seen) {
             Ok(text) => Some((path, SceneFile::parse_html(&text))),
@@ -1265,7 +1292,7 @@ fn unlisted(
                 None
             }
         })
-        .collect()
+        .collect())
 }
 
 /// The Recovered folder at the top of the manuscript, made if it is not

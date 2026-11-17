@@ -244,7 +244,7 @@ JSON is for structure that is not read as prose. Where a file is a list, each it
 
 **Ids.** An item with text has one id, the one in its file. It is also the id of its binder item.
 
-**Paths.** A `file` is a path inside the project folder, with `/` between its parts. A path that is empty, absolute, or holds `..` is refused, and the project does not open.
+**Paths.** A `file` is a path inside the project folder, with `/` between its parts. A path that is empty, absolute, or holds `..` is refused, and the project does not open. So is a path with a symbolic link on the way that leads out of the project folder, or to nothing; a link that stays inside the project is fine.
 
 **Times.** Apart from `created` and `deleted`, no file holds a time. Records read from files have the time they were read.
 

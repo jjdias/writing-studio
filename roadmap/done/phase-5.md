@@ -122,6 +122,17 @@ Checked by a test of the window's state that syncs two drafts, lists them, compa
 - Two people editing at the same time. This is bonus work.
 - Encrypting a project. A private repository is as private as its host makes it.
 
+## Phase 5.1, item 7 — No link leads out of the project
+
+A project can come from someone else's repository, and git carries symbolic links. A link inside a project could make the program read or write somewhere else on the computer.
+
+- Every path that comes from a project's files is now followed on disk as well as checked as text: if a link on the way leads out of the project folder, or to nothing, the path is refused and the project does not open. A link that stays inside the project is fine.
+- `.local/` and `attachments/` are checked the same way before anything is written into them: git does not ignore a link named `.local`.
+- Opening a research file from the window uses the same check, in place of its own weaker one.
+- When sync merges research files, a link in either copy is skipped, never followed, and every file it writes is checked.
+
+Checked by tests on Unix: a manuscript folder, a scene file, and `.local` that are links out of the project, and a scene file that is a link to nothing, each refused with nothing written outside; a link inside the project still opening; and sync not following research-file links, and refusing a file arriving under a folder that is a link here.
+
 ## Phase 5.1, item 1 — Entries the program does not know are kept
 
 A file can hold entries the program does not use: a person adds `<meta name="pov" content="Mara">` to a scene, a key to a line of `binder.json`, or a later version of the program writes a new one. Before this, the next save of that item removed them.

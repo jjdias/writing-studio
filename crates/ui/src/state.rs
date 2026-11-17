@@ -2933,16 +2933,7 @@ impl StudioState {
 
     pub fn research_file_path(&self, id: Id) -> Option<PathBuf> {
         let file = self.library.files.iter().find(|file| file.id == id)?;
-        let store = self.store.as_ref()?;
-        let root = store.borrow().root.clone();
-        let relative = PathBuf::from(&file.stored_name);
-        if relative
-            .components()
-            .any(|part| matches!(part, std::path::Component::ParentDir))
-        {
-            return None;
-        }
-        Some(root.join("attachments").join(relative))
+        self.store.as_ref()?.borrow().research_file_path(&file.stored_name).ok()
     }
 
     fn edit_library(&mut self, edit: impl FnOnce(&mut ResearchLibrary) -> bool) {

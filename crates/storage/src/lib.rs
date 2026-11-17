@@ -14,7 +14,7 @@ pub use mirror::SetAside;
 mod schema;
 
 pub use files::{
-    read_project_files, repair_binder, scene_document, write_atomic, write_format_2_marker,
+    project_path, read_project_files, repair_binder, scene_document, write_atomic, write_format_2_marker,
     write_project_files, Extras, Problem, ProjectContent, FILES_FORMAT_VERSION,
 };
 pub use recovery::{BackupInfo, SnapshotInfo};
@@ -672,7 +672,13 @@ impl ProjectStore {
         {
             return Err(Error::message("attachment path is not inside attachments/"));
         }
-        Ok(self.root.join("attachments").join(item).join(file))
+        files::inside(&self.root, "research file", &format!("attachments/{item}/{file}"))
+    }
+
+    /// Where a research file is on disk, checked like every path from the
+    /// project's files.
+    pub fn research_file_path(&self, stored_name: &str) -> Result<PathBuf> {
+        self.attachment_path(stored_name)
     }
 
     fn remove_stored_file(&self, stored_name: &str) -> Result<()> {
