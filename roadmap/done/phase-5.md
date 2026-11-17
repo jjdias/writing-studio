@@ -1,6 +1,6 @@
 # Phase 5 — what shipped
 
-Phase 5 is **plain-text projects, and sync through git**. It is complete. Small things it leaves for later are in [../todo/phase-5.1.md](../todo/phase-5.1.md).
+Phase 5 is **plain-text projects, and sync through git**. It is complete, and so is Phase 5.1, the gaps found while building it; both are recorded here.
 
 This work is on the `alternative-phase-5` branch. The format itself is described in [PROJECT_FORMAT.md](../../documentation/PROJECT_FORMAT.md).
 
