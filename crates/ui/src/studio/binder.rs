@@ -1,15 +1,17 @@
 use super::*;
 
+/// A binder row's height, as `.binder-item` sets it in `style.css`. Drops
+/// read the pointer's height on the row against it.
+const BINDER_ROW_HEIGHT: f64 = 26.0;
+
 #[component]
 pub(super) fn Explorer() -> Element {
     let mut state = use_context::<Signal<StudioState>>();
-    let chrome = use_context::<Signal<PanelChrome>>();
     let widths = use_context::<Signal<PanelWidths>>();
     let width = widths.read().sidebar;
     let title = state.read().project_title();
     let mode = state.read().mode;
     let search = state.read().search.clone();
-    let side = chrome.read().sidebar_side;
     let add_open = state.read().open_menu == Some(FrameMenu::Add);
     let add = move |kind: NodeKind| {
         move |_| {
@@ -23,13 +25,6 @@ pub(super) fn Explorer() -> Element {
             style: "width: {width}px; flex: 0 0 {width}px;",
             div { class: "view-title",
                 span { "{mode.view_title()}" }
-                button {
-                    class: "view-action",
-                    title: "Move the binder to the other side",
-                    aria_label: "Move the binder to the other side",
-                    onclick: move |_| flip_sidebar(state, chrome),
-                    if side == SidebarSide::Left { "→" } else { "←" }
-                }
             }
             div { class: "section-label", "{title}" }
             input {
@@ -104,9 +99,10 @@ pub(super) fn BinderNodeView(id: Id, depth: u32, hits: Rc<HashSet<Id>>) -> Eleme
     let selected = snapshot.selected == Some(id);
     let dragging = snapshot.dragging == Some(id);
     let drop_target = snapshot.drop_target == Some(id);
+    let drop_place = snapshot.drop_place;
     let drop_ok = snapshot
         .dragging
-        .is_some_and(|dragged| snapshot.binder.drop_allowed(dragged, id));
+        .is_some_and(|dragged| snapshot.binder.drop_allowed_at(dragged, id, drop_place));
     let trashed = snapshot.binder.is_in_trash(id) && node.kind != NodeKind::TrashRoot;
     let can_drag = !node.kind.is_root();
     let children: Vec<Id> = snapshot
@@ -117,6 +113,11 @@ pub(super) fn BinderNodeView(id: Id, depth: u32, hits: Rc<HashSet<Id>>) -> Eleme
         .collect();
     let pad = 8 + depth * 16;
     let class = binder_item_class(selected, dragging, drop_target, drop_ok, trashed);
+    let class = match (drop_target && drop_ok, drop_place) {
+        (true, DropPlace::Before) => format!("{class} drop-before"),
+        (true, DropPlace::After) => format!("{class} drop-after"),
+        _ => class,
+    };
     let missing = snapshot.is_missing(id);
     let class = if missing { format!("{class} missing") } else { class };
     let color = binder_color_hex(&node.color);
@@ -128,21 +129,31 @@ pub(super) fn BinderNodeView(id: Id, depth: u32, hits: Rc<HashSet<Id>>) -> Eleme
         button {
             class: "{class}",
             style: "padding-left: {pad}px",
+            title: if missing { "This item's file could not be read. History says which file." } else { "" },
             draggable: can_drag,
             onclick: move |_| state.write().select_node(id),
             ondragstart: move |event| {
                 event.stop_propagation();
                 state.write().begin_drag(id);
             },
+            // The pointer's height on the row picks before, inside, or after.
+            // It fires for every move, so it writes only when that changes.
             ondragover: move |event| {
                 event.prevent_default();
                 event.stop_propagation();
-                state.write().set_drop_target(id);
+                let y = event.element_coordinates().y;
+                let place = DropPlace::at(y, BINDER_ROW_HEIGHT, state.peek().drag_fits_inside(id));
+                let current = state.peek();
+                let changed = current.drop_target != Some(id) || current.drop_place != place;
+                drop(current);
+                if changed {
+                    state.write().set_binder_drop(id, place);
+                }
             },
             ondrop: move |event| {
                 event.prevent_default();
                 event.stop_propagation();
-                state.write().drop_on(id);
+                state.write().drop_in_binder(id);
             },
             ondragend: move |_| state.write().end_drag(),
             if !color.is_empty() {
@@ -151,7 +162,7 @@ pub(super) fn BinderNodeView(id: Id, depth: u32, hits: Rc<HashSet<Id>>) -> Eleme
             KindGlyph { kind: node.kind }
             span { class: "binder-title", "{node.title}" }
             if missing {
-                span { class: "binder-label", title: "This item's file could not be read. History says which file.", "missing" }
+                span { class: "binder-label", "missing" }
             }
             if !label.is_empty() {
                 span { class: "binder-label", "{label}" }

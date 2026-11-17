@@ -157,15 +157,6 @@ mod tests {
     }
 }
 
-pub(super) fn flip_sidebar(state: Signal<StudioState>, mut chrome: Signal<PanelChrome>) {
-    let mut next = *chrome.peek();
-    next.sidebar_side = match next.sidebar_side {
-        SidebarSide::Left => SidebarSide::Right,
-        SidebarSide::Right => SidebarSide::Left,
-    };
-    chrome.set(next);
-    persist_chrome(state, next);
-}
 
 pub(super) fn finish_resize(
     state: Signal<StudioState>,

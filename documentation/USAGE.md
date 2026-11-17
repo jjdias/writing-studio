@@ -50,7 +50,7 @@ The index is built in memory from the project when it opens, and updated when a 
 - Each binder row shows its kind as a small icon. The book menu above the binder shows the book on screen, or **Whole series**.
 - **Whole series** in the binder, corkboard, and outliner shows every book. Pick a book there, or in the compile menu, to make that book the one on screen, the one compiled, and the one in the status bar. The project remembers that choice. **Whole series** shows every book again and leaves compile and the status bar on the last book. Selecting a scene points compile and the status bar at that scene's book. New chapters, parts, scenes, and manuscript folders are added inside the book on screen. A scene with nothing selected goes in its last chapter. New folders go in the book on screen.
 - The inspector edits title, synopsis, status, label, and color, at the top. Label and color are for items that are not roots. Colors are None, Gold, Green, Red, Blue, and Violet. The label shows on the binder row. Below them, **Beats and diagnostics** and **Snapshots** fold away from their headings. **Move to trash** sits apart at the bottom. The inspector is on screen in Writing only; **Ctrl+Alt+I** still shows or hides it for when you return.
-- Drag items to reorder or nest. Drop on **Trash** to discard.
+- Drag a chapter, scene, part, or folder anywhere in the binder, within a book or into another one. The top edge of a row puts it before that row, the bottom edge after it, and the middle inside it when that row can hold it; a line or an outline shows where it will go. Dropped on a row whose level cannot hold it, an item goes beside the nearest level that can: a chapter dropped on a scene goes next to that scene's chapter. Drop on **Trash** to discard.
 - The **⋯** on the **Trash** row holds **Move selected here**, **Restore selected**, and **Empty trash**, away from the buttons that add. **Restore** returns a trashed item to its previous parent when that parent still exists.
 - **Empty trash** asks for a second click, then deletes those items from the local database. Permanently deleting a book drops its word target. If it was the compile book, compile and the status bar move to the first book that remains.
 
@@ -118,7 +118,7 @@ Writing, Corkboard, Outliner, Plot, Characters, World, Research, History. The bi
 
 ## Layout
 
-The arrangement is saved in the project. Drag the edge of the binder or the inspector to resize it. The binder width stays between 180 and 480 pixels. The inspector width stays between 220 and 560. Double-click that edge to reset the width. The arrow in the binder header moves the binder to the other side; the inspector stays on the opposite side.
+The arrangement is saved in the project. Drag the edge of the binder or the inspector to resize it. The binder width stays between 180 and 480 pixels. The inspector width stays between 220 and 560. Double-click that edge to reset the width. The binder is on the left and the inspector on the right.
 
 **Binder** at the bottom of the activity bar, or **Ctrl+Alt+B**, shows or hides the binder. **Inspector**, or **Ctrl+Alt+I**, shows or hides the inspector. **Ctrl+B** still bolds the selection in the manuscript.
 

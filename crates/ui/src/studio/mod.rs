@@ -14,8 +14,8 @@ use writing_studio_document::{
 use writing_studio_editor::EditorSession;
 use writing_studio_manuscript::{outline_rows, row_word_count};
 use writing_studio_project::{
-    binder_color_hex, drag_width, format_elapsed, BinderNode, NodeKind, PanelChrome, PanelLayout,
-    PanelWidths, ProseFont, SidebarSide, Theme, BINDER_COLORS, INSPECTOR_WIDTH_DEFAULT, INSPECTOR_WIDTH_MAX,
+    binder_color_hex, drag_width, format_elapsed, BinderNode, DropPlace, NodeKind, PanelChrome, PanelLayout,
+    PanelWidths, ProseFont, Theme, BINDER_COLORS, INSPECTOR_WIDTH_DEFAULT, INSPECTOR_WIDTH_MAX,
     INSPECTOR_WIDTH_MIN, SIDEBAR_WIDTH_DEFAULT, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN,
 };
 use writing_studio_diagnostics::{BookContext, SceneFacts};
@@ -230,7 +230,6 @@ fn Workspace() -> Element {
     let chrome = use_context::<Signal<PanelChrome>>();
     let arrangement = *chrome.read();
     let fold = current_fold();
-    let sidebar_left = arrangement.sidebar_side == SidebarSide::Left;
     let inspector_mode = mode.shows_inspector();
     let binder_mode = mode.shows_binder();
     let show_sidebar = !focus && arrangement.sidebar_visible && binder_mode && !fold.binder;
@@ -242,8 +241,9 @@ fn Workspace() -> Element {
         !focus && fold.inspector && inspector_mode && overlay == Some(FoldedPanel::Inspector);
     let binder_on = binder_mode && if fold.binder { overlay_binder } else { arrangement.sidebar_visible };
     let inspector_on = inspector_mode && if fold.inspector { overlay_inspector } else { arrangement.inspector_visible };
-    // The binder keeps its side over the page; the inspector takes the other.
-    let overlay_left = (overlay_binder && sidebar_left) || (overlay_inspector && !sidebar_left);
+    // The binder is always on the left and the inspector on the right, over
+    // the page as beside it.
+    let overlay_left = overlay_binder;
     let tab_title = {
         let current = state.read();
         if current.mode == WorkspaceMode::Writing {
@@ -327,13 +327,9 @@ fn Workspace() -> Element {
                     if overlay_binder { Explorer {} } else { InspectorPane {} }
                 }
             }
-            if show_sidebar && sidebar_left {
+            if show_sidebar {
                 Explorer {}
                 Sash { kind: ResizeKind::Sidebar, positive: true }
-            }
-            if show_inspector && !sidebar_left {
-                InspectorPane {}
-                Sash { kind: ResizeKind::Inspector, positive: true }
             }
             div { class: "editor-group",
                 div { class: "tabs",
@@ -357,13 +353,9 @@ fn Workspace() -> Element {
                     }}
                 }
             }
-            if show_inspector && sidebar_left {
+            if show_inspector {
                 Sash { kind: ResizeKind::Inspector, positive: false }
                 InspectorPane {}
-            }
-            if show_sidebar && !sidebar_left {
-                Sash { kind: ResizeKind::Sidebar, positive: false }
-                Explorer {}
             }
             if (overlay_binder || overlay_inspector) && !overlay_left {
                 div { class: "overlay-backdrop", onclick: move |_| state.write().overlay = None }

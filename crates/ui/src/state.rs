@@ -21,7 +21,7 @@ use writing_studio_plotting::PlotGrid;
 use writing_studio_research::ResearchLibrary;
 use writing_studio_project::{
     format_elapsed, normalize_binder_color, BinderNode, BinderTree, NodeKind, PanelLayout,
-    ProjectMeta, ProseFont, StoredSession, Theme,
+    DropPlace, ProjectMeta, ProseFont, StoredSession, Theme,
 };
 use writing_studio_search::ManuscriptIndex;
 use writing_studio_spellcheck::{
@@ -320,6 +320,8 @@ pub struct StudioState {
     pub settings_dirty: bool,
     pub dragging: Option<Id>,
     pub drop_target: Option<Id>,
+    /// Where on the binder row under the pointer the dragged item would go.
+    pub drop_place: DropPlace,
     pub ignore_next_click: bool,
     pub confirm_empty_trash: bool,
 }
@@ -393,6 +395,7 @@ impl Default for StudioState {
             settings_dirty: false,
             dragging: None,
             drop_target: None,
+            drop_place: DropPlace::After,
             ignore_next_click: false,
             confirm_empty_trash: false,
         }
@@ -3348,6 +3351,46 @@ impl StudioState {
     pub fn set_drop_target(&mut self, id: Id) {
         if self.dragging.is_some_and(|dragged| dragged != id) {
             self.drop_target = Some(id);
+        }
+    }
+
+    /// The binder row under the pointer, and where on it the drop would go.
+    pub fn set_binder_drop(&mut self, id: Id, place: DropPlace) {
+        if self.dragging.is_some_and(|dragged| dragged != id)
+            && (self.drop_target != Some(id) || self.drop_place != place)
+        {
+            self.drop_target = Some(id);
+            self.drop_place = place;
+        }
+    }
+
+    /// Whether the row under the pointer can take the dragged item in its
+    /// middle, which decides what the middle of the row means.
+    pub fn drag_fits_inside(&self, id: Id) -> bool {
+        self.dragging
+            .and_then(|dragged| self.binder.get(dragged))
+            .is_some_and(|node| self.binder.accepts(id, node.kind))
+    }
+
+    /// Drop the dragged item on a binder row, at the place the pointer chose.
+    pub fn drop_in_binder(&mut self, target: Id) {
+        let Some(dragged) = self.dragging.take() else {
+            self.drop_target = None;
+            return;
+        };
+        let place = self.drop_place;
+        self.drop_target = None;
+        self.flush_editor();
+        match self.binder.drop_at(dragged, target, place) {
+            Ok(()) => {
+                if self.persist_binder() {
+                    self.status = "Binder updated locally.".into();
+                    if self.selected == Some(dragged) {
+                        self.select_node(dragged);
+                    }
+                }
+            }
+            Err(err) => self.status = err.to_string(),
         }
     }
 

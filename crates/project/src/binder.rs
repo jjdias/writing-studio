@@ -88,6 +88,43 @@ impl NodeKind {
     }
 }
 
+/// Where on a binder row an item is dropped: its top edge, its middle, or
+/// its bottom edge.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DropPlace {
+    Before,
+    Inside,
+    After,
+}
+
+impl DropPlace {
+    /// The place for a pointer `y` pixels down a row `height` tall. The
+    /// middle only means inside for a row that can hold the dragged item;
+    /// on any other row the pointer is before or after it.
+    pub fn at(y: f64, height: f64, can_hold: bool) -> Self {
+        let edge = height / 4.0;
+        if can_hold {
+            if y < edge {
+                Self::Before
+            } else if y > height - edge {
+                Self::After
+            } else {
+                Self::Inside
+            }
+        } else if y < height / 2.0 {
+            Self::Before
+        } else {
+            Self::After
+        }
+    }
+}
+
+enum DropPlan {
+    Trash,
+    Into(Id),
+    Beside { parent: Id, anchor: Id, before: bool },
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BinderNode {
     pub id: Id,
@@ -419,6 +456,112 @@ impl BinderTree {
         Err(Error::message("that binder item cannot hold the dragged item"))
     }
 
+    /// Where a drop at `place` on `target` puts `dragged`, or why it cannot.
+    /// Before and after go next to the target, or next to the nearest
+    /// container above it whose parent can hold the dragged kind, so a
+    /// chapter dropped on a scene lands beside that scene's chapter. Inside
+    /// a row that cannot hold the dragged item means after it.
+    fn resolve_drop(&self, dragged: Id, target: Id, place: DropPlace) -> Result<DropPlan> {
+        if dragged == target {
+            return Err(Error::message("cannot drop an item on itself"));
+        }
+        if self.is_under(target, dragged) {
+            return Err(Error::message("cannot drop an item into its own contents"));
+        }
+        let drag_kind = self
+            .get(dragged)
+            .map(|node| node.kind)
+            .ok_or_else(|| Error::NodeNotFound(dragged.to_string()))?;
+        if drag_kind.is_root() {
+            return Err(Error::message("manuscript, research, and trash cannot be moved"));
+        }
+        let target_node = self
+            .get(target)
+            .ok_or_else(|| Error::NodeNotFound(target.to_string()))?;
+        if target_node.kind == NodeKind::TrashRoot {
+            return Ok(DropPlan::Trash);
+        }
+        if place == DropPlace::Inside && self.accepts(target, drag_kind) {
+            return Ok(DropPlan::Into(target));
+        }
+        if target_node.kind.is_root() {
+            return if self.accepts(target, drag_kind) {
+                Ok(DropPlan::Into(target))
+            } else {
+                Err(Error::message("that binder item cannot hold the dragged item"))
+            };
+        }
+        let mut anchor = target;
+        let mut guard = 0;
+        loop {
+            let Some(parent) = self.get(anchor).and_then(|node| node.parent_id) else {
+                return Err(Error::message("that binder item cannot hold the dragged item"));
+            };
+            if self.accepts(parent, drag_kind) {
+                return Ok(DropPlan::Beside {
+                    parent,
+                    anchor,
+                    before: place == DropPlace::Before,
+                });
+            }
+            if self.get(parent).is_some_and(|node| node.kind.is_root()) {
+                return Err(Error::message("that binder item cannot hold the dragged item"));
+            }
+            anchor = parent;
+            guard += 1;
+            if guard > 10_000 {
+                return Err(Error::message("the binder is nested too deeply"));
+            }
+        }
+    }
+
+    pub fn drop_allowed_at(&self, dragged: Id, target: Id, place: DropPlace) -> bool {
+        self.resolve_drop(dragged, target, place).is_ok()
+    }
+
+    /// Drop `dragged` before, inside, or after `target`, anywhere in the
+    /// binder its kind can go.
+    pub fn drop_at(&mut self, dragged: Id, target: Id, place: DropPlace) -> Result<()> {
+        match self.resolve_drop(dragged, target, place)? {
+            DropPlan::Trash => self.trash(dragged),
+            DropPlan::Into(parent) => self.place(dragged, Some(parent), None),
+            DropPlan::Beside { parent, anchor, before: false } => {
+                self.place(dragged, Some(parent), Some(anchor))
+            }
+            DropPlan::Beside { parent, anchor, before: true } => {
+                let siblings: Vec<Id> = self
+                    .children(Some(parent))
+                    .into_iter()
+                    .map(|node| node.id)
+                    .filter(|id| *id != dragged)
+                    .collect();
+                let index = siblings.iter().position(|id| *id == anchor).unwrap_or(0);
+                match index.checked_sub(1).map(|previous| siblings[previous]) {
+                    Some(previous) => self.place(dragged, Some(parent), Some(previous)),
+                    None => self.place_first(dragged, parent),
+                }
+            }
+        }
+    }
+
+    /// Put `dragged` first under `parent`.
+    fn place_first(&mut self, dragged: Id, parent: Id) -> Result<()> {
+        self.place(dragged, Some(parent), None)?;
+        let mut order: Vec<Id> = self
+            .children(Some(parent))
+            .into_iter()
+            .map(|node| node.id)
+            .filter(|id| *id != dragged)
+            .collect();
+        order.insert(0, dragged);
+        for (index, id) in order.iter().enumerate() {
+            if let Some(node) = self.get_mut(*id) {
+                node.sort_index = index as i64;
+            }
+        }
+        Ok(())
+    }
+
     pub fn trash(&mut self, id: Id) -> Result<()> {
         let node = self
             .get(id)
@@ -716,6 +859,67 @@ mod tests {
             draft, research, trash, book, chapter, scene_a, scene_b,
         ]);
         (binder, chapter_id, a, b, trash_id)
+    }
+
+    fn titles(binder: &BinderTree, parent: Id) -> Vec<String> {
+        binder
+            .children(Some(parent))
+            .into_iter()
+            .map(|node| node.title.clone())
+            .collect()
+    }
+
+    #[test]
+    fn a_scene_goes_before_after_or_into_wherever_it_is_dropped() {
+        let (mut binder, chapter, a, b, _) = tree();
+        let book = binder.get(chapter).unwrap().parent_id.unwrap();
+        // Before the first scene: the spot drop_on could not reach.
+        binder.drop_at(b, a, DropPlace::Before).unwrap();
+        assert_eq!(titles(&binder, chapter), ["Scene B", "Scene A"]);
+        // Into another chapter, then before its only scene.
+        let second = BinderNode::new(NodeKind::Chapter, "Chapter 2", Some(book), 1);
+        let second_id = second.id;
+        binder.nodes.push(second);
+        binder.drop_at(a, second_id, DropPlace::Inside).unwrap();
+        assert_eq!(titles(&binder, second_id), ["Scene A"]);
+        binder.drop_at(b, a, DropPlace::Before).unwrap();
+        assert_eq!(titles(&binder, second_id), ["Scene B", "Scene A"]);
+        assert!(titles(&binder, chapter).is_empty());
+        // After a chapter's row edge is beside the chapter, not in it.
+        binder.drop_at(a, chapter, DropPlace::After).unwrap();
+        assert_eq!(titles(&binder, book), ["Chapter 1", "Scene A", "Chapter 2"]);
+    }
+
+    #[test]
+    fn a_chapter_dropped_on_a_scene_lands_beside_that_scenes_chapter() {
+        let (mut binder, chapter, a, _, _) = tree();
+        let book = binder.get(chapter).unwrap().parent_id.unwrap();
+        let second = BinderNode::new(NodeKind::Chapter, "Chapter 2", Some(book), 1);
+        let second_id = second.id;
+        binder.nodes.push(second);
+        assert!(binder.drop_allowed_at(second_id, a, DropPlace::Before));
+        binder.drop_at(second_id, a, DropPlace::Before).unwrap();
+        assert_eq!(titles(&binder, book), ["Chapter 2", "Chapter 1"]);
+        // A chapter moves to another book the same way.
+        let draft = binder.draft_root().unwrap().id;
+        let other = BinderNode::new(NodeKind::Book, "Book 2", Some(draft), 1);
+        let other_id = other.id;
+        binder.nodes.push(other);
+        binder.drop_at(chapter, other_id, DropPlace::Inside).unwrap();
+        assert_eq!(titles(&binder, other_id), ["Chapter 1"]);
+        // Never into its own contents, and roots stay put.
+        assert!(!binder.drop_allowed_at(chapter, a, DropPlace::Inside));
+        let trash = binder.trash_root().unwrap().id;
+        assert!(!binder.drop_allowed_at(trash, a, DropPlace::After));
+    }
+
+    #[test]
+    fn the_middle_of_a_row_is_inside_only_when_it_can_hold_the_item() {
+        assert_eq!(DropPlace::at(2.0, 26.0, true), DropPlace::Before);
+        assert_eq!(DropPlace::at(13.0, 26.0, true), DropPlace::Inside);
+        assert_eq!(DropPlace::at(24.0, 26.0, true), DropPlace::After);
+        assert_eq!(DropPlace::at(10.0, 26.0, false), DropPlace::Before);
+        assert_eq!(DropPlace::at(16.0, 26.0, false), DropPlace::After);
     }
 
     #[test]

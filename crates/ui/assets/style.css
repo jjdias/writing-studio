@@ -470,8 +470,16 @@ button.danger:hover, button.danger.armed { background: var(--danger-fill); borde
   margin: 0;
   padding: 3px 8px;
   font-size: 13px;
+  /* BINDER_ROW_HEIGHT in studio/binder.rs. */
+  height: 26px;
+  align-items: center;
 }
 .binder-item:hover { background: var(--hover); }
+/* A drop reads the pointer's height on the row itself, so the parts inside
+   it never take the pointer. */
+.binder-item > * { pointer-events: none; }
+.binder-item.drop-before { box-shadow: inset 0 2px 0 var(--gold); outline: none; }
+.binder-item.drop-after { box-shadow: inset 0 -2px 0 var(--gold); outline: none; }
 .binder-item.selected:hover { background: var(--selection); }
 .binder-item .kind-glyph { width: 14px; height: 14px; flex: 0 0 14px; align-self: center; color: var(--muted); }
 .binder-item.selected .kind-glyph { color: inherit; }
