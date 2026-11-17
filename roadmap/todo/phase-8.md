@@ -14,7 +14,7 @@ Found by running the window under a virtual display (Xvfb) at 1400 × 860 and at
 
 - Prose is set in a monospace font (`--font: Consolas, …` in `crates/ui/assets/style.css`). The text has no page: it is the same color as the panels and runs the full width of its column.
 - The format toolbar is 25 text buttons in three rows (Bold … Break, Comment, Note, four highlight colors, Track changes, H1–H3, Quote, List). At 800 × 600 it becomes 14 rows, and the text column is about 170 pixels wide, below the fold.
-- The toolbar does not show which marks are on. Link and Note ask in a browser `window.prompt` (`studio.rs`, `review.js`).
+- The toolbar does not show which marks are on. Link and Note ask in a browser `window.prompt` (`studio/editor.rs`, `review.js`).
 - The note list, tracked changes, and spelling list each stack above the manuscript and push it down when more than one is in use.
 
 **Layout**
@@ -44,7 +44,7 @@ Found by running the window under a virtual display (Xvfb) at 1400 × 860 and at
 
 **The code**
 
-- `crates/ui/src/studio.rs` is one file of about 3,800 lines with some 50 components. `style.css` styles each pane's inputs on its own (`.plot-pane input`, `.cast-profile input`, …). There is no shared button, field, menu, panel, or empty state, so each pane looks a little different.
+- `crates/ui/src/studio.rs` was one file of about 3,800 lines with some 50 components (now split, see stage 1). `style.css` styles each pane's inputs on its own (`.plot-pane input`, `.cast-profile input`, …). There is no shared button, field, menu, panel, or empty state, so each pane looks a little different.
 
 ## What the window should be
 
