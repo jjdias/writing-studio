@@ -574,7 +574,7 @@ impl ProjectStore {
 
     pub fn persist_meta(&self, meta: &ProjectMeta) -> Result<()> {
         if self.mirroring() {
-            let (project, local) = settings_json(meta)?;
+            let (project, local) = settings_json(meta, self.mirror.extras.borrow().get(&meta.id))?;
             self.write_small("project.json", &project)?;
             self.write_small(LOCAL_SETTINGS, &local)?;
         }
@@ -1022,6 +1022,9 @@ mod tests {
         let mut cast = Cast::new();
         let mara = cast.add_character();
         cast.set_name(mara, "Mara".into());
+        let tom = cast.add_character();
+        let bond = cast.add_relationship(mara, tom).unwrap();
+        cast.link_scene(mara, scene.id);
         store.persist_cast(&cast).unwrap();
         let mut grid = PlotGrid::new();
         let line = grid.add_line();
@@ -1044,6 +1047,12 @@ mod tests {
         edit(&dir.join("binder.json"), &id, &format!("{id},\"tag\":\"draft-2\""));
         let line_id = format!("\"id\": \"{line}\"");
         edit(&dir.join("plot.json"), &line_id, &format!("\"arc\": \"rising\",\n      {line_id}"));
+        edit(&dir.join("project.json"), "\"format\"", "\"series\": \"North\",\n  \"format\"");
+        edit(&dir.join("project.json"), "\"settings\": {", "\"settings\": {\n    \"house_style\": \"plain\",");
+        let bond_id = format!("\"id\":\"{bond}\"");
+        edit(&dir.join("bible.json"), &bond_id, &format!("{bond_id},\"since\":\"spring\""));
+        let link = format!("\"scene\":\"{}\"", scene.id);
+        edit(&dir.join("bible.json"), &link, &format!("{link},\"weight\":\"main\""));
 
         // Every save that touches those items keeps what was added.
         let store = ProjectStore::open(&dir).unwrap();
@@ -1058,6 +1067,10 @@ mod tests {
         let mut cast = store.load_cast().unwrap();
         cast.characters[0].summary = "Changed.".into();
         store.persist_cast(&cast).unwrap();
+        let mut meta = store.load_meta().unwrap();
+        meta.title = "Kept again".into();
+        meta.settings.daily_word_goal = 900;
+        store.persist_meta(&meta).unwrap();
         let mut grid = store.load_plot().unwrap();
         grid.lines[0].title = "Escape".into();
         store.persist_plot(&grid).unwrap();
@@ -1070,6 +1083,11 @@ mod tests {
         assert!(fs::read_to_string(dir.join("binder.json")).unwrap().contains("\"tag\":\"draft-2\""));
         let plot = fs::read_to_string(dir.join("plot.json")).unwrap();
         assert!(plot.contains("\"arc\": \"rising\"") && plot.contains("Escape"));
+        let project = fs::read_to_string(dir.join("project.json")).unwrap();
+        assert!(project.contains("\"series\": \"North\"") && project.contains("\"house_style\": \"plain\""));
+        assert!(project.contains("Kept again") && project.contains("900"));
+        let bible = fs::read_to_string(dir.join("bible.json")).unwrap();
+        assert!(bible.contains("\"since\":\"spring\"") && bible.contains("\"weight\":\"main\""));
 
         // Restoring a backup writes every file again, and keeps them too.
         let mut store = store;

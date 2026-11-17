@@ -111,12 +111,16 @@ pub struct Extras {
     /// Names in the head of the item's own HTML file.
     pub head: Header,
     /// Keys of the item's line in `binder.json`, `bible.json`, or `plot.json`.
+    /// For the project, the keys of `project.json`, and its unknown settings
+    /// under `settings`.
     pub json: Map<String, Value>,
+    /// Keys of the entry's lines in `scene_links` of `bible.json`, by scene.
+    pub links: HashMap<Id, Map<String, Value>>,
 }
 
 impl Extras {
     fn is_empty(&self) -> bool {
-        self.head.entries.is_empty() && self.json.is_empty()
+        self.head.entries.is_empty() && self.json.is_empty() && self.links.is_empty()
     }
 }
 
@@ -131,6 +135,9 @@ const ENTRY_KEYS: [&str; 2] = ["id", "file"];
 const RESEARCH_FILE_KEYS: [&str; 4] = ["id", "note", "name", "stored"];
 const PLOTLINE_KEYS: [&str; 4] = ["id", "title", "color", "points"];
 const POINT_KEYS: [&str; 4] = ["id", "title", "summary", "scene"];
+const RELATIONSHIP_KEYS: [&str; 4] = ["id", "from", "to", "kind"];
+const LINK_KEYS: [&str; 2] = ["from", "scene"];
+const PROJECT_KEYS: [&str; 5] = ["format", "id", "title", "created", "settings"];
 /// Names in a scene's head that the program writes. `title` is the `<title>`;
 /// a `<meta name="title">` beside it is not kept.
 const SCENE_HEAD: [&str; 9] = [
@@ -549,11 +556,18 @@ pub(crate) fn bible_files(
         item.insert("file".into(), json!(path));
         add_json_extras(&mut item, extras.get(&id), &ENTRY_KEYS);
         list.push(Value::Object(item));
-        links.extend(
-            scenes
-                .iter()
-                .map(|scene| json!({ "from": id.to_string(), "scene": scene.to_string() })),
-        );
+        links.extend(scenes.iter().map(|scene| {
+            let mut link = Map::new();
+            link.insert("from".into(), json!(id.to_string()));
+            link.insert("scene".into(), json!(scene.to_string()));
+            let found = extras.get(&id).and_then(|found| found.links.get(scene));
+            for (key, value) in found.into_iter().flatten() {
+                if !LINK_KEYS.contains(&key.as_str()) {
+                    link.insert(key.clone(), value.clone());
+                }
+            }
+            Value::Object(link)
+        }));
     };
 
     let mut list = Vec::new();
@@ -652,11 +666,13 @@ pub(crate) fn bible_files(
         sorted(&cast.relationships, |item| item.sort_index)
             .into_iter()
             .map(|item| {
-                json!({
-                    "from": item.from_id.to_string(),
-                    "to": item.to_id.to_string(),
-                    "kind": item.kind,
-                })
+                let mut line = Map::new();
+                line.insert("id".into(), json!(item.id.to_string()));
+                line.insert("from".into(), json!(item.from_id.to_string()));
+                line.insert("to".into(), json!(item.to_id.to_string()));
+                line.insert("kind".into(), json!(item.kind));
+                add_json_extras(&mut line, extras.get(&item.id), &RELATIONSHIP_KEYS);
+                Value::Object(line)
             })
             .collect(),
     ));
@@ -697,7 +713,7 @@ pub(crate) fn plot_json(plot: &PlotGrid, extras: &HashMap<Id, Extras>) -> Result
 }
 
 /// `project.json`, and this machine's `.local/settings.json`.
-pub(crate) fn settings_json(meta: &ProjectMeta) -> Result<(String, String)> {
+pub(crate) fn settings_json(meta: &ProjectMeta, extras: Option<&Extras>) -> Result<(String, String)> {
     let settings = serde_json::to_value(&meta.settings).map_err(|err| Error::message(err.to_string()))?;
     let (mut shared, mut local) = (Map::new(), Map::new());
     for (key, value) in settings.as_object().cloned().unwrap_or_default() {
@@ -707,14 +723,20 @@ pub(crate) fn settings_json(meta: &ProjectMeta) -> Result<(String, String)> {
             local.insert(key, value);
         }
     }
-    let project = json!({
-        "format": FILES_FORMAT_VERSION,
-        "id": meta.id.to_string(),
-        "title": meta.title,
-        "created": meta.created_at.to_rfc3339(),
-        "settings": shared,
-    });
-    Ok((pretty(&project)?, pretty(&Value::Object(local))?))
+    let unknown = extras.and_then(|found| found.json.get("settings")).and_then(Value::as_object);
+    for (key, value) in unknown.into_iter().flatten() {
+        if !shared.contains_key(key) && !local.contains_key(key) {
+            shared.insert(key.clone(), value.clone());
+        }
+    }
+    let mut project = Map::new();
+    project.insert("format".into(), json!(FILES_FORMAT_VERSION));
+    project.insert("id".into(), json!(meta.id.to_string()));
+    project.insert("title".into(), json!(meta.title));
+    project.insert("created".into(), json!(meta.created_at.to_rfc3339()));
+    project.insert("settings".into(), Value::Object(shared));
+    add_json_extras(&mut project, extras, &PROJECT_KEYS);
+    Ok((pretty(&Value::Object(project))?, pretty(&Value::Object(local))?))
 }
 
 pub(crate) const LOCAL_SETTINGS: &str = ".local/settings.json";
@@ -752,7 +774,7 @@ fn render(content: &ProjectContent) -> Result<Rendered> {
     }
     contents.push(("bible.json".into(), bible));
     contents.push(("plot.json".into(), plot_json(&content.plot, &content.extras)?));
-    let (project, local) = settings_json(&content.meta)?;
+    let (project, local) = settings_json(&content.meta, content.extras.get(&content.meta.id))?;
     contents.push(("project.json".into(), project));
     contents.push((LOCAL_SETTINGS.into(), local));
     Ok(Rendered { files, contents })
@@ -844,6 +866,22 @@ fn header_id(file: &SceneFile, path: &str, key: &str) -> Result<Option<Id>> {
     }
 }
 
+/// Add the extra keys of the bible's lines that have no file of their own:
+/// `scene_links`, kept with the entry they come from, and `relationships`.
+fn with_lines(
+    mut extras: HashMap<Id, Extras>,
+    links: HashMap<Id, HashMap<Id, Map<String, Value>>>,
+    lines: Vec<(Id, Map<String, Value>)>,
+) -> HashMap<Id, Extras> {
+    for (from, found) in links {
+        extras.entry(from).or_default().links = found;
+    }
+    for (id, found) in lines.into_iter().filter(|(_, found)| !found.is_empty()) {
+        extras.entry(id).or_default().json = found;
+    }
+    extras
+}
+
 /// Read a project from its format 2 files. It does not look at `FORMAT`;
 /// whoever opens the folder decides what it is. Times of creation and change
 /// are not kept in the files, so every record reads as made now.
@@ -888,9 +926,22 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
             settings.insert(key.clone(), value.clone());
         }
     }
+    let unknown_settings: Map<String, Value> = project
+        .value
+        .get("settings")
+        .and_then(Value::as_object)
+        .into_iter()
+        .flatten()
+        .filter(|(key, _)| !settings.contains_key(key.as_str()))
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect();
     let settings: ProjectSettings =
         serde_json::from_value(Value::Object(settings)).map_err(|err| bad("project.json", err))?;
     let created = Timestamp::parse(&text_of(&project.value, "created")).unwrap_or(now);
+    let mut project_extras = unknown_keys(&project.value, &PROJECT_KEYS);
+    if !unknown_settings.is_empty() {
+        project_extras.insert("settings".into(), Value::Object(unknown_settings));
+    }
     let meta = ProjectMeta {
         id: project.id(&project.value, "id")?,
         format_version: FILES_FORMAT_VERSION,
@@ -899,6 +950,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
         updated_at: now,
         settings,
     };
+    keep(meta.id, Extras { json: project_extras, ..Extras::default() });
 
     // The binder and the manuscript.
     let binder_file = JsonFile::read(root, "binder.json", &seen)?;
@@ -1015,11 +1067,15 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
     // The bible.
     let bible = JsonFile::read(root, "bible.json", &seen)?;
     let mut scene_links: HashMap<Id, Vec<Id>> = HashMap::new();
+    let mut link_extras: HashMap<Id, HashMap<Id, Map<String, Value>>> = HashMap::new();
+    let mut line_extras: Vec<(Id, Map<String, Value>)> = Vec::new();
     for link in bible.list("scene_links") {
-        scene_links
-            .entry(bible.id(link, "from")?)
-            .or_default()
-            .push(bible.id(link, "scene")?);
+        let (from, scene) = (bible.id(link, "from")?, bible.id(link, "scene")?);
+        scene_links.entry(from).or_default().push(scene);
+        let unknown = unknown_keys(link, &LINK_KEYS);
+        if !unknown.is_empty() {
+            link_extras.entry(from).or_default().insert(scene, unknown);
+        }
     }
     // `head` is the names the program reads from this kind of entry's head.
     let mut entries = |key: &str, head: &[&str]| -> Result<Vec<(Id, i64, String, SceneFile)>> {
@@ -1048,6 +1104,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
                 Extras {
                     head: unknown_head(&file.header.other, head),
                     json: unknown_keys(item, &ENTRY_KEYS),
+                    ..Extras::default()
                 },
             );
             out.push((id, index as i64, path, file));
@@ -1106,8 +1163,11 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
         });
     }
     for (index, item) in bible.list("relationships").into_iter().enumerate() {
+        // Lines written before relationships had ids get one now.
+        let id = bible.optional_id(item, "id")?.unwrap_or_else(Id::new);
+        line_extras.push((id, unknown_keys(item, &RELATIONSHIP_KEYS)));
         cast.relationships.push(CharacterRelationship {
-            id: Id::new(),
+            id,
             from_id: bible.id(item, "from")?,
             to_id: bible.id(item, "to")?,
             kind: text_of(item, "kind"),
@@ -1253,7 +1313,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
         world,
         library,
         files,
-        extras,
+        extras: with_lines(extras, link_extras, line_extras),
         read: seen.into_inner(),
         problems,
         missing,

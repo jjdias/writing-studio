@@ -235,10 +235,10 @@ JSON is for structure that is not read as prose. Where a file is a list, each it
 
 - **`project.json`** — `format`, `id`, `title`, `created`, and `settings`: the daily and project word targets, each book's word target, whether compile writes a title page, and spelling (on or off, the dictionary, and the project's accepted words).
 - **`binder.json`** — `items`, one to a line. Each has `id` and `kind`, and `parent` unless it is at the top. An item with text has `file`; its title, synopsis, status, label, and color are in that file. An item with no text of its own (a book, a part, a folder) has them here. A trashed item also has `deleted`, the time it was trashed, and `restore_parent`.
-- **`bible.json`** — a list for each kind of entry (`characters`, `places`, `cultures`, `lore`, `timeline`, `research`), each item an `id` and its `file`; then `research_files`, `relationships`, and `scene_links`.
+- **`bible.json`** — a list for each kind of entry (`characters`, `places`, `cultures`, `lore`, `timeline`, `research`), each item an `id` and its `file`; then `research_files`, `relationships` (each with its own `id`, and `from`, `to`, and `kind`), and `scene_links` (`from` an entry, to a `scene`).
 - **`plot.json`** — `plotlines` in order, each with its `points` in order; a point has `title`, `summary`, and an optional `scene`.
 
-**Keys the program does not know** on a line of `binder.json`, `plot.json`, or an entry or research file in `bible.json` are kept and written back. Unknown keys in `project.json`, and on the `relationships` and `scene_links` lines, are not yet kept.
+**Keys the program does not know** are kept and written back: on any line of `binder.json`, `bible.json`, or `plot.json`, and in `project.json` and its `settings`. A `relationships` line written before relationships had ids gets one the next time the bible is saved.
 
 **Order is the order of the lines.** Nothing is numbered. In `binder.json` a parent comes before its children, and children are in reading order, so the file reads from the top as the book does. Moving a scene moves one line and changes nothing else. An earlier draft of this format gave each item an order key; line order does the same job with nothing to keep in step.
 
