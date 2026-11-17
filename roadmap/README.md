@@ -22,7 +22,7 @@ Writing Studio is **open source** (MIT OR Apache-2.0) and **free for the communi
 | 8 | Writing surface | To do | [todo/phase-8.md](todo/phase-8.md) |
 | Bonus | Work with no phase yet | Not started | [todo/bonus.md](todo/bonus.md) |
 
-Phases 1 to 4 are on `master`. Phase 5 is merged into `master` too.
+Phases 1 to 5 are on `master`.
 
 ## How the work is done now
 
@@ -41,8 +41,6 @@ None listed. The last three items were cleared at the end of Phase 5: a check us
 
 1. The remaining items of Phase 5.1, each when the code it touches is next changed.
 2. Then any of Phases 6, 7, and 8; they do not depend on each other.
-
-The other phases do not depend on Phase 5 and can be taken in any order after it.
 
 ## Product principles
 
