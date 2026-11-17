@@ -61,6 +61,8 @@ In this order: each stage gives the next one something to build on. Stage 1 chan
 
 ### 1. Split the window code, and make the shared pieces
 
+**Split: done.** `crates/ui/src/studio/` has one module per area (`mod.rs` for the frame, then `binder`, `editor`, `inspector`, `commands`, `layout`, `dialogs`, `history`, `shared`, and one per mode). The shared components and the stylesheet are left.
+
 - Split `studio.rs` by area: the frame (activity bar, top bar, status bar), the binder, the editor and its toolbar, the inspector, and one module for each mode. No change in behavior.
 - Make the shared components every pane uses: button (default, primary, danger, icon with a name), text field and text area, menu (a styled `select`, or a custom list where a native one cannot be themed), panel with a heading, list row, empty state, and a confirm-by-second-click button that names its item and is cancelled by Escape.
 - Rewrite `style.css` around theme tokens: color, type scale, spacing, radius. Remove the per-pane input rules once each pane uses the shared field.
