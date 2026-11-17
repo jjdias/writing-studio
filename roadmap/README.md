@@ -16,13 +16,13 @@ Writing Studio is **open source** (MIT OR Apache-2.0) and **free for the communi
 | 3 | Story development: series, plot, characters, world, research | Done | [done/phase-3.md](done/phase-3.md) |
 | 4 | Professional editing: comparison, notes, track changes, spellcheck, diagnostics | Done | [done/phase-4.md](done/phase-4.md) |
 | 5 | Plain-text projects, and sync through git | Done | [done/phase-5.md](done/phase-5.md) |
-| 5.1 | What format 2 still needs to be safe to rely on | Done: items 1, 2, and 5 to 10; 3 and 4 dropped | [todo/phase-5.1.md](todo/phase-5.1.md) |
+| 5.1 | What format 2 still needs to be safe to rely on | Done (items 3 and 4 dropped) | [done/phase-5.md](done/phase-5.md) |
 | 6 | Publishing: export profiles, PDF, EPUB | To do | [todo/phase-6.md](todo/phase-6.md) |
 | 7 | Cross-platform release | To do | [todo/phase-7.md](todo/phase-7.md) |
 | 8 | Writing surface | To do | [todo/phase-8.md](todo/phase-8.md) |
 | Bonus | Work with no phase yet | Not started | [todo/bonus.md](todo/bonus.md) |
 
-Phases 1 to 5 are on `master`.
+Phases 1 to 5.1 are on `master`.
 
 ## How the work is done now
 
