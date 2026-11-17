@@ -107,7 +107,7 @@ In this order: each stage gives the next one something to build on. Stage 1 chan
 
 The tests in this repository are the only testing for now (see "How the work is done now" in [../README.md](../README.md)). State tests in `crates/ui/src/state.rs` cover any behavior this phase moves, such as the mode shortcuts, Escape cancelling a confirmation, and what each mode shows.
 
-How the window looks cannot be tested that way. This research ran the real window under Xvfb, with a short-lived change that opened a sample project in a chosen mode, and took screenshots. Doing the same before and after each stage would catch a layout that breaks. Whether to keep such a script in the repository is for the project to decide; see "Tests that drive the window" in [bonus.md](bonus.md).
+How the window looks is not tested. Screenshots cost too much to take and read, so there is no screenshot script and no stage needs one. The research above ran the real window once under Xvfb, with a short-lived change that opened a sample project; that change was not kept. Keep layout simple enough to reason about from the code: the shared components and theme tokens of stage 1 are what keep the panes consistent.
 
 ## Not in this phase
 

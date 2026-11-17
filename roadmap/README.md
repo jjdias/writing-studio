@@ -30,6 +30,7 @@ The project is young and has no users yet. Until that changes:
 
 - **The focus is adding function, keeping the code short, and not taking on technical debt.** Prefer removing code to adding it. When a feature replaces something, remove what it replaced in the same change. Do not leave code that only a test uses.
 - **The tests in this repository are the only testing there is.** There is no manual testing, no testing in the desktop window, and no other test suite. If behavior is not covered by a test here, it is not tested. Every change that adds or changes behavior adds or changes a test for it.
+- **Keep testing cheap.** Run the tests of the crate you changed, not the workspace. No screenshots or other testing that costs a lot to run or to read, by a person or an agent.
 - **No performance testing for now.** Keep to the performance rules in `.claude/rules/`, and measure only when something is seen to be slow.
 - **No compatibility with earlier versions.** Earlier test versions had no downloads. When a format changes, do not write a conversion; refuse the old format with a clear message.
 
