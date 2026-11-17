@@ -57,10 +57,11 @@ impl WorkspaceMode {
         WorkspaceMode::History,
     ];
 
-    /// The binder is on screen where the manuscript is arranged or written,
-    /// and in History, which is about the scene chosen there.
+    /// The scene list is beside the page in Writing, and in History, which
+    /// is about the scene chosen there. Corkboard and Outliner show the
+    /// scenes themselves; the library is in every mode.
     pub fn shows_binder(self) -> bool {
-        matches!(self, Self::Writing | Self::Corkboard | Self::Outliner | Self::History)
+        matches!(self, Self::Writing | Self::History)
     }
 
     /// The inspector edits the item being written, so it is only in Writing.
@@ -93,6 +94,23 @@ impl WorkspaceMode {
             Self::History => "History",
         }
     }
+}
+
+/// One scene in the scene list: its title, its first words, and its status.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SceneCard {
+    pub id: Id,
+    pub title: String,
+    pub opening: String,
+    pub status: String,
+}
+
+/// The scenes one chapter or folder holds, in binder order.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SceneGroup {
+    pub id: Id,
+    pub title: String,
+    pub scenes: Vec<SceneCard>,
 }
 
 /// A menu or small panel opened from the top bar or the status bar.
@@ -260,6 +278,9 @@ pub struct StudioState {
     pub selected_character: Option<Id>,
     /// The plotline open beside the list in Plot.
     pub selected_plotline: Option<Id>,
+    /// The book, part, chapter, folder, or trash chosen in the library,
+    /// whose scenes the scene list shows.
+    pub library_selection: Option<Id>,
     pub confirm_character: Option<Id>,
     pub world: World,
     pub world_dirty: bool,
@@ -349,6 +370,7 @@ impl Default for StudioState {
             cast_dirty: false,
             selected_character: None,
             selected_plotline: None,
+            library_selection: None,
             confirm_character: None,
             world: World::new(),
             world_dirty: false,
@@ -1841,6 +1863,126 @@ impl StudioState {
         self.focus_mode = false;
         self.open_menu = None;
         true
+    }
+
+    /// The container the scene list shows: the one chosen in the library
+    /// while it is still a container in the manuscript or the trash, or
+    /// else the chapter of the selected scene, or else the first book.
+    pub fn shown_container(&self) -> Option<Id> {
+        let trash = self.binder.trash_root().map(|node| node.id);
+        let containers = self.binder.manuscript_containers();
+        let is_container = |id: Id| Some(id) == trash || containers.iter().any(|(row, _)| *row == id);
+        self.library_selection
+            .filter(|id| is_container(*id))
+            .or_else(|| {
+                self.selected
+                    .and_then(|id| self.binder.get(id))
+                    .filter(|node| matches!(node.kind, NodeKind::Scene | NodeKind::Note))
+                    .and_then(|node| node.parent_id)
+                    .filter(|id| is_container(*id))
+            })
+            .or_else(|| containers.first().map(|(id, _)| *id))
+    }
+
+    pub fn is_collapsed(&self, id: Id) -> bool {
+        self.meta
+            .as_ref()
+            .is_some_and(|meta| meta.settings.collapsed.contains(&id))
+    }
+
+    /// Fold an item shut, or open it again. It is this computer's choice,
+    /// saved with the theme.
+    pub fn toggle_collapsed(&mut self, id: Id) {
+        let Some(meta) = self.meta.as_mut() else {
+            return;
+        };
+        let collapsed = &mut meta.settings.collapsed;
+        match collapsed.iter().position(|item| *item == id) {
+            Some(at) => {
+                collapsed.remove(at);
+            }
+            None => collapsed.push(id),
+        }
+        meta.touch();
+        self.settings_dirty = true;
+        self.note_edit();
+    }
+
+    /// The library's rows: each container with its depth and whether it
+    /// holds other containers, leaving out what is inside a folded one.
+    pub fn library_rows(&self) -> Vec<(Id, u32, bool)> {
+        let all = self.binder.manuscript_containers();
+        let mut rows = Vec::new();
+        let mut folded_at: Option<u32> = None;
+        for (index, (id, depth)) in all.iter().enumerate() {
+            if folded_at.is_some_and(|fold| *depth > fold) {
+                continue;
+            }
+            folded_at = None;
+            let has_children = all.get(index + 1).is_some_and(|(_, next)| *next > *depth);
+            rows.push((*id, *depth, has_children));
+            if has_children && self.is_collapsed(*id) {
+                folded_at = Some(*depth);
+            }
+        }
+        rows
+    }
+
+    /// Show a library row's scenes. A row of the manuscript or the trash
+    /// opens Writing when another mode is open.
+    pub fn choose_library(&mut self, id: Id) {
+        self.library_selection = Some(id);
+        self.open_menu = None;
+        self.focus_mode = false;
+        // A book chosen here is the current book: its words and target are
+        // the ones shown, and it is the one exported.
+        if self.binder.get(id).is_some_and(|node| node.kind == NodeKind::Book)
+            && self.compile_book_id() != Some(id)
+        {
+            self.set_compile_book(id);
+        }
+        if !matches!(self.mode, WorkspaceMode::Writing | WorkspaceMode::Corkboard | WorkspaceMode::Outliner) {
+            self.mode = WorkspaceMode::Writing;
+        }
+    }
+
+    /// The scenes of the shown container, grouped by the chapter or folder
+    /// that holds them. A group holding scenes directly in the container
+    /// itself has no title.
+    pub fn scene_groups(&self) -> Vec<SceneGroup> {
+        let Some(container) = self.shown_container() else {
+            return Vec::new();
+        };
+        let index = self.manuscript_index.borrow();
+        let mut groups: Vec<SceneGroup> = Vec::new();
+        for (holder, scene) in self.binder.scenes_under(container) {
+            let Some(node) = self.binder.get(scene) else {
+                continue;
+            };
+            let card = SceneCard {
+                id: scene,
+                title: node.title.clone(),
+                opening: node
+                    .document_id
+                    .and_then(|document| index.opening(document))
+                    .unwrap_or_default()
+                    .to_string(),
+                status: node.status.clone(),
+            };
+            match groups.last_mut() {
+                Some(group) if group.id == holder => group.scenes.push(card),
+                _ => groups.push(SceneGroup {
+                    id: holder,
+                    title: if holder == container {
+                        String::new()
+                    } else {
+                        self.binder.get(holder).map(|node| node.title.clone()).unwrap_or_default()
+                    },
+                    scenes: vec![card],
+                }),
+            }
+        }
+        groups
     }
 
     /// Open a menu, or close it when it is the one already open.
@@ -3423,18 +3565,43 @@ impl StudioState {
         let Some(id) = self.selected else {
             return;
         };
+        self.trash_item(id);
+    }
+
+    /// Move any binder item to the trash, with what it holds. The selection
+    /// moves to the trash only when it went there too, so trashing another
+    /// item from the list leaves the open scene open.
+    pub fn trash_item(&mut self, id: Id) {
         self.flush_editor();
+        let title = self.binder.get(id).map(|node| node.title.clone()).unwrap_or_default();
         match self.binder.trash(id) {
             Ok(()) => {
                 if self.persist_binder() {
-                    self.status = "Moved to trash. Restore from the Trash folder or the inspector.".into();
-                    if let Some(trash) = self.binder.trash_root() {
-                        let trash_id = trash.id;
-                        self.select_node(trash_id);
+                    self.status = format!("Moved “{title}” to the trash. Restore it from Trash in the library.");
+                    let selected_gone = self.selected.is_some_and(|selected| self.binder.is_in_trash(selected));
+                    if selected_gone {
+                        if let Some(trash) = self.binder.trash_root() {
+                            let trash_id = trash.id;
+                            self.select_node(trash_id);
+                        }
                     }
                 }
             }
             Err(err) => self.status = err.to_string(),
+        }
+    }
+
+    /// Rename a binder item from the library. An empty name is refused, so
+    /// a row never goes blank.
+    pub fn rename_item(&mut self, id: Id, title: &str) {
+        let title = title.trim();
+        if title.is_empty() {
+            self.status = "A name cannot be empty.".into();
+            return;
+        }
+        if self.binder.get(id).is_some_and(|node| node.title != title) {
+            self.update_node_title(id, title.to_string());
+            self.save_all();
         }
     }
 
@@ -3574,9 +3741,39 @@ impl StudioState {
         true
     }
 
+    /// Where a new item goes: next to the selection while it is inside the
+    /// container chosen in the library, or else in that container, so a
+    /// scene added with a chapter chosen lands in that chapter and shows in
+    /// its list.
     fn infer_parent(&self, kind: NodeKind) -> Option<Id> {
-        self.binder
-            .parent_for_new_item(kind, self.selected, self.series_scope())
+        let chosen = self
+            .library_selection
+            .filter(|_| self.mode.shows_binder())
+            .and_then(|_| self.shown_container())
+            .filter(|id| self.binder.get(*id).is_some_and(|node| node.kind != NodeKind::TrashRoot));
+        let anchor = match (chosen, self.selected) {
+            (Some(container), Some(selected)) if !self.is_inside(selected, container) => Some(container),
+            (Some(container), None) => Some(container),
+            _ => self.selected,
+        };
+        self.binder.parent_for_new_item(kind, anchor, self.series_scope())
+    }
+
+    /// Whether `id` is `container` or somewhere below it.
+    fn is_inside(&self, id: Id, container: Id) -> bool {
+        let mut current = Some(id);
+        let mut guard = 0;
+        while let Some(at) = current {
+            if at == container {
+                return true;
+            }
+            current = self.binder.get(at).and_then(|node| node.parent_id);
+            guard += 1;
+            if guard > 10_000 {
+                return false;
+            }
+        }
+        false
     }
 
     pub fn update_selected_title(&mut self, title: String) {
@@ -3952,11 +4149,112 @@ mod tests {
     }
 
     #[test]
+    fn the_scene_list_shows_the_chosen_containers_scenes_with_their_openings() {
+        let (mut state, dir) = open_state("scene-list");
+        let book = state.binder.manuscript_books()[0].id;
+        state.choose_library(book);
+        state.mode = WorkspaceMode::Plot;
+        state.choose_library(book);
+        assert_eq!(state.mode, WorkspaceMode::Writing);
+        assert_eq!(state.shown_container(), Some(book));
+        state.apply_editor_text("Finch had learned that the desert kept nothing.".into());
+        state.save_all();
+        let scene = state.selected.unwrap();
+        let groups = state.scene_groups();
+        let card = groups
+            .iter()
+            .flat_map(|group| group.scenes.iter())
+            .find(|card| card.id == scene)
+            .expect("the open scene is listed");
+        assert_eq!(card.opening, "Finch had learned that the desert kept nothing.");
+        // A chosen row that is gone falls back to a container that is there.
+        state.library_selection = Some(Id::new());
+        assert!(state.shown_container().is_some());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_folded_library_row_hides_what_is_inside_it_and_stays_folded() {
+        let (mut state, dir) = open_state("fold");
+        let book = state.binder.manuscript_books()[0].id;
+        let inside_book = |state: &StudioState| {
+            state.library_rows().iter().filter(|(id, _, _)| *id != book).count()
+        };
+        let before = inside_book(&state);
+        assert!(before > 0, "a new project has a chapter in its book");
+        assert!(state.library_rows().iter().any(|(id, _, children)| *id == book && *children));
+        state.toggle_collapsed(book);
+        assert!(state.is_collapsed(book));
+        assert_eq!(inside_book(&state), 0);
+        // Folding is this computer's choice and outlasts closing the project.
+        state.save_all();
+        let root = state.project_root().unwrap();
+        let mut reopened = StudioState::default();
+        reopened.open_project_at(root);
+        assert!(reopened.is_collapsed(book));
+        reopened.toggle_collapsed(book);
+        assert_eq!(inside_book(&reopened), before);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_scene_added_with_a_chapter_chosen_lands_in_that_chapter() {
+        let (mut state, dir) = open_state("add-here");
+        let first_scene = state.selected.unwrap();
+        state.add_node(NodeKind::Chapter);
+        let second_chapter = state.selected.unwrap();
+        // Back on a scene of the first chapter, then choose the second one.
+        state.select_node(first_scene);
+        state.choose_library(second_chapter);
+        state.add_node(NodeKind::Scene);
+        let added = state.selected.unwrap();
+        assert_eq!(state.binder.get(added).unwrap().parent_id, Some(second_chapter));
+        assert!(state
+            .scene_groups()
+            .iter()
+            .flat_map(|group| group.scenes.iter())
+            .any(|card| card.id == added));
+        // The next one goes beside it, in the same chapter.
+        state.add_node(NodeKind::Scene);
+        assert_eq!(state.binder.get(state.selected.unwrap()).unwrap().parent_id, Some(second_chapter));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn an_item_trashed_from_the_list_leaves_the_open_scene_open() {
+        let (mut state, dir) = open_state("trash-item");
+        let open = state.selected.unwrap();
+        state.add_node(NodeKind::Scene);
+        let other = state.selected.unwrap();
+        state.select_node(open);
+        state.trash_item(other);
+        assert!(state.binder.is_in_trash(other));
+        assert_eq!(state.selected, Some(open));
+        // Trashing what is open moves the selection with it.
+        state.trash_item(open);
+        assert!(state.binder.is_in_trash(open));
+        assert_eq!(state.selected, state.binder.trash_root().map(|node| node.id));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_book_or_chapter_is_renamed_but_never_to_nothing() {
+        let (mut state, dir) = open_state("rename");
+        let book = state.binder.manuscript_books()[0].id;
+        state.rename_item(book, "  The Glass Cartographer ");
+        assert_eq!(state.binder.get(book).unwrap().title, "The Glass Cartographer");
+        assert!(!state.has_unsaved());
+        state.rename_item(book, "   ");
+        assert_eq!(state.binder.get(book).unwrap().title, "The Glass Cartographer");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn each_mode_shows_only_the_panels_it_needs() {
         let with_binder: Vec<_> = WorkspaceMode::ALL.into_iter().filter(|mode| mode.shows_binder()).collect();
         assert_eq!(
             with_binder,
-            [WorkspaceMode::Writing, WorkspaceMode::Corkboard, WorkspaceMode::Outliner, WorkspaceMode::History]
+            [WorkspaceMode::Writing, WorkspaceMode::History]
         );
         let with_inspector: Vec<_> = WorkspaceMode::ALL.into_iter().filter(|mode| mode.shows_inspector()).collect();
         assert_eq!(with_inspector, [WorkspaceMode::Writing]);

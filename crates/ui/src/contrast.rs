@@ -53,7 +53,17 @@ fn ratio(one: &str, other: &str) -> f64 {
 }
 
 /// Text needs 4.5:1. A control's edge and the focus ring need 3:1.
-const TEXT: [(&str, &str); 14] = [
+const TEXT: [(&str, &str); 24] = [
+    ("text", "library"),
+    ("muted", "library"),
+    ("row-active-fg", "row-active"),
+    ("text", "selection"),
+    ("pill-draft-fg", "pill-draft-bg"),
+    ("pill-revise-fg", "pill-revise-bg"),
+    ("pill-final-fg", "pill-final-bg"),
+    ("pill-blue-fg", "pill-blue-bg"),
+    ("pill-violet-fg", "pill-violet-bg"),
+    ("pill-grey-fg", "pill-grey-bg"),
     ("text", "panel"),
     ("text", "panel-2"),
     ("text", "control"),

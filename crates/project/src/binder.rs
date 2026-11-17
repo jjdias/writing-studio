@@ -456,6 +456,43 @@ impl BinderTree {
         Err(Error::message("that binder item cannot hold the dragged item"))
     }
 
+    /// The manuscript's books, parts, chapters, and folders in binder order,
+    /// each with its depth below the manuscript. The library column lists
+    /// these; scenes are listed beside it.
+    pub fn manuscript_containers(&self) -> Vec<(Id, u32)> {
+        let mut rows = Vec::new();
+        if let Some(draft) = self.draft_root() {
+            self.collect_containers(draft.id, 0, &mut rows);
+        }
+        rows
+    }
+
+    fn collect_containers(&self, parent: Id, depth: u32, rows: &mut Vec<(Id, u32)>) {
+        for child in self.children(Some(parent)) {
+            if matches!(child.kind, NodeKind::Book | NodeKind::Part | NodeKind::Chapter | NodeKind::Folder) {
+                rows.push((child.id, depth));
+                self.collect_containers(child.id, depth + 1, rows);
+            }
+        }
+    }
+
+    /// Every scene below `container`, in binder order, each with the item
+    /// that directly holds it, so a list can group scenes by chapter.
+    pub fn scenes_under(&self, container: Id) -> Vec<(Id, Id)> {
+        let mut scenes = Vec::new();
+        self.collect_scenes(container, &mut scenes);
+        scenes
+    }
+
+    fn collect_scenes(&self, parent: Id, scenes: &mut Vec<(Id, Id)>) {
+        for child in self.children(Some(parent)) {
+            if matches!(child.kind, NodeKind::Scene | NodeKind::Note) {
+                scenes.push((parent, child.id));
+            }
+            self.collect_scenes(child.id, scenes);
+        }
+    }
+
     /// Where a drop at `place` on `target` puts `dragged`, or why it cannot.
     /// Before and after go next to the target, or next to the nearest
     /// container above it whose parent can hold the dragged kind, so a
@@ -911,6 +948,33 @@ mod tests {
         assert!(!binder.drop_allowed_at(chapter, a, DropPlace::Inside));
         let trash = binder.trash_root().unwrap().id;
         assert!(!binder.drop_allowed_at(trash, a, DropPlace::After));
+    }
+
+    #[test]
+    fn the_library_lists_containers_and_the_list_their_scenes_by_chapter() {
+        let (mut binder, chapter, a, b, _) = tree();
+        let book = binder.get(chapter).unwrap().parent_id.unwrap();
+        let part = BinderNode::new(NodeKind::Part, "Part 2", Some(book), 1);
+        let part_id = part.id;
+        let inner = BinderNode::new(NodeKind::Chapter, "Chapter 2", Some(part_id), 0);
+        let inner_id = inner.id;
+        let c = BinderNode::new(NodeKind::Scene, "Scene C", Some(inner_id), 0);
+        let c_id = c.id;
+        binder.nodes.extend([part, inner, c]);
+        assert_eq!(
+            binder.manuscript_containers(),
+            [(book, 0), (chapter, 1), (part_id, 1), (inner_id, 2)]
+        );
+        assert_eq!(
+            binder.scenes_under(book),
+            [(chapter, a), (chapter, b), (inner_id, c_id)]
+        );
+        assert_eq!(binder.scenes_under(inner_id), [(inner_id, c_id)]);
+        // Scenes in the trash are listed under the trash, not the book.
+        binder.trash(a).unwrap();
+        let trash = binder.trash_root().unwrap().id;
+        assert_eq!(binder.scenes_under(trash), [(trash, a)]);
+        assert_eq!(binder.scenes_under(book).len(), 2);
     }
 
     #[test]

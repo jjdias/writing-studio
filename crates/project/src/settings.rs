@@ -140,7 +140,7 @@ pub enum Theme {
 
 impl Default for Theme {
     fn default() -> Self {
-        Self::Dark
+        Self::Light
     }
 }
 
@@ -241,6 +241,10 @@ pub struct ProjectSettings {
     /// Serif or sans for the manuscript. Missing on older projects, which use serif.
     #[serde(default)]
     pub prose_font: ProseFont,
+    /// Binder items folded shut in the library and the scene list. Missing
+    /// on older projects, which open with everything showing.
+    #[serde(default)]
+    pub collapsed: Vec<Id>,
     /// Book whose compile, word count, and word target are shown. Missing means the first book.
     #[serde(default)]
     pub compile_book_id: Option<Id>,
@@ -296,8 +300,9 @@ impl Default for ProjectSettings {
             autosave_seconds: 2,
             writing: WritingLog::default(),
             layout: PanelLayout::default(),
-            theme: Theme::Dark,
+            theme: Theme::Light,
             prose_font: ProseFont::Serif,
+            collapsed: Vec::new(),
             compile_book_id: None,
             book_word_goals: Vec::new(),
             show_whole_series: true,
@@ -375,10 +380,10 @@ mod tests {
     }
 
     #[test]
-    fn theme_defaults_to_dark_and_roundtrips() {
+    fn theme_defaults_to_light_and_roundtrips() {
         let json = r#"{"daily_word_goal":1,"project_word_goal":2,"compile_title_page":true,"autosave_seconds":2}"#;
         let settings: ProjectSettings = serde_json::from_str(json).unwrap();
-        assert_eq!(settings.theme, Theme::Dark);
+        assert_eq!(settings.theme, Theme::Light);
         let saved = r#"{"daily_word_goal":1,"project_word_goal":2,"compile_title_page":true,"autosave_seconds":2,"theme":"paper"}"#;
         let settings: ProjectSettings = serde_json::from_str(saved).unwrap();
         assert_eq!(settings.theme, Theme::Paper);

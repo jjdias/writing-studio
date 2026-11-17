@@ -2,7 +2,6 @@
 //! `use super::*`, so an item one area uses from another is `pub(super)`.
 
 use std::collections::HashSet;
-use std::rc::Rc;
 
 use dioxus::prelude::*;
 use writing_studio_core::Id;
@@ -24,7 +23,7 @@ use writing_studio_spellcheck::UnknownWord;
 
 use crate::shortcuts::{app_shortcut, AppShortcut, IN_THE_MANUSCRIPT, LISTED};
 use crate::state::{
-    Beat, BibleLink, CompiledFormat, Earlier, FoldedPanel, FrameMenu, ReviewTab, StudioState, WorkspaceMode,
+    Beat, BibleLink, CompiledFormat, Earlier, FoldedPanel, FrameMenu, ReviewTab, SceneCard, SceneGroup, StudioState, WorkspaceMode,
     WorldSection,
 };
 
@@ -42,6 +41,7 @@ mod characters;
 mod plot;
 mod corkboard;
 mod outliner;
+mod library;
 
 use layout::*;
 use binder::*;
@@ -57,6 +57,7 @@ use characters::*;
 use plot::*;
 use corkboard::*;
 use outliner::*;
+use library::*;
 
 const STYLES: &str = include_str!("../../assets/style.css");
 const REVIEW_JS: &str = include_str!("../../assets/review.js");
@@ -231,20 +232,20 @@ fn Workspace() -> Element {
     let arrangement = *chrome.read();
     let fold = current_fold();
     let inspector_mode = mode.shows_inspector();
-    let binder_mode = mode.shows_binder();
-    let show_sidebar = !focus && arrangement.sidebar_visible && binder_mode && !fold.binder;
+    let list_mode = mode.shows_binder();
+    // The library is on screen in every mode; the scene list where scenes
+    // are chosen. Both fold away together in a narrow window.
+    let show_library = !focus && arrangement.sidebar_visible && !fold.binder;
+    let show_list = show_library && list_mode;
     let show_inspector =
         !focus && arrangement.inspector_visible && inspector_mode && !fold.inspector;
-    let overlay_binder =
-        !focus && fold.binder && binder_mode && overlay == Some(FoldedPanel::Binder);
+    let overlay_library = !focus && fold.binder && overlay == Some(FoldedPanel::Binder);
     let overlay_inspector =
         !focus && fold.inspector && inspector_mode && overlay == Some(FoldedPanel::Inspector);
-    let binder_on = binder_mode && if fold.binder { overlay_binder } else { arrangement.sidebar_visible };
+    let library_on = if fold.binder { overlay_library } else { arrangement.sidebar_visible };
     let inspector_on = inspector_mode && if fold.inspector { overlay_inspector } else { arrangement.inspector_visible };
-    // The binder is always on the left and the inspector on the right, over
-    // the page as beside it.
-    let overlay_left = overlay_binder;
-    let tab_title = {
+    let manuscript_view = matches!(mode, WorkspaceMode::Writing | WorkspaceMode::Corkboard | WorkspaceMode::Outliner);
+    let bar_title = {
         let current = state.read();
         if current.mode == WorkspaceMode::Writing {
             current
@@ -260,83 +261,66 @@ fn Workspace() -> Element {
         if menu_open {
             div { class: "menu-backdrop", onclick: move |_| state.write().open_menu = None }
         }
-        if !focus { TopBar {} }
         div { class: if focus { "workbench focus" } else { "workbench" },
-            nav { class: "activity", aria_label: "Modes",
-                for candidate in WorkspaceMode::ALL {
-                    button {
-                        class: if mode == candidate { "activity-btn active" } else { "activity-btn" },
-                        title: "{candidate.label()} ({mode_shortcut(candidate)})",
-                        aria_label: "{candidate.label()}",
-                        aria_current: if mode == candidate { "page" } else { "false" },
-                        onclick: move |_| {
-                            state.write().choose_mode(candidate);
-                        },
-                        ModeGlyph { mode: candidate }
-                        span { class: "activity-name", "{candidate.label()}" }
-                    }
-                }
-                div { class: "activity-spacer" }
-                div { class: "activity-toggles",
-                    button {
-                        class: if binder_on { "activity-toggle on" } else { "activity-toggle" },
-                        title: "Binder (Ctrl+Alt+B)",
-                        aria_label: "Binder",
-                        aria_pressed: "{binder_on}",
-                        disabled: !binder_mode,
-                        onclick: move |_| toggle_binder(state, chrome, fold),
-                        svg { class: "glyph", view_box: "0 0 16 16",
-                            path { d: "M1.5 2.5h13v11h-13zM6 2.5v11", fill: "none", stroke: "currentColor", stroke_width: "1.2" }
-                        }
-                        span { class: "activity-name", "Binder" }
-                    }
-                    button {
-                        class: if inspector_on { "activity-toggle on" } else { "activity-toggle" },
-                        title: "Inspector (Ctrl+Alt+I)",
-                        aria_label: "Inspector",
-                        aria_pressed: "{inspector_on}",
-                        disabled: !inspector_mode,
-                        onclick: move |_| toggle_inspector_panel(state, chrome, fold),
-                        svg { class: "glyph", view_box: "0 0 16 16",
-                            path { d: "M1.5 2.5h13v11h-13zM10 2.5v11", fill: "none", stroke: "currentColor", stroke_width: "1.2" }
-                        }
-                        span { class: "activity-name", "Inspector" }
-                    }
-                    button {
-                        class: if focus { "activity-toggle on" } else { "activity-toggle" },
-                        title: "Focus (Ctrl+Shift+F)",
-                        aria_label: "Focus",
-                        aria_pressed: "{focus}",
-                        onclick: move |_| {
-                            let next = !state.read().focus_mode;
-                            state.write().focus_mode = next;
-                        },
-                        svg { class: "glyph", view_box: "0 0 16 16",
-                            path { d: "M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4", fill: "none", stroke: "currentColor", stroke_width: "1.2" }
-                        }
-                        span { class: "activity-name", "Focus" }
-                    }
-                }
-            }
             // A panel over the page comes where it shows, so Tab reaches it
-            // in the order it is seen: left of the page here, right of it
-            // after the page.
-            if (overlay_binder || overlay_inspector) && overlay_left {
+            // in the order it is seen.
+            if overlay_library {
                 div { class: "overlay-backdrop", onclick: move |_| state.write().overlay = None }
                 div { class: "overlay overlay-left",
-                    if overlay_binder { Explorer {} } else { InspectorPane {} }
+                    Library {}
+                    if list_mode { SceneList {} }
                 }
             }
-            if show_sidebar {
-                Explorer {}
+            if show_library { Library {} }
+            if show_list {
+                SceneList {}
                 Sash { kind: ResizeKind::Sidebar, positive: true }
             }
             div { class: "editor-group",
-                div { class: "tabs",
-                    div { class: "tab active",
-                        span { class: "tab-label", "{tab_title}" }
+                if !focus {
+                    header { class: "work-bar",
+                        IconButton {
+                            name: "Library (Ctrl+Alt+B)",
+                            open: library_on,
+                            onclick: move |_| toggle_binder(state, chrome, fold),
+                            path { d: "M1.5 2.5h13v11h-13zM6 2.5v11", fill: "none", stroke: "currentColor", stroke_width: "1.2" }
+                        }
+                        if manuscript_view {
+                            div { class: "view-switch", role: "group", aria_label: "Show the scenes as",
+                                for (view, label) in [(WorkspaceMode::Writing, "Page"), (WorkspaceMode::Corkboard, "Cards"), (WorkspaceMode::Outliner, "Outline")] {
+                                    button {
+                                        class: if mode == view { "view-option active" } else { "view-option" },
+                                        aria_pressed: "{mode == view}",
+                                        title: "{view.label()} ({mode_shortcut(view)})",
+                                        onclick: move |_| {
+                                            state.write().choose_mode(view);
+                                        },
+                                        "{label}"
+                                    }
+                                }
+                            }
+                        }
+                        span { class: "work-title", title: "{bar_title}", "{bar_title}" }
                         if unsaved {
                             span { class: "tab-dirty", role: "img", aria_label: "Unsaved changes", title: "Unsaved changes" }
+                        }
+                        div { class: "work-spacer" }
+                        IconButton {
+                            name: "Focus (Ctrl+Shift+F)",
+                            open: false,
+                            onclick: move |_| {
+                                let next = !state.read().focus_mode;
+                                state.write().focus_mode = next;
+                            },
+                            path { d: "M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4", fill: "none", stroke: "currentColor", stroke_width: "1.2" }
+                        }
+                        if inspector_mode {
+                            IconButton {
+                                name: "Inspector (Ctrl+Alt+I)",
+                                open: inspector_on,
+                                onclick: move |_| toggle_inspector_panel(state, chrome, fold),
+                                path { d: "M1.5 2.5h13v11h-13zM10 2.5v11", fill: "none", stroke: "currentColor", stroke_width: "1.2" }
+                            }
                         }
                     }
                 }
@@ -357,11 +341,9 @@ fn Workspace() -> Element {
                 Sash { kind: ResizeKind::Inspector, positive: false }
                 InspectorPane {}
             }
-            if (overlay_binder || overlay_inspector) && !overlay_left {
+            if overlay_inspector {
                 div { class: "overlay-backdrop", onclick: move |_| state.write().overlay = None }
-                div { class: "overlay overlay-right",
-                    if overlay_binder { Explorer {} } else { InspectorPane {} }
-                }
+                div { class: "overlay overlay-right", InspectorPane {} }
             }
         }
         if focus {
@@ -369,63 +351,6 @@ fn Workspace() -> Element {
             div { class: "focus-count", aria_live: "polite", "{state.read().word_count()} words" }
         } else {
             StatusBar {}
-        }
-    }
-}
-
-/// The project and the book, and the menus for the whole project.
-#[component]
-fn TopBar() -> Element {
-    let mut state = use_context::<Signal<StudioState>>();
-    let title = state.read().project_title();
-    let menu = state.read().open_menu;
-    let syncing = state.read().syncing;
-    let connected = state.read().sync_connected();
-    let project_open = menu == Some(FrameMenu::Project);
-    let settings_open = menu == Some(FrameMenu::Settings);
-    rsx! {
-        header { class: "topbar",
-            span { class: "topbar-project", title: "{title}", "{title}" }
-            CompileBookSelect {}
-            div { class: "topbar-spacer" }
-            if connected {
-                button {
-                    title: "Send this machine's changes and bring in the others', through git",
-                    disabled: syncing,
-                    onclick: move |_| run_sync(state),
-                    if syncing { "Syncing…" } else { "Sync" }
-                }
-            }
-            div { class: "menu-anchor",
-                button {
-                    class: if project_open { "menu-btn open" } else { "menu-btn" },
-                    aria_haspopup: "menu",
-                    aria_expanded: "{project_open}",
-                    onclick: move |_| state.write().toggle_menu(FrameMenu::Project),
-                    "Project"
-                }
-                if project_open { ProjectMenu {} }
-            }
-            div { class: "menu-anchor",
-                button {
-                    class: if settings_open { "menu-btn open" } else { "menu-btn" },
-                    aria_haspopup: "dialog",
-                    aria_expanded: "{settings_open}",
-                    onclick: move |_| state.write().toggle_menu(FrameMenu::Settings),
-                    "Settings"
-                }
-                if settings_open { SettingsPanel {} }
-            }
-            button {
-                title: "Keyboard shortcuts (Ctrl+/)",
-                aria_haspopup: "dialog",
-                onclick: move |_| {
-                    let mut current = state.write();
-                    current.open_menu = None;
-                    current.show_shortcuts = true;
-                },
-                "Help"
-            }
         }
     }
 }
@@ -613,7 +538,7 @@ fn SettingsPanel() -> Element {
 /// a count that does not fit drops out whole, and the save state stays.
 #[component]
 fn StatusBar() -> Element {
-    let mut state = use_context::<Signal<StudioState>>();
+    let state = use_context::<Signal<StudioState>>();
     let status = state.read().status.clone();
     let mode = state.read().mode;
     let words = state.read().word_count();
@@ -625,7 +550,6 @@ fn StatusBar() -> Element {
     let session_words = state.read().current_book_words_this_session();
     let session_time = format_elapsed(state.read().session_shown_secs);
     let unsaved = state.read().has_unsaved();
-    let goals_open = state.read().open_menu == Some(FrameMenu::Goals);
     let book_text = if goal > 0 {
         format!("{book_title}: {book_words} of {goal} words")
     } else {
@@ -639,17 +563,7 @@ fn StatusBar() -> Element {
     let save_text = if unsaved { format!("Unsaved · {status}") } else { status };
     rsx! {
         footer { class: "status",
-            div { class: "menu-anchor",
-                button {
-                    class: "status-goals",
-                    title: "Word targets",
-                    aria_haspopup: "dialog",
-                    aria_expanded: "{goals_open}",
-                    onclick: move |_| state.write().toggle_menu(FrameMenu::Goals),
-                    "{book_text}"
-                }
-                if goals_open { GoalsPanel {} }
-            }
+            span { class: "status-book", title: "{book_text}", "{book_text}" }
             div { class: "status-stats",
                 if mode == WorkspaceMode::Writing {
                     span { "Scene {words}" }
@@ -669,7 +583,7 @@ fn GoalsPanel() -> Element {
     let daily_goal = state.read().daily_goal();
     let book_title = state.read().compile_book_title();
     rsx! {
-        div { class: "menu popover menu-up", role: "dialog", aria_label: "Word targets",
+        div { class: "menu popover", role: "dialog", aria_label: "Word targets",
             label { r#for: "goal-daily", "Words a day" }
             input {
                 id: "goal-daily",
@@ -711,28 +625,3 @@ fn apply_goal(mut state: Signal<StudioState>, value: String, daily: bool) {
     }
 }
 
-fn CompileBookSelect() -> Element {
-    let mut state = use_context::<Signal<StudioState>>();
-    let books = state.read().manuscript_book_choices();
-    let current = state.read().compile_book_id();
-    if books.is_empty() {
-        return rsx! {};
-    }
-    let value = current.map(|id| id.to_string()).unwrap_or_default();
-    rsx! {
-        select {
-            class: "compile-select",
-            title: "Current book. Export, the word target, and the binder follow this book.",
-            aria_label: "Current book",
-            value: "{value}",
-            onchange: move |event| {
-                if let Ok(id) = event.value().parse::<Id>() {
-                    state.write().set_compile_book(id);
-                }
-            },
-            for (id, title) in books {
-                option { value: "{id}", selected: current == Some(id), "{title}" }
-            }
-        }
-    }
-}

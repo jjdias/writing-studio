@@ -4,14 +4,8 @@ use super::*;
 pub(super) fn EditorPane() -> Element {
     let mut state = use_context::<Signal<StudioState>>();
     let snapshot = state.read().clone();
-    let heading = snapshot
-        .selected_node()
-        .map(|node| node.title.clone())
-        .unwrap_or_else(|| "Select a scene".into());
-    let kind = snapshot
-        .selected_node()
-        .map(|node| node.kind.icon_label())
-        .unwrap_or("Document");
+    let node = snapshot.selected_node().cloned();
+    let words = snapshot.word_count();
     let html = snapshot.editor_html.clone();
     let epoch = snapshot.editor_epoch;
     let focus = snapshot.focus_mode;
@@ -37,11 +31,20 @@ pub(super) fn EditorPane() -> Element {
     rsx! {
         div { class: "editor-pane",
             if !focus {
-                div { class: "breadcrumb", "{kind} › {heading}" }
                 FormatToolbar { enabled: can_edit, marks, prompt }
             }
             div { class: if side { "editor-body side" } else { "editor-body" },
                 div { class: "desk",
+                    // The scene's title is the page's heading, renamed in
+                    // place, with the word count small at its right.
+                    div { class: "page-head",
+                        if let Some(node) = node.clone() {
+                            PageTitle { key: "{node.id}-{node.title}", id: node.id, title: node.title.clone(), editable: !node.kind.is_root() }
+                        } else {
+                            h1 { class: "page-title", "Choose a scene" }
+                        }
+                        span { class: "page-words", "{words} words" }
+                    }
                     div {
                         key: "{epoch}",
                         class: "manuscript rich",
@@ -985,4 +988,53 @@ fn PromptField(at: InlinePrompt, prompt: Signal<Option<InlinePrompt>>) -> Elemen
             button { onclick: move |_| cancel(), "Cancel" }
         }
     }
+}
+
+/// The scene's title at the top of the page. It is a field, so the title is
+/// renamed where it is read; Enter or leaving it keeps the change.
+#[component]
+fn PageTitle(id: Id, title: String, editable: bool) -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let mut draft = use_signal(|| title.clone());
+    if !editable {
+        return rsx! { h1 { class: "page-title", "{title}" } };
+    }
+    rsx! {
+        input {
+            class: "page-title",
+            aria_label: "Scene title",
+            placeholder: "Untitled scene",
+            value: "{draft}",
+            oninput: move |event| draft.set(event.value()),
+            onkeydown: move |event| match event.key() {
+                Key::Enter => {
+                    event.prevent_default();
+                    state.write().rename_item(id, &draft());
+                    focus_dom_now("[data-manuscript]");
+                }
+                Key::Escape => {
+                    event.stop_propagation();
+                    draft.set(title.clone());
+                }
+                _ => {}
+            },
+            onblur: move |_| {
+                if draft().trim().is_empty() {
+                    draft.set(state.read().binder.get(id).map(|node| node.title.clone()).unwrap_or_default());
+                } else {
+                    state.write().rename_item(id, &draft());
+                }
+            },
+        }
+    }
+}
+
+/// Move the focus to the first element matching a selector.
+fn focus_dom_now(selector: &'static str) {
+    spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(16)).await;
+        let script = format!("document.querySelector('{selector}')?.focus(); dioxus.send(true);");
+        let mut eval = document::eval(&script);
+        let _ = eval.recv::<bool>().await;
+    });
 }

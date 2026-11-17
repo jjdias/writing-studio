@@ -6,9 +6,9 @@ pub(super) fn InspectorPane() -> Element {
     let width = widths.read().inspector;
     rsx! {
         aside {
-            class: "secondary",
+            class: "secondary dashboard",
+            aria_label: "Dashboard",
             style: "width: {width}px; flex: 0 0 {width}px;",
-            div { class: "view-title", "Inspector" }
             Inspector {}
         }
     }
@@ -20,12 +20,9 @@ pub(super) fn Inspector() -> Element {
     let node: Option<BinderNode> = state.read().selected_node().cloned();
     rsx! {
         if let Some(node) = node {
-            label { "Title" }
-            input {
-                value: "{node.title}",
-                oninput: move |event| state.write().update_selected_title(event.value()),
-                onblur: move |_| state.write().save_all(),
-            }
+            // The title is the heading on the page, so it is renamed there.
+            Progress {}
+            div { class: "dash-heading", "Scene" }
             label { "Synopsis" }
             textarea {
                 class: "synopsis",
@@ -289,5 +286,52 @@ pub(super) fn SnapshotCompare() -> Element {
                 },
             }
         }
+    }
+}
+
+/// Words a reader gets through in a minute, for the reading time.
+const READING_WORDS_PER_MINUTE: u32 = 230;
+
+/// "1 min 18 sec", or "18 sec" under a minute.
+pub(super) fn reading_time(words: u32) -> String {
+    let seconds = words * 60 / READING_WORDS_PER_MINUTE;
+    match (seconds / 60, seconds % 60) {
+        (0, seconds) => format!("{seconds} sec"),
+        (minutes, 0) => format!("{minutes} min"),
+        (minutes, seconds) => format!("{minutes} min {seconds} sec"),
+    }
+}
+
+/// The open scene's size, at the top of the dashboard.
+#[component]
+fn Progress() -> Element {
+    let state = use_context::<Signal<StudioState>>();
+    let words = state.read().word_count();
+    let characters = state
+        .read()
+        .session
+        .as_ref()
+        .map(|session| session.plain_text().chars().count())
+        .unwrap_or(0);
+    rsx! {
+        div { class: "dash-heading", "Progress" }
+        dl { class: "dash-facts",
+            dt { "Characters" } dd { "{characters}" }
+            dt { "Words" } dd { "{words}" }
+            dt { "Reading time" } dd { "{reading_time(words)}" }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reading_time_is_in_minutes_and_seconds() {
+        assert_eq!(reading_time(0), "0 sec");
+        assert_eq!(reading_time(115), "30 sec");
+        assert_eq!(reading_time(230), "1 min");
+        assert_eq!(reading_time(313), "1 min 21 sec");
     }
 }

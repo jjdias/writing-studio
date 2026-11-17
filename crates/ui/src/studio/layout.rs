@@ -69,8 +69,8 @@ pub(super) fn reveal_sidebar(state: Signal<StudioState>, mut chrome: Signal<Pane
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) struct WindowWidth(pub(super) u32);
 
-/// Matches `.activity` in `style.css`.
-const ACTIVITY_WIDTH: u32 = 64;
+/// Matches `.library` in `style.css`.
+const LIBRARY_WIDTH: u32 = 232;
 /// The narrowest the page may get before a side panel folds away.
 const PAGE_MIN_WIDTH: u32 = 400;
 
@@ -83,10 +83,11 @@ pub(super) struct Fold {
 }
 
 /// The inspector folds first, once the page would be narrower than
-/// `PAGE_MIN_WIDTH` beside both panels, then the binder. With the default
-/// widths that is about 1,000 and 720 pixels.
+/// `PAGE_MIN_WIDTH` beside both panels, then the library and the scene list
+/// together (the `binder` fold). With the default
+/// widths that is about 1,200 and 900 pixels.
 pub(super) fn fold_for(window: u32, widths: PanelWidths) -> Fold {
-    let beside_binder = ACTIVITY_WIDTH + widths.sidebar + PAGE_MIN_WIDTH;
+    let beside_binder = LIBRARY_WIDTH + widths.sidebar + PAGE_MIN_WIDTH;
     Fold {
         binder: window < beside_binder,
         inspector: window < beside_binder + widths.inspector,

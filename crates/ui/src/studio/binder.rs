@@ -1,199 +1,5 @@
 use super::*;
 
-/// A binder row's height, as `.binder-item` sets it in `style.css`. Drops
-/// read the pointer's height on the row against it.
-const BINDER_ROW_HEIGHT: f64 = 26.0;
-
-#[component]
-pub(super) fn Explorer() -> Element {
-    let mut state = use_context::<Signal<StudioState>>();
-    let widths = use_context::<Signal<PanelWidths>>();
-    let width = widths.read().sidebar;
-    let title = state.read().project_title();
-    let mode = state.read().mode;
-    let search = state.read().search.clone();
-    let add_open = state.read().open_menu == Some(FrameMenu::Add);
-    let add = move |kind: NodeKind| {
-        move |_| {
-            state.write().open_menu = None;
-            state.write().add_node(kind);
-        }
-    };
-    rsx! {
-        aside {
-            class: "sidebar",
-            style: "width: {width}px; flex: 0 0 {width}px;",
-            div { class: "view-title",
-                span { "{mode.view_title()}" }
-            }
-            div { class: "section-label", "{title}" }
-            input {
-                id: "binder-search",
-                class: "search",
-                placeholder: "Search titles and text",
-                title: "Ctrl+F",
-                value: "{search}",
-                oninput: move |event| state.write().search = event.value(),
-            }
-            div { class: "binder-tools",
-                button { title: "New chapter (Ctrl+Shift+N)", onclick: move |_| state.write().add_node(NodeKind::Chapter), "Chapter" }
-                button { title: "New scene (Ctrl+N)", onclick: move |_| state.write().add_node(NodeKind::Scene), "Scene" }
-                div { class: "menu-anchor",
-                    button {
-                        class: if add_open { "menu-btn open" } else { "menu-btn" },
-                        title: "Add a book, a part, or a folder",
-                        aria_haspopup: "menu",
-                        aria_expanded: "{add_open}",
-                        onclick: move |_| state.write().toggle_menu(FrameMenu::Add),
-                        "Add"
-                    }
-                    if add_open {
-                        div { class: "menu", role: "menu", aria_label: "Add",
-                            button { class: "menu-item", role: "menuitem", title: "Another novel under the manuscript", onclick: add(NodeKind::Book), "Book" }
-                            button { class: "menu-item", role: "menuitem", onclick: add(NodeKind::Part), "Part" }
-                            button { class: "menu-item", role: "menuitem", onclick: add(NodeKind::Folder), "Folder" }
-                        }
-                    }
-                }
-            }
-            div { class: "binder-tools", SeriesScopeSelect {} }
-            BinderTreeView {}
-        }
-    }
-}
-
-#[component]
-pub(super) fn BinderTreeView() -> Element {
-    let state = use_context::<Signal<StudioState>>();
-    let snapshot = state.read().clone();
-    let roots: Vec<Id> = snapshot
-        .binder
-        .children(None)
-        .into_iter()
-        .filter(|node| node.kind != NodeKind::ResearchRoot)
-        .map(|node| node.id)
-        .collect();
-    let hits = Rc::new(snapshot.content_hits());
-    rsx! {
-        div { class: "binder",
-            for id in roots {
-                BinderNodeView { id, depth: 0, hits: hits.clone() }
-            }
-        }
-    }
-}
-
-#[component]
-pub(super) fn BinderNodeView(id: Id, depth: u32, hits: Rc<HashSet<Id>>) -> Element {
-    let mut state = use_context::<Signal<StudioState>>();
-    let snapshot = state.read().clone();
-    let Some(node) = snapshot.binder.get(id).cloned() else {
-        return rsx! {};
-    };
-    if !node_in_series_scope(&snapshot.binder, id, snapshot.series_scope()) {
-        return rsx! {};
-    }
-    if !binder_matches(&snapshot.binder, id, &snapshot.search, &hits) {
-        return rsx! {};
-    }
-    let selected = snapshot.selected == Some(id);
-    let dragging = snapshot.dragging == Some(id);
-    let drop_target = snapshot.drop_target == Some(id);
-    let drop_place = snapshot.drop_place;
-    let drop_ok = snapshot
-        .dragging
-        .is_some_and(|dragged| snapshot.binder.drop_allowed_at(dragged, id, drop_place));
-    let trashed = snapshot.binder.is_in_trash(id) && node.kind != NodeKind::TrashRoot;
-    let can_drag = !node.kind.is_root();
-    let children: Vec<Id> = snapshot
-        .binder
-        .children(Some(id))
-        .into_iter()
-        .map(|child| child.id)
-        .collect();
-    let pad = 8 + depth * 16;
-    let class = binder_item_class(selected, dragging, drop_target, drop_ok, trashed);
-    let class = match (drop_target && drop_ok, drop_place) {
-        (true, DropPlace::Before) => format!("{class} drop-before"),
-        (true, DropPlace::After) => format!("{class} drop-after"),
-        _ => class,
-    };
-    let missing = snapshot.is_missing(id);
-    let class = if missing { format!("{class} missing") } else { class };
-    let color = binder_color_hex(&node.color);
-    let label = node.label.clone();
-    let is_trash = node.kind == NodeKind::TrashRoot;
-
-    rsx! {
-        div { class: "binder-row",
-        button {
-            class: "{class}",
-            style: "padding-left: {pad}px",
-            title: if missing { "This item's file could not be read. History says which file." } else { "" },
-            draggable: can_drag,
-            onclick: move |_| state.write().select_node(id),
-            ondragstart: move |event| {
-                event.stop_propagation();
-                state.write().begin_drag(id);
-            },
-            // The pointer's height on the row picks before, inside, or after.
-            // It fires for every move, so it writes only when that changes.
-            ondragover: move |event| {
-                event.prevent_default();
-                event.stop_propagation();
-                let y = event.element_coordinates().y;
-                let place = DropPlace::at(y, BINDER_ROW_HEIGHT, state.peek().drag_fits_inside(id));
-                let current = state.peek();
-                let changed = current.drop_target != Some(id) || current.drop_place != place;
-                drop(current);
-                if changed {
-                    state.write().set_binder_drop(id, place);
-                }
-            },
-            ondrop: move |event| {
-                event.prevent_default();
-                event.stop_propagation();
-                state.write().drop_in_binder(id);
-            },
-            ondragend: move |_| state.write().end_drag(),
-            if !color.is_empty() {
-                span { class: "swatch", style: "background: {color}", title: "{label}" }
-            }
-            KindGlyph { kind: node.kind }
-            span { class: "binder-title", "{node.title}" }
-            if missing {
-                span { class: "binder-label", "missing" }
-            }
-            if !label.is_empty() {
-                span { class: "binder-label", "{label}" }
-            }
-        }
-        if is_trash {
-            TrashActions {}
-        }
-        }
-        for child in children {
-            BinderNodeView { id: child, depth: depth + 1, hits: hits.clone() }
-        }
-    }
-}
-
-pub(super) fn node_in_series_scope(
-    tree: &writing_studio_project::BinderTree,
-    id: Id,
-    scope: Option<Id>,
-) -> bool {
-    let Some(book) = scope else {
-        return true;
-    };
-    if tree.get(id).is_some_and(|node| node.kind.is_root()) {
-        return true;
-    }
-    if !tree.in_manuscript(id) {
-        return true;
-    }
-    tree.book_of(id) == Some(book)
-}
 
 pub(super) fn binder_matches(
     tree: &writing_studio_project::BinderTree,
@@ -218,31 +24,6 @@ pub(super) fn binder_matches(
         .any(|child| binder_matches(tree, child.id, query, hits))
 }
 
-pub(super) fn binder_item_class(
-    selected: bool,
-    dragging: bool,
-    drop_target: bool,
-    drop_ok: bool,
-    trashed: bool,
-) -> String {
-    let mut class = String::from("binder-item");
-    if selected {
-        class.push_str(" selected");
-    }
-    if dragging {
-        class.push_str(" dragging");
-    }
-    if drop_target && drop_ok {
-        class.push_str(" drop-target");
-    }
-    if drop_target && !drop_ok {
-        class.push_str(" drop-invalid");
-    }
-    if trashed {
-        class.push_str(" trashed");
-    }
-    class
-}
 
 /// The kind of a binder item, as a small icon with the kind as its name.
 #[component]
@@ -267,48 +48,26 @@ pub(super) fn KindGlyph(kind: NodeKind) -> Element {
     }
 }
 
-/// Moving to the trash, restoring, and emptying it, on the Trash row and
-/// away from the buttons that add.
+/// Restoring and emptying, at the top of the Trash's scene list, away
+/// from the buttons that add. Moving to the trash is in the inspector, or a drop on Trash.
 #[component]
 pub(super) fn TrashActions() -> Element {
     let mut state = use_context::<Signal<StudioState>>();
-    let mut open = use_signal(|| false);
-    let selected = state.read().selected;
-    let can_trash = selected.is_some_and(|id| {
-        let current = state.read();
-        current.binder.get(id).is_some_and(|node| !node.kind.is_root()) && !current.binder.is_in_trash(id)
-    });
-    let selected_in_trash = selected.is_some_and(|id| {
+    let selected_in_trash = state.read().selected.is_some_and(|id| {
         let current = state.read();
         current.binder.is_in_trash(id) && current.binder.get(id).is_some_and(|node| !node.kind.is_root())
     });
     let confirm_empty = state.read().confirm_empty_trash;
     rsx! {
-        button {
-            class: if open() { "row-menu open" } else { "row-menu" },
-            title: "Trash actions",
-            aria_label: "Trash actions",
-            aria_expanded: "{open()}",
-            onclick: move |_| open.set(!open()),
-            "⋯"
-        }
-        if open() {
-            div { class: "row-actions",
-                button {
-                    disabled: !can_trash,
-                    title: "Move the selected item to the trash",
-                    onclick: move |_| state.write().trash_selected(),
-                    "Move selected here"
-                }
-                if selected_in_trash {
-                    button { class: "primary", onclick: move |_| state.write().restore_selected(), "Restore selected" }
-                }
-                button {
-                    class: danger(confirm_empty),
-                    title: "Delete everything in the trash for good. Asks for a second click.",
-                    onclick: move |_| state.write().empty_trash(),
-                    if confirm_empty { "Confirm empty" } else { "Empty trash" }
-                }
+        div { class: "row-actions",
+            if selected_in_trash {
+                button { class: "primary", onclick: move |_| state.write().restore_selected(), "Restore selected" }
+            }
+            button {
+                class: danger(confirm_empty),
+                title: "Delete everything in the trash for good. Asks for a second click.",
+                onclick: move |_| state.write().empty_trash(),
+                if confirm_empty { "Confirm empty" } else { "Empty trash" }
             }
         }
     }

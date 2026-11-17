@@ -24,7 +24,7 @@ A `.writingstudio` folder is the whole project, kept as plain files you can open
 
 ## Write
 
-- Select a scene in the binder. Type in the manuscript. It is set on a page in a reading font, about seventy characters to the line. **Settings** → **Manuscript font** chooses serif or sans serif for this computer; code blocks stay in a fixed-width font.
+- Choose a scene in the scene list. Type in the manuscript. It is set on a page in a reading font, about seventy characters to the line. **Settings** → **Manuscript font** chooses serif or sans serif for this computer; code blocks stay in a fixed-width font.
 - The format toolbar is one row: **Bold**, **Italic**, the paragraph style (Body, Heading 1 to 3, Code), **Quote**, **List**, **Link**, **Note**, and **More**. A button is lit when its mark is on at the caret. Clicking one leaves the caret and the selection where they were.
 - **More** holds Underline, Strikethrough, Numbered list, Scene break, the highlight colors, Remove highlight, Remove link, Remove note, and Track changes.
 - **Link** and **Note** ask in a small field under the selection. Enter adds it; Escape or **Cancel** leaves the text as it was. A note's field also sets what it is for: Comment, Question, Revise, or Check. The note is saved with the scene, on that text. **More** → **Remove note** takes it off; the text stays.
@@ -38,20 +38,22 @@ A `.writingstudio` folder is the whole project, kept as plain files you can open
 
 ## Search
 
-The binder field searches titles and manuscript text. **Ctrl+F** focuses it. On the corkboard, **Ctrl+F** focuses the scene filter instead.
+The search field at the top of the scene list searches the shown scenes' titles and text. **Ctrl+F** focuses it. On the corkboard, **Ctrl+F** focuses the scene filter instead.
 
 The index is built in memory from the project when it opens, and updated when a document is saved. It is not a file in the project folder. The `.writingstudio` folder stays the source of truth.
 
-**Escape** closes an open menu, or a binder or inspector shown over the page. Otherwise it cancels a delete or restore that is waiting for its second click, or leaves focus mode when it is on, or clears the corkboard filter when that field has text, and otherwise clears the binder search.
+**Escape** closes an open menu, or the library or inspector shown over the page. Otherwise it cancels a delete or restore that is waiting for its second click, or leaves focus mode when it is on, or clears the corkboard filter when that field has text, and otherwise clears the binder search.
 
 ## Organize
 
-- **Chapter** and **Scene** above the binder add those. **Add** holds **Book**, **Part**, and **Folder**. **Book** adds another novel under the same manuscript. **Ctrl+N** adds a scene when a project is open. **Ctrl+Shift+N** adds a chapter. Characters, world notes, plot, and research stay with the project. Research notes are edited in **Research**, not in the binder.
-- Each binder row shows its kind as a small icon. The book menu above the binder shows the book on screen, or **Whole series**.
-- **Whole series** in the binder, corkboard, and outliner shows every book. Pick a book there, or in the compile menu, to make that book the one on screen, the one compiled, and the one in the status bar. The project remembers that choice. **Whole series** shows every book again and leaves compile and the status bar on the last book. Selecting a scene points compile and the status bar at that scene's book. New chapters, parts, scenes, and manuscript folders are added inside the book on screen. A scene with nothing selected goes in its last chapter. New folders go in the book on screen.
-- The inspector edits title, synopsis, status, label, and color, at the top. Label and color are for items that are not roots. Colors are None, Gold, Green, Red, Blue, and Violet. The label shows on the binder row. Below them, **Beats and diagnostics** and **Snapshots** fold away from their headings. **Move to trash** sits apart at the bottom. The inspector is on screen in Writing only; **Ctrl+Alt+I** still shows or hides it for when you return.
-- Drag a chapter, scene, part, or folder anywhere in the binder, within a book or into another one. The top edge of a row puts it before that row, the bottom edge after it, and the middle inside it when that row can hold it; a line or an outline shows where it will go. Dropped on a row whose level cannot hold it, an item goes beside the nearest level that can: a chapter dropped on a scene goes next to that scene's chapter. Drop on **Trash** to discard.
-- The **⋯** on the **Trash** row holds **Move selected here**, **Restore selected**, and **Empty trash**, away from the buttons that add. **Restore** returns a trashed item to its previous parent when that parent still exists.
+- The window has three columns. The **library** on the left shows the project's name, the current book's words against its target (click it to set the targets), and the manuscript's books, parts, chapters, and folders. Choose one, and the **scene list** beside it shows its scenes, grouped by chapter, each with its first lines and its status as a colored pill. Choose a scene to write it on the page. **+ Add** in the library adds a chapter, part, book, or folder; the pencil at the top of the scene list adds a scene. **Ctrl+N** adds a scene and **Ctrl+Shift+N** a chapter. Characters, world notes, plot, and research are under **Extras** in the library. Research notes are edited in **Research**.
+- Choosing a book in the library makes it the current book: its words and target are the ones shown, and it is the one exported. Draft, Revise, and Final statuses have their own colors; any other status keeps a color of its own.
+- **Whole series** on the corkboard and in the outliner shows every book. Pick a book there, or in the library, to make that book the one on screen, the one compiled, and the one in the status bar. The project remembers that choice. **Whole series** shows every book again and leaves compile and the status bar on the last book. Selecting a scene points compile and the status bar at that scene's book. New chapters, parts, scenes, and manuscript folders are added inside the book on screen. A scene with nothing selected goes in its last chapter. New folders go in the book on screen.
+- The scene's title is the large heading at the top of the page; click it to rename the scene, and **Enter** or leaving it keeps the name. The word count is small at its right. The dashboard on the right (the inspector button in the bar over the page, or **Ctrl+Alt+I**) shows the scene's **Progress** (characters, words, and reading time), then its synopsis, status, label, and color. Label and color are for items that are not roots. Colors are None, Gold, Green, Red, Blue, and Violet. Below them, **Beats and diagnostics** and **Snapshots** fold away from their headings, and **Move to trash** sits apart at the bottom. The dashboard is in Writing only.
+- In the scene list, each chapter heading has a small ring that fills as its scenes reach a final status.
+- Drag a scene in the scene list, or a chapter, part, or folder in the library, anywhere it can go, within a book or into another one. The top edge of a row or card puts the item before it, the bottom edge after it, and the middle of a library row inside it; a line or an outline shows where. A scene dropped on a library row goes into it. A chapter dropped on a scene goes beside that scene's chapter. Drop on **Trash** to discard.
+- The × at the right of a library row or a scene card, shown when the pointer is over it or Tab reaches it, moves that item to the trash with what it holds. The scene that is open stays open unless it went too. **Move to trash** is also in the inspector. Choose **Trash** in the library to see what is in it, with **Restore selected** and **Empty trash** above the list.
+- Double-click a book, part, chapter, or folder in the library, or press **F2** on it, to rename it there. **Enter** or leaving the field keeps the name, **Escape** leaves it as it was, and a name cannot be empty.
 - **Empty trash** asks for a second click, then deletes those items from the local database. Permanently deleting a book drops its word target. If it was the compile book, compile and the status bar move to the first book that remains.
 
 ## Corkboard
@@ -84,21 +86,21 @@ Once a project is synced, **History** → **Earlier syncs** lists the selected s
 
 ## Compile
 
-The top bar shows the project's name and the current book, then the **Project** menu: **Save**, **Backup**, **Import Markdown files…**, and the exports.
+The library's three small buttons under the goal are the **Project** menu (**Save**, **Backup**, **Import Markdown files…**, and the exports), **Settings**, and the keyboard shortcuts. **Sync** is there too once the project is connected.
 
 - **Project** → **Markdown…** or **DOCX…** exports the current book. Choose where to save. In a Markdown compile, open notes are footnotes numbered across the book.
 - **Project** → **Markdown folder…** writes the whole project as a folder of Markdown files: every scene in reading order, the bible, and a `README.md` that lists them. Use it to read the book anywhere, or to take it to another writing program.
 - **Project** → **Import Markdown files…** brings Markdown files in as new scenes, where a new scene would go. A title in the file's front matter is used; otherwise the file's name.
-- The book menu in the top bar chooses which novel is compiled. Other books stay out of the file. The title page uses that book's title.
+- The current book is the one exported: choose it in the library, or open one of its scenes. Other books stay out of the file. The title page uses that book's title.
 - Research and trash are not included.
 
 ## Targets
 
-The status bar shows the current book's words and target first, then in Writing the open scene, then words added today, this sitting, and the save state. A count that does not fit in a narrow window is left out. The book's total matches the outliner for the book chosen for compile: each scene, and a chapter only when that chapter has no scenes. Research notes are not included. Today and the sitting use that book's own baselines, so another book's count does not change them. The daily target is still one number for the project. Click the book's count to set both targets; they are saved in the project. **History** lists completed sittings. A sitting is stored the next time you open the project, when any book added words. Today's count for each book starts again on the next local day.
+The status bar shows the current book's words and target first, then in Writing the open scene, then words added today, this sitting, and the save state. A count that does not fit in a narrow window is left out. The book's total matches the outliner for the book chosen for compile: each scene, and a chapter only when that chapter has no scenes. Research notes are not included. Today and the sitting use that book's own baselines, so another book's count does not change them. The daily target is still one number for the project. Click the goal under the project's name in the library to set both targets; they are saved in the project. **History** lists completed sittings. A sitting is stored the next time you open the project, when any book added words. Today's count for each book starts again on the next local day.
 
 ## Modes
 
-Writing, Corkboard, Outliner, Plot, Characters, World, Research, History. The binder is on screen in Writing, Corkboard, Outliner, and History; Plot, Characters, World, and Research are each a list beside an editor. A mode with nothing in it says what goes there and has the button that adds the first one. The activity bar lists them by name in that order, and **Ctrl+1** to **Ctrl+8** follow it. In a short window the names show on hover and focus. Choosing the mode that is open does nothing. Below the modes, **Binder** and **Inspector** show or hide those panels, and **Focus** hides everything but the page and a word count. **Escape** leaves it.
+Writing, Corkboard, Outliner, Plot, Characters, World, Research, History. **Ctrl+1** to **Ctrl+8** open them in that order. Over the page, **Page**, **Cards**, and **Outline** show the chosen scenes as the page, the corkboard, or the outliner; the other modes are under **Extras** in the library. The scene list is beside the page in Writing and History. A mode with nothing in it says what goes there and has the button that adds the first one. Choosing the mode that is open does nothing. The bar over the page also has **Focus**, which hides everything but the page and a word count (**Escape** leaves it), and in Writing the inspector button.
 
 ## Plot
 
@@ -120,9 +122,9 @@ Writing, Corkboard, Outliner, Plot, Characters, World, Research, History. The bi
 
 The arrangement is saved in the project. Drag the edge of the binder or the inspector to resize it. The binder width stays between 180 and 480 pixels. The inspector width stays between 220 and 560. Double-click that edge to reset the width. The binder is on the left and the inspector on the right.
 
-**Binder** at the bottom of the activity bar, or **Ctrl+Alt+B**, shows or hides the binder. **Inspector**, or **Ctrl+Alt+I**, shows or hides the inspector. **Ctrl+B** still bolds the selection in the manuscript.
+The library button at the left of the bar over the page, or **Ctrl+Alt+B**, shows or hides the library and the scene list. The inspector button at its right, or **Ctrl+Alt+I**, shows or hides the inspector. **Ctrl+B** still bolds the selection in the manuscript.
 
-In a narrow window the inspector folds away first, then the binder, so the page keeps its room: with the default widths, below about 1,000 and 720 pixels wide. A folded panel comes back over the page from its button; a click beside it or **Escape** closes it. The window is never smaller than 720 × 520.
+In a narrow window the inspector folds away first, then the library and the scene list, so the page keeps its room: with the default widths, below about 1,200 and 900 pixels wide. A folded panel comes back over the page from its button; a click beside it or **Escape** closes it. The window is never smaller than 720 × 520.
 
 ## Spelling
 

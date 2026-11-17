@@ -1,6 +1,6 @@
 # Phase 9 — Writing comfort, from Ulysses
 
-Not started.
+In progress: stage 1 is done.
 
 Phase 8 rebuilt the window around writing. This phase takes what the Ulysses writing app does well for the writer at the page, and fits it to how Writing Studio works: rich text on a page, a binder of books, chapters, and scenes, and everything on the writer's computer. It does not wait for Phase 6 or 7.
 
@@ -43,6 +43,8 @@ The window after Phase 8 still reads as a tool: a dark activity bar, panels with
 - **Chrome type.** The system UI font at a size that reads easily (13 to 14 px), headings in weight rather than capitals, and no uppercase labels except the small section headings.
 
 Checked by the existing state and contrast tests, plus state tests for what each column shows when a library row is chosen. How it looks is not tested, as in Phase 8.
+
+**Where it stands.** Done: Light is the default and its colors are the brighter set above, with library, active-row, and status-pill tokens in every theme (all in the contrast test). The library column (`studio/library.rs`) replaces the activity bar and the top bar: project name, goal ring, Project, Settings, and shortcuts buttons, the manuscript's containers (`BinderTree::manuscript_containers`), Extras, and Trash. The scene list groups the chosen container's scenes by chapter (`StudioState::scene_groups`), with each scene's opening kept by the search index (`ManuscriptIndex::opening`) and its status pill. Library rows and scene cards keep the free drag and drop. A slim bar over the page holds the library toggle, Page / Cards / Outline, focus, and the inspector toggle. Then: the scene title is the page's heading, renamed in place, with the word count at its right (`PageTitle`); each chapter heading in the scene list has a ring that fills as its scenes reach a final status; the inspector is the dashboard, with Progress (characters, words, reading time) above the scene's fields; and labels are in sentence case, not capitals. The review panel's tabs stay under or beside the page rather than moving into the dashboard: they need the page's width for tracked changes, and Beside already puts them in a column. **Stage 1 is done.**
 
 ### 2. Page settings
 
