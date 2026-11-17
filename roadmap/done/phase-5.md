@@ -122,6 +122,17 @@ Checked by a test of the window's state that syncs two drafts, lists them, compa
 - Two people editing at the same time. This is bonus work.
 - Encrypting a project. A private repository is as private as its host makes it.
 
+## Phase 5.1, item 9 — Line breaks typed in a paragraph show in the window
+
+A line break typed in a paragraph (Shift+Enter) was kept in the scene, but shown as a space when the scene was opened again: the HTML the editor is given (`to_html` in `crates/document/src/html.rs`) wrote it as a line break in the text, which a browser shows as a space. Two faults beside it, in the same code:
+
+- The reader took every `<br>` before any text as the browser's empty-paragraph placeholder, so a break at the start of a paragraph was lost.
+- An empty paragraph between two others was dropped when the scene was read back from the editor.
+
+Now a break is written as `<br>`. An empty block, and one that ends with a break, get the extra `<br>` a browser uses there, and the reader takes off only that one. Code blocks keep their breaks as text, as a browser shows them. The markup matches what the browser engine produces when Shift+Enter is typed.
+
+Checked by a test of breaks in the middle, at the start, at the end, alone, and doubled, an empty paragraph between two others, and a code block; and by typing Shift+Enter in the browser engine to see its markup.
+
 ## Phase 5.1, item 7 — No link leads out of the project
 
 A project can come from someone else's repository, and git carries symbolic links. A link inside a project could make the program read or write somewhere else on the computer.

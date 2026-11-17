@@ -2,7 +2,7 @@
 
 In progress. These are gaps found while building Phase 5. None of them is in the Phase 5 plan, and each one matters before writers keep real books in format 2.
 
-Items 1, 2, 5, and 7 are done. Items 3 and 4 were dropped. Items 6, 8, 9, and 10 are small; do each when the code it touches is next changed.
+Items 1, 2, 5, 7, and 9 are done. Items 3 and 4 were dropped. Items 6, 8, and 10 are left.
 
 ## Before you start
 
@@ -91,9 +91,7 @@ Items 1, 2, 5, and 7 are done. Items 3 and 4 were dropped. Items 6, 8, 9, and 10
 
 ## 9. Show line breaks typed in a paragraph
 
-**The problem.** The HTML the editor is given (`to_html` in `crates/document/src/html.rs`) writes a line break inside a paragraph as a plain line break in the text, not as `<br>`. The editor's styles do not keep line breaks in text, so a browser shows it as a space. A line break typed in a paragraph is kept in the file, but looks like a space when the scene is opened again in the window. This is older than Phase 5; the stored format is not affected.
-
-**How to fix it.** Write `<br>` for `\n` in `inline_to_html` in `crates/document/src/html.rs`; the reader there already turns `<br>` back into a line break. Add a test next to `empty_browser_paragraph_stays_empty` that a paragraph with a line break gives `<br>` and reads back the same.
+**Done.** See [../done/phase-5.md](../done/phase-5.md), "Phase 5.1, item 9".
 
 ## 10. Update the guides for format 2
 

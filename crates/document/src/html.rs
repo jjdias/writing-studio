@@ -23,38 +23,46 @@ impl Document {
 
 fn block_to_html(block: &Block) -> String {
     match &block.kind {
-        BlockKind::Paragraph { inlines } => format!("<p>{}</p>", inlines_to_html(inlines)),
+        BlockKind::Paragraph { inlines } => format!("<p>{}</p>", inlines_to_html(inlines, true)),
         BlockKind::Heading { level, inlines } => {
             let level = (*level).clamp(1, 6);
-            format!("<h{level}>{}</h{level}>", inlines_to_html(inlines))
+            format!("<h{level}>{}</h{level}>", inlines_to_html(inlines, true))
         }
         BlockKind::Quote { inlines } => {
-            format!("<blockquote>{}</blockquote>", inlines_to_html(inlines))
+            format!("<blockquote>{}</blockquote>", inlines_to_html(inlines, true))
         }
         BlockKind::List { ordered, items } => {
             let tag = if *ordered { "ol" } else { "ul" };
             let body: String = items
                 .iter()
-                .map(|item| format!("<li>{}</li>", inlines_to_html(&item.inlines)))
+                .map(|item| format!("<li>{}</li>", inlines_to_html(&item.inlines, true)))
                 .collect();
             format!("<{tag}>{body}</{tag}>")
         }
-        BlockKind::Code { inlines } => format!("<pre>{}</pre>", inlines_to_html(inlines)),
+        BlockKind::Code { inlines } => format!("<pre>{}</pre>", inlines_to_html(inlines, false)),
         BlockKind::SceneBreak => "<hr>".into(),
     }
 }
 
-fn inlines_to_html(inlines: &[Inline]) -> String {
-    if inlines.is_empty() {
-        return String::new();
+/// `breaks` writes a line break as `<br>`, as a browser shows one outside
+/// code. A browser also shows nothing for an empty block, and hides a final
+/// `<br>`, so one more is added for an empty block or one ending in a break.
+fn inlines_to_html(inlines: &[Inline], breaks: bool) -> String {
+    let mut out: String = inlines.iter().map(|inline| inline_to_html(inline, breaks)).collect();
+    let text: String = inlines.iter().map(|inline| inline.text.as_str()).collect();
+    if breaks && (text.is_empty() || text.ends_with('\n')) {
+        out.push_str("<br>");
     }
-    inlines.iter().map(inline_to_html).collect()
+    out
 }
 
-fn inline_to_html(inline: &Inline) -> String {
+fn inline_to_html(inline: &Inline, breaks: bool) -> String {
     let mut body = escape_text(&inline.text);
     if body.is_empty() {
         return body;
+    }
+    if breaks {
+        body = body.replace('\n', "<br>");
     }
     if inline.marks.strikethrough {
         body = format!("<s>{body}</s>");
@@ -116,6 +124,9 @@ fn parse_html(html: &str) -> Vec<Block> {
     let mut list_ordered = false;
     let mut in_list = false;
     let mut block_tag: Option<OpenBlock> = None;
+    // The last thing read was a `<br>`; at the end of a block it is the
+    // browser's placeholder, not a break the writer typed.
+    let mut last_br = false;
 
     for token in tokens {
         match token {
@@ -124,31 +135,32 @@ fn parse_html(html: &str) -> Vec<Block> {
                 if text.is_empty() {
                     continue;
                 }
+                last_br = false;
                 push_text(&mut current_inlines, &text, &marks);
             }
             Token::Start(tag, attrs) => match tag.as_str() {
                 "p" | "div" => {
                     if !in_list {
-                        flush_named_block(&mut blocks, &mut current_inlines, block_tag);
+                        flush_named_block(&mut blocks, &mut current_inlines, block_tag, &mut last_br);
                         block_tag = Some(OpenBlock::Paragraph);
                     }
                 }
                 "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
-                    flush_named_block(&mut blocks, &mut current_inlines, block_tag);
+                    flush_named_block(&mut blocks, &mut current_inlines, block_tag, &mut last_br);
                     let level = tag.as_bytes()[1].saturating_sub(b'0');
                     block_tag = Some(OpenBlock::Heading(level.clamp(1, 6)));
                 }
                 "blockquote" => {
-                    flush_named_block(&mut blocks, &mut current_inlines, block_tag);
+                    flush_named_block(&mut blocks, &mut current_inlines, block_tag, &mut last_br);
                     block_tag = Some(OpenBlock::Quote);
                 }
                 "pre" => {
                     close_list(&mut blocks, &mut list_items, list_ordered, &mut in_list);
-                    flush_named_block(&mut blocks, &mut current_inlines, block_tag);
+                    flush_named_block(&mut blocks, &mut current_inlines, block_tag, &mut last_br);
                     block_tag = Some(OpenBlock::Code);
                 }
                 "ul" | "ol" => {
-                    flush_named_block(&mut blocks, &mut current_inlines, block_tag);
+                    flush_named_block(&mut blocks, &mut current_inlines, block_tag, &mut last_br);
                     in_list = true;
                     list_ordered = tag == "ol";
                     list_items.clear();
@@ -159,7 +171,7 @@ fn parse_html(html: &str) -> Vec<Block> {
                 }
                 "hr" => {
                     close_list(&mut blocks, &mut list_items, list_ordered, &mut in_list);
-                    flush_named_block(&mut blocks, &mut current_inlines, block_tag);
+                    flush_named_block(&mut blocks, &mut current_inlines, block_tag, &mut last_br);
                     block_tag = None;
                     blocks.push(Block {
                         id: Id::new(),
@@ -167,11 +179,8 @@ fn parse_html(html: &str) -> Vec<Block> {
                     });
                 }
                 "br" => {
-                    // An empty contenteditable paragraph is `<p><br></p>`. That break is a
-                    // caret placeholder, not a line the writer typed.
-                    if current_inlines.iter().any(|inline| !inline.text.trim().is_empty()) {
-                        push_text(&mut current_inlines, "\n", &marks);
-                    }
+                    push_text(&mut current_inlines, "\n", &marks);
+                    last_br = true;
                 }
                 "strong" | "b" => marks.bold = true,
                 "em" | "i" => marks.italic = true,
@@ -212,14 +221,17 @@ fn parse_html(html: &str) -> Vec<Block> {
             Token::End(tag) => match tag.as_str() {
                 "p" | "div" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "blockquote" | "pre" => {
                     if !(in_list && matches!(tag.as_str(), "p" | "div")) {
-                        flush_named_block(&mut blocks, &mut current_inlines, block_tag);
+                        flush_named_block(&mut blocks, &mut current_inlines, block_tag, &mut last_br);
                         block_tag = None;
                     }
                 }
                 "li" => {
                     list_items.push(ListItem {
                         id: Id::new(),
-                        inlines: take_inlines(&mut current_inlines),
+                        inlines: {
+                            drop_placeholder(&mut current_inlines, &mut last_br);
+                            take_inlines(&mut current_inlines)
+                        },
                     });
                 }
                 "ul" | "ol" => {
@@ -250,7 +262,7 @@ fn parse_html(html: &str) -> Vec<Block> {
             },
         }
     }
-    flush_named_block(&mut blocks, &mut current_inlines, block_tag);
+    flush_named_block(&mut blocks, &mut current_inlines, block_tag, &mut last_br);
     if blocks.is_empty() {
         blocks.push(Block::paragraph(""));
     }
@@ -293,7 +305,25 @@ fn close_list(
     *in_list = false;
 }
 
-fn flush_named_block(blocks: &mut Vec<Block>, inlines: &mut Vec<Inline>, tag: Option<OpenBlock>) {
+/// Take off the `<br>` a browser puts at the end of an empty block, or after
+/// a break that ends a block.
+fn drop_placeholder(inlines: &mut [Inline], last_br: &mut bool) {
+    if std::mem::take(last_br) {
+        if let Some(last) = inlines.last_mut() {
+            if last.text.ends_with('\n') {
+                last.text.pop();
+            }
+        }
+    }
+}
+
+fn flush_named_block(
+    blocks: &mut Vec<Block>,
+    inlines: &mut Vec<Inline>,
+    tag: Option<OpenBlock>,
+    last_br: &mut bool,
+) {
+    drop_placeholder(inlines, last_br);
     if inlines.is_empty() {
         return;
     }
@@ -523,6 +553,33 @@ mod tests {
         assert_eq!(doc.to_html(), before);
         doc.replace_html("<p>one<br>two</p>");
         assert_eq!(doc.to_plain_text(), "one\ntwo");
+    }
+
+    /// A browser shows a line break in text as a space, so a break typed in a
+    /// paragraph must reach the editor as `<br>`, and come back the same.
+    #[test]
+    fn line_breaks_in_a_paragraph_reach_the_editor_and_come_back() {
+        for text in ["one\ntwo", "\nstarts with a break", "ends with a break\n", "\n", "a\n\nb"] {
+            let mut doc = Document::new(Id::new());
+            doc.blocks = vec![Block::paragraph(text)];
+            let html = doc.to_html();
+            assert!(!html.contains('\n'), "{text:?} gave {html:?}");
+            let mut back = Document::new(doc.id);
+            back.replace_html(&html);
+            assert_eq!(back.to_plain_text(), text, "{html:?}");
+            assert_eq!(back.to_html(), html);
+        }
+        // An empty paragraph between two others stays, as the browser shows it.
+        let mut doc = Document::new(Id::new());
+        doc.replace_html("<p>a</p><p><br></p><p>b</p>");
+        assert_eq!(doc.blocks.len(), 3);
+        assert_eq!(doc.to_html(), "<p>a</p><p><br></p><p>b</p>");
+        // Code keeps its line breaks as text.
+        doc.blocks = vec![Block {
+            id: Id::new(),
+            kind: BlockKind::Code { inlines: vec![Inline::text("let a;\nlet b;")] },
+        }];
+        assert_eq!(doc.to_html(), "<pre>let a;\nlet b;</pre>");
     }
 
     #[test]
