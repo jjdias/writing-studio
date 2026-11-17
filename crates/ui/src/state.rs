@@ -45,6 +45,18 @@ pub enum WorkspaceMode {
 }
 
 impl WorkspaceMode {
+    /// The activity bar's order, which Ctrl+1 to Ctrl+8 follow.
+    pub const ALL: [WorkspaceMode; 8] = [
+        WorkspaceMode::Writing,
+        WorkspaceMode::Corkboard,
+        WorkspaceMode::Outliner,
+        WorkspaceMode::Plot,
+        WorkspaceMode::Characters,
+        WorkspaceMode::World,
+        WorkspaceMode::Research,
+        WorkspaceMode::History,
+    ];
+
     pub fn label(self) -> &'static str {
         match self {
             Self::Writing => "Writing",
@@ -70,6 +82,21 @@ impl WorkspaceMode {
             Self::History => "History",
         }
     }
+}
+
+/// A menu or small panel opened from the top bar or the status bar.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FrameMenu {
+    Project,
+    Settings,
+    Goals,
+}
+
+/// A side panel that has folded away in a narrow window.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FoldedPanel {
+    Binder,
+    Inspector,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -200,6 +227,9 @@ pub struct StudioState {
     pub confirm_research: Option<Id>,
     pub mode: WorkspaceMode,
     pub focus_mode: bool,
+    pub open_menu: Option<FrameMenu>,
+    /// A folded panel shown over the page until it is closed.
+    pub overlay: Option<FoldedPanel>,
     pub status: String,
     pub new_title: String,
     pub confirm_backup: Option<PathBuf>,
@@ -276,6 +306,8 @@ impl Default for StudioState {
             confirm_research: None,
             mode: WorkspaceMode::Writing,
             focus_mode: false,
+            open_menu: None,
+            overlay: None,
             status: "Offline · Local-first".into(),
             new_title: "Untitled Novel".into(),
             confirm_backup: None,
@@ -1715,6 +1747,35 @@ impl StudioState {
         if self.writing_day_needs_roll() {
             self.begin_writing_session();
         }
+    }
+
+    /// Open a mode, leaving focus mode. Choosing the mode that is already
+    /// open does nothing. Returns whether anything changed.
+    pub fn choose_mode(&mut self, mode: WorkspaceMode) -> bool {
+        if self.mode == mode && !self.focus_mode {
+            return false;
+        }
+        self.mode = mode;
+        self.focus_mode = false;
+        self.open_menu = None;
+        true
+    }
+
+    /// Open a menu, or close it when it is the one already open.
+    pub fn toggle_menu(&mut self, menu: FrameMenu) {
+        self.open_menu = if self.open_menu == Some(menu) { None } else { Some(menu) };
+    }
+
+    /// Show a folded panel over the page, or close it when it is showing.
+    pub fn toggle_overlay(&mut self, panel: FoldedPanel) {
+        self.open_menu = None;
+        self.overlay = if self.overlay == Some(panel) { None } else { Some(panel) };
+    }
+
+    /// Close the open menu, or else the panel shown over the page. Escape
+    /// does this before anything else. Returns whether one was open.
+    pub fn close_popup(&mut self) -> bool {
+        self.open_menu.take().is_some() || self.overlay.take().is_some()
     }
 
     /// Cancel a delete or restore that is waiting for its second click.
@@ -3749,6 +3810,36 @@ mod tests {
         state.remove_character(id);
         assert_eq!(state.cast.characters.len(), 1);
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn choosing_the_open_mode_does_nothing() {
+        let mut state = StudioState::default();
+        assert!(!state.choose_mode(WorkspaceMode::Writing));
+        assert!(state.choose_mode(WorkspaceMode::Plot));
+        assert_eq!(state.mode, WorkspaceMode::Plot);
+        assert!(!state.choose_mode(WorkspaceMode::Plot));
+        // From focus mode, the same mode brings the window back.
+        state.focus_mode = true;
+        assert!(state.choose_mode(WorkspaceMode::Plot));
+        assert!(!state.focus_mode);
+    }
+
+    #[test]
+    fn escape_closes_the_menu_and_then_the_overlay() {
+        let mut state = StudioState::default();
+        state.toggle_overlay(FoldedPanel::Binder);
+        state.toggle_menu(FrameMenu::Project);
+        state.toggle_menu(FrameMenu::Settings);
+        assert_eq!(state.open_menu, Some(FrameMenu::Settings));
+        assert!(state.close_popup());
+        assert_eq!(state.overlay, Some(FoldedPanel::Binder));
+        assert!(state.close_popup());
+        assert!(!state.close_popup());
+        // A second click on the same menu closes it.
+        state.toggle_menu(FrameMenu::Goals);
+        state.toggle_menu(FrameMenu::Goals);
+        assert_eq!(state.open_menu, None);
     }
 
     #[test]

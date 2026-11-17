@@ -44,16 +44,6 @@ pub(super) fn Explorer() -> Element {
                 button { title: "New chapter (Ctrl+Shift+N)", onclick: move |_| state.write().add_node(NodeKind::Chapter), "Chapter" }
                 button { title: "New scene (Ctrl+N)", onclick: move |_| state.write().add_node(NodeKind::Scene), "Scene" }
                 button { title: "New folder", onclick: move |_| state.write().add_node(NodeKind::Folder), "Folder" }
-                button {
-                    title: "Bring Markdown files in as new scenes",
-                    onclick: move |_| {
-                        let files = pick_markdown_files();
-                        if !files.is_empty() {
-                            state.write().import_markdown_files(files);
-                        }
-                    },
-                    "Import"
-                }
             }
             div { class: "binder-tools",
                 button { onclick: move |_| state.write().trash_selected(), "Trash" }

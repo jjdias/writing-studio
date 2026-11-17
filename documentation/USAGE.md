@@ -40,7 +40,7 @@ The binder field searches titles and manuscript text. **Ctrl+F** focuses it. On 
 
 The index is built in memory from the project when it opens, and updated when a document is saved. It is not a file in the project folder. The `.writingstudio` folder stays the source of truth.
 
-**Escape** cancels a delete or restore that is waiting for its second click. Otherwise it leaves zen mode when it is on, or clears the corkboard filter when that field has text, and otherwise clears the binder search.
+**Escape** closes an open menu, or a binder or inspector shown over the page. Otherwise it cancels a delete or restore that is waiting for its second click, or leaves focus mode when it is on, or clears the corkboard filter when that field has text, and otherwise clears the binder search.
 
 ## Organize
 
@@ -79,19 +79,21 @@ Once a project is synced, **History** → **Earlier syncs** lists the selected s
 
 ## Compile
 
-- **Markdown** or **DOCX** in the top bar. Choose where to save. In a Markdown compile, open notes are footnotes numbered across the book.
-- **Markdown folder** in the top bar writes the whole project as a folder of Markdown files: every scene in reading order, the bible, and a `README.md` that lists them. Use it to read the book anywhere, or to take it to another writing program.
-- **Import** in the binder brings Markdown files in as new scenes, where a new scene would go. A title in the file's front matter is used; otherwise the file's name.
-- The book menu next to those buttons chooses which novel is compiled. Other books stay out of the file. The title page uses that book's title.
+The top bar shows the project's name and the current book, then the **Project** menu: **Save**, **Backup**, **Import Markdown files…**, and the exports.
+
+- **Project** → **Markdown…** or **DOCX…** exports the current book. Choose where to save. In a Markdown compile, open notes are footnotes numbered across the book.
+- **Project** → **Markdown folder…** writes the whole project as a folder of Markdown files: every scene in reading order, the bible, and a `README.md` that lists them. Use it to read the book anywhere, or to take it to another writing program.
+- **Project** → **Import Markdown files…** brings Markdown files in as new scenes, where a new scene would go. A title in the file's front matter is used; otherwise the file's name.
+- The book menu in the top bar chooses which novel is compiled. Other books stay out of the file. The title page uses that book's title.
 - Research and trash are not included.
 
 ## Targets
 
-The status bar shows this document, this sitting, and words added today. The labeled total matches the outliner for the book chosen for compile: each scene, and a chapter only when that chapter has no scenes. Research notes are not included. Today and the sitting use that book's own baselines, so another book's count does not change them. The daily target is still one number for the project. Both targets are editable there and saved in the project. **History** lists completed sittings. A sitting is stored the next time you open the project, when any book added words. Today's count for each book starts again on the next local day.
+The status bar shows the current book's words and target first, then in Writing the open scene, then words added today, this sitting, and the save state. A count that does not fit in a narrow window is left out. The book's total matches the outliner for the book chosen for compile: each scene, and a chapter only when that chapter has no scenes. Research notes are not included. Today and the sitting use that book's own baselines, so another book's count does not change them. The daily target is still one number for the project. Click the book's count to set both targets; they are saved in the project. **History** lists completed sittings. A sitting is stored the next time you open the project, when any book added words. Today's count for each book starts again on the next local day.
 
 ## Modes
 
-Writing, Corkboard, Outliner, Plot, Characters, World, Research, History. The activity bar lists them in that order. Click the active icon again to hide the binder. **Zen mode** on that bar hides the binder and inspector.
+Writing, Corkboard, Outliner, Plot, Characters, World, Research, History. The activity bar lists them by name in that order, and **Ctrl+1** to **Ctrl+8** follow it. In a short window the names show on hover and focus. Choosing the mode that is open does nothing. Below the modes, **Binder** and **Inspector** show or hide those panels, and **Focus** hides the binder and inspector.
 
 ## Plot
 
@@ -113,7 +115,9 @@ Writing, Corkboard, Outliner, Plot, Characters, World, Research, History. The ac
 
 The arrangement is saved in the project. Drag the edge of the binder or the inspector to resize it. The binder width stays between 180 and 480 pixels. The inspector width stays between 220 and 560. Double-click that edge to reset the width. The arrow in the binder header moves the binder to the other side; the inspector stays on the opposite side.
 
-Click the active activity-bar icon again to hide the binder, or press **Ctrl+Alt+B**. **Ctrl+Alt+I** shows or hides the inspector. **Ctrl+B** still bolds the selection in the manuscript.
+**Binder** at the bottom of the activity bar, or **Ctrl+Alt+B**, shows or hides the binder. **Inspector**, or **Ctrl+Alt+I**, shows or hides the inspector. **Ctrl+B** still bolds the selection in the manuscript.
+
+In a narrow window the inspector folds away first, then the binder, so the page keeps its room: with the default widths, below about 1,000 and 720 pixels wide. A folded panel comes back over the page from its button; a click beside it or **Escape** closes it. The window is never smaller than 720 × 520.
 
 ## Spelling
 
@@ -121,13 +125,13 @@ Click the active activity-bar icon again to hide the binder, or press **Ctrl+Alt
 - Click a word in the list to select it in the manuscript and see suggestions. A suggestion replaces **every** copy of that word in the open scene, as one undo step. **Find next** moves to the next copy. **Add to project dictionary** accepts the word everywhere in this project.
 - **Project dictionary** lists the accepted words. Click one to take it out.
 - Words in character, place, and culture names are accepted without adding them. Numbers, single letters, and words in capitals are not checked.
-- The status bar menu **Spelling** chooses the dictionary or turns spellcheck off. English (US) is built in. For another language, put its Hunspell files (`name.aff` and `name.dic`) in a `dictionaries` folder inside the project folder and reopen the project. Dictionaries installed on the computer in the usual Hunspell folders are listed too.
+- **Settings** → **Spelling** in the top bar chooses the dictionary or turns spellcheck off. English (US) is built in. For another language, put its Hunspell files (`name.aff` and `name.dic`) in a `dictionaries` folder inside the project folder and reopen the project. Dictionaries installed on the computer in the usual Hunspell folders are listed too.
 - Spellcheck runs on this computer. No text leaves it.
 - Underlines need a recent webview. Where they do not show, the list still works.
 
 ## Themes
 
-The status bar theme list saves **Dark**, **Light**, or **Paper** in the project. Dark matches VS Code Dark+. Light matches VS Code Light+. Paper keeps the warm chrome and sets the manuscript on a cream page.
+**Settings** → **Theme** in the top bar saves **Dark**, **Light**, or **Paper** in the project. Dark matches VS Code Dark+. Light matches VS Code Light+. Paper keeps the warm chrome and sets the manuscript on a cream page.
 
 ## Keyboard
 
@@ -139,16 +143,16 @@ The status bar theme list saves **Dark**, **Light**, or **Paper** in the project
 | **Ctrl+Y**, **Ctrl+Shift+Z** | Redo |
 | **Ctrl+B** | Bold the selection in the manuscript |
 | **Ctrl+F** | Search. On the corkboard, focuses the scene filter |
-| **Ctrl+Shift+F**, **Ctrl+\\** | Zen mode |
-| **Escape** | Cancel a waiting delete, or leave zen mode, or clear the corkboard filter, or clear binder search |
+| **Ctrl+Shift+F**, **Ctrl+\\** | Focus mode |
+| **Escape** | Close a menu or a panel over the page, or cancel a waiting delete, or leave focus mode, or clear the corkboard filter, or clear binder search |
 | **Ctrl+1** | Writing |
 | **Ctrl+2** | Corkboard |
 | **Ctrl+3** | Outliner |
-| **Ctrl+4** | History |
-| **Ctrl+5** | Plot |
-| **Ctrl+6** | Characters |
-| **Ctrl+7** | World |
-| **Ctrl+8** | Research |
+| **Ctrl+4** | Plot |
+| **Ctrl+5** | Characters |
+| **Ctrl+6** | World |
+| **Ctrl+7** | Research |
+| **Ctrl+8** | History |
 | **Ctrl+N** | New scene, when a project is open |
 | **Ctrl+Shift+N** | New chapter |
 | **Ctrl+O** | Open project |

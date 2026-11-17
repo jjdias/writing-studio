@@ -34,8 +34,6 @@
   --diff-del-bg: rgba(241, 76, 76, 0.2);
   --diff-del-line: #f14c4c;
   --code-bg: #2d2d2d;
-  --status: #007acc;
-  --status-fg: #ffffff;
   --tab-fg: #ffffff;
   --input-border: #4a4a4f;
   --font: Consolas, "Cascadia Mono", "Segoe UI Mono", monospace;
@@ -74,8 +72,6 @@
   --diff-del-bg: rgba(229, 20, 0, 0.13);
   --diff-del-line: #c21807;
   --code-bg: #f3f3f3;
-  --status: #007acc;
-  --status-fg: #ffffff;
   --tab-fg: #333333;
 }
 
@@ -111,8 +107,6 @@
   --diff-del-bg: rgba(190, 70, 50, 0.2);
   --diff-del-line: #a8402f;
   --code-bg: #efe6d4;
-  --status: #6e5430;
-  --status-fg: #f6f1e7;
   --tab-fg: #f3ead7;
   --font: Georgia, "Iowan Old Style", Palatino, "Palatino Linotype", serif;
 }
@@ -208,12 +202,12 @@ button.primary:hover { background: var(--primary-hover); }
 button.danger { background: transparent; border-color: var(--danger); color: var(--danger); }
 button.danger:hover, button.danger.armed { background: var(--danger); color: #ffffff; }
 /* Buttons in a bar or a list, which read as text until hovered. */
-.format-toolbar button:not(.hl-btn), .editor-actions button, .view-action,
+.format-toolbar button:not(.hl-btn), .view-action, .status-goals,
 .review-item .review-anchor, .cast-list button.cast-name {
   background: transparent;
   border-color: transparent;
 }
-.format-toolbar button:not(.hl-btn):hover, .editor-actions button:hover,
+.format-toolbar button:not(.hl-btn):hover, .status-goals:hover,
 .view-action:hover, .cast-list button.cast-name:hover { background: var(--hover); }
 .binder-item.selected {
   background: var(--selection);
@@ -224,35 +218,166 @@ button.danger:hover, button.danger.armed { background: var(--danger); color: #ff
   flex: 1;
   min-height: 0;
   display: flex;
+  position: relative;
   background: var(--panel);
 }
+/* The width is ACTIVITY_WIDTH in studio/layout.rs. */
 .activity {
-  width: 48px;
-  flex: 0 0 48px;
+  width: 64px;
+  flex: 0 0 64px;
   background: var(--activity);
   display: flex;
   flex-direction: column;
   align-items: stretch;
 }
-.activity-btn {
-  width: 48px;
-  height: 48px;
+.activity-btn, .activity-toggle {
+  position: relative;
+  width: 64px;
   border: 0;
   border-left: 2px solid transparent;
   border-radius: 0;
   background: transparent;
-  color: rgba(255, 255, 255, 0.45);
-  display: grid;
-  place-items: center;
+  color: rgba(255, 255, 255, 0.6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
   padding: 0;
 }
-.activity-btn:hover { color: #ffffff; background: transparent; }
-.activity-btn.active {
-  color: #ffffff;
-  border-left-color: #ffffff;
-}
+.activity-btn { height: 52px; }
+.activity-toggle { height: 36px; }
+.activity-btn:hover, .activity-toggle:hover { color: #ffffff; background: rgba(255, 255, 255, 0.06); }
+.activity-btn.active { color: #ffffff; border-left-color: #ffffff; }
+.activity-toggle.on { color: #ffffff; }
+.activity-btn:focus-visible, .activity-toggle:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
+.activity-name { font-size: 10px; line-height: 1; white-space: nowrap; }
+.activity-btn .glyph, .activity-toggle .glyph { width: 20px; height: 20px; }
 .activity-spacer { flex: 1; }
+.activity-toggles { border-top: 1px solid rgba(255, 255, 255, 0.12); padding: 4px 0; }
+/* Where there is no room for a name under the icon, it shows beside the
+   button on hover and focus. */
+.activity-toggle .activity-name {
+  display: none;
+  position: absolute;
+  left: calc(100% + 6px);
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 40;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius);
+  pointer-events: none;
+}
+.activity-toggle:hover .activity-name, .activity-toggle:focus-visible .activity-name { display: block; }
+@media (max-height: 640px) {
+  .activity-btn { height: 40px; }
+  .activity-btn .activity-name {
+    display: none;
+    position: absolute;
+    left: calc(100% + 6px);
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 40;
+    padding: 4px 8px;
+    font-size: 12px;
+    color: var(--text);
+    background: var(--panel-2);
+    border: 1px solid var(--control-border);
+    border-radius: var(--radius);
+    pointer-events: none;
+  }
+  .activity-btn:hover .activity-name, .activity-btn:focus-visible .activity-name { display: block; }
+}
 .glyph { width: 24px; height: 24px; display: block; }
+
+/* A folded side panel, shown over the page from its button. */
+.overlay-backdrop {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 64px;
+  right: 0;
+  z-index: 19;
+  background: rgba(0, 0, 0, 0.28);
+}
+.overlay {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  max-width: calc(100% - 64px - 48px);
+  box-shadow: 0 0 18px rgba(0, 0, 0, 0.35);
+}
+.overlay-left { left: 64px; }
+.overlay-right { right: 0; }
+.overlay > .sidebar, .overlay > .secondary { max-width: 100%; }
+
+.topbar {
+  height: 36px;
+  flex: 0 0 36px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 0 12px;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--line);
+  min-width: 0;
+}
+.topbar-project {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  max-width: 40%;
+}
+.topbar-spacer { flex: 1; }
+.topbar button { flex: 0 0 auto; }
+
+/* Menus and small panels opened from a bar. One is open at a time; a click
+   outside or Escape closes it. */
+.menu-backdrop { position: fixed; inset: 0; z-index: 30; }
+.menu-anchor { position: relative; flex: 0 0 auto; }
+.menu-btn.open { background: var(--control-hover); border-color: var(--gold); }
+.menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 31;
+  min-width: 13rem;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel-2);
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+}
+.menu-end { left: auto; right: 0; }
+.menu-up { top: auto; bottom: calc(100% + 4px); }
+.menu-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  text-align: left;
+  font-size: 13px;
+  padding: 5px 10px;
+  background: transparent;
+  border-color: transparent;
+}
+.menu-item:hover { background: var(--hover); }
+.menu-hint { color: var(--muted); font-size: 12px; }
+.menu-rule { height: 1px; margin: 4px 2px; background: var(--line); }
+.menu-label { padding: 6px 10px 2px; font-size: 11px; color: var(--muted); }
+.popover { padding: 4px 12px 12px; min-width: 15rem; }
+.popover label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+.popover input, .popover select { width: 100%; }
 
 .sidebar, .secondary {
   background: var(--panel-2);
@@ -309,7 +434,7 @@ button.danger:hover, button.danger.armed { background: var(--danger); color: #ff
   padding: 0 24px 0 6px;
   font-size: 11px;
 }
-.compile-select { height: 24px; }
+.compile-select { height: 26px; font-size: 12px; max-width: 14rem; flex: 0 1 auto; min-width: 6rem; }
 .pane-title { font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); margin: 18px 0 8px; }
 
 .binder { overflow: auto; padding: 0 0 12px; }
@@ -380,14 +505,6 @@ button.danger:hover, button.danger.armed { background: var(--danger); color: #ff
   background: var(--tab-fg);
   flex: 0 0 auto;
 }
-.editor-actions {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding-right: 6px;
-}
-.editor-actions button { height: 26px; }
 
 .center { flex: 1; min-width: 0; min-height: 0; background: var(--panel); overflow: auto; }
 .editor-pane { height: 100%; display: flex; flex-direction: column; min-height: 0; }
@@ -645,37 +762,43 @@ del.diff-removed { background: var(--diff-del-bg); text-decoration: line-through
 .compare-summary .diff-removed { color: var(--diff-del-line); }
 
 .status {
-  height: 22px;
-  flex: 0 0 22px;
+  height: 24px;
+  flex: 0 0 24px;
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  gap: 12px;
-  padding: 0 8px;
+  gap: 14px;
+  padding: 0 8px 0 4px;
   font-size: 12px;
-  color: var(--status-fg);
-  background: var(--status);
+  color: var(--muted);
+  background: var(--panel-2);
+  border-top: 1px solid var(--line);
+  white-space: nowrap;
+  min-width: 0;
 }
-.status-stats { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
-.goal-stat { display: inline-flex; align-items: center; gap: 4px; }
-.status .goal-input {
-  width: 4.5rem;
-  border: 0;
-  background: rgba(255, 255, 255, 0.18);
-  color: var(--status-fg);
-  border-radius: 2px;
+.status-goals {
+  height: 20px;
   padding: 0 6px;
-  height: 18px;
-  font: inherit;
-  font-size: 12px;
+  color: var(--text);
+  max-width: 18rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.status .theme-select {
-  height: 18px;
-  padding: 0 6px;
-  border: 0;
-  background: rgba(255, 255, 255, 0.18);
-  color: var(--status-fg);
-  border-radius: 2px;
-  font: inherit;
-  font-size: 12px;
+/* Wraps onto a second line that is never shown, so a count that does not
+   fit drops out whole instead of being cut. */
+.status-stats {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 16px;
+  overflow: hidden;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 14px;
+  line-height: 16px;
+}
+.status-save {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

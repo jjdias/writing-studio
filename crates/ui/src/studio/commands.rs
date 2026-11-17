@@ -59,11 +59,11 @@ pub(super) fn mode_shortcut(mode: WorkspaceMode) -> &'static str {
         WorkspaceMode::Writing => "Ctrl+1",
         WorkspaceMode::Corkboard => "Ctrl+2",
         WorkspaceMode::Outliner => "Ctrl+3",
-        WorkspaceMode::Plot => "Ctrl+5",
-        WorkspaceMode::Characters => "Ctrl+6",
-        WorkspaceMode::World => "Ctrl+7",
-        WorkspaceMode::Research => "Ctrl+8",
-        WorkspaceMode::History => "Ctrl+4",
+        WorkspaceMode::Plot => "Ctrl+4",
+        WorkspaceMode::Characters => "Ctrl+5",
+        WorkspaceMode::World => "Ctrl+6",
+        WorkspaceMode::Research => "Ctrl+7",
+        WorkspaceMode::History => "Ctrl+8",
     }
 }
 
@@ -71,6 +71,7 @@ pub(super) fn apply_shortcut(
     mut state: Signal<StudioState>,
     chrome: Signal<PanelChrome>,
     widths: Signal<PanelWidths>,
+    fold: Fold,
     action: AppShortcut,
 ) -> bool {
     let open = state.read().is_open();
@@ -88,7 +89,7 @@ pub(super) fn apply_shortcut(
             }
             state.write().snapshot();
         }
-        AppShortcut::Find => focus_find(state, chrome),
+        AppShortcut::Find => focus_find(state, chrome, fold),
         AppShortcut::ToggleFocus => {
             if !open {
                 return false;
@@ -123,19 +124,13 @@ pub(super) fn apply_shortcut(
             if !open {
                 return false;
             }
-            if state.read().focus_mode {
-                state.write().focus_mode = false;
-            }
-            toggle_sidebar(state, chrome);
+            toggle_binder(state, chrome, fold);
         }
         AppShortcut::ToggleInspector => {
             if !open {
                 return false;
             }
-            if state.read().focus_mode {
-                state.write().focus_mode = false;
-            }
-            toggle_inspector(state, chrome);
+            toggle_inspector_panel(state, chrome, fold);
         }
     }
     true
@@ -145,11 +140,14 @@ pub(super) fn set_mode(mut state: Signal<StudioState>, mode: WorkspaceMode) -> b
     if !state.read().is_open() {
         return false;
     }
-    state.write().mode = mode;
+    state.write().choose_mode(mode);
     true
 }
 
 pub(super) fn clear_or_exit_focus(mut state: Signal<StudioState>) -> bool {
+    if state.write().close_popup() {
+        return true;
+    }
     if state.write().cancel_confirmation() {
         return true;
     }
@@ -168,7 +166,7 @@ pub(super) fn clear_or_exit_focus(mut state: Signal<StudioState>) -> bool {
     false
 }
 
-pub(super) fn focus_find(mut state: Signal<StudioState>, chrome: Signal<PanelChrome>) {
+pub(super) fn focus_find(mut state: Signal<StudioState>, chrome: Signal<PanelChrome>, fold: Fold) {
     if !state.read().is_open() {
         return;
     }
@@ -181,7 +179,12 @@ pub(super) fn focus_find(mut state: Signal<StudioState>, chrome: Signal<PanelChr
         state.write().focus_mode = false;
         wait = true;
     }
-    if reveal_sidebar(state, chrome) {
+    if fold.binder {
+        if state.read().overlay != Some(FoldedPanel::Binder) {
+            state.write().overlay = Some(FoldedPanel::Binder);
+            wait = true;
+        }
+    } else if reveal_sidebar(state, chrome) {
         wait = true;
     }
     focus_dom("binder-search", wait);

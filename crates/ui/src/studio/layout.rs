@@ -65,20 +65,96 @@ pub(super) fn reveal_sidebar(state: Signal<StudioState>, mut chrome: Signal<Pane
     true
 }
 
-pub(super) fn select_activity(mut state: Signal<StudioState>, chrome: Signal<PanelChrome>, mode: WorkspaceMode) {
-    let same = state.peek().mode == mode;
-    let visible = chrome.peek().sidebar_visible;
-    let focused = state.peek().focus_mode;
-    if same && visible && !focused {
+/// The window's width in logical pixels, kept current as it is resized.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) struct WindowWidth(pub(super) u32);
+
+/// Matches `.activity` in `style.css`.
+const ACTIVITY_WIDTH: u32 = 64;
+/// The narrowest the page may get before a side panel folds away.
+const PAGE_MIN_WIDTH: u32 = 400;
+
+/// Which side panels have folded away. A folded panel is not laid out
+/// beside the page; its button shows it over the page instead.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) struct Fold {
+    pub(super) binder: bool,
+    pub(super) inspector: bool,
+}
+
+/// The inspector folds first, once the page would be narrower than
+/// `PAGE_MIN_WIDTH` beside both panels, then the binder. With the default
+/// widths that is about 1,000 and 720 pixels.
+pub(super) fn fold_for(window: u32, widths: PanelWidths) -> Fold {
+    let beside_binder = ACTIVITY_WIDTH + widths.sidebar + PAGE_MIN_WIDTH;
+    Fold {
+        binder: window < beside_binder,
+        inspector: window < beside_binder + widths.inspector,
+    }
+}
+
+pub(super) fn current_fold() -> Fold {
+    let window = use_context::<Signal<WindowWidth>>();
+    let widths = use_context::<Signal<PanelWidths>>();
+    let width = window.read().0;
+    let widths = *widths.read();
+    fold_for(width, widths)
+}
+
+/// The binder's own control: it hides and shows the binder beside the
+/// page, or over the page once it has folded away.
+pub(super) fn toggle_binder(mut state: Signal<StudioState>, chrome: Signal<PanelChrome>, fold: Fold) {
+    if state.peek().focus_mode {
+        state.write().focus_mode = false;
+    }
+    if fold.binder {
+        state.write().toggle_overlay(FoldedPanel::Binder);
+    } else {
         toggle_sidebar(state, chrome);
-        return;
     }
-    {
-        let mut current = state.write();
-        current.mode = mode;
-        current.focus_mode = false;
+}
+
+pub(super) fn toggle_inspector_panel(mut state: Signal<StudioState>, chrome: Signal<PanelChrome>, fold: Fold) {
+    if state.peek().focus_mode {
+        state.write().focus_mode = false;
     }
-    reveal_sidebar(state, chrome);
+    if fold.inspector {
+        state.write().toggle_overlay(FoldedPanel::Inspector);
+    } else {
+        toggle_inspector(state, chrome);
+    }
+}
+
+/// Keeps `WindowWidth` current. Called from the window's event handler.
+pub(super) fn track_window_width(mut window: Signal<WindowWidth>, size: dioxus::desktop::tao::dpi::PhysicalSize<u32>) {
+    let scale = dioxus::desktop::window().scale_factor();
+    let width = size.to_logical::<f64>(scale).width.round() as u32;
+    if window.peek().0 != width {
+        window.set(WindowWidth(width));
+    }
+}
+
+pub(super) fn initial_window_width() -> WindowWidth {
+    let desktop = dioxus::desktop::window();
+    let size = desktop.inner_size().to_logical::<f64>(desktop.scale_factor());
+    WindowWidth(size.width.round() as u32)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_inspector_folds_before_the_binder() {
+        let widths = PanelWidths::default();
+        assert_eq!(fold_for(1400, widths), Fold::default());
+        let below_inspector = fold_for(1000, widths);
+        assert!(below_inspector.inspector && !below_inspector.binder);
+        assert_eq!(fold_for(700, widths), Fold { binder: true, inspector: true });
+        // A wider binder needs more room before it stays beside the page.
+        let wide = PanelWidths { sidebar: SIDEBAR_WIDTH_MAX, ..widths };
+        assert!(fold_for(900, wide).binder);
+    }
 }
 
 pub(super) fn flip_sidebar(state: Signal<StudioState>, mut chrome: Signal<PanelChrome>) {

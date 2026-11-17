@@ -53,11 +53,11 @@ pub fn app_shortcut(key: &str, ctrl: bool, shift: bool, alt: bool) -> Option<App
         ("1", false) => AppShortcut::Writing,
         ("2", false) => AppShortcut::Corkboard,
         ("3", false) => AppShortcut::Outliner,
-        ("4", false) => AppShortcut::History,
-        ("5", false) => AppShortcut::Plot,
-        ("6", false) => AppShortcut::Characters,
-        ("7", false) => AppShortcut::World,
-        ("8", false) => AppShortcut::Research,
+        ("4", false) => AppShortcut::Plot,
+        ("5", false) => AppShortcut::Characters,
+        ("6", false) => AppShortcut::World,
+        ("7", false) => AppShortcut::Research,
+        ("8", false) => AppShortcut::History,
         ("n", false) => AppShortcut::NewScene,
         ("n", true) => AppShortcut::NewChapter,
         ("o", false) => AppShortcut::OpenProject,
@@ -87,11 +87,11 @@ mod tests {
         assert_eq!(app_shortcut("1", true, false, false), Some(AppShortcut::Writing));
         assert_eq!(app_shortcut("2", true, false, false), Some(AppShortcut::Corkboard));
         assert_eq!(app_shortcut("3", true, false, false), Some(AppShortcut::Outliner));
-        assert_eq!(app_shortcut("4", true, false, false), Some(AppShortcut::History));
-        assert_eq!(app_shortcut("5", true, false, false), Some(AppShortcut::Plot));
-        assert_eq!(app_shortcut("6", true, false, false), Some(AppShortcut::Characters));
-        assert_eq!(app_shortcut("7", true, false, false), Some(AppShortcut::World));
-        assert_eq!(app_shortcut("8", true, false, false), Some(AppShortcut::Research));
+        assert_eq!(app_shortcut("4", true, false, false), Some(AppShortcut::Plot));
+        assert_eq!(app_shortcut("5", true, false, false), Some(AppShortcut::Characters));
+        assert_eq!(app_shortcut("6", true, false, false), Some(AppShortcut::World));
+        assert_eq!(app_shortcut("7", true, false, false), Some(AppShortcut::Research));
+        assert_eq!(app_shortcut("8", true, false, false), Some(AppShortcut::History));
         assert_eq!(app_shortcut("n", true, false, false), Some(AppShortcut::NewScene));
         assert_eq!(app_shortcut("n", true, true, false), Some(AppShortcut::NewChapter));
         assert_eq!(app_shortcut("o", true, false, false), Some(AppShortcut::OpenProject));

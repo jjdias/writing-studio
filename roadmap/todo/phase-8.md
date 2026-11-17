@@ -1,6 +1,6 @@
 # Phase 8 — UI and UX overhaul
 
-Not started.
+In progress: stages 1 and 2 are done.
 
 The window works, but it is hard to use. It looks and behaves like a code editor: a monospace font for prose, an "Explorer", a bright blue status bar, buttons that look like plain text, and three columns in every mode, whether the mode needs them or not. This phase rebuilds the window around writing. It changes how the window looks and behaves, not what a project holds: no file format, storage, or sync change belongs here.
 
@@ -73,10 +73,13 @@ Moved to the stage that first uses them: the type scale goes with the reading fo
 
 ### 2. The frame
 
-- The activity bar shows each mode's name, or a name on hover and focus where there is no room. Ctrl+1 to Ctrl+8 follow its order: Writing, Corkboard, Outliner, Plot, Characters, World, Research, History. Choosing the mode that is already open does nothing; hiding the binder has its own control.
-- One top bar: the project and book name, the mode's own actions, and a project menu holding Save, Backup, Import, and Export (Markdown, DOCX, Markdown folder). Nothing sits in the tab strip but the scene name.
-- The status bar becomes quiet text: this book's word count first, then today and this sitting, then the save state. Goals are set from a menu or in the outliner, not typed into the bar. The theme and spelling language move to a settings menu. The bar never wraps or clips.
-- Below about 1,000 pixels wide the inspector folds away first, then the binder. Both come back as an overlay from their button. The window has a minimum size at which every mode still works.
+**Done.**
+
+- The activity bar shows each mode's name under its icon. Below 640 pixels high the names show beside the button on hover and focus instead. Ctrl+1 to Ctrl+8 follow its order (`WorkspaceMode::ALL`): Writing, Corkboard, Outliner, Plot, Characters, World, Research, History. Choosing the mode that is already open does nothing (`choose_mode`). Below the modes, set apart, are Binder, Inspector, and Focus, each with a name.
+- One top bar: the project name, the current book's menu, Sync once the project is connected, a Project menu (Save, Backup, Import Markdown files, and the exports), and a Settings panel (theme and spelling). The tab strip holds only the scene name. No mode has actions of its own in the top bar yet; stages 3 to 5 can put them there.
+- The status bar is quiet text on the panel color: the book's words and target, then in Writing the open scene's words, then today, this sitting, and the save state. Clicking the book's count opens the word targets. A count that does not fit drops out whole; the save state shortens with an ellipsis and shows in full on hover.
+- One menu or panel is open at a time (`open_menu`). A click outside or Escape closes it.
+- Below about 1,000 pixels wide the inspector folds away, and below about 720 the binder (`fold_for` in `studio/layout.rs`: the page keeps at least 400 pixels beside the panels, at their current widths). A folded panel comes back over the page from its button (`overlay`), and a click beside it or Escape closes it. The launcher sets a minimum window size of 720 × 520.
 
 ### 3. The writing surface
 
@@ -88,7 +91,7 @@ Moved to the stage that first uses them: the type scale goes with the reading fo
 
 ### 4. The binder and the inspector
 
-- The binder shows each item's kind as a small icon, so the title has the room. No repeated names. Chapter and Scene stay as buttons above it; Book, Part, Folder, and Import go into an "Add" menu. Trash and Empty trash go to the Trash row's own menu, away from adding.
+- The binder shows each item's kind as a small icon, so the title has the room. No repeated names. Chapter and Scene stay as buttons above it; Book, Part, and Folder go into an "Add" menu (Import moved to the Project menu in stage 2). Trash and Empty trash go to the Trash row's own menu, away from adding.
 - The book filter is a styled menu with the current book shown, not an empty box.
 - The inspector shows only Writing's needs: title, synopsis, status, label, and color at the top; scene beats and diagnostics in a section that can be folded. Move to trash is a danger button at the bottom, set apart.
 
