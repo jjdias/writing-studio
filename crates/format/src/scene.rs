@@ -201,17 +201,54 @@ pub fn file_name(title: &str, id: Id) -> String {
 pub fn slug(title: &str) -> String {
     let mut name = String::new();
     for ch in title.chars().flat_map(char::to_lowercase) {
-        if ch.is_alphanumeric() {
+        if ch.is_ascii_alphanumeric() {
             name.push(ch);
+        } else if let Some(plain) = plain_letter(ch) {
+            name.push_str(plain);
+        } else if ('\u{300}'..='\u{36f}').contains(&ch) {
+            // An accent typed as its own character, as macOS stores names.
+            continue;
         } else if !name.is_empty() && !name.ends_with('-') {
             name.push('-');
         }
-        if name.chars().count() >= NAME_LENGTH {
+        if name.len() >= NAME_LENGTH {
+            name.truncate(NAME_LENGTH);
             break;
         }
     }
     let name = name.trim_end_matches('-');
     if name.is_empty() { "untitled".into() } else { name.to_string() }
+}
+
+/// The plain letters for a lowercase Latin letter with an accent. File names
+/// keep to ASCII so every computer and git store them the same way.
+fn plain_letter(ch: char) -> Option<&'static str> {
+    Some(match ch {
+        'à'..='å' | 'ā' | 'ă' | 'ą' => "a",
+        'æ' => "ae",
+        'ç' | 'ć' | 'ĉ' | 'ċ' | 'č' => "c",
+        'ð' | 'ď' | 'đ' => "d",
+        'è'..='ë' | 'ē' | 'ĕ' | 'ė' | 'ę' | 'ě' => "e",
+        'ĝ' | 'ğ' | 'ġ' | 'ģ' => "g",
+        'ĥ' | 'ħ' => "h",
+        'ì'..='ï' | 'ĩ' | 'ī' | 'ĭ' | 'į' | 'ı' => "i",
+        'ĵ' => "j",
+        'ķ' => "k",
+        'ĺ' | 'ļ' | 'ľ' | 'ŀ' | 'ł' => "l",
+        'ñ' | 'ń' | 'ņ' | 'ň' => "n",
+        'ò'..='ö' | 'ø' | 'ō' | 'ŏ' | 'ő' => "o",
+        'œ' => "oe",
+        'ŕ' | 'ŗ' | 'ř' => "r",
+        'ß' => "ss",
+        'ś' | 'ŝ' | 'ş' | 'š' => "s",
+        'ţ' | 'ť' | 'ŧ' => "t",
+        'þ' => "th",
+        'ù'..='ü' | 'ũ' | 'ū' | 'ŭ' | 'ů' | 'ű' | 'ų' => "u",
+        'ŵ' => "w",
+        'ý' | 'ÿ' | 'ŷ' => "y",
+        'ź' | 'ż' | 'ž' => "z",
+        _ => return None,
+    })
 }
 
 #[cfg(test)]
@@ -305,11 +342,18 @@ mod tests {
     fn file_names_are_readable_and_safe() {
         let id: Id = "3f9a2c1e-0b7d-4e55-9a10-6c2f8d4b1a77".parse().unwrap();
         assert_eq!(file_name("The Harbor", id), "the-harbor-3f9a.html");
-        assert_eq!(file_name("  Où est / l'Été? ", id), "où-est-l-été-3f9a.html");
+        assert_eq!(file_name("  Où est / l'Été? ", id), "ou-est-l-ete-3f9a.html");
+        assert_eq!(file_name("Größe Straße", id), "grosse-strasse-3f9a.html");
+        assert_eq!(file_name("Cafe\u{301} noir", id), "cafe-noir-3f9a.html");
+        assert_eq!(file_name("Ἀθῆναι", id), "untitled-3f9a.html");
+        assert_eq!(file_name("東京の夜", id), "untitled-3f9a.html");
+        assert_eq!(file_name("Rain 🌧 again", id), "rain-again-3f9a.html");
+        assert_ne!(file_name("Été", id), file_name("Ete 2", id));
         assert_eq!(file_name("", id), "untitled-3f9a.html");
         assert_eq!(file_name("../..", id), "untitled-3f9a.html");
         let long = file_name(&"word ".repeat(30), id);
-        assert!(long.chars().count() <= NAME_LENGTH + ".html".len() + 5);
+        assert!(long.len() <= NAME_LENGTH + ".html".len() + 5);
+        assert!(file_name(&"é".repeat(60), id).is_ascii());
         assert!(!long.contains("--"));
     }
 }

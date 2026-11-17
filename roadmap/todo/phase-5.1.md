@@ -2,7 +2,7 @@
 
 In progress. These are gaps found while building Phase 5. None of them is in the Phase 5 plan, and each one matters before writers keep real books in format 2.
 
-Items 1, 2, 5, 7, and 9 are done. Items 3 and 4 were dropped. Items 6, 8, and 10 are left.
+Items 1, 2, 5, 6, 7, and 9 are done. Items 3 and 4 were dropped. Items 8 and 10 are left.
 
 ## Before you start
 
@@ -71,13 +71,9 @@ Items 1, 2, 5, 7, and 9 are done. Items 3 and 4 were dropped. Items 6, 8, and 10
 
 **Done** with Phase 5 stage 5. Every project gets `* text=auto eol=lf` and `attachments/** -text` when the file is missing.
 
-## 6. File names that are the same on every computer
+## 6. Use only plain letters in file names
 
-**The problem.** `file_name` keeps letters from any script, so a scene called "Été" gets `été-3f9a.html`. macOS can store such a name in a different Unicode form from Windows and Linux, and git can then see two files where there is one. Very long paths are also a problem on Windows.
-
-**How to fix it.** In `file_name` (`crates/format/src/scene.rs`), turn letters with accents into the plain letter where there is one (é → e), and replace any other character that is not an ASCII letter or digit with `-`. A title in a script with no plain letters (Japanese, Arabic) then gives only the id, which is fine: the title is in the file. Keep names at 40 characters. Files already named keep their names; this only changes new files.
-
-**Tests.** Titles in French, German, Greek, Japanese, and with emoji give ASCII names, and two different titles never give the same name.
+**Done.** See [../done/phase-5.md](../done/phase-5.md), "Phase 5.1, item 6".
 
 ## 7. Refuse a path that leaves the project through a link
 

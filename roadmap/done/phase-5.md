@@ -122,6 +122,12 @@ Checked by a test of the window's state that syncs two drafts, lists them, compa
 - Two people editing at the same time. This is bonus work.
 - Encrypting a project. A private repository is as private as its host makes it.
 
+## Phase 5.1, item 6 — File names that are the same on every computer
+
+A scene's file name kept letters from any script, so "Été" gave `été-3f9a.html`. macOS can store such a name in another Unicode form than Windows and Linux, and git can then see two files where there is one. Now `slug` in `crates/format/src/scene.rs` makes accented Latin letters plain (é → e, ß → ss, æ → ae), skips an accent stored as its own character, and turns anything else that is not an ASCII letter or digit into `-`. A title with no Latin letters gives `untitled` and the id. The Markdown folder export uses the same names. Files already named keep their names.
+
+Checked by a test of titles in French, German, Greek, Japanese, with a separate accent, with emoji, and a long accented title.
+
 ## Phase 5.1, item 9 — Line breaks typed in a paragraph show in the window
 
 A line break typed in a paragraph (Shift+Enter) was kept in the scene, but shown as a space when the scene was opened again: the HTML the editor is given (`to_html` in `crates/document/src/html.rs`) wrote it as a line break in the text, which a browser shows as a space. Two faults beside it, in the same code:

@@ -137,7 +137,7 @@ It does not read lists inside lists, or blocks inside a quote; their text comes 
 
 ### File names
 
-`the-harbor-3f9a.html`: the title in lowercase with everything but letters and digits turned into `-`, at most 40 characters, then the first four characters of the id. A file gets its name when it is made. Changing the title, or moving the scene, does not rename the file; the `<title>` is the title.
+`the-harbor-3f9a.html`: the title in lowercase, with accented Latin letters made plain (`été` → `ete`, `ß` → `ss`) and everything else but ASCII letters and digits turned into `-`, at most 40 characters (`untitled` when nothing is left, as for a title in Greek or Japanese), then the first four characters of the id. A file gets its name when it is made. Changing the title, or moving the scene, does not rename the file; the `<title>` is the title.
 
 ### What has been checked
 
