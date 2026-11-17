@@ -39,8 +39,7 @@ None listed. The last three items were cleared at the end of Phase 5: a check us
 
 ## What to do next
 
-1. Any of Phases 6, 7, and 8; they do not depend on each other.
-2. What is left of Phase 5.1 items 1 and 2 (listed under them in [todo/phase-5.1.md](todo/phase-5.1.md)), when the code it touches is next changed.
+Any of Phases 6, 7, and 8; they do not depend on each other.
 
 ## Product principles
 

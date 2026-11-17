@@ -20,7 +20,7 @@ use writing_studio_search::matches_query;
 use writing_studio_spellcheck::UnknownWord;
 
 use crate::shortcuts::{app_shortcut, AppShortcut};
-use crate::state::{Beat, BibleLink, CompiledFormat, StudioState, WorkspaceMode, WorldSection};
+use crate::state::{Beat, BibleLink, CompiledFormat, Earlier, StudioState, WorkspaceMode, WorldSection};
 
 const STYLES: &str = include_str!("../assets/style.css");
 const REVIEW_JS: &str = include_str!("../assets/review.js");
@@ -46,14 +46,14 @@ fn Studio() -> Element {
     let chrome = use_context::<Signal<PanelChrome>>();
     let widths = use_context::<Signal<PanelWidths>>();
     let resize = use_context::<Signal<Option<ResizeDrag>>>();
-    // Coming back to the window is when a scene changed by a text editor or
-    // by git is read again, before the writer types over it.
+    // Coming back to the window is when files changed by a text editor or by
+    // git are read again, before the writer types over them.
     dioxus::desktop::use_wry_event_handler(move |event, _| {
         match event {
             dioxus::desktop::tao::event::Event::WindowEvent {
                 event: dioxus::desktop::WindowEvent::Focused(true),
                 ..
-            } => state.write().check_open_scene_on_disk(),
+            } => state.write().check_files_on_disk(),
             // Closing commits for the next sync, without the network.
             dioxus::desktop::tao::event::Event::WindowEvent {
                 event: dioxus::desktop::WindowEvent::CloseRequested,
@@ -1824,6 +1824,7 @@ fn HistoryPane() -> Element {
                 }
             }
             EarlierSyncs {}
+            KeptFromOutside {}
             OpenProblems {}
             SyncSection {}
             section {
@@ -1899,17 +1900,17 @@ fn EarlierSyncs() -> Element {
                         }
                         div { class: "history-actions",
                             button {
-                                class: if comparing.as_deref() == Some(revision.commit.as_str()) { "primary" } else { "" },
+                                class: if comparing.as_ref() == Some(&Earlier::Sync(revision.commit.clone())) { "primary" } else { "" },
                                 onclick: {
-                                    let commit = revision.commit.clone();
-                                    move |_| state.write().compare_with_revision(commit.clone())
+                                    let earlier = Earlier::Sync(revision.commit.clone());
+                                    move |_| state.write().compare_with_revision(earlier.clone())
                                 },
-                                if comparing.as_deref() == Some(revision.commit.as_str()) { "Comparing" } else { "Compare" }
+                                if comparing.as_ref() == Some(&Earlier::Sync(revision.commit.clone())) { "Comparing" } else { "Compare" }
                             }
                             button {
                                 onclick: {
-                                    let commit = revision.commit.clone();
-                                    move |_| state.write().restore_revision(&commit)
+                                    let earlier = Earlier::Sync(revision.commit.clone());
+                                    move |_| state.write().restore_revision(&earlier)
                                 },
                                 "Restore"
                             }
@@ -1917,7 +1918,67 @@ fn EarlierSyncs() -> Element {
                     }
                 }
             }
-            if comparing.is_some() {
+            if matches!(comparing, Some(Earlier::Sync(_))) {
+                SnapshotCompare {}
+            }
+        }
+    }
+}
+
+/// Files changed outside the program and kept beside the one the program
+/// wrote. The selected scene's can be compared and restored.
+#[component]
+fn KeptFromOutside() -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let kept = state.read().kept_files();
+    if kept.is_empty() {
+        return rsx! {};
+    }
+    let comparing = state.read().compare_revision.clone();
+    let confirm = state.read().confirm_kept.clone();
+    let showing = matches!(comparing, Some(Earlier::Kept(_)));
+    rsx! {
+        section {
+            h2 { "Kept from outside" }
+            p { class: "hint", "A file changed outside the program while it was open, kept beside the one the program wrote. Select a scene to compare or restore its kept versions." }
+            ul { class: "history-list wide",
+                for (item, mine) in kept {
+                    li { class: "history-item",
+                        div {
+                            strong { "{item.kept_as}" }
+                            span { class: "card-meta", "Kept beside {item.file}" }
+                        }
+                        div { class: "history-actions",
+                            if mine {
+                                button {
+                                    class: if comparing == Some(Earlier::Kept(item.kept_as.clone())) { "primary" } else { "" },
+                                    onclick: {
+                                        let earlier = Earlier::Kept(item.kept_as.clone());
+                                        move |_| state.write().compare_with_revision(earlier.clone())
+                                    },
+                                    if comparing == Some(Earlier::Kept(item.kept_as.clone())) { "Comparing" } else { "Compare" }
+                                }
+                                button {
+                                    onclick: {
+                                        let earlier = Earlier::Kept(item.kept_as.clone());
+                                        move |_| state.write().restore_revision(&earlier)
+                                    },
+                                    "Restore"
+                                }
+                            }
+                            button {
+                                class: if confirm.as_ref() == Some(&item.kept_as) { "primary" } else { "" },
+                                onclick: {
+                                    let kept_as = item.kept_as.clone();
+                                    move |_| state.write().request_kept_removal(kept_as.clone())
+                                },
+                                if confirm.as_ref() == Some(&item.kept_as) { "Confirm delete" } else { "Delete" }
+                            }
+                        }
+                    }
+                }
+            }
+            if showing {
                 SnapshotCompare {}
             }
         }

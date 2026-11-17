@@ -98,6 +98,10 @@ fn head_fingerprint(node: &BinderNode, beats: &SceneBeats) -> u64 {
     ])
 }
 
+/// The folders a kept file can be in: the project folder, and each folder
+/// of HTML files.
+const KEPT_FOLDERS: [&str; 8] = ["", "manuscript", "characters", "places", "cultures", "lore", "timeline", "research"];
+
 fn format_version(root: &Path) -> Result<u32> {
     let path = root.join(PROJECT_FORMAT_FILE);
     // The first projects had no marker.
@@ -347,6 +351,82 @@ impl ProjectStore {
     /// the last call.
     pub fn take_set_aside(&self) -> Vec<SetAside> {
         std::mem::take(&mut *self.mirror.set_aside.borrow_mut())
+    }
+
+    /// The files kept beside a project file because it had been changed
+    /// outside: `name.conflict-<time>.ext`, newest first. `file` is the one
+    /// each was kept beside.
+    pub fn kept_files(&self) -> Result<Vec<SetAside>> {
+        let mut found: Vec<(String, SetAside)> = Vec::new();
+        for folder in KEPT_FOLDERS {
+            let Ok(entries) = fs::read_dir(self.root.join(folder)) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                let Some((stem, rest)) = name.split_once(".conflict-") else {
+                    continue;
+                };
+                if !entry.file_type()?.is_file() {
+                    continue;
+                }
+                // The time ends with `Z`; the extension, if any, follows it.
+                let (stamp, extension) = rest.split_once('Z').unwrap_or((rest, ""));
+                let prefix = if folder.is_empty() { String::new() } else { format!("{folder}/") };
+                let kept = SetAside {
+                    file: format!("{prefix}{stem}{extension}"),
+                    kept_as: format!("{prefix}{name}"),
+                };
+                found.push((stamp.to_string(), kept));
+            }
+        }
+        found.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.kept_as.cmp(&b.1.kept_as)));
+        Ok(found.into_iter().map(|(_, kept)| kept).collect())
+    }
+
+    /// What a kept file holds.
+    pub fn read_kept_file(&self, kept_as: &str) -> Result<String> {
+        Ok(fs::read_to_string(self.kept_path(kept_as)?)?)
+    }
+
+    /// Delete a kept file, once the writer has taken what they need from it.
+    pub fn remove_kept_file(&self, kept_as: &str) -> Result<()> {
+        Ok(fs::remove_file(self.kept_path(kept_as)?)?)
+    }
+
+    fn kept_path(&self, kept_as: &str) -> Result<PathBuf> {
+        if !kept_as.contains(".conflict-") {
+            return Err(Error::message(format!("“{kept_as}” is not a kept file")));
+        }
+        inside(&self.root, "kept file", kept_as)
+    }
+
+    /// Whether a file other than a scene's (the lists, and the bible's
+    /// entries) holds something other than what the program last read or
+    /// wrote, or is gone. Reads each of them; a scene is checked on its own
+    /// with `changed_outside`.
+    pub fn others_changed_outside(&self) -> Result<bool> {
+        let known: Vec<(String, u64)> = self
+            .mirror
+            .on_disk
+            .borrow()
+            .iter()
+            .filter(|(path, _)| {
+                !path.starts_with("manuscript/")
+                    && !path.starts_with(".local/")
+                    && (path.ends_with(".json") || path.ends_with(".html"))
+            })
+            .map(|(path, print)| (path.clone(), *print))
+            .collect();
+        for (path, print) in known {
+            match fs::read_to_string(inside(&self.root, "the project", &path)?) {
+                Ok(current) if text_fingerprint(&current) == print => {}
+                Ok(_) => return Ok(true),
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(true),
+                Err(err) => return Err(err.into()),
+            }
+        }
+        Ok(false)
     }
 
     /// Whether the file of this item holds something other than what the
@@ -1104,6 +1184,37 @@ mod tests {
         let found = set.iter().find(|item| item.file == relative).expect("set aside");
         assert!(found.kept_as.contains(".conflict-"));
         fs::read_to_string(store.root.join(&found.kept_as)).unwrap()
+    }
+
+    #[test]
+    fn kept_files_are_listed_and_a_list_changed_outside_is_seen() {
+        let dir = temp("kept");
+        let store = ProjectStore::create(&dir, "Kept").unwrap();
+        let scene = scene_of(&store);
+        let scene_file = file_of(&store, scene.id);
+        assert!(!store.others_changed_outside().unwrap());
+
+        // A scene changed outside is not the others' business.
+        fs::write(&scene_file, fs::read_to_string(&scene_file).unwrap() + " ").unwrap();
+        assert!(!store.others_changed_outside().unwrap());
+        let mut document = store.load_document(scene.id).unwrap();
+        document.replace_plain_text("Mine.");
+        store.save_document(&document).unwrap();
+        let kept = store.kept_files().unwrap();
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].file, store.file_of(scene.id).unwrap());
+        assert!(store.read_kept_file(&kept[0].kept_as).unwrap().ends_with(' '));
+
+        // The binder changed outside is.
+        let binder = dir.join("binder.json");
+        fs::write(&binder, fs::read_to_string(&binder).unwrap().replace("\"kind\"", "\"x\":1,\"kind\"")).unwrap();
+        assert!(store.others_changed_outside().unwrap());
+
+        assert!(store.remove_kept_file("binder.json").is_err());
+        assert!(store.read_kept_file("../outside.conflict-1Z.html").is_err());
+        store.remove_kept_file(&kept[0].kept_as).unwrap();
+        assert!(store.kept_files().unwrap().is_empty());
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]

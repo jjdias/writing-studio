@@ -122,6 +122,16 @@ Checked by a test of the window's state that syncs two drafts, lists them, compa
 - Two people editing at the same time. This is bonus work.
 - Encrypting a project. A private repository is as private as its host makes it.
 
+## Phase 5.1, leftovers of items 1 and 2
+
+**Unknown keys everywhere.** Keys the program does not know are now kept in `project.json`, in its `settings`, and on the `relationships` and `scene_links` lines of `bible.json`, as they already were on every other line. A relationship line now has its own `id`, which is what its keys are kept by; a line without one gets one the next time the bible is saved. A `scene_links` line is kept by the entry and the scene it joins. Checked by adding to the test that edits every kind of file outside and saves each kind of thing.
+
+**Kept versions in History.** History has **Kept from outside**, a list of every `name.conflict-<time>.ext` in the project (`kept_files` in `crates/storage/src/mirror.rs`), found by looking at the folders, so the list survives closing the program. For the selected scene a kept version can be compared with the current text and restored, the same way as a version from an earlier sync (`Earlier` in `crates/ui/src/state.rs` is either). Any kept file can be deleted with a second click.
+
+**Lists and bible entries read again.** When the window comes back to the front, every file the program knows other than scenes is checked against what it last read or wrote (`others_changed_outside`). If one changed and nothing is unsaved, the project is opened again from its files, keeping the mode and the selection, the same way a sync that brought changes does. If something is unsaved, the status line says so and the next save keeps both versions, as before. Scenes are still checked one at a time: the open one.
+
+Checked by a storage test of the kept list and the check, and a window-state test that edits the binder and a scene outside, with and without unsaved typing, then compares, restores, and deletes the kept scene. The History buttons are not tested in the window.
+
 ## Phase 5.1, item 10 — The guides describe format 2
 
 `documentation/USAGE.md` has a section on the project folder: what it holds, that it can be read without the program, that `.local/` is this computer's, what happens to a file edited outside, and what happens when a project from another version is opened. `check_project` stays in `PROJECT_FORMAT.md` only: it needs the source code and `cargo`, so it is for developers, not writers.

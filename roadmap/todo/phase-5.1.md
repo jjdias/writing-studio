@@ -47,17 +47,11 @@ All items are done, or were dropped (3 and 4).
 
 ## 1. Keep what the program does not understand in a file
 
-**Done.** See [../done/phase-5.md](../done/phase-5.md), "Phase 5.1". What is left of it:
-
-- Unknown keys in `project.json`, and unknown settings inside it, are still dropped on save.
-- Unknown keys on a line of `relationships` or `scene_links` in `bible.json` are still dropped. Those lines have no id of their own to keep them by; give them one if this is needed.
+**Done.** See [../done/phase-5.md](../done/phase-5.md), "Phase 5.1", and "Phase 5.1, leftovers of items 1 and 2".
 
 ## 2. Do not write over a file that was changed outside while the project is open
 
-**Done.** See [../done/phase-5.md](../done/phase-5.md), "Phase 5.1". What is left of it:
-
-- Set-aside files (`name.conflict-<time>.html`) are only named in the status line. A list of them in History, with a way to open or compare one, would make them easier to deal with. Stage 4's way of settling a conflict can replace this.
-- Only the open scene is read again when the window comes back to the front. A bible entry or the binder changed outside is caught when it is next saved (it is set aside, not lost), but not shown until the project is opened again.
+**Done.** See [../done/phase-5.md](../done/phase-5.md), "Phase 5.1", and "Phase 5.1, leftovers of items 1 and 2".
 
 ## 3. Ask before converting a format 1 project
 

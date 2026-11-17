@@ -29,7 +29,7 @@ use writing_studio_spellcheck::{
     Speller, UnknownWord,
 };
 use writing_studio_synchronization::git::{self, Revision, SyncReport, SyncStatus};
-use writing_studio_storage::{scene_document, BackupInfo, ProjectStore, SnapshotInfo};
+use writing_studio_storage::{scene_document, BackupInfo, ProjectStore, SetAside, SnapshotInfo};
 use writing_studio_worldbuilding::World;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -119,6 +119,15 @@ pub enum BibleLink {
     Research,
 }
 
+/// An earlier version of the selected scene that is not a snapshot: the
+/// scene at a sync, by its commit, or a version changed outside the program
+/// and kept beside the scene's file, by that file.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Earlier {
+    Sync(String),
+    Kept(String),
+}
+
 /// One side of a snapshot comparison is always a snapshot. The other is the
 /// text on screen, or a second snapshot of the same document.
 #[derive(Clone, Debug)]
@@ -197,8 +206,10 @@ pub struct StudioState {
     pub compare_snapshot: Option<Id>,
     pub compare_against: Option<Id>,
     pub compare_changes_only: bool,
-    /// A commit whose version of the selected scene is being compared.
-    pub compare_revision: Option<String>,
+    /// An earlier version of the selected scene that is being compared.
+    pub compare_revision: Option<Earlier>,
+    /// A kept file waiting for a second click to be deleted.
+    pub confirm_kept: Option<String>,
     pub show_resolved_notes: bool,
     pub tracking: Option<Tracking>,
     /// The dictionary in use. `None` while spellcheck is off or before a project is open.
@@ -272,6 +283,7 @@ impl Default for StudioState {
             compare_against: None,
             compare_changes_only: false,
             compare_revision: None,
+            confirm_kept: None,
             show_resolved_notes: false,
             tracking: None,
             speller: None,
@@ -1426,21 +1438,16 @@ impl StudioState {
             }
         };
         if report.received {
-            let (Some(root), selected, mode) = (self.project_root(), self.selected, self.mode) else {
-                return;
-            };
-            self.open_project_at(root);
-            if let Some(store) = &self.store {
+            self.open_again(|state| {
+                let Some(store) = &state.store else {
+                    return;
+                };
                 for baseline in &report.baselines {
                     if let Err(err) = store.borrow().save_tracking_baseline(baseline) {
-                        self.status = format!("Synced, but a merged scene could not be marked: {err}");
+                        state.status = format!("Synced, but a merged scene could not be marked: {err}");
                     }
                 }
-            }
-            self.mode = mode;
-            if let Some(id) = selected.filter(|id| self.binder.get(*id).is_some()) {
-                self.select_node(id);
-            }
+            });
         }
         self.sync_conflicts = report.conflicts.iter().map(|conflict| conflict.what.clone()).collect();
         let what = match (report.sent, report.received) {
@@ -1510,13 +1517,54 @@ impl StudioState {
         };
     }
 
-    /// Read the open scene again if its file was changed outside the program,
-    /// by a text editor or by git. Called when the window comes back to the
-    /// front, so the change is seen before the writer types over it. Only the
-    /// open scene's file is read. With unsaved typing in the editor nothing
-    /// is replaced: the next save keeps the writer's version as the scene and
-    /// the other beside it.
-    pub fn check_open_scene_on_disk(&mut self) {
+    /// Open the project again from its files, keeping the mode and the
+    /// selection. `before` runs once it is open, before the selection is
+    /// shown again.
+    fn open_again(&mut self, before: impl FnOnce(&mut Self)) {
+        let (Some(root), selected, mode) = (self.project_root(), self.selected, self.mode) else {
+            return;
+        };
+        self.open_project_at(root);
+        before(self);
+        self.mode = mode;
+        if let Some(id) = selected.filter(|id| self.binder.get(*id).is_some()) {
+            self.select_node(id);
+        }
+    }
+
+    /// Take in files changed outside the program, by a text editor or by
+    /// git. Called when the window comes back to the front, so the change is
+    /// seen before the writer types over it. A list or a bible entry changed
+    /// opens the project again; otherwise only the open scene's file is read.
+    /// With anything unsaved nothing is replaced: the next save keeps the
+    /// writer's version and the other beside it.
+    pub fn check_files_on_disk(&mut self) {
+        let Some(store) = self.store.clone() else {
+            return;
+        };
+        let others = store.borrow().others_changed_outside();
+        match others {
+            Ok(false) => {}
+            Ok(true) if self.has_unsaved() => {
+                self.status = "The binder or the bible was changed outside the program. When you save, your version stays and the other is kept beside it.".into();
+                return;
+            }
+            Ok(true) => {
+                self.open_again(|_| {});
+                if !self.status.starts_with("Could not") {
+                    self.status = "The project was changed outside the program, and has been read again.".into();
+                }
+                return;
+            }
+            Err(err) => {
+                self.status = format!("Could not check the project's files: {err}");
+                return;
+            }
+        }
+        self.check_open_scene_on_disk();
+    }
+
+    fn check_open_scene_on_disk(&mut self) {
         let (Some(store), Some(session)) = (self.store.clone(), self.session.as_ref()) else {
             return;
         };
@@ -1872,37 +1920,84 @@ impl StudioState {
         self.store.as_ref()?.borrow().file_of(id)
     }
 
-    /// The selected scene as it was at `commit`.
-    fn revision_document(&self, commit: &str) -> writing_studio_core::Result<Document> {
+    /// The selected scene as it was in an earlier version.
+    fn revision_document(&self, earlier: &Earlier) -> writing_studio_core::Result<Document> {
         let missing = || writing_studio_core::Error::message("no scene is selected");
-        let root = self.project_root().ok_or_else(missing)?;
+        let (Some(root), Some(store)) = (self.project_root(), self.store.as_ref()) else {
+            return Err(missing());
+        };
         let path = self.selected_file().ok_or_else(missing)?;
         let id = self.selected_node().and_then(|node| node.document_id).ok_or_else(missing)?;
-        Ok(scene_document(&git::file_at(&root, commit, &path)?, id))
+        let html = match earlier {
+            Earlier::Sync(commit) => git::file_at(&root, commit, &path)?,
+            Earlier::Kept(kept_as) => store.borrow().read_kept_file(kept_as)?,
+        };
+        Ok(scene_document(&html, id))
     }
 
-    /// Compare the selected scene with its version at `commit`. Asking for
-    /// the one already open closes the comparison.
-    pub fn compare_with_revision(&mut self, commit: String) {
-        if self.compare_revision.as_deref() == Some(commit.as_str()) {
+    /// Compare the selected scene with an earlier version. Asking for the
+    /// one already open closes the comparison.
+    pub fn compare_with_revision(&mut self, earlier: Earlier) {
+        if self.compare_revision.as_ref() == Some(&earlier) {
             self.close_comparison();
             return;
         }
         self.compare_snapshot = None;
         self.compare_against = None;
-        self.compare_revision = Some(commit);
+        self.compare_revision = Some(earlier);
     }
 
-    /// Put the selected scene's text back as it was at `commit`. One undo
-    /// step, so Ctrl+Z brings the current text back.
-    pub fn restore_revision(&mut self, commit: &str) {
-        match self.revision_document(commit) {
-            Ok(earlier) => self.edit_text("Restored the scene as it was at that sync. Undo brings the current text back.", |document| {
-                document.blocks = earlier.blocks;
+    /// Put the selected scene's text back as it was in an earlier version.
+    /// One undo step, so Ctrl+Z brings the current text back.
+    pub fn restore_revision(&mut self, earlier: &Earlier) {
+        let status = match earlier {
+            Earlier::Sync(_) => "Restored the scene as it was at that sync. Undo brings the current text back.",
+            Earlier::Kept(_) => "Restored the version changed outside the program. Undo brings the current text back.",
+        };
+        match self.revision_document(earlier) {
+            Ok(found) => self.edit_text(status, |document| {
+                document.blocks = found.blocks;
                 true
             }),
             Err(err) => self.status = format!("Could not restore that version: {err}"),
         }
+    }
+
+    /// Files kept beside a project file because it was changed outside the
+    /// program, newest first, each with whether it is the selected scene's.
+    pub fn kept_files(&self) -> Vec<(SetAside, bool)> {
+        let Some(store) = &self.store else {
+            return Vec::new();
+        };
+        let selected = self.selected_file();
+        let kept = store.borrow().kept_files().unwrap_or_default();
+        kept.into_iter()
+            .map(|item| {
+                let mine = selected.as_ref() == Some(&item.file);
+                (item, mine)
+            })
+            .collect()
+    }
+
+    /// Delete a kept file. The first click asks; the second deletes.
+    pub fn request_kept_removal(&mut self, kept_as: String) {
+        if self.confirm_kept.as_ref() != Some(&kept_as) {
+            self.confirm_kept = Some(kept_as);
+            self.status = "Click delete again to delete the kept file.".into();
+            return;
+        }
+        self.confirm_kept = None;
+        if self.compare_revision == Some(Earlier::Kept(kept_as.clone())) {
+            self.close_comparison();
+        }
+        let Some(store) = &self.store else {
+            return;
+        };
+        let removed = store.borrow().remove_kept_file(&kept_as);
+        self.status = match removed {
+            Ok(()) => format!("Deleted {kept_as}."),
+            Err(err) => format!("Could not delete {kept_as}: {err}"),
+        };
     }
 
     /// Compare the open snapshot with another snapshot of the same document.
@@ -1920,15 +2015,18 @@ impl StudioState {
     /// Nothing is written: both sides are read, and the live document and the
     /// snapshots stay as they are.
     pub fn snapshot_comparison(&self) -> Option<Result<SnapshotComparison, String>> {
-        if let Some(commit) = &self.compare_revision {
+        if let Some(earlier) = &self.compare_revision {
             let doc_id = self.selected_node().and_then(|node| node.document_id)?;
-            let label = self
-                .scene_revisions()
-                .into_iter()
-                .find(|revision| &revision.commit == commit)
-                .map(|revision| format!("Synced {}", revision.date))
-                .unwrap_or_else(|| "An earlier sync".into());
-            let result = self.revision_document(commit).and_then(|old| {
+            let label = match earlier {
+                Earlier::Sync(commit) => self
+                    .scene_revisions()
+                    .into_iter()
+                    .find(|revision| &revision.commit == commit)
+                    .map(|revision| format!("Synced {}", revision.date))
+                    .unwrap_or_else(|| "An earlier sync".into()),
+                Earlier::Kept(_) => "Changed outside".into(),
+            };
+            let result = self.revision_document(earlier).and_then(|old| {
                 self.current_document(doc_id).map(|new| SnapshotComparison {
                     older: label,
                     newer: "Current text".into(),
@@ -3623,6 +3721,60 @@ mod tests {
     }
 
     #[test]
+    fn the_binder_changed_outside_is_read_again_and_kept_versions_are_listed() {
+        let (mut state, dir) = open_state("lists");
+        let root = state.project_root().unwrap();
+        state.update_selected_title("Mine".into());
+        state.set_daily_goal(700);
+        state.add_character();
+        state.save_all();
+        // What the program wrote itself is not taken for a change outside.
+        state.status.clear();
+        state.check_files_on_disk();
+        assert!(state.status.is_empty(), "{}", state.status);
+
+        // Changed outside, nothing unsaved: the window shows the change.
+        let binder = root.join("binder.json");
+        let scene = state.selected.unwrap();
+        let file = open_scene_file(&state);
+        let html = std::fs::read_to_string(&file).unwrap();
+        std::fs::write(&file, html.replace("<title>Mine</title>", "<title>From git</title>")).unwrap();
+        let listed = std::fs::read_to_string(&binder).unwrap();
+        std::fs::write(&binder, listed.replace("\"kind\"", "\"x\":1,\"kind\"")).unwrap();
+        state.check_files_on_disk();
+        assert!(state.status.contains("read again"), "{}", state.status);
+        assert_eq!(state.binder.get(scene).unwrap().title, "From git");
+        assert_eq!(state.selected, Some(scene));
+
+        // With something unsaved nothing is replaced.
+        state.apply_editor_text("Typing, not saved.".into());
+        let listed = std::fs::read_to_string(&binder).unwrap();
+        std::fs::write(&binder, listed.replace("\"x\":1", "\"x\":2")).unwrap();
+        state.check_files_on_disk();
+        assert!(state.status.contains("changed outside"), "{}", state.status);
+        assert_eq!(state.editor_text, "Typing, not saved.");
+
+        // A scene changed outside and saved over is listed, and comes back.
+        let outside = std::fs::read_to_string(&file).unwrap().replace("<body>", "<body><p>Outside.</p>");
+        std::fs::write(&file, &outside).unwrap();
+        state.flush_editor();
+        let kept = state.kept_files();
+        let (item, mine) = kept.iter().find(|(item, _)| item.kept_as.starts_with("manuscript/")).unwrap();
+        assert!(*mine);
+        let earlier = Earlier::Kept(item.kept_as.clone());
+        state.compare_with_revision(earlier.clone());
+        assert!(state.snapshot_comparison().unwrap().is_ok());
+        state.restore_revision(&earlier);
+        assert!(state.editor_text.contains("Outside."), "{}", state.editor_text);
+        let kept_as = item.kept_as.clone();
+        state.request_kept_removal(kept_as.clone());
+        assert!(root.join(&kept_as).exists());
+        state.request_kept_removal(kept_as.clone());
+        assert!(!root.join(&kept_as).exists());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn a_scene_changed_outside_is_read_again_unless_the_writer_is_typing() {
         let (mut state, dir) = open_state("outside");
         state.apply_editor_text("Written here.".into());
@@ -3633,7 +3785,7 @@ mod tests {
         // Changed outside, nothing unsaved: the window shows the change.
         let text = std::fs::read_to_string(&file).unwrap().replace("Written here.", "Written in git.");
         std::fs::write(&file, text.replace("<title>Scene 1</title>", "<title>Pulled</title>")).unwrap();
-        state.check_open_scene_on_disk();
+        state.check_files_on_disk();
         assert_eq!(state.editor_text, "Written in git.");
         assert_eq!(state.binder.get(scene).unwrap().title, "Pulled");
         assert!(state.status.contains("read again"), "{}", state.status);
@@ -3643,7 +3795,7 @@ mod tests {
         state.apply_editor_text("Typing, not saved.".into());
         let outside = std::fs::read_to_string(&file).unwrap().replace("Written in git.", "Changed again outside.");
         std::fs::write(&file, &outside).unwrap();
-        state.check_open_scene_on_disk();
+        state.check_files_on_disk();
         assert_eq!(state.editor_text, "Typing, not saved.");
         assert!(state.status.contains("changed outside"), "{}", state.status);
         state.flush_editor();
@@ -3776,16 +3928,16 @@ mod tests {
         assert!(revisions[0].message.contains("Scene 1"), "{revisions:?}");
 
         let older = revisions[1].commit.clone();
-        state.compare_with_revision(older.clone());
+        state.compare_with_revision(Earlier::Sync(older.clone()));
         let comparison = state.snapshot_comparison().unwrap().unwrap();
         assert!(comparison.older.starts_with("Synced "), "{}", comparison.older);
         assert!(!comparison.diff.is_unchanged());
 
-        state.restore_revision(&older);
+        state.restore_revision(&Earlier::Sync(older));
         assert_eq!(state.editor_text, "First draft.");
         state.undo();
         assert_eq!(state.editor_text, "Second draft.");
-        state.restore_revision("not-a-commit");
+        state.restore_revision(&Earlier::Sync("not-a-commit".into()));
         assert!(state.status.contains("not a commit"), "{}", state.status);
         let _ = std::fs::remove_dir_all(dir);
     }
