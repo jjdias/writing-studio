@@ -19,7 +19,7 @@ Writing Studio is **open source** (MIT OR Apache-2.0) and **free for the communi
 | 5.1 | What format 2 still needs to be safe to rely on | Done: items 1, 2, and 5 to 10; 3 and 4 dropped | [todo/phase-5.1.md](todo/phase-5.1.md) |
 | 6 | Publishing: export profiles, PDF, EPUB | To do | [todo/phase-6.md](todo/phase-6.md) |
 | 7 | Cross-platform release | To do | [todo/phase-7.md](todo/phase-7.md) |
-| 8 | Writing surface | To do | [todo/phase-8.md](todo/phase-8.md) |
+| 8 | UI and UX overhaul: a window built around writing | To do | [todo/phase-8.md](todo/phase-8.md) |
 | Bonus | Work with no phase yet | Not started | [todo/bonus.md](todo/bonus.md) |
 
 Phases 1 to 5 are on `master`.

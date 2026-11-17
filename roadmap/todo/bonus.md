@@ -83,13 +83,6 @@ Not current work. Compile writes open notes as footnotes or bracketed text, and 
 - DOCX: notes as Word comments, highlights as Word highlighting, and tracked changes as Word revisions that an editor can accept or reject in Word.
 - A compile choice between a clean draft and a draft with review marks.
 
-## One place for the review panels
-
-Not current work. The note list, the tracked changes, and the spelling list each sit above the manuscript and take room from it when all three are in use. This belongs with the writing surface of Phase 8.
-
-- One panel for the three, with a tab for each, that can be folded away or moved to the side.
-- Changing a note from that panel leaves the caret where it was.
-
 ## Bring an older project up to date on open
 
 Not current work. New tables are added when a project opens, but columns added to `binder_nodes` after its first version are not: a database from before `label` and `color` does not gain them.
