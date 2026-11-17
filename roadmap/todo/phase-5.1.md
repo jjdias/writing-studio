@@ -2,7 +2,7 @@
 
 In progress. These are gaps found while building Phase 5. None of them is in the Phase 5 plan, and each one matters before writers keep real books in format 2.
 
-Items 1, 2, 5, 6, 7, and 9 are done. Items 3 and 4 were dropped. Items 8 and 10 are left.
+Items 1, 2, 5, 6, 7, 8, and 9 are done. Items 3 and 4 were dropped. Item 10 is left.
 
 ## Before you start
 
@@ -81,9 +81,7 @@ Items 1, 2, 5, 6, 7, and 9 are done. Items 3 and 4 were dropped. Items 8 and 10 
 
 ## 8. Restore one scene from a backup
 
-**The problem.** In format 2 a backup is a copy of the cache, and restoring it replaces the whole project, files and all. A writer who wants one scene back has to restore everything.
-
-**How to fix it.** In History, list the scenes of a backup and let one be restored. Open the backup read-only with `rusqlite`, read that scene's row from `documents`, and save it with `save_document`, after a snapshot of the current text, as `restore_snapshot` in `recovery.rs` does.
+**Done.** See [../done/phase-5.md](../done/phase-5.md), "Phase 5.1, item 8".
 
 ## 9. Show line breaks typed in a paragraph
 

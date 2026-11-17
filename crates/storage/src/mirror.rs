@@ -1171,6 +1171,31 @@ mod tests {
     }
 
     #[test]
+    fn one_scene_comes_back_from_a_backup_and_nothing_else_changes() {
+        let dir = temp("restore-scene");
+        let store = ProjectStore::create(&dir, "One scene").unwrap();
+        let scene = scene_of(&store);
+        let mut document = store.load_document(scene.id).unwrap();
+        document.replace_plain_text("Before the backup.");
+        store.save_document(&document).unwrap();
+        let backup = store.backup().unwrap();
+        document.replace_plain_text("After the backup.");
+        store.save_document(&document).unwrap();
+        let later = BinderNode::new(NodeKind::Scene, "Later", scene.parent_id, 9);
+        store.upsert_node(&later).unwrap();
+
+        let restored = store.restore_scene_from_backup(&backup, scene.id).unwrap();
+        assert_eq!(restored.to_plain_text(), "Before the backup.");
+        assert!(fs::read_to_string(file_of(&store, scene.id)).unwrap().contains("Before the backup."));
+        assert!(store.load_binder().unwrap().nodes.iter().any(|node| node.id == later.id));
+        let kept = store.list_snapshots(scene.id).unwrap();
+        assert!(kept.iter().any(|snapshot| snapshot.preview == "After the backup."));
+        // A scene the backup does not hold is refused, and stays as it is.
+        assert!(store.restore_scene_from_backup(&backup, later.id).is_err());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn restoring_a_backup_puts_the_files_back_too() {
         let dir = temp("restore");
         let mut store = ProjectStore::create(&dir, "Restored").unwrap();

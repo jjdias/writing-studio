@@ -1999,6 +1999,21 @@ impl StudioState {
             return;
         };
         let restored = store.borrow().restore_snapshot(snapshot_id);
+        self.show_restored(restored, "Snapshot");
+    }
+
+    /// Put back the selected scene's text from a backup; the rest of the
+    /// project stays as it is.
+    pub fn restore_scene_from_backup(&mut self, path: PathBuf) {
+        self.flush_editor();
+        let (Some(store), Some(id)) = (&self.store, self.selected_node().and_then(|node| node.document_id)) else {
+            return;
+        };
+        let restored = store.borrow().restore_scene_from_backup(&path, id);
+        self.show_restored(restored, "Scene");
+    }
+
+    fn show_restored(&mut self, restored: writing_studio_core::Result<Document>, what: &str) {
         match restored {
             Ok(document) => {
                 let id = document.id;
@@ -2008,11 +2023,11 @@ impl StudioState {
                 self.sync_editor_from_session(&session);
                 self.session = Some(session);
                 self.status = match indexed {
-                    Ok(()) => "Snapshot restored locally. Previous text was saved as a pre-restore snapshot.".into(),
-                    Err(err) => format!("Snapshot restored, but search index failed: {err}"),
+                    Ok(()) => format!("{what} restored locally. Previous text was saved as a pre-restore snapshot."),
+                    Err(err) => format!("{what} restored, but search index failed: {err}"),
                 };
             }
-            Err(err) => self.status = format!("Could not restore snapshot: {err}"),
+            Err(err) => self.status = format!("Could not restore {}: {err}", what.to_lowercase()),
         }
     }
 

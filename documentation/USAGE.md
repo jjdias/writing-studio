@@ -56,7 +56,7 @@ The index is built in memory from the project when it opens, and updated when a 
 - A project made by an earlier test version, which kept everything in one database, cannot be opened by this version.
 - If a project's files were changed outside the program in ways it had to repair, the status line says so when it opens and **History** lists each file and what was done. Files that came in are in **Recovered** at the top of the manuscript. A scene marked **missing** in the binder has lost its file: restore the file and open the project again.
 - A scene's file can be changed outside the program, in a text editor or by git. When you come back to the window, the open scene is read again if you have nothing unsaved. If a save would write over a file that was changed outside, the other version is kept beside it as `….conflict-<time>.html`, and the status line says so.
-- **Backup** writes `.local/backups/project-….sqlite` in the project folder. Restore from **History** (second click). A safety copy is written first, and the scene files are written again from what was restored. Backups and snapshots belong to this computer; they are not part of what git shares.
+- **Backup** writes `.local/backups/project-….sqlite` in the project folder. In **History**, **Restore this scene** puts back only the selected scene as it was in that backup; the text it replaces is kept as a pre-restore snapshot. **Restore all** replaces the whole project (second click): a safety copy is written first, and the scene files are written again from what was restored. Backups and snapshots belong to this computer; they are not part of what git shares.
 
 ## Sync
 

@@ -1781,6 +1781,7 @@ fn HistoryPane() -> Element {
     let comparing = state.read().compare_snapshot;
     let backups = state.read().backups();
     let confirm = state.read().confirm_backup.clone();
+    let has_text = state.read().selected_node().is_some_and(|node| node.document_id.is_some());
     let heading = state
         .read()
         .selected_node()
@@ -1832,7 +1833,7 @@ fn HistoryPane() -> Element {
             }
             section {
                 h2 { "Project backups" }
-                p { class: "hint", "SQLite copies in this project’s backups folder. Restore is local only and asks for a second click." }
+                p { class: "hint", "Copies of this project in its backups folder. Restore this scene puts back the selected scene only. Restore all replaces the whole project and asks for a second click." }
                 div { class: "binder-tools",
                     button { class: "primary", onclick: move |_| state.write().backup(), "Write backup now" }
                 }
@@ -1846,13 +1847,26 @@ fn HistoryPane() -> Element {
                                     strong { "{item.file_name}" }
                                     span { class: "card-meta", "{item.modified_label} · {item.size_label()}" }
                                 }
-                                button {
-                                    class: if confirm.as_ref() == Some(&item.path) { "primary" } else { "" },
-                                    onclick: move |_| {
-                                        state.write().request_backup_restore(item.path.clone());
-                                        publish_layout(state, chrome, widths);
-                                    },
-                                    if confirm.as_ref() == Some(&item.path) { "Confirm restore" } else { "Restore" }
+                                div { class: "history-actions",
+                                    if has_text {
+                                        button {
+                                            title: "Put back only “{heading}” as it was in this backup",
+                                            onclick: {
+                                                let path = item.path.clone();
+                                                move |_| state.write().restore_scene_from_backup(path.clone())
+                                            },
+                                            "Restore this scene"
+                                        }
+                                    }
+                                    button {
+                                        class: if confirm.as_ref() == Some(&item.path) { "primary" } else { "" },
+                                        title: "Replace the whole project with this backup",
+                                        onclick: move |_| {
+                                            state.write().request_backup_restore(item.path.clone());
+                                            publish_layout(state, chrome, widths);
+                                        },
+                                        if confirm.as_ref() == Some(&item.path) { "Confirm restore" } else { "Restore all" }
+                                    }
                                 }
                             }
                         }

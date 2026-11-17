@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use writing_studio_core::{Error, Id, Result, Timestamp};
 use writing_studio_document::Document;
 
@@ -97,7 +97,31 @@ impl ProjectStore {
     }
 
     pub fn restore_snapshot(&self, snapshot_id: Id) -> Result<Document> {
-        let mut restored = self.load_snapshot(snapshot_id)?;
+        self.restore_document(self.load_snapshot(snapshot_id)?)
+    }
+
+    /// Put back one scene's text from a backup, leaving the rest of the
+    /// project as it is. The backup is only read.
+    pub fn restore_scene_from_backup(&self, backup_path: &Path, document_id: Id) -> Result<Document> {
+        check_backup(backup_path)?;
+        self.load_document(document_id)?;
+        let backup = Connection::open_with_flags(backup_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(sqlite)?;
+        let json: Option<String> = backup
+            .query_row(
+                "SELECT content_json FROM documents WHERE id = ?1",
+                params![document_id.to_string()],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|_| Error::message("backup is not a Writing Studio project database"))?;
+        let json = json.ok_or_else(|| Error::message("this backup has no copy of that scene"))?;
+        let mut restored = Document::from_json(&json).map_err(|err| Error::message(err.to_string()))?;
+        restored.id = document_id;
+        self.restore_document(restored)
+    }
+
+    fn restore_document(&self, mut restored: Document) -> Result<Document> {
         let document_id = restored.id;
         restored.updated_at = Timestamp::now();
 
@@ -202,17 +226,7 @@ impl ProjectStore {
     }
 
     pub fn restore_backup(&mut self, backup_path: &Path) -> Result<()> {
-        if !backup_path.exists() {
-            return Err(Error::message("backup file was not found"));
-        }
-        if !backup_path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .is_some_and(|name| name.ends_with(".sqlite"))
-        {
-            return Err(Error::message("backup must be a .sqlite file"));
-        }
-
+        check_backup(backup_path)?;
         let safety = self.backup()?;
 
         if let Err(err) = copy_database(backup_path, &mut self.conn) {
@@ -235,6 +249,20 @@ impl ProjectStore {
         // The files are the project, so they follow what was restored.
         self.write_files_from_cache()
     }
+}
+
+fn check_backup(path: &Path) -> Result<()> {
+    if !path.exists() {
+        return Err(Error::message("backup file was not found"));
+    }
+    if !path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.ends_with(".sqlite"))
+    {
+        return Err(Error::message("backup must be a .sqlite file"));
+    }
+    Ok(())
 }
 
 fn copy_database(from: &Path, dest: &mut Connection) -> Result<()> {

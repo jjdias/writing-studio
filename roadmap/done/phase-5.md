@@ -122,6 +122,12 @@ Checked by a test of the window's state that syncs two drafts, lists them, compa
 - Two people editing at the same time. This is bonus work.
 - Encrypting a project. A private repository is as private as its host makes it.
 
+## Phase 5.1, item 8 — One scene back from a backup
+
+A backup is a copy of the cache, and restoring it replaced the whole project. Now each backup in History also has **Restore this scene**, for the selected scene. `restore_scene_from_backup` in `crates/storage/src/recovery.rs` opens the backup read-only, reads that scene's row, and saves it the way a snapshot is restored: the current text is kept as a pre-restore snapshot first, and the scene file is written. A scene the project no longer has, or one the backup does not hold, is refused. The whole-project restore is now labelled **Restore all**.
+
+Checked by a test that restores one scene from a backup while a scene added after the backup stays, and the replaced text is kept as a snapshot. The History buttons are not tested in the window.
+
 ## Phase 5.1, item 6 — File names that are the same on every computer
 
 A scene's file name kept letters from any script, so "Été" gave `été-3f9a.html`. macOS can store such a name in another Unicode form than Windows and Linux, and git can then see two files where there is one. Now `slug` in `crates/format/src/scene.rs` makes accented Latin letters plain (é → e, ß → ss, æ → ae), skips an accent stored as its own character, and turns anything else that is not an ASCII letter or digit into `-`. A title with no Latin letters gives `untitled` and the id. The Markdown folder export uses the same names. Files already named keep their names.
