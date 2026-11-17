@@ -171,6 +171,41 @@ impl Theme {
     }
 }
 
+/// The typeface the manuscript is set in. Missing on older projects.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProseFont {
+    #[default]
+    Serif,
+    Sans,
+}
+
+impl ProseFont {
+    pub const ALL: [ProseFont; 2] = [ProseFont::Serif, ProseFont::Sans];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Serif => "serif",
+            Self::Sans => "sans",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Serif => "Serif",
+            Self::Sans => "Sans serif",
+        }
+    }
+
+    pub fn from_id(value: &str) -> Option<Self> {
+        match value {
+            "serif" => Some(Self::Serif),
+            "sans" => Some(Self::Sans),
+            _ => None,
+        }
+    }
+}
+
 /// Width after a horizontal drag. `positive` means moving the pointer right grows the panel.
 /// Word target for one book in a series project. Missing books use the project goal.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -203,6 +238,9 @@ pub struct ProjectSettings {
     /// Dark, light, or paper. Missing on older projects.
     #[serde(default)]
     pub theme: Theme,
+    /// Serif or sans for the manuscript. Missing on older projects, which use serif.
+    #[serde(default)]
+    pub prose_font: ProseFont,
     /// Book whose compile, word count, and word target are shown. Missing means the first book.
     #[serde(default)]
     pub compile_book_id: Option<Id>,
@@ -259,6 +297,7 @@ impl Default for ProjectSettings {
             writing: WritingLog::default(),
             layout: PanelLayout::default(),
             theme: Theme::Dark,
+            prose_font: ProseFont::Serif,
             compile_book_id: None,
             book_word_goals: Vec::new(),
             show_whole_series: true,
@@ -345,6 +384,11 @@ mod tests {
         assert_eq!(settings.theme, Theme::Paper);
         assert_eq!(Theme::from_id("light"), Some(Theme::Light));
         assert_eq!(Theme::from_id("sepia"), None);
+        assert_eq!(settings.prose_font, ProseFont::Serif);
+        let sans = r#"{"daily_word_goal":1,"project_word_goal":2,"compile_title_page":true,"autosave_seconds":2,"prose_font":"sans"}"#;
+        let settings: ProjectSettings = serde_json::from_str(sans).unwrap();
+        assert_eq!(settings.prose_font, ProseFont::Sans);
+        assert_eq!(ProseFont::from_id("mono"), None);
         assert!(settings.compile_book_id.is_none());
         assert!(settings.book_word_goals.is_empty());
         assert!(settings.show_whole_series);

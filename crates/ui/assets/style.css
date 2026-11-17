@@ -25,7 +25,8 @@
   --primary: #0e639c;
   --primary-hover: #1177bb;
   --link: #3794ff;
-  --editor: #1e1e1e;
+  --editor: #262629;
+  --desk: #18181a;
   --editor-text: #d4d4d4;
   --comment-bg: rgba(255, 200, 80, 0.16);
   --comment-line: #cca700;
@@ -36,9 +37,14 @@
   --code-bg: #2d2d2d;
   --tab-fg: #ffffff;
   --input-border: #4a4a4f;
-  --font: Consolas, "Cascadia Mono", "Segoe UI Mono", monospace;
+  --mono: Consolas, "Cascadia Mono", "Segoe UI Mono", monospace;
+  --prose-serif: Charter, "Iowan Old Style", Georgia, "Palatino Linotype", Palatino, serif;
+  --prose-sans: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", sans-serif;
+  --prose: var(--prose-serif);
   --ui: "Segoe UI", system-ui, sans-serif;
 }
+
+.shell.prose-sans { --prose: var(--prose-sans); }
 
 .shell.theme-light {
   color-scheme: light;
@@ -64,6 +70,7 @@
   --primary-hover: #1177bb;
   --link: #006ab1;
   --editor: #ffffff;
+  --desk: #e8e8ea;
   --editor-text: #333333;
   --comment-bg: rgba(255, 196, 0, 0.28);
   --comment-line: #bf8803;
@@ -99,6 +106,7 @@
   --primary-hover: #a07d48;
   --link: #d7a15a;
   --editor: #f6f1e7;
+  --desk: #15120f;
   --editor-text: #2a241c;
   --comment-bg: rgba(196, 162, 101, 0.35);
   --comment-line: #8a6a3b;
@@ -108,7 +116,6 @@
   --diff-del-line: #a8402f;
   --code-bg: #efe6d4;
   --tab-fg: #f3ead7;
-  --font: Georgia, "Iowan Old Style", Palatino, "Palatino Linotype", serif;
 }
 
 * { box-sizing: border-box; }
@@ -516,14 +523,99 @@ button.danger:hover, button.danger.armed { background: var(--danger); color: #ff
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* One row. What does not fit stays in the More menu, so the row never wraps. */
 .format-toolbar {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-  padding: 0 12px 6px;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 10px 6px;
+  border-bottom: 1px solid var(--line);
+  min-width: 0;
 }
-.format-group { display: flex; flex-wrap: wrap; gap: 2px; }
-.format-toolbar button { font-size: 12px; padding: 3px 7px; }
+.format-toolbar .tool {
+  height: 28px;
+  min-width: 28px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text);
+  flex: 0 0 auto;
+}
+.format-toolbar .tool .glyph { width: 16px; height: 16px; }
+.format-toolbar .tool.on, .format-toolbar .tool.open { background: var(--selection); color: var(--selection-fg); }
+.format-toolbar .tool-menu { min-width: 7.5rem; justify-content: space-between; font-size: 12px; }
+.format-toolbar .tool-menu::after { content: ""; margin-left: 8px; border: 4px solid transparent; border-top-color: currentColor; transform: translateY(2px); }
+.tool-letter { font-family: Georgia, serif; font-size: 15px; line-height: 1; width: 1em; text-align: center; }
+.tool-letter.bold { font-weight: 700; }
+.tool-letter.italic { font-style: italic; }
+.tool-rule { width: 1px; height: 18px; margin: 0 6px; background: var(--line); flex: 0 0 auto; }
+.tool-status { margin-left: auto; padding-left: 8px; font-size: 11px; color: var(--gold); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.menu-item.current { color: var(--gold); }
+.menu-swatches { display: flex; gap: 4px; padding: 4px 10px; }
+.menu-swatches .hl-btn { flex: 1; font-size: 11px; padding: 3px 4px; color: var(--text); }
+
+/* The page sits on a desk, set apart from the panels in every theme, and
+   keeps a line length of about seventy characters. */
+.editor-body { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
+.editor-body.side { flex-direction: row; }
+.desk { flex: 1; min-height: 0; min-width: 0; overflow: auto; background: var(--desk); padding: 28px 24px 48px; }
+.focus .desk { padding-top: 56px; }
+
+/* The review panel: under the page, or beside it. */
+.review-panel { flex: 0 0 auto; max-height: 40%; display: flex; flex-direction: column; min-height: 0; background: var(--panel-2); border-top: 1px solid var(--line); }
+.editor-body.side .review-panel { max-height: none; width: 320px; flex: 0 0 320px; border-top: 0; border-left: 1px solid var(--line); }
+.review-tabs { display: flex; align-items: stretch; gap: 2px; padding: 0 8px; min-height: 32px; border-bottom: 1px solid var(--line); }
+.review-panel.folded .review-tabs { border-bottom: 0; }
+.review-tab {
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+}
+.review-tab:hover { background: transparent; color: var(--text); }
+.review-tab.active { color: var(--text); border-bottom-color: var(--gold); }
+.review-count { font-size: 11px; padding: 0 5px; border-radius: 8px; background: var(--control); color: var(--muted); }
+.review-spacer { flex: 1; }
+.review-tabs .view-action { align-self: center; font-size: 12px; }
+.review-body { overflow: auto; min-height: 0; padding-top: 8px; }
+.review-body .review-list, .review-body .track-list, .review-body .spell-words { max-height: none; }
+.editor-body.side .review-item { flex-wrap: wrap; }
+.editor-body.side .review-item .review-anchor { flex: 1 1 100%; }
+
+/* Link and note ask here, under the selection, instead of in a browser prompt. */
+.inline-prompt {
+  position: absolute;
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  max-width: calc(100% - 16px);
+  background: var(--panel-2);
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+}
+.inline-prompt input { width: 16rem; min-width: 6rem; flex: 1 1 auto; }
+.inline-prompt button { flex: 0 0 auto; }
+
+.focus-count {
+  position: fixed;
+  right: 16px;
+  bottom: 12px;
+  font-size: 12px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.workbench.focus .tabs { display: none; }
+
 .review { padding: 0 16px 8px; font-size: 12px; }
 .review-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; color: var(--muted); padding-bottom: 4px; }
 .review-head button, .review-item button { font-size: 11px; padding: 2px 6px; }
@@ -565,25 +657,37 @@ button.danger:hover, button.danger.armed { background: var(--danger); color: #ff
 .track-item.added .track-kind { color: var(--diff-add-line); }
 .track-item.removed .track-kind { color: var(--diff-del-line); }
 .track-text { flex: 1; margin: 0; padding: 2px 6px; white-space: pre-wrap; line-height: 1.45; color: var(--text); background: var(--panel-2); }
+/* The type scale for prose: a body size, and headings stepped up from it. */
 .manuscript {
-  flex: 1;
-  margin: 0;
-  min-height: 0;
+  max-width: calc(70ch + 112px);
+  min-height: 100%;
+  margin: 0 auto;
   background: var(--editor);
   color: var(--editor-text);
-  font-family: var(--font);
-  font-size: 14px;
-  line-height: 1.6;
+  font-family: var(--prose);
+  font-size: 17px;
+  line-height: 1.65;
   border: 0;
+  border-radius: 2px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22);
   resize: none;
-  padding: 4px 16px 24px;
-  overflow: auto;
+  padding: 48px 56px 72px;
   outline: none;
 }
+.manuscript:focus-visible { box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22), 0 0 0 1px var(--gold); }
+.manuscript.rich > :first-child { margin-top: 0; }
+/* In a narrow window the margins give the room back to the text. */
+@media (max-width: 900px) {
+  .desk { padding: 16px 12px 32px; }
+  .manuscript { padding: 28px 24px 48px; }
+}
+.manuscript.rich h1 { font-size: 1.6em; line-height: 1.25; }
+.manuscript.rich h2 { font-size: 1.3em; line-height: 1.3; }
+.manuscript.rich h3 { font-size: 1.1em; line-height: 1.35; }
 .manuscript.rich h1, .manuscript.rich h2, .manuscript.rich h3 {
-  font-family: var(--ui);
+  font-family: var(--prose);
   font-weight: 600;
-  margin: 0 0 12px;
+  margin: 1.2em 0 0.6em;
 }
 .manuscript.rich p, .manuscript.rich blockquote, .manuscript.rich ul, .manuscript.rich ol {
   margin: 0 0 12px;
@@ -607,7 +711,7 @@ button.danger:hover, button.danger.armed { background: var(--danger); color: #ff
 .manuscript.rich mark[data-highlight="blue"] { background: var(--hl-blue); }
 .manuscript.rich mark[data-highlight="pink"] { background: var(--hl-pink); }
 .manuscript.rich pre {
-  font-family: var(--font);
+  font-family: var(--mono);
   font-size: 13px;
   line-height: 1.45;
   background: var(--code-bg);
@@ -748,7 +852,7 @@ button.danger:hover, button.danger.armed { background: var(--danger); color: #ff
   padding: 12px 16px;
   background: var(--editor);
   color: var(--editor-text);
-  font-family: var(--font);
+  font-family: var(--prose);
   line-height: 1.6;
   user-select: text;
 }

@@ -15,7 +15,7 @@ use writing_studio_editor::EditorSession;
 use writing_studio_manuscript::{outline_rows, row_word_count};
 use writing_studio_project::{
     binder_color_hex, drag_width, format_elapsed, BinderNode, NodeKind, PanelChrome, PanelLayout,
-    PanelWidths, SidebarSide, Theme, BINDER_COLORS, INSPECTOR_WIDTH_DEFAULT, INSPECTOR_WIDTH_MAX,
+    PanelWidths, ProseFont, SidebarSide, Theme, BINDER_COLORS, INSPECTOR_WIDTH_DEFAULT, INSPECTOR_WIDTH_MAX,
     INSPECTOR_WIDTH_MIN, SIDEBAR_WIDTH_DEFAULT, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN,
 };
 use writing_studio_diagnostics::{BookContext, SceneFacts};
@@ -24,7 +24,7 @@ use writing_studio_spellcheck::UnknownWord;
 
 use crate::shortcuts::{app_shortcut, AppShortcut};
 use crate::state::{
-    Beat, BibleLink, CompiledFormat, Earlier, FoldedPanel, FrameMenu, StudioState, WorkspaceMode,
+    Beat, BibleLink, CompiledFormat, Earlier, FoldedPanel, FrameMenu, ReviewTab, StudioState, WorkspaceMode,
     WorldSection,
 };
 
@@ -132,14 +132,11 @@ fn Studio() -> Element {
     });
     let open = state.read().is_open();
     let theme = state.read().theme();
+    let font = state.read().prose_font();
 
     rsx! {
         div {
-            class: match theme {
-                Theme::Dark => "shell theme-dark",
-                Theme::Light => "shell theme-light",
-                Theme::Paper => "shell theme-paper",
-            },
+            class: "shell theme-{theme.as_str()} prose-{font.as_str()}",
             tabindex: 0,
             onmousemove: move |event| {
                 let Some(drag) = *resize.peek() else {
@@ -359,7 +356,12 @@ fn Workspace() -> Element {
                 }
             }
         }
-        StatusBar {}
+        if focus {
+            // Focus mode keeps only the page and how many words are on it.
+            div { class: "focus-count", aria_live: "polite", "{state.read().word_count()} words" }
+        } else {
+            StatusBar {}
+        }
     }
 }
 
@@ -492,10 +494,25 @@ fn ProjectMenu() -> Element {
 fn SettingsPanel() -> Element {
     let mut state = use_context::<Signal<StudioState>>();
     let theme = state.read().theme();
+    let font = state.read().prose_font();
     let spelling_value = state.read().spelling_language().unwrap_or_default();
     let spelling_choices = state.read().spelling_choices();
     rsx! {
         div { class: "menu menu-end popover", role: "dialog", aria_label: "Settings",
+            label { r#for: "setting-font", "Manuscript font" }
+            select {
+                id: "setting-font",
+                title: "The typeface the manuscript is set in, saved for this computer",
+                value: "{font.as_str()}",
+                onchange: move |event| {
+                    if let Some(next) = ProseFont::from_id(&event.value()) {
+                        state.write().set_prose_font(next);
+                    }
+                },
+                for item in ProseFont::ALL {
+                    option { value: "{item.as_str()}", selected: item == font, "{item.label()}" }
+                }
+            }
             label { r#for: "setting-theme", "Theme" }
             select {
                 id: "setting-theme",

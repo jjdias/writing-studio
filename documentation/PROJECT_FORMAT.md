@@ -250,7 +250,7 @@ JSON is for structure that is not read as prose. Where a file is a list, each it
 
 ## This machine only
 
-`.local/settings.json` holds every setting that is not in `project.json`: the theme, panel layout, the book on screen, whether the whole series is shown, the autosave delay, and writing sessions. A project opened where there is no `.local/` uses the usual ones.
+`.local/settings.json` holds every setting that is not in `project.json`: the theme, the manuscript font, panel layout, the book on screen, whether the whole series is shown, the autosave delay, and writing sessions. A project opened where there is no `.local/` uses the usual ones.
 
 `.local/cache.sqlite` is a database the program fills from the files every time the project opens. While the program runs it answers searches and word counts. It also holds what is this machine's alone: snapshots and track-changes baselines. `.local/backups/` holds copies of that database.
 
@@ -294,7 +294,7 @@ Missing tables are added when a project opens (`CREATE TABLE IF NOT EXISTS`).
 
 `.local/settings.json` holds the rest, this machine's:
 
-- `theme` (`dark`, `light`, or `paper`), `autosave_seconds`, `compile_book_id` (the book on screen, compiled, and counted in the status bar), and `show_whole_series`.
+- `theme` (`dark`, `light`, or `paper`), `prose_font` (`serif` or `sans`, the manuscript's typeface; missing means `serif`), `autosave_seconds`, `compile_book_id` (the book on screen, compiled, and counted in the status bar), and `show_whole_series`.
 - `layout`: `sidebar_side` (`left` or `right`), `sidebar_width` (180 to 480 pixels), `inspector_width` (220 to 560), and whether each panel is visible.
 - `writing`: today's date and each book's word count at the start of today and of the open sitting, and the last 40 completed sittings (`day`, `started_at`, `ended_at`, `words`, `seconds`). A sitting is stored the next time the project opens.
 

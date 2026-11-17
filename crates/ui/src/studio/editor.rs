@@ -14,16 +14,20 @@ pub(super) fn EditorPane() -> Element {
         .unwrap_or("Document");
     let html = snapshot.editor_html.clone();
     let epoch = snapshot.editor_epoch;
+    let focus = snapshot.focus_mode;
     let can_edit = snapshot.session.is_some() && !snapshot.syncing;
+    let side = snapshot.review_at_side && !snapshot.review_folded;
+    let marks = use_signal(Vec::<String>::new);
+    let prompt = use_signal(|| None::<InlinePrompt>);
     // The words to underline. An empty list clears the underlines, which is
     // also what a project with spellcheck off sends.
-    let unknown: Vec<String> = snapshot
-        .unknown_words()
-        .into_iter()
-        .map(|item| item.word)
-        .collect();
-    let unknown_json = serde_json::to_string(&unknown).unwrap_or_else(|_| "[]".into());
+    let unknown: Vec<UnknownWord> = snapshot.unknown_words();
+    let unknown_json = serde_json::to_string(
+        &unknown.iter().map(|item| item.word.as_str()).collect::<Vec<_>>(),
+    )
+    .unwrap_or_else(|_| "[]".into());
     use_effect(use_reactive((&epoch, &unknown_json), |(_, words)| paint_spelling(words)));
+    use_effect(use_reactive((&epoch,), move |_| watch_marks(marks)));
     let initial_html = if html.trim().is_empty() {
         "<p><br></p>".into()
     } else {
@@ -32,22 +36,32 @@ pub(super) fn EditorPane() -> Element {
 
     rsx! {
         div { class: "editor-pane",
-            div { class: "breadcrumb", "{kind} › {heading}" }
-            FormatToolbar { enabled: can_edit }
-            ReviewList {}
-            TrackPanel {}
-            SpellPanel {}
-            div {
-                key: "{epoch}",
-                class: "manuscript rich",
-                contenteditable: can_edit,
-                "data-manuscript": "true",
-                dangerous_inner_html: "{initial_html}",
-                oninput: move |_| read_manuscript_html(state),
-                onblur: move |_| {
-                    read_manuscript_html(state);
-                    state.write().flush_editor();
-                },
+            if !focus {
+                div { class: "breadcrumb", "{kind} › {heading}" }
+                FormatToolbar { enabled: can_edit, marks, prompt }
+            }
+            div { class: if side { "editor-body side" } else { "editor-body" },
+                div { class: "desk",
+                    div {
+                        key: "{epoch}",
+                        class: "manuscript rich",
+                        contenteditable: can_edit,
+                        "data-manuscript": "true",
+                        aria_label: "Manuscript",
+                        dangerous_inner_html: "{initial_html}",
+                        oninput: move |_| read_manuscript_html(state),
+                        onblur: move |_| {
+                            read_manuscript_html(state);
+                            state.write().flush_editor();
+                        },
+                    }
+                }
+                if !focus {
+                    ReviewPanel { unknown }
+                }
+                if let Some(at) = prompt() {
+                    PromptField { key: "{at.x}-{at.y}", at, prompt }
+                }
             }
         }
     }
@@ -87,6 +101,20 @@ pub(super) fn paint_spelling(words_json: String) {
     });
 }
 
+/// Keep `marks` to the marks at the caret, for the toolbar to show. Runs
+/// for as long as the manuscript it was started for is on screen.
+pub(super) fn watch_marks(mut marks: Signal<Vec<String>>) {
+    spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+        let mut eval = document::eval(&format!("{REVIEW_JS}\nwsWatchMarks();"));
+        while let Ok(next) = eval.recv::<Vec<String>>().await {
+            if *marks.peek() != next {
+                marks.set(next);
+            }
+        }
+    });
+}
+
 /// Select the next place a word appears in the manuscript.
 pub(super) fn find_spelling(word: &str) {
     let word_json = serde_json::to_string(word).unwrap_or_else(|_| "\"\"".into());
@@ -112,6 +140,32 @@ pub(super) fn commit_editor_html(mut state: Signal<StudioState>, html: String) {
     state.write().apply_editor_html(html);
 }
 
+/// Act on the document from the review panel, then put the caret back where
+/// it was once the manuscript is drawn again. The panel's buttons keep focus
+/// off themselves, so the caret is still in the manuscript when this runs.
+pub(super) fn keep_caret(mut state: Signal<StudioState>, action: impl FnOnce(&mut StudioState) + 'static) {
+    spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(16)).await;
+        let mut eval = document::eval(&format!(
+            "{REVIEW_JS}\ndioxus.send(wsCaretGet(document.querySelector('[data-manuscript]')));"
+        ));
+        let caret = eval.recv::<Vec<u32>>().await.unwrap_or_default();
+        action(&mut state.write());
+        let [start, end] = caret[..] else {
+            return;
+        };
+        tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+        let mut eval = document::eval(&format!(
+            "{REVIEW_JS}\ndioxus.send(wsCaretSet(document.querySelector('[data-manuscript]'), {start}, {end}));"
+        ));
+        let _ = eval.recv::<bool>().await;
+    });
+}
+
+fn keep_focus(event: MouseEvent) {
+    event.prevent_default();
+}
+
 pub(super) fn review_anchor(text: &str) -> String {
     let trimmed = text.split_whitespace().collect::<Vec<_>>().join(" ");
     if trimmed.chars().count() <= 42 {
@@ -121,28 +175,119 @@ pub(super) fn review_anchor(text: &str) -> String {
     }
 }
 
+/// Notes, tracked changes, and spelling, one tab each. It shows only the
+/// tabs that have something in them, and nothing when none do.
+#[component]
+pub(super) fn ReviewPanel(unknown: Vec<UnknownWord>) -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let items: Vec<ReviewItem> = state.read().review_items();
+    let started = state
+        .read()
+        .tracking
+        .as_ref()
+        .filter(|_| state.read().is_tracking())
+        .map(|tracking| tracking.started_label());
+    let changes: Vec<TrackedChange> = if started.is_some() {
+        state.read().tracked_changes()
+    } else {
+        Vec::new()
+    };
+    let spelling_on = state.read().speller.is_some() && state.read().session.is_some();
+    let project_words = if spelling_on { state.read().project_words() } else { Vec::new() };
+    let open_items = items
+        .iter()
+        .filter(|item| !matches!(item.kind, ReviewKind::Note { resolved: true, .. }))
+        .count();
+    let mut tabs = Vec::new();
+    if !items.is_empty() {
+        tabs.push((ReviewTab::Notes, open_items));
+    }
+    if started.is_some() {
+        tabs.push((ReviewTab::Changes, changes.len()));
+    }
+    if spelling_on && (!unknown.is_empty() || !project_words.is_empty()) {
+        tabs.push((ReviewTab::Spelling, unknown.len()));
+    }
+    let available: Vec<ReviewTab> = tabs.iter().map(|(tab, _)| *tab).collect();
+    let Some(shown) = ReviewTab::shown(state.read().review_tab, &available) else {
+        return rsx! {};
+    };
+    let folded = state.read().review_folded;
+    let side = state.read().review_at_side;
+    rsx! {
+        section {
+            class: if folded { "review-panel folded" } else { "review-panel" },
+            aria_label: "Review",
+            div { class: "review-tabs", role: "tablist",
+                for (tab, count) in tabs {
+                    button {
+                        class: if tab == shown && !folded { "review-tab active" } else { "review-tab" },
+                        role: "tab",
+                        aria_selected: "{tab == shown}",
+                        onmousedown: keep_focus,
+                        onclick: move |_| {
+                            let mut current = state.write();
+                            current.review_tab = Some(tab);
+                            current.review_folded = false;
+                        },
+                        "{tab.label()}"
+                        span { class: "review-count", "{count}" }
+                    }
+                }
+                div { class: "review-spacer" }
+                if !folded {
+                    button {
+                        class: "view-action",
+                        title: if side { "Put the review panel under the manuscript" } else { "Put the review panel beside the manuscript" },
+                        onmousedown: keep_focus,
+                        onclick: move |_| {
+                            let next = !state.read().review_at_side;
+                            state.write().review_at_side = next;
+                        },
+                        if side { "Below" } else { "Beside" }
+                    }
+                }
+                button {
+                    class: "view-action",
+                    title: if folded { "Show the review panel" } else { "Fold the review panel to its tabs" },
+                    aria_expanded: "{!folded}",
+                    onmousedown: keep_focus,
+                    onclick: move |_| {
+                        let next = !state.read().review_folded;
+                        state.write().review_folded = next;
+                    },
+                    if folded { "Show" } else { "Hide" }
+                }
+            }
+            if !folded {
+                div { class: "review-body", role: "tabpanel",
+                    {match shown {
+                        ReviewTab::Notes => rsx! { ReviewList { items } },
+                        ReviewTab::Changes => rsx! {
+                            TrackPanel { started: started.unwrap_or_default(), changes }
+                        },
+                        ReviewTab::Spelling => rsx! { SpellPanel { unknown, project_words } },
+                    }}
+                }
+            }
+        }
+    }
+}
+
 /// Words in the open document that the dictionary does not know, and the
 /// project's own word list.
 #[component]
-pub(super) fn SpellPanel() -> Element {
+pub(super) fn SpellPanel(unknown: Vec<UnknownWord>, project_words: Vec<String>) -> Element {
     let mut state = use_context::<Signal<StudioState>>();
-    let snapshot = state.read().clone();
-    if snapshot.speller.is_none() || snapshot.session.is_none() {
-        return rsx! {};
-    }
-    let unknown: Vec<UnknownWord> = snapshot.unknown_words();
-    let project_words = snapshot.project_words();
-    if unknown.is_empty() && project_words.is_empty() {
-        return rsx! {};
-    }
-    let show_project = snapshot.show_project_words;
-    let focus = snapshot
+    let show_project = state.read().show_project_words;
+    let focus = state
+        .read()
         .spell_focus
         .clone()
         .filter(|word| unknown.iter().any(|item| &item.word == word));
     let suggestions = focus
         .as_deref()
-        .map(|word| snapshot.spelling_suggestions(word))
+        .map(|word| state.read().spelling_suggestions(word))
         .unwrap_or_default();
     let total = unknown.len();
     let hidden = total.saturating_sub(SPELL_WORDS_SHOWN);
@@ -151,14 +296,15 @@ pub(super) fn SpellPanel() -> Element {
         div { class: "review spell",
             div { class: "review-head",
                 if total == 0 {
-                    span { "Spelling · every word is known" }
+                    span { "Every word is known" }
                 } else {
-                    span { "Spelling · {total} words not in the dictionary" }
+                    span { "{total} words not in the dictionary" }
                 }
                 if project_count > 0 {
                     button {
                         class: if show_project { "primary" } else { "" },
                         title: "Words this project accepts. Click one to take it out.",
+                        onmousedown: keep_focus,
                         onclick: move |_| {
                             let mut state = state.write();
                             state.show_project_words = !state.show_project_words;
@@ -187,7 +333,11 @@ pub(super) fn SpellPanel() -> Element {
                             key: "{word}",
                             class: "spell-chip",
                             title: "Take “{word}” out of this project's dictionary",
-                            onclick: move |_| state.write().remove_project_word(&word),
+                            onmousedown: keep_focus,
+                            onclick: move |_| {
+                                let word = word.clone();
+                                keep_caret(state, move |current| current.remove_project_word(&word));
+                            },
                             "{word} ×"
                         }
                     }
@@ -231,9 +381,13 @@ pub(super) fn SpellFocus(word: String, suggestions: Vec<String>) -> Element {
                 button {
                     key: "{suggestion}",
                     title: "Replace every “{word}” in this document with “{suggestion}”",
+                    onmousedown: keep_focus,
                     onclick: {
                         let word = word.clone();
-                        move |_| state.write().replace_misspelling(&word, &suggestion)
+                        move |_| {
+                            let (word, suggestion) = (word.clone(), suggestion.clone());
+                            keep_caret(state, move |current| current.replace_misspelling(&word, &suggestion));
+                        }
                     },
                     "{suggestion}"
                 }
@@ -245,44 +399,44 @@ pub(super) fn SpellFocus(word: String, suggestions: Vec<String>) -> Element {
             }
             button {
                 title: "Accept this word everywhere in this project",
-                onclick: move |_| state.write().add_project_word(&add_word),
+                onmousedown: keep_focus,
+                onclick: move |_| {
+                    let word = add_word.clone();
+                    keep_caret(state, move |current| current.add_project_word(&word));
+                },
                 "Add to project dictionary"
             }
-            button { onclick: move |_| state.write().spell_focus = None, "Close" }
+            button {
+                onmousedown: keep_focus,
+                onclick: move |_| state.write().spell_focus = None,
+                "Close"
+            }
         }
     }
 }
 
 /// Paragraphs changed since tracking was turned on, with accept and reject.
 #[component]
-pub(super) fn TrackPanel() -> Element {
-    let mut state = use_context::<Signal<StudioState>>();
-    let Some(started) = state
-        .read()
-        .tracking
-        .as_ref()
-        .filter(|_| state.read().is_tracking())
-        .map(|tracking| tracking.started_label())
-    else {
-        return rsx! {};
-    };
-    let changes: Vec<TrackedChange> = state.read().tracked_changes();
+pub(super) fn TrackPanel(started: String, changes: Vec<TrackedChange>) -> Element {
+    let state = use_context::<Signal<StudioState>>();
     let count = changes.len();
     rsx! {
         div { class: "review track",
             div { class: "review-head",
                 if count == 0 {
-                    span { "Tracking changes since {started} · nothing changed yet" }
+                    span { "Tracking since {started} · nothing changed yet" }
                 } else {
-                    span { "Tracking changes since {started} · {count} changed paragraphs" }
+                    span { "Tracking since {started} · {count} changed paragraphs" }
                     button {
                         title: "Keep every change. Tracking goes on from the text as it is now.",
-                        onclick: move |_| state.write().accept_all_tracked_changes(),
+                        onmousedown: keep_focus,
+                        onclick: move |_| keep_caret(state, |current| current.accept_all_tracked_changes()),
                         "Accept all"
                     }
                     button {
                         title: "Put the text back as it was when tracking began. Undo brings the changes back.",
-                        onclick: move |_| state.write().reject_all_tracked_changes(),
+                        onmousedown: keep_focus,
+                        onclick: move |_| keep_caret(state, |current| current.reject_all_tracked_changes()),
                         "Reject all"
                     }
                 }
@@ -298,7 +452,7 @@ pub(super) fn TrackPanel() -> Element {
 
 #[component]
 pub(super) fn TrackRow(index: usize, change: TrackedChange) -> Element {
-    let mut state = use_context::<Signal<StudioState>>();
+    let state = use_context::<Signal<StudioState>>();
     let (label, row_class) = match change.change {
         ParagraphChange::Added => ("Added", "review-item track-item added"),
         ParagraphChange::Removed => ("Removed", "review-item track-item removed"),
@@ -328,26 +482,24 @@ pub(super) fn TrackRow(index: usize, change: TrackedChange) -> Element {
             }
             button {
                 title: "Keep this change",
-                onclick: move |_| state.write().accept_tracked_change(index),
+                onmousedown: keep_focus,
+                onclick: move |_| keep_caret(state, move |current| current.accept_tracked_change(index)),
                 "Accept"
             }
             button {
                 title: "Put this paragraph back as it was. Undo brings the change back.",
-                onclick: move |_| state.write().reject_tracked_change(index),
+                onmousedown: keep_focus,
+                onclick: move |_| keep_caret(state, move |current| current.reject_tracked_change(index)),
                 "Reject"
             }
         }
     }
 }
 
-/// Notes and highlights in the open document, above the manuscript.
+/// Notes and highlights in the open document.
 #[component]
-pub(super) fn ReviewList() -> Element {
+pub(super) fn ReviewList(items: Vec<ReviewItem>) -> Element {
     let mut state = use_context::<Signal<StudioState>>();
-    let items: Vec<ReviewItem> = state.read().review_items();
-    if items.is_empty() {
-        return rsx! {};
-    }
     let show_resolved = state.read().show_resolved_notes;
     let is_resolved = |item: &ReviewItem| matches!(item.kind, ReviewKind::Note { resolved: true, .. });
     let resolved = items.iter().filter(|item| is_resolved(item)).count();
@@ -363,7 +515,7 @@ pub(super) fn ReviewList() -> Element {
     rsx! {
         div { class: "review",
             div { class: "review-head",
-                span { "Review · {open} open · {resolved} resolved · {highlights} highlighted" }
+                span { "{open} open · {resolved} resolved · {highlights} highlighted" }
                 if resolved > 0 {
                     label { class: "compare-toggle",
                         input {
@@ -375,7 +527,8 @@ pub(super) fn ReviewList() -> Element {
                     }
                     button {
                         title: "Take every resolved note off this document. The text stays.",
-                        onclick: move |_| state.write().remove_resolved_notes(),
+                        onmousedown: keep_focus,
+                        onclick: move |_| keep_caret(state, |current| current.remove_resolved_notes()),
                         "Remove resolved"
                     }
                 }
@@ -435,7 +588,8 @@ pub(super) fn ReviewRow(item: ReviewItem) -> Element {
                             onchange: move |event| state.write().set_note_text(index, &event.value()),
                         }
                         button {
-                            onclick: move |_| state.write().resolve_note(index, !resolved),
+                            onmousedown: keep_focus,
+                            onclick: move |_| keep_caret(state, move |current| current.resolve_note(index, !resolved)),
                             if resolved { "Reopen" } else { "Resolve" }
                         }
                     }
@@ -446,7 +600,8 @@ pub(super) fn ReviewRow(item: ReviewItem) -> Element {
             }
             button {
                 title: "Remove it. The text stays.",
-                onclick: move |_| state.write().remove_review(target),
+                onmousedown: keep_focus,
+                onclick: move |_| keep_caret(state, move |current| current.remove_review(target)),
                 "Remove"
             }
         }
@@ -497,26 +652,304 @@ pub(super) fn run_editor_script(state: Signal<StudioState>, body: impl Into<Stri
     });
 }
 
+/// The paragraph styles, as `formatBlock` takes them, and the name the
+/// mark watcher reports for each.
+const BLOCK_STYLES: [(&str, &str, &str); 5] = [
+    ("P", "p", "Body"),
+    ("H1", "h1", "Heading 1"),
+    ("H2", "h2", "Heading 2"),
+    ("H3", "h3", "Heading 3"),
+    ("PRE", "pre", "Code"),
+];
+
+/// One row. Every button keeps the focus in the manuscript, so the caret
+/// and the selection stay where they were.
 #[component]
-pub(super) fn FormatToolbar(enabled: bool) -> Element {
+pub(super) fn FormatToolbar(
+    enabled: bool,
+    marks: Signal<Vec<String>>,
+    prompt: Signal<Option<InlinePrompt>>,
+) -> Element {
     let mut state = use_context::<Signal<StudioState>>();
+    let menu = state.read().open_menu;
     let tracking = state.read().is_tracking();
-    let mut note_kind = use_signal(|| NoteKind::Comment);
+    let on = move |name: &str| marks.read().iter().any(|mark| mark == name);
+    let block = marks
+        .read()
+        .iter()
+        .find_map(|mark| mark.strip_prefix("block:").map(str::to_owned))
+        .unwrap_or_else(|| "p".into());
+    let block_label = BLOCK_STYLES
+        .iter()
+        .find(|(_, id, _)| *id == block)
+        .map(|(_, _, label)| *label)
+        .unwrap_or("Body");
+    let heading_open = menu == Some(FrameMenu::Heading);
+    let more_open = menu == Some(FrameMenu::More);
     rsx! {
-        div { class: "format-toolbar",
-            div { class: "format-group",
-                button { disabled: !enabled, onclick: move |_| run_format_command(state, "bold", ""), "Bold" }
-                button { disabled: !enabled, onclick: move |_| run_format_command(state, "italic", ""), "Italic" }
-                button { disabled: !enabled, onclick: move |_| run_format_command(state, "underline", ""), "Underline" }
-                button { disabled: !enabled, onclick: move |_| run_format_command(state, "strikeThrough", ""), "Strike" }
-                button { disabled: !enabled, onclick: move |_| run_editor_script(state, LINK_SCRIPT), "Link" }
-                button { disabled: !enabled, onclick: move |_| run_format_command(state, "unlink", ""), "Unlink" }
+        div { class: "format-toolbar", role: "toolbar", aria_label: "Format",
+            ToolButton {
+                name: "Bold", title: "Bold (Ctrl+B)", on: on("bold"), enabled,
+                onclick: move |_| run_format_command(state, "bold", ""),
+                span { class: "tool-letter bold", "B" }
             }
-            div { class: "format-group",
+            ToolButton {
+                name: "Italic", title: "Italic (Ctrl+I)", on: on("italic"), enabled,
+                onclick: move |_| run_format_command(state, "italic", ""),
+                span { class: "tool-letter italic", "I" }
+            }
+            span { class: "tool-rule" }
+            div { class: "menu-anchor",
+                button {
+                    class: if heading_open { "tool tool-menu open" } else { "tool tool-menu" },
+                    title: "Paragraph style",
+                    aria_haspopup: "menu",
+                    aria_expanded: "{heading_open}",
+                    disabled: !enabled,
+                    onmousedown: keep_focus,
+                    onclick: move |_| state.write().toggle_menu(FrameMenu::Heading),
+                    "{block_label}"
+                }
+                if heading_open {
+                    div { class: "menu", role: "menu", aria_label: "Paragraph style",
+                        for (command, id, label) in BLOCK_STYLES {
+                            button {
+                                class: if id == block { "menu-item current" } else { "menu-item" },
+                                role: "menuitemradio",
+                                aria_checked: "{id == block}",
+                                onmousedown: keep_focus,
+                                onclick: move |_| {
+                                    state.write().open_menu = None;
+                                    run_format_command(state, "formatBlock", command);
+                                },
+                                "{label}"
+                            }
+                        }
+                    }
+                }
+            }
+            ToolButton {
+                name: "Quote", title: "Quote", on: on("quote"), enabled,
+                onclick: move |_| {
+                    let target = if on("quote") { "P" } else { "BLOCKQUOTE" };
+                    run_format_command(state, "formatBlock", target);
+                },
+                svg { class: "glyph", view_box: "0 0 16 16",
+                    path { d: "M3 4.5h4v4H5.2L4.2 12H3zM9 4.5h4v4h-1.8l-1 3.5H9z", fill: "currentColor" }
+                }
+            }
+            ToolButton {
+                name: "List", title: "Bulleted list", on: on("list"), enabled,
+                onclick: move |_| run_format_command(state, "insertUnorderedList", ""),
+                svg { class: "glyph", view_box: "0 0 16 16",
+                    circle { cx: "3", cy: "4", r: "1.1", fill: "currentColor" }
+                    circle { cx: "3", cy: "8", r: "1.1", fill: "currentColor" }
+                    circle { cx: "3", cy: "12", r: "1.1", fill: "currentColor" }
+                    path { d: "M6 4h8M6 8h8M6 12h8", fill: "none", stroke: "currentColor", stroke_width: "1.2" }
+                }
+            }
+            span { class: "tool-rule" }
+            ToolButton {
+                name: "Link", title: "Link the selected text", on: on("link"), enabled,
+                onclick: move |_| open_prompt(state, prompt, PromptKind::Link),
+                svg { class: "glyph", view_box: "0 0 16 16",
+                    path { d: "M6.5 9.5l3-3M7.2 4.8l1.1-1.1a2.6 2.6 0 013.7 3.7l-1.1 1.1M8.8 11.2l-1.1 1.1a2.6 2.6 0 01-3.7-3.7l1.1-1.1", fill: "none", stroke: "currentColor", stroke_width: "1.3", stroke_linecap: "round" }
+                }
+            }
+            ToolButton {
+                name: "Note", title: "Put a note on the selected text", on: on("note"), enabled,
+                onclick: move |_| open_prompt(state, prompt, PromptKind::Note),
+                svg { class: "glyph", view_box: "0 0 16 16",
+                    path { d: "M2.5 3h11v7.5h-6l-3 2.5v-2.5h-2z", fill: "none", stroke: "currentColor", stroke_width: "1.2", stroke_linejoin: "round" }
+                }
+            }
+            span { class: "tool-rule" }
+            div { class: "menu-anchor",
+                button {
+                    class: if more_open { "tool open" } else { "tool" },
+                    title: "More formatting",
+                    aria_label: "More",
+                    aria_haspopup: "menu",
+                    aria_expanded: "{more_open}",
+                    disabled: !enabled,
+                    onmousedown: keep_focus,
+                    onclick: move |_| state.write().toggle_menu(FrameMenu::More),
+                    svg { class: "glyph", view_box: "0 0 16 16",
+                        circle { cx: "3.5", cy: "8", r: "1.2", fill: "currentColor" }
+                        circle { cx: "8", cy: "8", r: "1.2", fill: "currentColor" }
+                        circle { cx: "12.5", cy: "8", r: "1.2", fill: "currentColor" }
+                    }
+                }
+                if more_open {
+                    MoreMenu { marks, tracking }
+                }
+            }
+            if tracking {
+                span { class: "tool-status", title: "Changes to this document are being tracked", "Tracking changes" }
+            }
+        }
+    }
+}
+
+#[component]
+fn ToolButton(
+    name: &'static str,
+    title: &'static str,
+    on: bool,
+    enabled: bool,
+    onclick: EventHandler<MouseEvent>,
+    children: Element,
+) -> Element {
+    rsx! {
+        button {
+            class: if on { "tool on" } else { "tool" },
+            title: "{title}",
+            aria_label: "{name}",
+            aria_pressed: "{on}",
+            disabled: !enabled,
+            onmousedown: keep_focus,
+            onclick: move |event| onclick.call(event),
+            {children}
+        }
+    }
+}
+
+#[component]
+fn MoreMenu(marks: Signal<Vec<String>>, tracking: bool) -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let on = move |name: &str| marks.read().iter().any(|mark| mark == name);
+    let command = move |name: &'static str, argument: &'static str| {
+        move |_| {
+            state.write().open_menu = None;
+            run_format_command(state, name, argument);
+        }
+    };
+    let script = move |body: String| {
+        move |_| {
+            state.write().open_menu = None;
+            run_editor_script(state, body.clone());
+        }
+    };
+    rsx! {
+        div { class: "menu", role: "menu", aria_label: "More formatting",
+            button { class: "menu-item", role: "menuitemcheckbox", aria_checked: "{on(\"underline\")}", onmousedown: keep_focus, onclick: command("underline", ""),
+                span { "Underline" } span { class: "menu-hint", "Ctrl+U" }
+            }
+            button { class: "menu-item", role: "menuitemcheckbox", aria_checked: "{on(\"strikeThrough\")}", onmousedown: keep_focus, onclick: command("strikeThrough", ""), "Strikethrough" }
+            button { class: "menu-item", role: "menuitemcheckbox", aria_checked: "{on(\"numbered\")}", onmousedown: keep_focus, onclick: command("insertOrderedList", ""), "Numbered list" }
+            button { class: "menu-item", role: "menuitem", onmousedown: keep_focus, onclick: command("insertHorizontalRule", ""), "Scene break" }
+            div { class: "menu-rule" }
+            div { class: "menu-label", "Highlight" }
+            div { class: "menu-swatches",
+                for color in Highlight::ALL {
+                    button {
+                        class: "hl-btn hl-{color.as_str()}",
+                        role: "menuitem",
+                        title: "Highlight the selected text in {color.as_str()}",
+                        onmousedown: keep_focus,
+                        onclick: script(format!("wsHighlight(el, '{}');", color.as_str())),
+                        "{color.label()}"
+                    }
+                }
+            }
+            button { class: "menu-item", role: "menuitem", onmousedown: keep_focus, onclick: script("wsClearHighlight(el);".into()), "Remove highlight" }
+            div { class: "menu-rule" }
+            button { class: "menu-item", role: "menuitem", disabled: !on("link"), onmousedown: keep_focus, onclick: command("unlink", ""), "Remove link" }
+            button { class: "menu-item", role: "menuitem", disabled: !on("note"), onmousedown: keep_focus, onclick: script("wsUncomment(el);".into()), "Remove note" }
+            div { class: "menu-rule" }
+            button {
+                class: "menu-item",
+                role: "menuitemcheckbox",
+                aria_checked: "{tracking}",
+                title: if tracking {
+                    "Stop tracking. The text stays as it is and the list of changes is dropped."
+                } else {
+                    "Track changes to this document from now, to accept or reject them later"
+                },
+                onmousedown: keep_focus,
+                onclick: move |_| {
+                    state.write().open_menu = None;
+                    if tracking {
+                        state.write().stop_tracking();
+                    } else {
+                        state.write().start_tracking();
+                    }
+                },
+                if tracking { "Stop tracking changes" } else { "Track changes" }
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) enum PromptKind {
+    Link,
+    Note,
+}
+
+/// The field a link or note asks in, placed under the selection.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct InlinePrompt {
+    kind: PromptKind,
+    x: f64,
+    y: f64,
+}
+
+/// Hold the selection and open the field for it. With nothing selected the
+/// status line says what to do instead.
+fn open_prompt(mut state: Signal<StudioState>, mut prompt: Signal<Option<InlinePrompt>>, kind: PromptKind) {
+    spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(16)).await;
+        let mut eval = document::eval(&format!(
+            "{REVIEW_JS}\ndioxus.send(wsHoldSelection(document.querySelector('[data-manuscript]'), document.querySelector('.editor-body')));"
+        ));
+        match eval.recv::<Vec<f64>>().await.unwrap_or_default()[..] {
+            [x, y] => prompt.set(Some(InlinePrompt { kind, x, y })),
+            _ => {
+                state.write().status = match kind {
+                    PromptKind::Link => "Select the text to link first.".into(),
+                    PromptKind::Note => "Select the text for the note first.".into(),
+                }
+            }
+        }
+    });
+}
+
+#[component]
+fn PromptField(at: InlinePrompt, prompt: Signal<Option<InlinePrompt>>) -> Element {
+    let state = use_context::<Signal<StudioState>>();
+    let mut text = use_signal(String::new);
+    let mut note_kind = use_signal(|| NoteKind::Comment);
+    let mut apply = move || {
+        let value = serde_json::to_string(&text()).unwrap_or_else(|_| "\"\"".into());
+        let body = match at.kind {
+            PromptKind::Link => format!("wsLink(el, {value});"),
+            PromptKind::Note => format!("wsComment(el, '{}', {value});", note_kind().as_str()),
+        };
+        prompt.set(None);
+        run_editor_script(state, body);
+    };
+    let mut cancel = move || {
+        prompt.set(None);
+        run_editor_script(state, "wsReleaseSelection(el);");
+    };
+    let (label, placeholder, action) = match at.kind {
+        PromptKind::Link => ("Link address", "example.com", "Link"),
+        PromptKind::Note => ("Note on the selection", "What to remember here", "Add note"),
+    };
+    let left = at.x.max(8.0);
+    let top = at.y + 6.0;
+    rsx! {
+        div {
+            class: "inline-prompt",
+            role: "dialog",
+            aria_label: "{label}",
+            style: "left: {left}px; top: {top}px;",
+            if at.kind == PromptKind::Note {
                 select {
                     class: "compile-select",
-                    title: "What the next note is for",
-                    disabled: !enabled,
+                    title: "What this note is for",
+                    aria_label: "Kind of note",
                     value: "{note_kind().as_str()}",
                     onchange: move |event| {
                         if let Some(next) = NoteKind::from_id(&event.value()) {
@@ -524,86 +957,32 @@ pub(super) fn FormatToolbar(enabled: bool) -> Element {
                         }
                     },
                     for choice in NoteKind::ALL {
-                        option { value: "{choice.as_str()}", "{choice.label()}" }
+                        option { value: "{choice.as_str()}", selected: choice == note_kind(), "{choice.label()}" }
                     }
                 }
-                button {
-                    disabled: !enabled,
-                    title: "Put a note on the selected text",
-                    onclick: move |_| run_editor_script(state, format!("wsComment(el, '{}');", note_kind().as_str())),
-                    "Note"
-                }
-                button {
-                    disabled: !enabled,
-                    title: "Take the note off the selected text",
-                    onclick: move |_| run_editor_script(state, "wsUncomment(el);"),
-                    "Remove note"
-                }
-                for color in Highlight::ALL {
-                    button {
-                        class: "hl-btn hl-{color.as_str()}",
-                        disabled: !enabled,
-                        title: "Highlight the selected text in {color.as_str()}",
-                        onclick: move |_| run_editor_script(state, format!("wsHighlight(el, '{}');", color.as_str())),
-                        "{color.label()}"
+            }
+            input {
+                aria_label: "{label}",
+                placeholder: "{placeholder}",
+                value: "{text}",
+                oninput: move |event| text.set(event.value()),
+                onmounted: move |event| async move {
+                    let _ = event.set_focus(true).await;
+                },
+                onkeydown: move |event| match event.key() {
+                    Key::Enter => {
+                        event.prevent_default();
+                        apply();
                     }
-                }
-                button {
-                    disabled: !enabled,
-                    title: "Take the highlight off the selected text",
-                    onclick: move |_| run_editor_script(state, "wsClearHighlight(el);"),
-                    "No highlight"
-                }
+                    Key::Escape => {
+                        event.stop_propagation();
+                        cancel();
+                    }
+                    _ => {}
+                },
             }
-            div { class: "format-group",
-                button {
-                    class: if tracking { "primary" } else { "" },
-                    disabled: !enabled,
-                    title: if tracking {
-                        "Stop tracking. The text stays as it is and the list of changes is dropped."
-                    } else {
-                        "Track changes to this document from now, to accept or reject them later"
-                    },
-                    onclick: move |_| {
-                        if tracking {
-                            state.write().stop_tracking();
-                        } else {
-                            state.write().start_tracking();
-                        }
-                    },
-                    if tracking { "Stop tracking" } else { "Track changes" }
-                }
-            }
-            div { class: "format-group",
-                button { disabled: !enabled, onclick: move |_| run_format_command(state, "formatBlock", "H1"), "H1" }
-                button { disabled: !enabled, onclick: move |_| run_format_command(state, "formatBlock", "H2"), "H2" }
-                button { disabled: !enabled, onclick: move |_| run_format_command(state, "formatBlock", "H3"), "H3" }
-                button { disabled: !enabled, onclick: move |_| run_format_command(state, "formatBlock", "P"), "Body" }
-                button { disabled: !enabled, onclick: move |_| run_format_command(state, "formatBlock", "BLOCKQUOTE"), "Quote" }
-                button { disabled: !enabled, onclick: move |_| run_format_command(state, "insertUnorderedList", ""), "List" }
-                button { disabled: !enabled, onclick: move |_| run_format_command(state, "insertOrderedList", ""), "Numbered" }
-                button { disabled: !enabled, onclick: move |_| run_format_command(state, "formatBlock", "PRE"), "Code" }
-                button { disabled: !enabled, onclick: move |_| run_format_command(state, "insertHorizontalRule", ""), "Break" }
-            }
+            button { class: "primary", disabled: text().trim().is_empty(), onclick: move |_| apply(), "{action}" }
+            button { onclick: move |_| cancel(), "Cancel" }
         }
     }
 }
-
-pub(super) const LINK_SCRIPT: &str = r#"
-const sel = window.getSelection();
-if (sel && sel.rangeCount && !sel.isCollapsed) {
-    const saved = sel.getRangeAt(0).cloneRange();
-    const raw = window.prompt('Link address');
-    if (raw && raw.trim()) {
-        let url = raw.trim();
-        if (!/^[a-z][a-z0-9+.-]*:/i.test(url)) {
-            url = 'https://' + url;
-        }
-        if (/^(https?:|mailto:)/i.test(url)) {
-            sel.removeAllRanges();
-            sel.addRange(saved);
-            document.execCommand('createLink', false, url);
-        }
-    }
-}
-"#;

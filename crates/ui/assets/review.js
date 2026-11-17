@@ -1,6 +1,8 @@
 // Review helpers for the manuscript editor. This file is put in front of the
 // short scripts the toolbar and the review list run, so everything here is a
-// plain function and nothing is kept on `window`.
+// plain function and nothing is kept on `window`. The two things that must
+// outlast one script are kept on the manuscript element (a held selection)
+// and on the document (the mark listener).
 
 // Wrap each piece of text inside the range in its own element. Wrapping text
 // pieces, not the range, keeps paragraphs out of the wrapper when a selection
@@ -56,12 +58,47 @@ function wsTouched(el, selector) {
     );
 }
 
-function wsComment(el, kind) {
+// The selection a link or note is waiting for while its field is open. It is
+// kept on the manuscript element, so a redrawn manuscript drops it. Returns
+// where the field goes, relative to `box`, or an empty list when nothing is
+// selected.
+function wsHoldSelection(el, box) {
     const range = wsSelectedRange(el);
-    if (!range) return;
-    const raw = window.prompt('Note on the selection');
+    if (!range || !box) return [];
+    el.wsHeld = range;
+    const at = range.getBoundingClientRect();
+    const frame = box.getBoundingClientRect();
+    return [at.left - frame.left, at.bottom - frame.top];
+}
+
+// Select the held text again and give the manuscript back its focus.
+function wsReleaseSelection(el) {
+    const range = el && el.wsHeld;
+    if (!range) return null;
+    delete el.wsHeld;
+    el.focus();
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    return range;
+}
+
+function wsLink(el, raw) {
+    const range = wsReleaseSelection(el);
+    let url = (raw || '').trim();
+    if (!range || !url) return;
+    if (!/^[a-z][a-z0-9+.-]*:/i.test(url)) {
+        url = 'https://' + url;
+    }
+    if (/^(https?:|mailto:)/i.test(url)) {
+        document.execCommand('createLink', false, url);
+    }
+}
+
+function wsComment(el, kind, raw) {
+    const range = wsReleaseSelection(el);
     const text = raw ? raw.trim() : '';
-    if (!text) return;
+    if (!range || !text) return;
     wsWrapRange(el, range, () => {
         const span = document.createElement('span');
         span.className = 'ws-comment';
@@ -70,7 +107,93 @@ function wsComment(el, kind) {
         span.title = text;
         return span;
     });
-    window.getSelection().removeAllRanges();
+    const sel = window.getSelection();
+    sel.collapse(range.endContainer, range.endOffset);
+}
+
+// The caret as character offsets into the manuscript's text, so it can be
+// put back after the manuscript is drawn again. Empty when the selection is
+// not in the manuscript.
+function wsCaretGet(el) {
+    const sel = window.getSelection();
+    if (!el || !sel || !sel.rangeCount) return [];
+    const range = sel.getRangeAt(0);
+    if (!el.contains(range.startContainer) || !el.contains(range.endContainer)) return [];
+    const offsetOf = (container, offset) => {
+        const before = document.createRange();
+        before.selectNodeContents(el);
+        before.setEnd(container, offset);
+        return before.toString().length;
+    };
+    return [offsetOf(range.startContainer, range.startOffset), offsetOf(range.endContainer, range.endOffset)];
+}
+
+function wsCaretSet(el, start, end) {
+    if (!el) return false;
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    let seen = 0;
+    let startAt = null;
+    let endAt = null;
+    let lastNode = null;
+    while (walker.nextNode()) {
+        const node = walker.currentNode;
+        const length = node.nodeValue.length;
+        if (!startAt && start <= seen + length) startAt = [node, start - seen];
+        if (!endAt && end <= seen + length) endAt = [node, end - seen];
+        seen += length;
+        lastNode = node;
+    }
+    if (!lastNode) return false;
+    const tail = [lastNode, lastNode.nodeValue.length];
+    startAt = startAt || tail;
+    endAt = endAt || tail;
+    el.focus();
+    const range = document.createRange();
+    range.setStart(startAt[0], startAt[1]);
+    range.setEnd(endAt[0], endAt[1]);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    return true;
+}
+
+// Report the marks at the caret whenever the selection moves, for the format
+// toolbar. Only a change is sent. A manuscript drawn again installs this
+// again, and the earlier listener is taken off first.
+function wsWatchMarks() {
+    if (document.wsMarksOff) document.wsMarksOff();
+    let last = null;
+    const report = () => {
+        const el = document.querySelector('[data-manuscript]');
+        const sel = window.getSelection();
+        const marks = [];
+        if (el && sel && sel.rangeCount && el.contains(sel.anchorNode)) {
+            ['bold', 'italic', 'underline', 'strikeThrough'].forEach((name) => {
+                if (document.queryCommandState(name)) marks.push(name);
+            });
+            let node = sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement;
+            let block = 'p';
+            while (node && node !== el) {
+                const tag = node.tagName;
+                if (tag === 'A') marks.push('link');
+                else if (tag === 'SPAN' && node.hasAttribute('data-comment')) marks.push('note');
+                else if (tag === 'MARK') marks.push('highlight');
+                else if (tag === 'BLOCKQUOTE') marks.push('quote');
+                else if (tag === 'UL') marks.push('list');
+                else if (tag === 'OL') marks.push('numbered');
+                else if (block === 'p' && /^(H1|H2|H3|PRE)$/.test(tag)) block = tag.toLowerCase();
+                node = node.parentElement;
+            }
+            marks.push('block:' + block);
+        }
+        const key = marks.join(',');
+        if (key === last) return;
+        last = key;
+        dioxus.send(marks);
+    };
+    document.addEventListener('selectionchange', report);
+    document.wsMarksOff = () => document.removeEventListener('selectionchange', report);
+    report();
 }
 
 function wsUncomment(el) {
@@ -86,7 +209,7 @@ function wsHighlight(el, color) {
         mark.setAttribute('data-highlight', color);
         return mark;
     });
-    window.getSelection().removeAllRanges();
+    window.getSelection().collapse(range.endContainer, range.endOffset);
 }
 
 function wsClearHighlight(el) {

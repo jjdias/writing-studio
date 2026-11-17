@@ -1,6 +1,6 @@
 # Phase 8 — UI and UX overhaul
 
-In progress: stages 1 and 2 are done.
+In progress: stages 1 to 3 are done.
 
 The window works, but it is hard to use. It looks and behaves like a code editor: a monospace font for prose, an "Explorer", a bright blue status bar, buttons that look like plain text, and three columns in every mode, whether the mode needs them or not. This phase rebuilds the window around writing. It changes how the window looks and behaves, not what a project holds: no file format, storage, or sync change belongs here.
 
@@ -83,10 +83,13 @@ Moved to the stage that first uses them: the type scale goes with the reading fo
 
 ### 3. The writing surface
 
-- A reading font for prose (a serif and a sans to choose from), with the monospace font kept for code blocks only. A page: a limited line length of about 70 characters, a surface lighter or darker than the panels, and margins around it, in both themes.
-- One toolbar row. The common marks (bold, italic, a heading menu, quote, list, link, note) are icons with names, and show when they are on at the caret. Highlights, strikethrough, track changes, and the rest go into a "More" menu. The manuscript keeps the caret and the active marks after a toolbar click.
-- Link and Note ask in a small field in the window, next to the selection, in place of `window.prompt`.
-- Notes, tracked changes, and spelling move into one review panel with a tab for each, which can be folded away or put at the side (moved here from the bonus list). Acting on an item from the panel leaves the caret where it was.
+**Done.**
+
+- Prose is set in a reading font, serif or sans serif (`prose_font`, kept in `.local/settings.json` beside the theme, and chosen in Settings). This is the one setting the phase adds; it is optional and missing means serif. Code blocks keep the fixed-width font (`--mono`). The type scale is a 17 px body with headings stepped up from it, in the prose font.
+- The manuscript is a page on a desk (`--editor` on `--desk`, set for each theme): about 70 characters to the line, with margins that shrink in a narrow window.
+- One toolbar row: Bold, Italic, the paragraph style menu, Quote, List, Link, Note, and More, which holds underline, strikethrough, numbered list, scene break, highlights, the removes, and track changes. Each button has a name and shows when its mark is on at the caret (`wsWatchMarks` in `review.js`). Every toolbar button keeps focus in the manuscript, so the caret and selection stay.
+- Link and Note ask in a small field under the selection (`PromptField`). The selection is held on the manuscript element while the field is open; Escape or Cancel puts it back.
+- Notes, tracked changes, and spelling are one review panel with a tab each (`ReviewPanel`), shown only for tabs with something in them. It folds to its tabs and moves beside the page. Acting from the panel puts the caret back where it was (`keep_caret`). Whether it is folded or beside the page lasts for the session and is not saved.
 - Focus mode hides everything but the page and a word count. Escape still leaves it.
 
 ### 4. The binder and the inspector

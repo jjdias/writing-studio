@@ -21,7 +21,7 @@ use writing_studio_plotting::PlotGrid;
 use writing_studio_research::ResearchLibrary;
 use writing_studio_project::{
     format_elapsed, normalize_binder_color, BinderNode, BinderTree, NodeKind, PanelLayout,
-    ProjectMeta, StoredSession, Theme,
+    ProjectMeta, ProseFont, StoredSession, Theme,
 };
 use writing_studio_search::ManuscriptIndex;
 use writing_studio_spellcheck::{
@@ -90,6 +90,36 @@ pub enum FrameMenu {
     Project,
     Settings,
     Goals,
+    /// The paragraph style menu on the format toolbar.
+    Heading,
+    /// The format toolbar's less common marks.
+    More,
+}
+
+/// A tab of the review panel under or beside the manuscript.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReviewTab {
+    Notes,
+    Changes,
+    Spelling,
+}
+
+impl ReviewTab {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Notes => "Notes",
+            Self::Changes => "Changes",
+            Self::Spelling => "Spelling",
+        }
+    }
+
+    /// The tab to show: the one chosen while it has something in it, or
+    /// else the first that does.
+    pub fn shown(chosen: Option<ReviewTab>, available: &[ReviewTab]) -> Option<ReviewTab> {
+        chosen
+            .filter(|tab| available.contains(tab))
+            .or_else(|| available.first().copied())
+    }
 }
 
 /// A side panel that has folded away in a narrow window.
@@ -230,6 +260,11 @@ pub struct StudioState {
     pub open_menu: Option<FrameMenu>,
     /// A folded panel shown over the page until it is closed.
     pub overlay: Option<FoldedPanel>,
+    /// The review panel's chosen tab, whether it is folded to its tab row,
+    /// and whether it sits beside the manuscript instead of under it.
+    pub review_tab: Option<ReviewTab>,
+    pub review_folded: bool,
+    pub review_at_side: bool,
     pub status: String,
     pub new_title: String,
     pub confirm_backup: Option<PathBuf>,
@@ -308,6 +343,9 @@ impl Default for StudioState {
             focus_mode: false,
             open_menu: None,
             overlay: None,
+            review_tab: None,
+            review_folded: false,
+            review_at_side: false,
             status: "Offline · Local-first".into(),
             new_title: "Untitled Novel".into(),
             confirm_backup: None,
@@ -686,6 +724,28 @@ impl StudioState {
             .as_ref()
             .map(|meta| meta.settings.theme)
             .unwrap_or_default()
+    }
+
+    pub fn prose_font(&self) -> ProseFont {
+        self.meta
+            .as_ref()
+            .map(|meta| meta.settings.prose_font)
+            .unwrap_or_default()
+    }
+
+    pub fn set_prose_font(&mut self, font: ProseFont) {
+        let changed = self.meta.as_mut().is_some_and(|meta| {
+            if meta.settings.prose_font == font {
+                return false;
+            }
+            meta.settings.prose_font = font;
+            meta.touch();
+            true
+        });
+        if changed {
+            self.settings_dirty = true;
+            self.note_edit();
+        }
     }
 
     pub fn set_theme(&mut self, theme: Theme) {
@@ -3823,6 +3883,32 @@ mod tests {
         state.focus_mode = true;
         assert!(state.choose_mode(WorkspaceMode::Plot));
         assert!(!state.focus_mode);
+    }
+
+    #[test]
+    fn the_review_panel_keeps_its_tab_while_that_tab_has_items() {
+        use ReviewTab::*;
+        assert_eq!(ReviewTab::shown(None, &[]), None);
+        assert_eq!(ReviewTab::shown(None, &[Notes, Spelling]), Some(Notes));
+        assert_eq!(ReviewTab::shown(Some(Spelling), &[Notes, Spelling]), Some(Spelling));
+        // Tracking stopped, so its tab went away: the first one left shows.
+        assert_eq!(ReviewTab::shown(Some(Changes), &[Spelling]), Some(Spelling));
+    }
+
+    #[test]
+    fn the_prose_font_is_a_setting_of_this_machine() {
+        let (mut state, dir) = open_state("font");
+        assert_eq!(state.prose_font(), ProseFont::Serif);
+        state.set_prose_font(ProseFont::Sans);
+        assert!(state.has_unsaved());
+        state.save_all();
+        let root = state.project_root().unwrap();
+        let local = std::fs::read_to_string(root.join(".local").join("settings.json")).unwrap();
+        let local: serde_json::Value = serde_json::from_str(&local).unwrap();
+        assert_eq!(local["prose_font"], "sans");
+        let shared = std::fs::read_to_string(root.join("project.json")).unwrap();
+        assert!(!shared.contains("prose_font"));
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

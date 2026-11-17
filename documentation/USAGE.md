@@ -24,13 +24,15 @@ A `.writingstudio` folder is the whole project, kept as plain files you can open
 
 ## Write
 
-- Select a scene in the binder. Type in the manuscript.
-- Formatting buttons: Bold, Italic, Underline, Strike, Link, Unlink, H1, H2, H3, Body, Quote, List, Numbered, Code, and Break. The review buttons are Note, Remove note, the four highlight colors, and No highlight.
-- **Note** asks for a note on the selection. The menu beside it sets what the note is for: Comment, Question, Revise, or Check. The note is saved with the scene, on that text. **Remove note** takes it off; the text stays.
-- **Yellow**, **Green**, **Blue**, and **Pink** highlight the selection. **No highlight** takes the color off. Text can carry a highlight and a note together.
-- Notes and highlights are listed above the manuscript. Click the quoted text to select it in the manuscript. In a note's row, change its kind, edit its text, **Resolve** it, or **Remove** it. A resolved note stays on the text, dimmed, and leaves the list until **Show resolved** is on. **Remove resolved** takes every resolved note off the scene. Each of these is one undo step.
+- Select a scene in the binder. Type in the manuscript. It is set on a page in a reading font, about seventy characters to the line. **Settings** → **Manuscript font** chooses serif or sans serif for this computer; code blocks stay in a fixed-width font.
+- The format toolbar is one row: **Bold**, **Italic**, the paragraph style (Body, Heading 1 to 3, Code), **Quote**, **List**, **Link**, **Note**, and **More**. A button is lit when its mark is on at the caret. Clicking one leaves the caret and the selection where they were.
+- **More** holds Underline, Strikethrough, Numbered list, Scene break, the highlight colors, Remove highlight, Remove link, Remove note, and Track changes.
+- **Link** and **Note** ask in a small field under the selection. Enter adds it; Escape or **Cancel** leaves the text as it was. A note's field also sets what it is for: Comment, Question, Revise, or Check. The note is saved with the scene, on that text. **More** → **Remove note** takes it off; the text stays.
+- **Yellow**, **Green**, **Blue**, and **Pink** in **More** highlight the selection. **Remove highlight** takes the color off. Text can carry a highlight and a note together.
+- Notes, tracked changes, and spelling share the review panel under the page, one tab each. A tab shows when it has something in it. **Hide** folds the panel to its tabs, and **Beside** moves it to the side of the page. Accepting, rejecting, resolving, or removing from the panel leaves the caret where it was.
+- Notes and highlights are listed in the **Notes** tab. Click the quoted text to select it in the manuscript. In a note's row, change its kind, edit its text, **Resolve** it, or **Remove** it. A resolved note stays on the text, dimmed, and leaves the list until **Show resolved** is on. **Remove resolved** takes every resolved note off the scene. Each of these is one undo step.
 - Compile writes open notes: footnotes in Markdown, bracketed text in DOCX. A kind other than Comment is named in front of the note. Resolved notes and highlights are left out of the compiled file.
-- **Track changes** starts tracking the open scene from the text it has now. After that, each paragraph you rewrite, add, or remove is listed above the manuscript. **Accept** keeps a change and takes it off the list. **Reject** puts that paragraph back as it was; **Ctrl+Z** undoes a reject. **Accept all** and **Reject all** do the whole list. **Stop tracking** keeps the text and drops the list. Tracked changes stay in the project when you close it. Only text is tracked, one scene at a time, and compile uses the text as it stands. See [Phase 4](../roadmap/done/phase-4.md).
+- **More** → **Track changes** starts tracking the open scene from the text it has now; the toolbar says so while it is on. After that, each paragraph you rewrite, add, or remove is listed in the **Changes** tab. **Accept** keeps a change and takes it off the list. **Reject** puts that paragraph back as it was; **Ctrl+Z** undoes a reject. **Accept all** and **Reject all** do the whole list. **More** → **Stop tracking changes** keeps the text and drops the list. Tracked changes stay in the project when you close it. Only text is tracked, one scene at a time, and compile uses the text as it stands. See [Phase 4](../roadmap/done/phase-4.md).
 - Changes save a few seconds after you stop typing, when you leave the field, or with **Ctrl+S**.
 - **Ctrl+Z** undoes. **Ctrl+Y** or **Ctrl+Shift+Z** redoes in the document session.
 
@@ -93,7 +95,7 @@ The status bar shows the current book's words and target first, then in Writing 
 
 ## Modes
 
-Writing, Corkboard, Outliner, Plot, Characters, World, Research, History. The activity bar lists them by name in that order, and **Ctrl+1** to **Ctrl+8** follow it. In a short window the names show on hover and focus. Choosing the mode that is open does nothing. Below the modes, **Binder** and **Inspector** show or hide those panels, and **Focus** hides the binder and inspector.
+Writing, Corkboard, Outliner, Plot, Characters, World, Research, History. The activity bar lists them by name in that order, and **Ctrl+1** to **Ctrl+8** follow it. In a short window the names show on hover and focus. Choosing the mode that is open does nothing. Below the modes, **Binder** and **Inspector** show or hide those panels, and **Focus** hides everything but the page and a word count. **Escape** leaves it.
 
 ## Plot
 
@@ -121,7 +123,7 @@ In a narrow window the inspector folds away first, then the binder, so the page 
 
 ## Spelling
 
-- Words that are not in the dictionary are underlined in red in the manuscript and listed above it. The word you are still typing is not underlined until the caret leaves it.
+- Words that are not in the dictionary are underlined in red in the manuscript and listed in the review panel's **Spelling** tab. The word you are still typing is not underlined until the caret leaves it.
 - Click a word in the list to select it in the manuscript and see suggestions. A suggestion replaces **every** copy of that word in the open scene, as one undo step. **Find next** moves to the next copy. **Add to project dictionary** accepts the word everywhere in this project.
 - **Project dictionary** lists the accepted words. Click one to take it out.
 - Words in character, place, and culture names are accepted without adding them. Numbers, single letters, and words in capitals are not checked.
