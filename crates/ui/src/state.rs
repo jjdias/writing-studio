@@ -21,7 +21,7 @@ use writing_studio_plotting::PlotGrid;
 use writing_studio_research::ResearchLibrary;
 use writing_studio_project::{
     format_elapsed, normalize_binder_color, BinderNode, BinderTree, NodeKind, PanelLayout,
-    DropPlace, PageStyle, ProjectMeta, ProseFont, StoredSession, Theme,
+    DropPlace, KeepPlace, PageStyle, ProjectMeta, ProseFont, StoredSession, Theme,
 };
 use writing_studio_search::ManuscriptIndex;
 use writing_studio_spellcheck::{
@@ -793,6 +793,29 @@ impl StudioState {
                 return false;
             }
             meta.settings.page = style;
+            meta.touch();
+            true
+        });
+        if changed {
+            self.settings_dirty = true;
+            self.note_edit();
+        }
+    }
+
+    pub fn keep_place(&self) -> KeepPlace {
+        self.meta
+            .as_ref()
+            .map(|meta| meta.settings.keep_place)
+            .unwrap_or_default()
+    }
+
+    /// Fixed scrolling, the line marker, and fading: this computer's choice.
+    pub fn set_keep_place(&mut self, keep: KeepPlace) {
+        let changed = self.meta.as_mut().is_some_and(|meta| {
+            if meta.settings.keep_place == keep {
+                return false;
+            }
+            meta.settings.keep_place = keep;
             meta.touch();
             true
         });

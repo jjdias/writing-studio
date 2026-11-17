@@ -1280,3 +1280,23 @@ kbd {
 .range-value { color: var(--text); font-variant-numeric: tabular-nums; }
 .popover input[type="range"] { padding: 0; border: 0; box-shadow: none; background: transparent; accent-color: var(--gold); }
 .range-reset { margin-top: 10px; font-size: 12px; }
+
+/* Keeping one's place (Phase 9 stage 3), set in place.js. */
+.desk { position: relative; }
+/* Room below the last line, so even the end of a scene can sit at the
+   chosen height. */
+.desk.fixed-scroll .manuscript { padding-bottom: 60vh; }
+.line-marker {
+  position: absolute;
+  z-index: 1;
+  border-radius: 3px;
+  background: var(--gold);
+  opacity: 0.08;
+  pointer-events: none;
+}
+/* The rest of the page fades; the current sentence or paragraph is a
+   highlight drawn at full strength. */
+.manuscript.fading { color: color-mix(in srgb, var(--editor-text) 38%, transparent); }
+::highlight(ws-current) { color: var(--editor-text); }
+.check-label { display: flex !important; align-items: center; gap: 8px; color: var(--text) !important; }
+.check-label input { width: auto; }

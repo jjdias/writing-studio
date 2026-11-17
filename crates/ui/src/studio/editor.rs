@@ -22,6 +22,14 @@ pub(super) fn EditorPane() -> Element {
     .unwrap_or_else(|_| "[]".into());
     use_effect(use_reactive((&epoch, &unknown_json), |(_, words)| paint_spelling(words)));
     use_effect(use_reactive((&epoch,), move |_| watch_marks(marks)));
+    let keep = snapshot.keep_place();
+    let keep_json = format!(
+        r#"{{"scroll":"{}","marker":{},"fade":"{}"}}"#,
+        keep.scroll.as_str(),
+        keep.line_marker,
+        keep.fade.as_str()
+    );
+    use_effect(use_reactive((&epoch, &keep_json), |(_, options)| keep_place(options)));
     let initial_html = if html.trim().is_empty() {
         "<p><br></p>".into()
     } else {
@@ -34,7 +42,7 @@ pub(super) fn EditorPane() -> Element {
                 FormatToolbar { enabled: can_edit, marks, prompt }
             }
             div { class: if side { "editor-body side" } else { "editor-body" },
-                div { class: "desk",
+                div { class: if keep.scroll == FixedScroll::Off { "desk" } else { "desk fixed-scroll" },
                     // The scene's title is the page's heading, renamed in
                     // place, with the word count small at its right.
                     div { class: "page-head",
@@ -47,7 +55,7 @@ pub(super) fn EditorPane() -> Element {
                     }
                     div {
                         key: "{epoch}",
-                        class: "manuscript rich",
+                        class: if keep.fade == Fade::Off { "manuscript rich" } else { "manuscript rich fading" },
                         contenteditable: can_edit,
                         "data-manuscript": "true",
                         aria_label: "Manuscript",
@@ -1035,6 +1043,18 @@ fn focus_dom_now(selector: &'static str) {
         tokio::time::sleep(std::time::Duration::from_millis(16)).await;
         let script = format!("document.querySelector('{selector}')?.focus(); dioxus.send(true);");
         let mut eval = document::eval(&script);
+        let _ = eval.recv::<bool>().await;
+    });
+}
+
+/// Install fixed scrolling, the line marker, and fading on the page, from
+/// the choices in Settings. Runs again when the page is drawn again or a
+/// choice changes.
+pub(super) fn keep_place(options_json: String) {
+    spawn(async move {
+        // Wait for the manuscript to be on screen after a redraw.
+        tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+        let mut eval = document::eval(&format!("{PLACE_JS}\ndioxus.send(wsKeepPlace({options_json}));"));
         let _ = eval.recv::<bool>().await;
     });
 }

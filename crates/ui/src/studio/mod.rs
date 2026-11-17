@@ -14,7 +14,7 @@ use writing_studio_editor::EditorSession;
 use writing_studio_manuscript::{outline_rows, row_word_count};
 use writing_studio_project::{
     binder_color_hex, drag_width, format_elapsed, BinderNode, DropPlace, NodeKind, PanelChrome, PanelLayout,
-    PageStyle, PanelWidths, ProseFont, Theme, BINDER_COLORS, FIRST_LINE_INDENT_RANGE, LINE_HEIGHT_RANGE,
+    Fade, FixedScroll, KeepPlace, PageStyle, PanelWidths, ProseFont, Theme, BINDER_COLORS, FIRST_LINE_INDENT_RANGE, LINE_HEIGHT_RANGE,
     LINE_LENGTH_RANGE, PARAGRAPH_SPACING_RANGE, INSPECTOR_WIDTH_DEFAULT, INSPECTOR_WIDTH_MAX,
     INSPECTOR_WIDTH_MIN, SIDEBAR_WIDTH_DEFAULT, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN,
 };
@@ -63,6 +63,7 @@ use library::*;
 const STYLES: &str = include_str!("../../assets/style.css");
 const REVIEW_JS: &str = include_str!("../../assets/review.js");
 const SPELL_JS: &str = include_str!("../../assets/spell.js");
+const PLACE_JS: &str = include_str!("../../assets/place.js");
 /// Unknown words shown as buttons before the rest are counted as "more".
 const SPELL_WORDS_SHOWN: usize = 60;
 
@@ -506,6 +507,7 @@ fn SettingsPanel() -> Element {
                 }
             }
             PageSettings {}
+            KeepPlaceSettings {}
             label { r#for: "setting-theme", "Theme" }
             select {
                 id: "setting-theme",
@@ -748,6 +750,53 @@ fn PageSettings() -> Element {
                 onclick: move |_| state.write().set_page_style(PageStyle::default()),
                 "Reset the page"
             }
+        }
+    }
+}
+
+/// Fixed scrolling, the line marker, and fading, under the page settings.
+#[component]
+fn KeepPlaceSettings() -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let keep = state.read().keep_place();
+    let mut set = move |next: KeepPlace| state.write().set_keep_place(next);
+    rsx! {
+        label { r#for: "setting-scroll", "Keep the line I type" }
+        select {
+            id: "setting-scroll",
+            onchange: move |event| {
+                if let Some(scroll) = FixedScroll::from_id(&event.value()) {
+                    let current = state.read().keep_place();
+                    set(KeepPlace { scroll, ..current });
+                }
+            },
+            for item in FixedScroll::ALL {
+                option { value: "{item.as_str()}", selected: item == keep.scroll, "{item.label()}" }
+            }
+        }
+        label { r#for: "setting-fade", "Fade the rest of the page" }
+        select {
+            id: "setting-fade",
+            onchange: move |event| {
+                if let Some(fade) = Fade::from_id(&event.value()) {
+                    let current = state.read().keep_place();
+                    set(KeepPlace { fade, ..current });
+                }
+            },
+            for item in Fade::ALL {
+                option { value: "{item.as_str()}", selected: item == keep.fade, "{item.label()}" }
+            }
+        }
+        label { class: "check-label",
+            input {
+                r#type: "checkbox",
+                checked: keep.line_marker,
+                onchange: move |event| {
+                    let current = state.read().keep_place();
+                    set(KeepPlace { line_marker: event.checked(), ..current });
+                },
+            }
+            "Mark the line I am on"
         }
     }
 }

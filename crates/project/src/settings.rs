@@ -268,6 +268,90 @@ impl PageStyle {
     }
 }
 
+/// Where the line being typed stays on screen, or `Off` to scroll as usual.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FixedScroll {
+    #[default]
+    Off,
+    Top,
+    Middle,
+    Bottom,
+}
+
+/// What stays at full strength while the rest of the page fades.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Fade {
+    #[default]
+    Off,
+    Paragraph,
+    Sentence,
+}
+
+/// Helps for keeping one's place on the page while writing. All are off
+/// until chosen. Missing on older projects.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KeepPlace {
+    #[serde(default)]
+    pub scroll: FixedScroll,
+    /// A faint band under the line with the caret.
+    #[serde(default)]
+    pub line_marker: bool,
+    #[serde(default)]
+    pub fade: Fade,
+}
+
+impl FixedScroll {
+    pub const ALL: [FixedScroll; 4] = [Self::Off, Self::Top, Self::Middle, Self::Bottom];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Top => "top",
+            Self::Middle => "middle",
+            Self::Bottom => "bottom",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Off => "Scroll as usual",
+            Self::Top => "Near the top",
+            Self::Middle => "In the middle",
+            Self::Bottom => "Near the bottom",
+        }
+    }
+
+    pub fn from_id(value: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|item| item.as_str() == value)
+    }
+}
+
+impl Fade {
+    pub const ALL: [Fade; 3] = [Self::Off, Self::Paragraph, Self::Sentence];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Paragraph => "paragraph",
+            Self::Sentence => "sentence",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Off => "Nothing fades",
+            Self::Paragraph => "All but this paragraph",
+            Self::Sentence => "All but this sentence",
+        }
+    }
+
+    pub fn from_id(value: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|item| item.as_str() == value)
+    }
+}
+
 /// Width after a horizontal drag. `positive` means moving the pointer right grows the panel.
 /// Word target for one book in a series project. Missing books use the project goal.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -307,6 +391,10 @@ pub struct ProjectSettings {
     /// Missing on older projects, which keep today's look.
     #[serde(default)]
     pub page: PageStyle,
+    /// Fixed scrolling, the line marker, and fading. Missing on older
+    /// projects, which have none of them on.
+    #[serde(default)]
+    pub keep_place: KeepPlace,
     /// Binder items folded shut in the library and the scene list. Missing
     /// on older projects, which open with everything showing.
     #[serde(default)]
@@ -369,6 +457,7 @@ impl Default for ProjectSettings {
             theme: Theme::Light,
             prose_font: ProseFont::Serif,
             page: PageStyle::default(),
+            keep_place: KeepPlace::default(),
             collapsed: Vec::new(),
             compile_book_id: None,
             book_word_goals: Vec::new(),
@@ -528,5 +617,25 @@ mod page_tests {
         assert_eq!(settings.page.line_length, 70);
         let wild = PageStyle { line_length: 500, line_height: 10, paragraph_spacing: 99, first_line_indent: 99 }.clamp();
         assert_eq!(wild, PageStyle { line_length: 100, line_height: 120, paragraph_spacing: 20, first_line_indent: 40 });
+    }
+}
+
+#[cfg(test)]
+mod keep_place_tests {
+    use super::*;
+
+    #[test]
+    fn keeping_the_place_is_off_until_chosen_and_reads_back() {
+        let json = r#"{"daily_word_goal":1,"project_word_goal":2,"compile_title_page":true,"autosave_seconds":2}"#;
+        let settings: ProjectSettings = serde_json::from_str(json).unwrap();
+        assert_eq!(settings.keep_place, KeepPlace::default());
+        assert_eq!(settings.keep_place.scroll, FixedScroll::Off);
+        let chosen = r#"{"daily_word_goal":1,"project_word_goal":2,"compile_title_page":true,"autosave_seconds":2,"keep_place":{"scroll":"middle","fade":"sentence"}}"#;
+        let settings: ProjectSettings = serde_json::from_str(chosen).unwrap();
+        assert_eq!(settings.keep_place.scroll, FixedScroll::Middle);
+        assert_eq!(settings.keep_place.fade, Fade::Sentence);
+        assert!(!settings.keep_place.line_marker);
+        assert_eq!(FixedScroll::from_id("bottom"), Some(FixedScroll::Bottom));
+        assert_eq!(Fade::from_id("word"), None);
     }
 }

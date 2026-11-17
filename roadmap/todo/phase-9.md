@@ -1,6 +1,6 @@
 # Phase 9 — Writing comfort, from Ulysses
 
-In progress: stages 1 and 2 are done.
+In progress: stages 1 to 3 are done.
 
 Phase 8 rebuilt the window around writing. This phase takes what the Ulysses writing app does well for the writer at the page, and fits it to how Writing Studio works: rich text on a page, a binder of books, chapters, and scenes, and everything on the writer's computer. It does not wait for Phase 6 or 7.
 
@@ -54,6 +54,8 @@ Checked by the existing state and contrast tests, plus state tests for what each
 - Compile does not change: these are how the page looks while writing.
 
 ### 3. Keeping the place
+
+**Done.** `KeepPlace` in `.local/settings.json` (`keep_place`), chosen in Settings. `place.js` follows the caret: it scrolls the desk to hold the line at the chosen height, moves a marker element on the desk (outside the manuscript), and sets the `ws-current` CSS highlight over the paragraph or sentence while the page's text color fades. Nothing is written into the manuscript. Updates wait for the next frame, so a burst of typing does the work once.
 
 - Fixed scrolling: the line being typed stays at one height (top, middle, or bottom of the page), or the page scrolls as it does now.
 - A line marker that tints the line with the caret.
