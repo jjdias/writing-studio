@@ -1,4 +1,9 @@
 :root {
+  color-scheme: dark;
+  --radius: 4px;
+  --control: #333337;
+  --control-border: #4a4a4f;
+  --control-hover: #3e3e44;
   --ink: #ffffff;
   --hl-yellow: rgba(255, 214, 0, 0.38);
   --hl-green: rgba(70, 190, 110, 0.36);
@@ -32,12 +37,16 @@
   --status: #007acc;
   --status-fg: #ffffff;
   --tab-fg: #ffffff;
-  --input-border: transparent;
+  --input-border: #4a4a4f;
   --font: Consolas, "Cascadia Mono", "Segoe UI Mono", monospace;
   --ui: "Segoe UI", system-ui, sans-serif;
 }
 
 .shell.theme-light {
+  color-scheme: light;
+  --control: #ffffff;
+  --control-border: #c8c8c8;
+  --control-hover: #f0f0f0;
   --ink: #333333;
   --paper: #ffffff;
   --panel: #ffffff;
@@ -71,6 +80,10 @@
 }
 
 .shell.theme-paper {
+  color-scheme: dark;
+  --control: #322c26;
+  --control-border: #4a4238;
+  --control-hover: #3d362e;
   --ink: #f3ead7;
   --paper: #f6f1e7;
   --panel: #1c1916;
@@ -78,7 +91,7 @@
   --activity: #2a2622;
   --line: #3a342c;
   --input: #3a342c;
-  --input-border: transparent;
+  --input-border: #4a4238;
   --gold: #c4a265;
   --text: #e6dcc8;
   --muted: #a89880;
@@ -140,37 +153,68 @@ html, body, #main, .shell {
   color: var(--muted);
   margin: 14px 0 4px;
 }
-.welcome-card input, .inspector input, .secondary input, .search, .synopsis, .cork-filter {
-  width: 100%;
-  border: 1px solid var(--input-border);
-  background: var(--input);
-  color: var(--text);
-  border-radius: 2px;
-  padding: 6px 8px;
+/* Every field, from one set of rules. A pane sets only its layout. */
+input, textarea, select {
   font: inherit;
+  color: var(--text);
+  background-color: var(--input);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius);
+  padding: 6px 8px;
 }
-.welcome-card input:focus, .inspector input:focus, .secondary input:focus, .search:focus, .synopsis:focus, .cork-filter:focus {
-  outline: 1px solid var(--gold);
+input:focus, textarea:focus, select:focus {
+  outline: none;
   border-color: var(--gold);
+  box-shadow: 0 0 0 1px var(--gold);
 }
+input[type="checkbox"], input[type="radio"] { padding: 0; accent-color: var(--gold); }
+textarea { min-height: 72px; resize: vertical; }
+/* A native menu does not follow the theme, so it draws its own arrow. */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 26px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 14px) 52%, calc(100% - 9px) 52%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+}
+.welcome-card input, .welcome-card select, .welcome-card textarea,
+.inspector input, .inspector select, .inspector textarea,
+.secondary input, .secondary select, .secondary textarea,
+.plot-pane input, .plot-pane select, .plot-pane textarea,
+.cast-profile input, .cast-profile select, .cast-profile textarea,
+.search, .synopsis { width: 100%; }
 .welcome-actions { display: flex; gap: 8px; margin-top: 16px; }
 
 button {
   font: inherit;
   font-size: 12px;
-  border: 1px solid transparent;
-  background: transparent;
   color: var(--text);
-  border-radius: 2px;
-  padding: 4px 8px;
+  background: var(--control);
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius);
+  padding: 4px 10px;
   cursor: pointer;
 }
-button:hover { background: var(--hover); }
-button.primary {
-  background: var(--primary);
-  color: #ffffff;
-}
+button:hover { background: var(--control-hover); }
+button:disabled { opacity: 0.5; cursor: default; }
+button:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+button.primary { background: var(--primary); border-color: var(--primary); color: #ffffff; }
 button.primary:hover { background: var(--primary-hover); }
+/* Deletes or replaces something. Filled while it waits for the second click. */
+button.danger { background: transparent; border-color: var(--danger); color: var(--danger); }
+button.danger:hover, button.danger.armed { background: var(--danger); color: #ffffff; }
+/* Buttons in a bar or a list, which read as text until hovered. */
+.format-toolbar button:not(.hl-btn), .editor-actions button, .view-action,
+.review-item .review-anchor, .cast-list button.cast-name {
+  background: transparent;
+  border-color: transparent;
+}
+.format-toolbar button:not(.hl-btn):hover, .editor-actions button:hover,
+.view-action:hover, .cast-list button.cast-name:hover { background: var(--hover); }
 .binder-item.selected {
   background: var(--selection);
   color: var(--selection-fg);
@@ -262,7 +306,7 @@ button.primary:hover { background: var(--primary-hover); }
 .book-select, .compile-select {
   max-width: 11rem;
   height: 22px;
-  font: inherit;
+  padding: 0 24px 0 6px;
   font-size: 11px;
 }
 .compile-select { height: 24px; }
@@ -383,10 +427,6 @@ button.primary:hover { background: var(--primary-hover); }
   flex: 1;
   min-width: 6em;
   height: 22px;
-  font: inherit;
-  color: var(--text);
-  background: var(--input);
-  border: 1px solid var(--input-border);
   padding: 0 6px;
 }
 .review-swatch { flex: 1; padding: 1px 6px; color: var(--text); }
@@ -464,7 +504,7 @@ button.primary:hover { background: var(--primary-hover); }
   border-top: 1px solid var(--line);
   margin: 18px 0;
 }
-.synopsis { min-height: 96px; resize: vertical; }
+.synopsis { min-height: 96px; }
 
 .cork-pane { padding: 12px 16px 24px; overflow: auto; height: 100%; }
 .cork-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
@@ -511,20 +551,6 @@ button.primary:hover { background: var(--primary-hover); }
   border-top: 4px solid var(--line);
   border-radius: 2px;
 }
-.plot-pane input, .plot-pane select, .plot-pane textarea {
-  width: 100%;
-  border: 1px solid var(--input-border);
-  background: var(--input);
-  color: var(--text);
-  border-radius: 2px;
-  padding: 6px 8px;
-  font: inherit;
-}
-.plot-pane textarea { min-height: 72px; resize: vertical; }
-.plot-pane input:focus, .plot-pane select:focus, .plot-pane textarea:focus {
-  outline: 1px solid var(--gold);
-  border-color: var(--gold);
-}
 .plot-card-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .plot-card-actions button { font-size: 12px; }
 
@@ -543,20 +569,7 @@ button.primary:hover { background: var(--primary-hover); }
 .cast-list button.cast-name.active { outline: 1px solid var(--gold); }
 .cast-profile { flex: 1; overflow: auto; padding: 12px 16px 24px; }
 .cast-profile label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 4px; }
-.cast-profile input, .cast-profile select, .cast-profile textarea {
-  width: 100%;
-  border: 1px solid var(--input-border);
-  background: var(--input);
-  color: var(--text);
-  border-radius: 2px;
-  padding: 6px 8px;
-  font: inherit;
-}
-.cast-profile textarea { min-height: 96px; resize: vertical; }
-.cast-profile input:focus, .cast-profile select:focus, .cast-profile textarea:focus {
-  outline: 1px solid var(--gold);
-  border-color: var(--gold);
-}
+.cast-profile textarea { min-height: 96px; }
 .cast-block { margin-top: 18px; }
 .cast-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
 .cast-row input, .cast-row select { flex: 1; }
@@ -568,12 +581,9 @@ button.primary:hover { background: var(--primary-hover); }
 .outliner th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; }
 .outliner .cell-input {
   width: 100%;
-  border: 1px solid transparent;
+  border-color: transparent;
   background: transparent;
-  color: var(--text);
-  border-radius: 2px;
   padding: 4px 6px;
-  font: inherit;
 }
 .outliner .cell-input:focus {
   border-color: var(--gold);
@@ -661,6 +671,7 @@ del.diff-removed { background: var(--diff-del-bg); text-decoration: line-through
 }
 .status .theme-select {
   height: 18px;
+  padding: 0 6px;
   border: 0;
   background: rgba(255, 255, 255, 0.18);
   color: var(--status-fg);

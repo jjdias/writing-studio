@@ -125,11 +125,7 @@ pub(super) fn CharacterProfile(profile: ProfileView, others: Vec<CastListItem>, 
     let summary = profile.summary.clone();
     let motivations = profile.motivations.clone();
     let relationships = profile.relationships.clone();
-    let delete_label = if confirm == Some(id) {
-        "Delete character"
-    } else {
-        "Delete"
-    };
+    let delete_label = confirm_label(confirm == Some(id), "Delete", &name);
     rsx! {
         label { "Name" }
         input {
@@ -238,6 +234,7 @@ pub(super) fn CharacterProfile(profile: ProfileView, others: Vec<CastListItem>, 
         SceneLinks { owner: id, kind: BibleLink::Character }
         div { class: "cast-actions",
             button {
+                class: danger(confirm == Some(id)),
                 onclick: move |_| state.write().remove_character(id),
                 "{delete_label}"
             }

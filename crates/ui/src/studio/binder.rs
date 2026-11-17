@@ -61,7 +61,7 @@ pub(super) fn Explorer() -> Element {
                     button { class: "primary", onclick: move |_| state.write().restore_selected(), "Restore" }
                 }
                 button {
-                    class: if confirm_empty { "primary" } else { "" },
+                    class: danger(confirm_empty),
                     onclick: move |_| state.write().empty_trash(),
                     if confirm_empty { "Confirm empty" } else { "Empty trash" }
                 }

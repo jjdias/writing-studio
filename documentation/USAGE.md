@@ -40,7 +40,7 @@ The binder field searches titles and manuscript text. **Ctrl+F** focuses it. On 
 
 The index is built in memory from the project when it opens, and updated when a document is saved. It is not a file in the project folder. The `.writingstudio` folder stays the source of truth.
 
-**Escape** leaves zen mode when it is on. Otherwise it clears the corkboard filter when that field has text, and otherwise clears the binder search.
+**Escape** cancels a delete or restore that is waiting for its second click. Otherwise it leaves zen mode when it is on, or clears the corkboard filter when that field has text, and otherwise clears the binder search.
 
 ## Organize
 
@@ -140,7 +140,7 @@ The status bar theme list saves **Dark**, **Light**, or **Paper** in the project
 | **Ctrl+B** | Bold the selection in the manuscript |
 | **Ctrl+F** | Search. On the corkboard, focuses the scene filter |
 | **Ctrl+Shift+F**, **Ctrl+\\** | Zen mode |
-| **Escape** | Leave zen mode, or clear the corkboard filter, or clear binder search |
+| **Escape** | Cancel a waiting delete, or leave zen mode, or clear the corkboard filter, or clear binder search |
 | **Ctrl+1** | Writing |
 | **Ctrl+2** | Corkboard |
 | **Ctrl+3** | Outliner |

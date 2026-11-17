@@ -68,7 +68,7 @@ pub(super) fn Inspector() -> Element {
             if state.read().binder.is_in_trash(node.id) && node.kind != NodeKind::TrashRoot {
                 button { class: "primary", onclick: move |_| state.write().restore_selected(), "Restore from trash" }
             } else if !node.kind.is_root() {
-                button { onclick: move |_| state.write().trash_selected(), "Move to trash" }
+                button { class: "danger", onclick: move |_| state.write().trash_selected(), "Move to trash" }
             }
             button { onclick: move |_| state.write().snapshot(), "Snapshot this document" }
             SnapshotList {}

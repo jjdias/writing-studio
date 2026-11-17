@@ -95,7 +95,7 @@ pub(super) fn ResearchNote(note: ResearchNoteView, confirm: Option<Id>) -> Eleme
     let title = note.title.clone();
     let notes = note.notes.clone();
     let files = note.files.clone();
-    let delete_label = if confirm == Some(id) { "Delete note" } else { "Delete" };
+    let delete_label = confirm_label(confirm == Some(id), "Delete", &title);
     rsx! {
         label { "Title" }
         input {
@@ -125,7 +125,7 @@ pub(super) fn ResearchNote(note: ResearchNoteView, confirm: Option<Id>) -> Eleme
                 {
                     let file_id = file.id;
                     let name = file.file_name.clone();
-                    let remove_label = if confirm == Some(file_id) { "Remove file" } else { "Remove" };
+                    let remove_label = confirm_label(confirm == Some(file_id), "Remove", &name);
                     rsx! {
                         div { class: "cast-row", key: "{file_id}",
                             span { "{name}" }
@@ -134,6 +134,7 @@ pub(super) fn ResearchNote(note: ResearchNoteView, confirm: Option<Id>) -> Eleme
                                 "Open"
                             }
                             button {
+                                class: danger(confirm == Some(file_id)),
                                 onclick: move |_| state.write().remove_research_file(file_id),
                                 "{remove_label}"
                             }
@@ -144,6 +145,7 @@ pub(super) fn ResearchNote(note: ResearchNoteView, confirm: Option<Id>) -> Eleme
         }
         div { class: "cast-actions",
             button {
+                class: danger(confirm == Some(id)),
                 onclick: move |_| state.write().remove_research_item(id),
                 "{delete_label}"
             }

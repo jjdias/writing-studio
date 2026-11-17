@@ -88,7 +88,7 @@ pub(super) fn HistoryPane() -> Element {
                                         }
                                     }
                                     button {
-                                        class: if confirm.as_ref() == Some(&item.path) { "primary" } else { "" },
+                                        class: danger(confirm.as_ref() == Some(&item.path)),
                                         title: "Replace the whole project with this backup",
                                         onclick: move |_| {
                                             state.write().request_backup_restore(item.path.clone());
@@ -195,7 +195,7 @@ pub(super) fn KeptFromOutside() -> Element {
                                 }
                             }
                             button {
-                                class: if confirm.as_ref() == Some(&item.kept_as) { "primary" } else { "" },
+                                class: danger(confirm.as_ref() == Some(&item.kept_as)),
                                 onclick: {
                                     let kept_as = item.kept_as.clone();
                                     move |_| state.write().request_kept_removal(kept_as.clone())

@@ -95,11 +95,7 @@ pub(super) fn PlotLineRow(line: PlotLineView, scenes: Vec<(Id, String)>, confirm
     } else {
         format!("border-top-color: {stripe}")
     };
-    let delete_label = if confirm == Some(line_id) {
-        "Delete plotline"
-    } else {
-        "Delete"
-    };
+    let delete_label = confirm_label(confirm == Some(line_id), "Delete", &title);
     let points = line.points.clone();
     rsx! {
         section { class: "plot-row", key: "{line_id}",
@@ -128,6 +124,7 @@ pub(super) fn PlotLineRow(line: PlotLineView, scenes: Vec<(Id, String)>, confirm
                     "Add point"
                 }
                 button {
+                    class: danger(confirm == Some(line_id)),
                     onclick: move |_| state.write().remove_plotline(line_id),
                     "{delete_label}"
                 }

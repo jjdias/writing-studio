@@ -1,5 +1,22 @@
 use super::*;
 
+/// The class of a button that deletes or replaces something: outlined in the
+/// danger color, and filled while it waits for the second click.
+pub(super) fn danger(armed: bool) -> &'static str {
+    if armed { "danger armed" } else { "danger" }
+}
+
+/// The label of a button that deletes `name` on its second click. The
+/// second click names what it deletes; Escape cancels it.
+pub(super) fn confirm_label(armed: bool, verb: &str, name: &str) -> String {
+    let name = name.trim();
+    match (armed, name.is_empty()) {
+        (false, _) => verb.to_string(),
+        (true, true) => format!("{verb} untitled"),
+        (true, false) => format!("{verb} “{name}”"),
+    }
+}
+
 pub(super) fn SeriesScopeSelect() -> Element {
     let mut state = use_context::<Signal<StudioState>>();
     let books = state.read().manuscript_book_choices();

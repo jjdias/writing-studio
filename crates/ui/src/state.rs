@@ -1717,6 +1717,22 @@ impl StudioState {
         }
     }
 
+    /// Cancel a delete or restore that is waiting for its second click.
+    /// Returns whether one was waiting.
+    pub fn cancel_confirmation(&mut self) -> bool {
+        let waiting = self.confirm_plotline.take().is_some()
+            | self.confirm_character.take().is_some()
+            | self.confirm_world.take().is_some()
+            | self.confirm_research.take().is_some()
+            | self.confirm_backup.take().is_some()
+            | self.confirm_kept.take().is_some()
+            | std::mem::take(&mut self.confirm_empty_trash);
+        if waiting {
+            self.status = "Cancelled.".into();
+        }
+        waiting
+    }
+
     pub fn has_unsaved(&self) -> bool {
         self.settings_dirty
             || self.binder_dirty
@@ -3718,6 +3734,21 @@ mod tests {
             .map(|entry| entry.path())
             .find(|path| std::fs::read_to_string(path).unwrap_or_default().contains(&id))
             .unwrap()
+    }
+
+    #[test]
+    fn escape_cancels_a_delete_waiting_for_its_second_click() {
+        let (mut state, dir) = open_state("cancel");
+        state.add_character();
+        let id = state.cast.characters[0].id;
+        state.remove_character(id);
+        assert_eq!(state.confirm_character, Some(id));
+        assert!(state.cancel_confirmation());
+        assert!(!state.cancel_confirmation());
+        // The next click asks again instead of deleting.
+        state.remove_character(id);
+        assert_eq!(state.cast.characters.len(), 1);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

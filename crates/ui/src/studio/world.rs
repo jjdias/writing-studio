@@ -200,7 +200,11 @@ pub(super) fn WorldEditor(form: WorldForm, places: Vec<NamedId>, cultures: Vec<N
         | WorldForm::Lore { id, .. }
         | WorldForm::Event { id, .. } => *id,
     };
-    let delete_label = if confirm == Some(id) { "Delete entry" } else { "Delete" };
+    let name = match &form {
+        WorldForm::Location { name, .. } | WorldForm::Culture { name, .. } => name,
+        WorldForm::Lore { title, .. } | WorldForm::Event { title, .. } => title,
+    };
+    let delete_label = confirm_label(confirm == Some(id), "Delete", name);
     let link = match &form {
         WorldForm::Location { .. } => BibleLink::Location,
         WorldForm::Culture { .. } => BibleLink::Culture,
@@ -313,6 +317,7 @@ pub(super) fn WorldEditor(form: WorldForm, places: Vec<NamedId>, cultures: Vec<N
         SceneLinks { owner: id, kind: link }
         div { class: "cast-actions",
             button {
+                class: danger(confirm == Some(id)),
                 onclick: move |_| state.write().remove_world_item(id),
                 "{delete_label}"
             }

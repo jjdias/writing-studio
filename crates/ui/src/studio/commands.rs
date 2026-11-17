@@ -150,6 +150,9 @@ pub(super) fn set_mode(mut state: Signal<StudioState>, mode: WorkspaceMode) -> b
 }
 
 pub(super) fn clear_or_exit_focus(mut state: Signal<StudioState>) -> bool {
+    if state.write().cancel_confirmation() {
+        return true;
+    }
     if state.read().focus_mode {
         state.write().focus_mode = false;
         return true;
