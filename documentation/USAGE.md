@@ -24,7 +24,7 @@ A `.writingstudio` folder is the whole project, kept as plain files you can open
 
 ## Write
 
-- Choose a scene in the scene list. Type in the manuscript. It is set on a page in a reading font, about seventy characters to the line. **Settings** → **Manuscript font** chooses serif or sans serif for this computer; code blocks stay in a fixed-width font.
+- Choose a scene in the scene list. Type in the manuscript. It is set on a page in a reading font, about seventy characters to the line. **Settings** → **Manuscript font** chooses serif or sans serif for this computer; code blocks stay in a fixed-width font. Below it, sliders set the line length (45 to 100 characters), line height, space between paragraphs, and first-line indent, and **Reset the page** puts them back. These are this computer's settings and change how the page looks while writing, not the exported file.
 - The format toolbar is one row: **Bold**, **Italic**, the paragraph style (Body, Heading 1 to 3, Code), **Quote**, **List**, **Link**, **Note**, and **More**. A button is lit when its mark is on at the caret. Clicking one leaves the caret and the selection where they were.
 - **More** holds Underline, Strikethrough, Numbered list, Scene break, the highlight colors, Remove highlight, Remove link, Remove note, and Track changes.
 - **Link** and **Note** ask in a small field under the selection. Enter adds it; Escape or **Cancel** leaves the text as it was. A note's field also sets what it is for: Comment, Question, Revise, or Check. The note is saved with the scene, on that text. **More** → **Remove note** takes it off; the text stays.

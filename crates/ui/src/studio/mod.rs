@@ -14,7 +14,8 @@ use writing_studio_editor::EditorSession;
 use writing_studio_manuscript::{outline_rows, row_word_count};
 use writing_studio_project::{
     binder_color_hex, drag_width, format_elapsed, BinderNode, DropPlace, NodeKind, PanelChrome, PanelLayout,
-    PanelWidths, ProseFont, Theme, BINDER_COLORS, INSPECTOR_WIDTH_DEFAULT, INSPECTOR_WIDTH_MAX,
+    PageStyle, PanelWidths, ProseFont, Theme, BINDER_COLORS, FIRST_LINE_INDENT_RANGE, LINE_HEIGHT_RANGE,
+    LINE_LENGTH_RANGE, PARAGRAPH_SPACING_RANGE, INSPECTOR_WIDTH_DEFAULT, INSPECTOR_WIDTH_MAX,
     INSPECTOR_WIDTH_MIN, SIDEBAR_WIDTH_DEFAULT, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN,
 };
 use writing_studio_diagnostics::{BookContext, SceneFacts};
@@ -135,10 +136,12 @@ fn Studio() -> Element {
     let show_shortcuts = state.read().show_shortcuts;
     let theme = state.read().theme();
     let font = state.read().prose_font();
+    let page = page_variables(state.read().page_style());
 
     rsx! {
         div {
             class: "shell theme-{theme.as_str()} prose-{font.as_str()}",
+            style: "{page}",
             // Focusable by a click, so keys reach the handler, but not a stop for Tab.
             tabindex: -1,
             onmousemove: move |event| {
@@ -502,6 +505,7 @@ fn SettingsPanel() -> Element {
                     option { value: "{item.as_str()}", selected: item == font, "{item.label()}" }
                 }
             }
+            PageSettings {}
             label { r#for: "setting-theme", "Theme" }
             select {
                 id: "setting-theme",
@@ -625,3 +629,125 @@ fn apply_goal(mut state: Signal<StudioState>, value: String, daily: bool) {
     }
 }
 
+
+/// The page style as CSS variables on the shell, which the page's rules
+/// read. Line length is in characters, spacing in lines, indent in em.
+fn page_variables(style: PageStyle) -> String {
+    format!(
+        "--line-length: {}ch; --line-height: {}; --para-space: {}; --indent: {}em;",
+        style.line_length,
+        style.line_height as f64 / 100.0,
+        style.paragraph_spacing as f64 / 10.0,
+        style.first_line_indent as f64 / 10.0,
+    )
+}
+
+/// One slider of the page settings.
+#[derive(Clone, Copy, PartialEq)]
+enum PageKnob {
+    LineLength,
+    LineHeight,
+    ParagraphSpacing,
+    FirstLineIndent,
+}
+
+impl PageKnob {
+    const ALL: [PageKnob; 4] = [
+        PageKnob::LineLength,
+        PageKnob::LineHeight,
+        PageKnob::ParagraphSpacing,
+        PageKnob::FirstLineIndent,
+    ];
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::LineLength => "Line length",
+            Self::LineHeight => "Line height",
+            Self::ParagraphSpacing => "Space between paragraphs",
+            Self::FirstLineIndent => "First-line indent",
+        }
+    }
+
+    fn range(self) -> (u32, u32) {
+        match self {
+            Self::LineLength => LINE_LENGTH_RANGE,
+            Self::LineHeight => LINE_HEIGHT_RANGE,
+            Self::ParagraphSpacing => PARAGRAPH_SPACING_RANGE,
+            Self::FirstLineIndent => FIRST_LINE_INDENT_RANGE,
+        }
+    }
+
+    fn get(self, style: PageStyle) -> u32 {
+        match self {
+            Self::LineLength => style.line_length,
+            Self::LineHeight => style.line_height,
+            Self::ParagraphSpacing => style.paragraph_spacing,
+            Self::FirstLineIndent => style.first_line_indent,
+        }
+    }
+
+    fn set(self, mut style: PageStyle, value: u32) -> PageStyle {
+        match self {
+            Self::LineLength => style.line_length = value,
+            Self::LineHeight => style.line_height = value,
+            Self::ParagraphSpacing => style.paragraph_spacing = value,
+            Self::FirstLineIndent => style.first_line_indent = value,
+        }
+        style
+    }
+
+    /// The value as it reads: "70 characters", "1.65", "0.7 lines", "1.5 em".
+    fn shown(self, value: u32) -> String {
+        match self {
+            Self::LineLength => format!("{value} characters"),
+            Self::LineHeight => format!("{:.2}", value as f64 / 100.0),
+            Self::ParagraphSpacing if value == 0 => "None".to_string(),
+            Self::ParagraphSpacing => format!("{:.1} lines", value as f64 / 10.0),
+            Self::FirstLineIndent if value == 0 => "None".to_string(),
+            Self::FirstLineIndent => format!("{:.1} em", value as f64 / 10.0),
+        }
+    }
+}
+
+/// Line length, line height, paragraph spacing, and indent, set while
+/// looking at the page. They do not change compile.
+#[component]
+fn PageSettings() -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let style = state.read().page_style();
+    rsx! {
+        for knob in PageKnob::ALL {
+            {
+                let (low, high) = knob.range();
+                let value = knob.get(style);
+                let id = format!("setting-page-{}", knob as u8);
+                rsx! {
+                    label { class: "range-label", r#for: "{id}",
+                        span { "{knob.label()}" }
+                        span { class: "range-value", "{knob.shown(value)}" }
+                    }
+                    input {
+                        id: "{id}",
+                        r#type: "range",
+                        min: "{low}",
+                        max: "{high}",
+                        value: "{value}",
+                        oninput: move |event| {
+                            if let Ok(next) = event.value().parse::<u32>() {
+                                let current = state.read().page_style();
+                                state.write().set_page_style(knob.set(current, next));
+                            }
+                        },
+                    }
+                }
+            }
+        }
+        if style != PageStyle::default() {
+            button {
+                class: "range-reset",
+                onclick: move |_| state.write().set_page_style(PageStyle::default()),
+                "Reset the page"
+            }
+        }
+    }
+}

@@ -294,7 +294,7 @@ Missing tables are added when a project opens (`CREATE TABLE IF NOT EXISTS`).
 
 `.local/settings.json` holds the rest, this machine's:
 
-- `theme` (`dark`, `light`, or `paper`; missing means `light`), `prose_font` (`serif` or `sans`, the manuscript's typeface; missing means `serif`), `autosave_seconds`, `compile_book_id` (the book on screen, compiled, and counted in the status bar), and `show_whole_series`.
+- `theme` (`dark`, `light`, or `paper`; missing means `light`), `prose_font` (`serif` or `sans`, the manuscript's typeface; missing means `serif`), `page` (`line_length` in characters, 45 to 100; `line_height` in hundredths, 120 to 220; `paragraph_spacing` in tenths of a line, 0 to 20; `first_line_indent` in tenths of an em, 0 to 40; each missing value keeps the default look), `autosave_seconds`, `compile_book_id` (the book on screen, compiled, and counted in the status bar), and `show_whole_series`.
 - `layout`: `sidebar_side` (`left` or `right`; kept for older projects, but the binder is always on the left now), `sidebar_width` (180 to 480 pixels), `inspector_width` (220 to 560), and whether each panel is visible.
 - `writing`: today's date and each book's word count at the start of today and of the open sitting, and the last 40 completed sittings (`day`, `started_at`, `ended_at`, `words`, `seconds`). A sitting is stored the next time the project opens.
 

@@ -1264,3 +1264,19 @@ kbd {
 .scene-card:hover { background: var(--hover); }
 .scene-card.active { background: var(--row-active); color: var(--row-active-fg); }
 .scene-card.active .scene-card-opening { opacity: 0.9; }
+
+/* Page settings (Phase 9 stage 2). The shell sets these from the
+   project's page style; the values here are today's look. */
+:root { --line-length: 70ch; --line-height: 1.65; --para-space: 0.4; --indent: 0em; }
+.manuscript, .page-head { max-width: calc(var(--line-length) + 112px); }
+.manuscript { line-height: var(--line-height); }
+.manuscript.rich p, .manuscript.rich blockquote, .manuscript.rich ul, .manuscript.rich ol {
+  margin: 0 0 calc(var(--para-space) * var(--line-height) * 1em);
+}
+.manuscript.rich p { text-indent: var(--indent); }
+
+/* Sliders in Settings, each with its value beside its name. */
+.range-label { display: flex; justify-content: space-between; gap: 8px; }
+.range-value { color: var(--text); font-variant-numeric: tabular-nums; }
+.popover input[type="range"] { padding: 0; border: 0; box-shadow: none; background: transparent; accent-color: var(--gold); }
+.range-reset { margin-top: 10px; font-size: 12px; }

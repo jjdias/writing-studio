@@ -21,7 +21,7 @@ use writing_studio_plotting::PlotGrid;
 use writing_studio_research::ResearchLibrary;
 use writing_studio_project::{
     format_elapsed, normalize_binder_color, BinderNode, BinderTree, NodeKind, PanelLayout,
-    DropPlace, ProjectMeta, ProseFont, StoredSession, Theme,
+    DropPlace, PageStyle, ProjectMeta, ProseFont, StoredSession, Theme,
 };
 use writing_studio_search::ManuscriptIndex;
 use writing_studio_spellcheck::{
@@ -775,6 +775,31 @@ impl StudioState {
             .as_ref()
             .map(|meta| meta.settings.prose_font)
             .unwrap_or_default()
+    }
+
+    pub fn page_style(&self) -> PageStyle {
+        self.meta
+            .as_ref()
+            .map(|meta| meta.settings.page)
+            .unwrap_or_default()
+    }
+
+    /// Set how the page looks while writing, kept within its limits. It is
+    /// this computer's choice, saved with the font and theme.
+    pub fn set_page_style(&mut self, style: PageStyle) {
+        let style = style.clamp();
+        let changed = self.meta.as_mut().is_some_and(|meta| {
+            if meta.settings.page == style {
+                return false;
+            }
+            meta.settings.page = style;
+            meta.touch();
+            true
+        });
+        if changed {
+            self.settings_dirty = true;
+            self.note_edit();
+        }
     }
 
     pub fn set_prose_font(&mut self, font: ProseFont) {
@@ -4194,6 +4219,24 @@ mod tests {
         assert!(reopened.is_collapsed(book));
         reopened.toggle_collapsed(book);
         assert_eq!(inside_book(&reopened), before);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn the_page_style_is_this_computers_and_stays_in_its_limits() {
+        let (mut state, dir) = open_state("page-style");
+        assert_eq!(state.page_style(), PageStyle::default());
+        let wide = PageStyle { line_length: 900, first_line_indent: 15, ..PageStyle::default() };
+        state.set_page_style(wide);
+        assert_eq!(state.page_style().line_length, 100);
+        assert_eq!(state.page_style().first_line_indent, 15);
+        state.save_all();
+        let root = state.project_root().unwrap();
+        let local = std::fs::read_to_string(root.join(".local").join("settings.json")).unwrap();
+        let local: serde_json::Value = serde_json::from_str(&local).unwrap();
+        assert_eq!(local["page"]["first_line_indent"], 15);
+        let shared = std::fs::read_to_string(root.join("project.json")).unwrap();
+        assert!(!shared.contains("first_line_indent"));
         let _ = std::fs::remove_dir_all(dir);
     }
 

@@ -206,6 +206,68 @@ impl ProseFont {
     }
 }
 
+/// How the page is set while writing: line length, line height, space
+/// between paragraphs, and first-line indent. It does not change compile.
+/// Each value is kept within the limits below, and a missing one is
+/// today's look.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageStyle {
+    /// Characters to a line.
+    #[serde(default = "default_line_length")]
+    pub line_length: u32,
+    /// Line height in hundredths: 165 is 1.65 lines.
+    #[serde(default = "default_line_height")]
+    pub line_height: u32,
+    /// Space after a paragraph, in tenths of a line: 4 is 0.4 lines.
+    #[serde(default = "default_paragraph_spacing")]
+    pub paragraph_spacing: u32,
+    /// First-line indent, in tenths of an em: 15 is 1.5 em.
+    #[serde(default)]
+    pub first_line_indent: u32,
+}
+
+pub const LINE_LENGTH_RANGE: (u32, u32) = (45, 100);
+pub const LINE_HEIGHT_RANGE: (u32, u32) = (120, 220);
+pub const PARAGRAPH_SPACING_RANGE: (u32, u32) = (0, 20);
+pub const FIRST_LINE_INDENT_RANGE: (u32, u32) = (0, 40);
+
+fn default_line_length() -> u32 {
+    70
+}
+
+fn default_line_height() -> u32 {
+    165
+}
+
+fn default_paragraph_spacing() -> u32 {
+    // About the 12 pixels paragraphs had before this setting, at 17 px text.
+    4
+}
+
+impl Default for PageStyle {
+    fn default() -> Self {
+        Self {
+            line_length: default_line_length(),
+            line_height: default_line_height(),
+            paragraph_spacing: default_paragraph_spacing(),
+            first_line_indent: 0,
+        }
+    }
+}
+
+impl PageStyle {
+    /// The same style with every value inside its limits.
+    pub fn clamp(self) -> Self {
+        let within = |value: u32, (low, high): (u32, u32)| value.clamp(low, high);
+        Self {
+            line_length: within(self.line_length, LINE_LENGTH_RANGE),
+            line_height: within(self.line_height, LINE_HEIGHT_RANGE),
+            paragraph_spacing: within(self.paragraph_spacing, PARAGRAPH_SPACING_RANGE),
+            first_line_indent: within(self.first_line_indent, FIRST_LINE_INDENT_RANGE),
+        }
+    }
+}
+
 /// Width after a horizontal drag. `positive` means moving the pointer right grows the panel.
 /// Word target for one book in a series project. Missing books use the project goal.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -241,6 +303,10 @@ pub struct ProjectSettings {
     /// Serif or sans for the manuscript. Missing on older projects, which use serif.
     #[serde(default)]
     pub prose_font: ProseFont,
+    /// Line length, line height, paragraph spacing, and indent for the page.
+    /// Missing on older projects, which keep today's look.
+    #[serde(default)]
+    pub page: PageStyle,
     /// Binder items folded shut in the library and the scene list. Missing
     /// on older projects, which open with everything showing.
     #[serde(default)]
@@ -302,6 +368,7 @@ impl Default for ProjectSettings {
             layout: PanelLayout::default(),
             theme: Theme::Light,
             prose_font: ProseFont::Serif,
+            page: PageStyle::default(),
             collapsed: Vec::new(),
             compile_book_id: None,
             book_word_goals: Vec::new(),
@@ -442,5 +509,24 @@ mod tests {
         assert_eq!(drag_width(260, 40, false, 180, 480), 220);
         assert_eq!(drag_width(260, 500, true, 180, 480), 480);
         assert_eq!(drag_width(260, 500, false, 180, 480), 180);
+    }
+}
+
+#[cfg(test)]
+mod page_tests {
+    use super::*;
+
+    #[test]
+    fn the_page_style_keeps_todays_look_when_missing_and_stays_in_its_limits() {
+        let json = r#"{"daily_word_goal":1,"project_word_goal":2,"compile_title_page":true,"autosave_seconds":2}"#;
+        let settings: ProjectSettings = serde_json::from_str(json).unwrap();
+        assert_eq!(settings.page, PageStyle::default());
+        // A file that sets only some values keeps the defaults for the rest.
+        let some = r#"{"daily_word_goal":1,"project_word_goal":2,"compile_title_page":true,"autosave_seconds":2,"page":{"first_line_indent":15}}"#;
+        let settings: ProjectSettings = serde_json::from_str(some).unwrap();
+        assert_eq!(settings.page.first_line_indent, 15);
+        assert_eq!(settings.page.line_length, 70);
+        let wild = PageStyle { line_length: 500, line_height: 10, paragraph_spacing: 99, first_line_indent: 99 }.clamp();
+        assert_eq!(wild, PageStyle { line_length: 100, line_height: 120, paragraph_spacing: 20, first_line_indent: 40 });
     }
 }
