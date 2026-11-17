@@ -10,6 +10,18 @@ This guide describes the program as it is, Phases 1 to 5. What comes next is in 
 2. **New project** — pick an empty parent folder. The app creates `Title.writingstudio`.
 3. **Open project** — select an existing `.writingstudio` folder.
 
+## The project folder
+
+A `.writingstudio` folder is the whole project, kept as plain files you can open without this program:
+
+- Each scene is an HTML file in `manuscript/`, named from its title when it was made (`the-harbor-3f9a.html`). Open one in a browser to read it, styled by `scene.css`. Characters, places, cultures, lore, timeline, and research notes are HTML files in folders of those names.
+- `project.json`, `binder.json`, `bible.json`, and `plot.json` hold the title, the binder order, the links between entries, and the plot grid. `README.md` in the folder says what each file is.
+- `.local/` belongs to this computer: the search cache, snapshots, backups, writing sessions, and window layout. It is never shared, and it can be deleted; the program fills it again from the files when the project opens.
+- A file edited outside the program while the project is open is not lost. Before the program writes that file, the edited version is kept beside it as `name.conflict-<time>.html`, and the status line says so. The open scene is read again when the window comes back to the front, if nothing in it is unsaved.
+- A project made by a newer version says so and is not opened. A project from the first test versions, kept in one database, is refused with a message; it is not converted, and nothing in its folder is written.
+
+[PROJECT_FORMAT.md](PROJECT_FORMAT.md) describes every file.
+
 ## Write
 
 - Select a scene in the binder. Type in the manuscript.

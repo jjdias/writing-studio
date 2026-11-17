@@ -179,8 +179,8 @@ fn add_head_extras(header: &mut Header, extras: Option<&Extras>, known: &[&str])
 }
 
 impl ProjectContent {
-    /// Read a format 1 project out of its database. Each document is given
-    /// the id of its binder item, which is how format 2 identifies text.
+    /// Read the project out of the cache. Each document is given the id of
+    /// its binder item, which is how the files identify text.
     pub fn from_store(store: &ProjectStore) -> Result<Self> {
         let mut binder = store.load_binder()?;
         let mut documents = Vec::new();

@@ -2,7 +2,7 @@
 
 In progress. These are gaps found while building Phase 5. None of them is in the Phase 5 plan, and each one matters before writers keep real books in format 2.
 
-Items 1, 2, 5, 6, 7, 8, and 9 are done. Items 3 and 4 were dropped. Item 10 is left.
+All items are done, or were dropped (3 and 4).
 
 ## Before you start
 
@@ -89,5 +89,4 @@ Items 1, 2, 5, 6, 7, 8, and 9 are done. Items 3 and 4 were dropped. Item 10 is l
 
 ## 10. Update the guides for format 2
 
-- `documentation/USAGE.md` still says little about the folder. Add a section on what the folder holds, that it can be read without the program, that `.local/` is this computer's, and what happens when an older project is opened.
-- Decide whether the guides should mention `check_project`, which checks that every scene of a project reads back from its file.
+**Done.** See [../done/phase-5.md](../done/phase-5.md), "Phase 5.1, item 10".

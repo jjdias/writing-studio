@@ -122,6 +122,10 @@ Checked by a test of the window's state that syncs two drafts, lists them, compa
 - Two people editing at the same time. This is bonus work.
 - Encrypting a project. A private repository is as private as its host makes it.
 
+## Phase 5.1, item 10 — The guides describe format 2
+
+`documentation/USAGE.md` has a section on the project folder: what it holds, that it can be read without the program, that `.local/` is this computer's, what happens to a file edited outside, and what happens when a project from another version is opened. `check_project` stays in `PROJECT_FORMAT.md` only: it needs the source code and `cargo`, so it is for developers, not writers.
+
 ## Phase 5.1, item 8 — One scene back from a backup
 
 A backup is a copy of the cache, and restoring it replaced the whole project. Now each backup in History also has **Restore this scene**, for the selected scene. `restore_scene_from_backup` in `crates/storage/src/recovery.rs` opens the backup read-only, reads that scene's row, and saves it the way a snapshot is restored: the current text is kept as a pre-restore snapshot first, and the scene file is written. A scene the project no longer has, or one the backup does not hold, is refused. The whole-project restore is now labelled **Restore all**.
