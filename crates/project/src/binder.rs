@@ -137,6 +137,10 @@ pub struct BinderNode {
     pub label: String,
     pub status: String,
     pub color: String,
+    /// Keywords the writer gave this item, in the order given. Their colors
+    /// are the binder's, one for each keyword.
+    #[serde(default)]
+    pub keywords: Vec<String>,
     pub deleted_at: Option<Timestamp>,
     pub restore_parent_id: Option<Id>,
     pub created_at: Timestamp,
@@ -165,6 +169,7 @@ impl BinderNode {
             label: String::new(),
             status: String::from("draft"),
             color: String::new(),
+            keywords: Vec::new(),
             deleted_at: None,
             restore_parent_id: None,
             created_at: now,
@@ -183,11 +188,15 @@ impl BinderNode {
 #[derive(Clone, Debug)]
 pub struct BinderTree {
     pub nodes: Vec<BinderNode>,
+    /// Each keyword in use and its color, one of `BINDER_COLORS`.
+    pub keywords: Vec<Keyword>,
+    /// Saved filters, each shown as its own row in the library.
+    pub filters: Vec<SavedFilter>,
 }
 
 impl BinderTree {
     pub fn new(nodes: Vec<BinderNode>) -> Self {
-        Self { nodes }
+        Self { nodes, keywords: Vec::new(), filters: Vec::new() }
     }
 
     pub fn children(&self, parent: Option<Id>) -> Vec<&BinderNode> {
@@ -1227,4 +1236,286 @@ pub fn binder_color_hex(value: &str) -> &'static str {
         .find(|swatch| swatch.id == value.trim())
         .map(|swatch| swatch.hex)
         .unwrap_or("")
+}
+
+/// A keyword and its color, shared by every item that carries it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Keyword {
+    pub name: String,
+    /// One of `BINDER_COLORS`' ids.
+    pub color: String,
+}
+
+/// A filter kept as a row of the library: the scenes that carry its
+/// keyword, have its status and label, and contain its text. An empty field
+/// matches anything.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SavedFilter {
+    pub id: Id,
+    pub name: String,
+    #[serde(default)]
+    pub keyword: String,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub label: String,
+    #[serde(default)]
+    pub text: String,
+}
+
+/// The longest keyword kept, in characters.
+const KEYWORD_MAX: usize = 40;
+
+fn same_word(one: &str, other: &str) -> bool {
+    one.trim().to_lowercase() == other.trim().to_lowercase()
+}
+
+fn keyword_colors() -> Vec<&'static str> {
+    BINDER_COLORS.iter().map(|color| color.id).filter(|id| !id.is_empty()).collect()
+}
+
+impl BinderTree {
+    /// The color of a keyword, or `""` when it has none.
+    pub fn keyword_color(&self, name: &str) -> &str {
+        self.keywords
+            .iter()
+            .find(|keyword| same_word(&keyword.name, name))
+            .map(|keyword| keyword.color.as_str())
+            .unwrap_or("")
+    }
+
+    /// Give an item a keyword. A keyword new to the project takes the next
+    /// color in turn. Returns whether anything changed.
+    pub fn add_keyword(&mut self, id: Id, name: &str) -> bool {
+        let name: String = name.trim().chars().take(KEYWORD_MAX).collect();
+        if name.is_empty() {
+            return false;
+        }
+        let Some(node) = self.get(id) else {
+            return false;
+        };
+        if node.keywords.iter().any(|kept| same_word(kept, &name)) {
+            return false;
+        }
+        // A keyword already in use keeps the spelling it was first given.
+        let spelled = self
+            .keywords
+            .iter()
+            .find(|keyword| same_word(&keyword.name, &name))
+            .map(|keyword| keyword.name.clone());
+        let name = spelled.clone().unwrap_or(name);
+        if let Some(node) = self.get_mut(id) {
+            node.keywords.push(name.clone());
+            node.updated_at = Timestamp::now();
+        }
+        if spelled.is_none() {
+            let colors = keyword_colors();
+            let color = colors[self.keywords.len() % colors.len()].to_string();
+            self.keywords.push(Keyword { name, color });
+        }
+        true
+    }
+
+    /// Take a keyword off an item. A keyword no item carries any more is
+    /// forgotten, with its color.
+    pub fn remove_keyword(&mut self, id: Id, name: &str) -> bool {
+        let Some(node) = self.get_mut(id) else {
+            return false;
+        };
+        let before = node.keywords.len();
+        node.keywords.retain(|kept| !same_word(kept, name));
+        if node.keywords.len() == before {
+            return false;
+        }
+        node.updated_at = Timestamp::now();
+        let still_used = self
+            .nodes
+            .iter()
+            .any(|node| node.keywords.iter().any(|kept| same_word(kept, name)));
+        if !still_used {
+            self.keywords.retain(|keyword| !same_word(&keyword.name, name));
+        }
+        true
+    }
+
+    /// Labels became keywords: each item's label is added to its keywords
+    /// and cleared, and a filter's label becomes its keyword. A project from
+    /// before keywords opens with its labels kept this way. Returns whether
+    /// anything changed.
+    pub fn fold_labels_into_keywords(&mut self) -> bool {
+        let labelled: Vec<(Id, String)> = self
+            .nodes
+            .iter()
+            .filter(|node| !node.label.trim().is_empty())
+            .map(|node| (node.id, node.label.clone()))
+            .collect();
+        let mut changed = false;
+        for (id, label) in labelled {
+            self.add_keyword(id, &label);
+            if let Some(node) = self.get_mut(id) {
+                node.label.clear();
+            }
+            changed = true;
+        }
+        for filter in &mut self.filters {
+            if filter.label.trim().is_empty() {
+                continue;
+            }
+            if filter.keyword.trim().is_empty() {
+                filter.keyword = filter.label.trim().to_string();
+            }
+            filter.label.clear();
+            changed = true;
+        }
+        changed
+    }
+
+    /// Give a keyword the next binder color, for every item that carries it.
+    pub fn cycle_keyword_color(&mut self, name: &str) -> bool {
+        let colors = keyword_colors();
+        let Some(keyword) = self.keywords.iter_mut().find(|keyword| same_word(&keyword.name, name)) else {
+            return false;
+        };
+        let next = colors
+            .iter()
+            .position(|color| *color == keyword.color)
+            .map(|at| at + 1)
+            .unwrap_or(0);
+        keyword.color = colors[next % colors.len()].to_string();
+        true
+    }
+
+    /// The manuscript's scenes, in binder order, that match the filter's
+    /// keyword, status, and label themselves or through the chapter, part,
+    /// or book they are in. The text is matched by the
+    /// caller, which has the search index.
+    pub fn scenes_matching(&self, filter: &SavedFilter) -> Vec<Id> {
+        let mut found = Vec::new();
+        let Some(draft) = self.draft_root() else {
+            return found;
+        };
+        let matches = |node: &BinderNode| {
+            let keyword = filter.keyword.trim().is_empty()
+                || node.keywords.iter().any(|kept| same_word(kept, &filter.keyword));
+            let status = filter.status.trim().is_empty() || same_word(&node.status, &filter.status);
+            let label = filter.label.trim().is_empty() || same_word(&node.label, &filter.label);
+            keyword && status && label
+        };
+        for (_, scene) in self.scenes_under(draft.id) {
+            // A scene matches on its own, or through the chapter, part, or book
+            // it is in: a chapter with the keyword brings all its scenes.
+            let mut at = Some(scene);
+            let mut guard = 0;
+            while let Some(id) = at.filter(|id| *id != draft.id) {
+                let Some(node) = self.get(id) else {
+                    break;
+                };
+                if matches(node) {
+                    found.push(scene);
+                    break;
+                }
+                at = node.parent_id;
+                guard += 1;
+                if guard > 10_000 {
+                    break;
+                }
+            }
+        }
+        found
+    }
+}
+
+#[cfg(test)]
+mod keyword_tests {
+    use super::*;
+
+    fn tree() -> (BinderTree, Id, Id) {
+        let draft = BinderNode::new(NodeKind::DraftRoot, "Manuscript", None, 0);
+        let book = BinderNode::new(NodeKind::Book, "Book", Some(draft.id), 0);
+        let chapter = BinderNode::new(NodeKind::Chapter, "Chapter", Some(book.id), 0);
+        let a = BinderNode::new(NodeKind::Scene, "A", Some(chapter.id), 0);
+        let b = BinderNode::new(NodeKind::Scene, "B", Some(chapter.id), 1);
+        let (a_id, b_id) = (a.id, b.id);
+        (BinderTree::new(vec![draft, book, chapter, a, b]), a_id, b_id)
+    }
+
+    #[test]
+    fn a_keyword_has_one_color_and_is_forgotten_when_no_item_carries_it() {
+        let (mut tree, a, b) = tree();
+        assert!(tree.add_keyword(a, " Flashback "));
+        assert!(!tree.add_keyword(a, "flashback"), "the same word is not added twice");
+        assert!(tree.add_keyword(b, "FLASHBACK"));
+        assert_eq!(tree.get(b).unwrap().keywords, ["Flashback"], "it keeps its first spelling");
+        assert_eq!(tree.keywords.len(), 1);
+        let first = tree.keyword_color("flashback").to_string();
+        assert!(!first.is_empty());
+        assert!(tree.add_keyword(a, "Mara"));
+        assert_ne!(tree.keyword_color("Mara"), first, "a new keyword takes the next color");
+        tree.cycle_keyword_color("Flashback");
+        assert_ne!(tree.keyword_color("Flashback"), first);
+        tree.remove_keyword(a, "flashback");
+        assert_eq!(tree.keywords.len(), 2, "b still carries it");
+        tree.remove_keyword(b, "Flashback");
+        assert_eq!(tree.keyword_color("Flashback"), "");
+        assert!(!tree.add_keyword(a, "   "));
+    }
+
+    #[test]
+    fn a_filter_matches_scenes_by_keyword_status_and_label() {
+        let (mut tree, a, b) = tree();
+        tree.add_keyword(a, "Flashback");
+        tree.get_mut(b).unwrap().status = "Revise".into();
+        let filter = |keyword: &str, status: &str| SavedFilter {
+            id: Id::new(),
+            name: "Look".into(),
+            keyword: keyword.into(),
+            status: status.into(),
+            label: String::new(),
+            text: String::new(),
+        };
+        assert_eq!(tree.scenes_matching(&filter("flashback", "")), [a]);
+        assert_eq!(tree.scenes_matching(&filter("", "revise")), [b]);
+        assert_eq!(tree.scenes_matching(&filter("", "")), [a, b]);
+        assert!(tree.scenes_matching(&filter("Flashback", "Revise")).is_empty());
+    }
+
+    #[test]
+    fn labels_become_keywords_and_a_filters_label_its_keyword() {
+        let (mut tree, a, b) = tree();
+        tree.get_mut(a).unwrap().label = "subplot".into();
+        tree.get_mut(b).unwrap().label = "Subplot".into();
+        tree.add_keyword(b, "Mara");
+        tree.filters.push(SavedFilter {
+            id: Id::new(),
+            name: "Subplot".into(),
+            keyword: String::new(),
+            status: String::new(),
+            label: "subplot".into(),
+            text: String::new(),
+        });
+        assert!(tree.fold_labels_into_keywords());
+        assert_eq!(tree.get(a).unwrap().keywords, ["subplot"]);
+        assert_eq!(tree.get(b).unwrap().keywords, ["Mara", "subplot"], "one keyword for both spellings");
+        assert!(tree.nodes.iter().all(|node| node.label.is_empty()));
+        assert_eq!(tree.filters[0].keyword, "subplot");
+        assert!(tree.filters[0].label.is_empty());
+        assert_eq!(tree.scenes_matching(&tree.filters[0].clone()), [a, b]);
+        assert!(!tree.fold_labels_into_keywords(), "nothing left to fold");
+    }
+
+    #[test]
+    fn a_chapter_with_the_keyword_brings_its_scenes_into_the_filter() {
+        let (mut tree, a, b) = tree();
+        let chapter = tree.get(a).unwrap().parent_id.unwrap();
+        tree.add_keyword(chapter, "Act two");
+        let filter = SavedFilter {
+            id: Id::new(),
+            name: "Act two".into(),
+            keyword: "act two".into(),
+            status: String::new(),
+            label: String::new(),
+            text: String::new(),
+        };
+        assert_eq!(tree.scenes_matching(&filter), [a, b]);
+    }
 }

@@ -181,5 +181,13 @@ pub fn install(conn: &Connection) -> rusqlite::Result<()> {
         "ALTER TABLE binder_nodes ADD COLUMN restore_parent_id TEXT",
         [],
     );
+    // Keywords, as a JSON list, and the binder's keyword colors and saved
+    // filters. An older cache gets the column here; the error when it is
+    // already there is the expected one.
+    let _ = conn.execute(
+        "ALTER TABLE binder_nodes ADD COLUMN keywords TEXT NOT NULL DEFAULT '[]'",
+        [],
+    );
+    conn.execute_batch("CREATE TABLE IF NOT EXISTS binder_lists (name TEXT PRIMARY KEY, json TEXT NOT NULL);")?;
     Ok(())
 }

@@ -7,7 +7,10 @@ mod binder;
 mod settings;
 mod writing;
 
-pub use binder::{binder_color_hex, normalize_binder_color, BinderColor, BinderNode, BinderTree, DropPlace, NodeKind, BINDER_COLORS};
+pub use binder::{
+    binder_color_hex, normalize_binder_color, BinderColor, BinderNode, BinderTree, DropPlace, Keyword, NodeKind,
+    SavedFilter, BINDER_COLORS,
+};
 pub use settings::{
     drag_width, pace, BookWordGoal, Fade, FixedScroll, KeepPlace, PageStyle, PanelChrome, PanelLayout, PanelWidths, ProjectSettings, ProseFont, SidebarSide,
     Pace, FIRST_LINE_INDENT_RANGE, LINE_HEIGHT_RANGE, LINE_LENGTH_RANGE, PARAGRAPH_SPACING_RANGE,

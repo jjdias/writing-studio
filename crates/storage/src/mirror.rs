@@ -557,7 +557,7 @@ impl ProjectStore {
         self.conn
             .query_row(
                 "SELECT id, parent_id, kind, title, sort_index, document_id, synopsis, label, status, color,
-                        deleted_at, created_at, updated_at, restore_parent_id
+                        deleted_at, created_at, updated_at, restore_parent_id, keywords
                  FROM binder_nodes WHERE document_id = ?1",
                 params![document_id.to_string()],
                 |row| Ok(row_to_node(row)),
@@ -761,6 +761,49 @@ mod tests {
         assert_eq!(scene.document_id, Some(scene.id));
         assert!(fs::read_to_string(file_of(&store, scene.id)).unwrap().contains("Start writing this scene."));
         assert!(ProjectStore::create(&dir, "Again").is_err());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn keywords_and_filters_outlast_other_saves_and_closing_the_project() {
+        let dir = temp("keywords");
+        let store = ProjectStore::create(&dir, "Tagged Novel").unwrap();
+        let scene = scene_of(&store);
+        let mut tree = store.load_binder().unwrap();
+        tree.add_keyword(scene.id, "Flashback");
+        tree.filters.push(writing_studio_project::SavedFilter {
+            id: Id::new(),
+            name: "Flashbacks".into(),
+            keyword: "Flashback".into(),
+            status: String::new(),
+            label: String::new(),
+            text: String::new(),
+        });
+        store.persist_binder(&tree).unwrap();
+
+        // Saves that write the binder file from the cache keep them: a new
+        // item, the scene's text, and its beats.
+        let chapter = tree.nodes.iter().find(|node| node.kind == NodeKind::Chapter).unwrap().id;
+        store
+            .upsert_node(&BinderNode::new(NodeKind::Scene, "Another", Some(chapter), 9))
+            .unwrap();
+        let mut document = store.load_document(scene.id).unwrap();
+        document.replace_plain_text("The river ran uphill.");
+        store.save_document(&document).unwrap();
+        store.persist_scene_beats(&HashMap::new()).unwrap();
+        let cached = store.load_binder().unwrap();
+        assert_eq!(cached.get(scene.id).unwrap().keywords, ["Flashback"]);
+        assert_eq!(cached.filters.len(), 1);
+        assert!(fs::read_to_string(dir.join("binder.json")).unwrap().contains("Flashback"));
+        drop(store);
+
+        // Opened again, from the files and the cache.
+        let reopened = ProjectStore::open(&dir).unwrap();
+        let read = reopened.load_binder().unwrap();
+        assert_eq!(read.get(scene.id).unwrap().keywords, ["Flashback"]);
+        assert_eq!(read.keyword_color("flashback"), tree.keyword_color("Flashback"));
+        assert_eq!(read.filters, tree.filters);
+        drop(reopened);
         let _ = fs::remove_dir_all(dir);
     }
 

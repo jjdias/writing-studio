@@ -14,6 +14,10 @@ pub(super) fn OutlinerPane() -> Element {
             continue;
         };
         let scene = line.scene_id.and_then(|id| snapshot.binder.get(id));
+        // Narrowed to a keyword, a chapter shows only the scenes that carry it.
+        if snapshot.keyword_filter.is_some() && !line.scene_id.is_some_and(|id| snapshot.keyword_allows(id)) {
+            continue;
+        }
         let meta = scene.unwrap_or(chapter);
         let row = OwnedOutlineRow {
             chapter_id: line.chapter_id,
@@ -49,6 +53,7 @@ pub(super) fn OutlinerPane() -> Element {
         div { class: "outliner",
             div { class: "cork-tools",
                 SeriesScopeSelect {}
+                KeywordSelect {}
                 button {
                     class: if diagnostics { "" } else { "primary" },
                     onclick: move |_| state.write().outliner_diagnostics = false,

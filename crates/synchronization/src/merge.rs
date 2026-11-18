@@ -159,6 +159,35 @@ fn field<T: Clone + PartialEq>(base: &T, ours: &T, theirs: &T) -> (T, bool) {
     }
 }
 
+/// Merge two lists of things known by a key: what one side added is kept,
+/// what one side took away is gone, and a thing both sides changed keeps
+/// this machine's version. Order is this machine's, then the other's new ones.
+fn merge_by_key<T: Clone + PartialEq, K: PartialEq>(
+    base: &[T],
+    ours: &[T],
+    theirs: &[T],
+    key: impl Fn(&T) -> K,
+) -> Vec<T> {
+    let find = |list: &[T], wanted: &K| list.iter().find(|item| key(item) == *wanted).cloned();
+    let mut merged = Vec::new();
+    for mine in ours {
+        let k = key(mine);
+        match (find(base, &k), find(theirs, &k)) {
+            // The other machine took it away and this one did not change it.
+            (Some(was), None) if was == *mine => {}
+            (Some(was), Some(other)) => merged.push(field(&was, mine, &other).0),
+            _ => merged.push(mine.clone()),
+        }
+    }
+    for other in theirs {
+        let k = key(other);
+        if find(ours, &k).is_none() && find(base, &k).is_none() {
+            merged.push(other.clone());
+        }
+    }
+    merged
+}
+
 pub fn merge(base: &ProjectContent, ours: &ProjectContent, theirs: &ProjectContent) -> Result<Merged> {
     let mut conflicts = Vec::new();
     let mut baselines = Vec::new();
@@ -245,6 +274,8 @@ pub fn merge(base: &ProjectContent, ours: &ProjectContent, theirs: &ProjectConte
     order_siblings(&mut merged_nodes, ours, theirs);
     repair_binder(&mut merged_nodes)?;
     content.binder = BinderTree::new(merged_nodes);
+    content.binder.keywords = merge_by_key(&base.binder.keywords, &ours.binder.keywords, &theirs.binder.keywords, |keyword| keyword.name.to_lowercase());
+    content.binder.filters = merge_by_key(&base.binder.filters, &ours.binder.filters, &theirs.binder.filters, |filter| filter.id.to_string());
     content.documents = documents;
     content.beats = beats;
 
@@ -289,8 +320,8 @@ pub fn merge(base: &ProjectContent, ours: &ProjectContent, theirs: &ProjectConte
 }
 
 fn same_node(a: &BinderNode, b: &BinderNode) -> bool {
-    (a.parent_id, a.kind, &a.title, &a.synopsis, &a.status, &a.label, &a.color, a.deleted_at, a.restore_parent_id)
-        == (b.parent_id, b.kind, &b.title, &b.synopsis, &b.status, &b.label, &b.color, b.deleted_at, b.restore_parent_id)
+    (a.parent_id, a.kind, &a.title, &a.synopsis, &a.status, &a.label, &a.color, &a.keywords, a.deleted_at, a.restore_parent_id)
+        == (b.parent_id, b.kind, &b.title, &b.synopsis, &b.status, &b.label, &b.color, &b.keywords, b.deleted_at, b.restore_parent_id)
 }
 
 /// Each field of an item on its own: one side's change is taken; a field
@@ -305,7 +336,7 @@ fn merge_node(b: &BinderNode, o: &BinderNode, t: &BinderNode, conflicts: &mut Ve
             clash |= c;
         )*};
     }
-    take!(parent_id, title, synopsis, status, label, color, deleted_at, restore_parent_id);
+    take!(parent_id, title, synopsis, status, label, color, keywords, deleted_at, restore_parent_id);
     if clash {
         conflicts.push(Conflict {
             item: o.id,
@@ -685,5 +716,23 @@ mod tests {
         let same = merge(&base, &base, &base).unwrap();
         assert_eq!(same.content.binder.nodes.len(), base.binder.nodes.len());
         assert!(same.conflicts.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod list_merge_tests {
+    use super::merge_by_key;
+
+    #[test]
+    fn a_list_keeps_both_sides_additions_and_honors_removals() {
+        let base = vec![("a", 1), ("b", 1)];
+        // This machine changed a and added c; the other took b away and added d.
+        let ours = vec![("a", 2), ("b", 1), ("c", 1)];
+        let theirs = vec![("a", 1), ("d", 1)];
+        let merged = merge_by_key(&base, &ours, &theirs, |item| item.0);
+        assert_eq!(merged, [("a", 2), ("c", 1), ("d", 1)]);
+        // Changed on both sides: this machine's stays.
+        let theirs = vec![("a", 3), ("b", 1)];
+        assert_eq!(merge_by_key(&base, &ours, &theirs, |item| item.0)[0], ("a", 2));
     }
 }

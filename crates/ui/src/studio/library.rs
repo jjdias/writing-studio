@@ -18,7 +18,8 @@ pub(super) fn Library() -> Element {
     let connected = state.read().sync_connected();
     let syncing = state.read().syncing;
     let manuscript_mode = matches!(mode, WorkspaceMode::Writing | WorkspaceMode::Corkboard | WorkspaceMode::Outliner);
-    let shown = if manuscript_mode { state.read().shown_container() } else { None };
+    let filter_chosen = state.read().shown_filter().is_some();
+    let shown = if manuscript_mode && !filter_chosen { state.read().shown_container() } else { None };
     let rows: Vec<(Id, u32, NodeKind, String, bool, bool)> = {
         let current = state.read();
         current
@@ -136,6 +137,7 @@ pub(super) fn Library() -> Element {
                         }
                     }
                 }
+                FilterSection {}
                 div { class: "library-heading", "Extras" }
                 for candidate in [WorkspaceMode::Characters, WorkspaceMode::World, WorkspaceMode::Plot, WorkspaceMode::Research, WorkspaceMode::History] {
                     button {
@@ -357,9 +359,13 @@ pub(super) fn SceneList() -> Element {
     let widths = use_context::<Signal<PanelWidths>>();
     let width = widths.read().sidebar;
     let shown = state.read().shown_container();
-    let heading = shown
-        .and_then(|id| state.read().binder.get(id).map(|node| node.title.clone()))
-        .unwrap_or_else(|| "Manuscript".into());
+    let filter = state.read().shown_filter();
+    let heading = match &filter {
+        Some(filter) => filter.name.clone(),
+        None => shown
+            .and_then(|id| state.read().binder.get(id).map(|node| node.title.clone()))
+            .unwrap_or_else(|| "Manuscript".into()),
+    };
     let in_trash = shown.is_some() && shown == state.read().binder.trash_root().map(|node| node.id);
     let search = state.read().search.clone();
     let hits = state.read().content_hits();
@@ -369,9 +375,12 @@ pub(super) fn SceneList() -> Element {
             .scene_groups()
             .into_iter()
             .map(|mut group| {
-                group
-                    .scenes
-                    .retain(|card| binder_matches(&current.binder, card.id, &search, &hits));
+                // A chapter whose name matches keeps all its scenes.
+                if !matches_query(&group.title, &search) || group.title.is_empty() {
+                    group
+                        .scenes
+                        .retain(|card| binder_matches(&current.binder, card.id, &search, &hits));
+                }
                 group
             })
             .filter(|group| !group.scenes.is_empty())
@@ -394,7 +403,7 @@ pub(super) fn SceneList() -> Element {
                         Ring { fraction: finished as f64 / total as f64 }
                     }
                 }
-                if !in_trash {
+                if !in_trash && filter.is_none() {
                     IconButton {
                         name: "New scene (Ctrl+N)",
                         open: false,
@@ -537,6 +546,17 @@ fn SceneCardView(card: SceneCard, active: bool) -> Element {
             if !card.status.trim().is_empty() {
                 StatusPill { status: card.status.clone() }
             }
+            if !card.keywords.is_empty() {
+                span { class: "card-keywords",
+                    for (word, hex) in card.keywords.iter() {
+                        span {
+                            class: "keyword-dot small",
+                            style: if hex.is_empty() { String::new() } else { format!("background: {hex}") },
+                            title: "{word}",
+                        }
+                    }
+                }
+            }
         }
         if !in_trash {
             DeleteButton { id, name: title.clone() }
@@ -550,6 +570,7 @@ fn SceneCardView(card: SceneCard, active: bool) -> Element {
 #[component]
 pub(super) fn StatusPill(status: String) -> Element {
     let tone = status_tone(&status);
+    let status = status_name(&status);
     rsx! {
         span { class: "status-pill pill-{tone}", "{status}" }
     }
@@ -563,8 +584,14 @@ pub(super) fn status_tone(status: &str) -> &'static str {
     if lower.contains("revis") || lower.contains("edit") {
         return "revise";
     }
-    if lower.contains("draft") || lower.contains("to do") || lower.contains("todo") {
+    if lower.contains("draft") {
         return "draft";
+    }
+    if lower.contains("to do") || lower.contains("todo") {
+        return "blue";
+    }
+    if lower.contains("hold") {
+        return "grey";
     }
     let sum = lower.bytes().fold(0u32, |sum, byte| sum.wrapping_mul(31).wrapping_add(byte as u32));
     ["blue", "violet", "grey"][(sum % 3) as usize]
@@ -613,8 +640,129 @@ mod tests {
         assert_eq!(status_tone("First draft"), "draft");
         assert_eq!(status_tone("Revise"), "revise");
         assert_eq!(status_tone("Final Draft"), "final");
+        assert_eq!(status_tone("Done"), "final");
+        assert_eq!(status_tone("To do"), "blue");
+        assert_eq!(status_tone("On hold"), "grey");
+        assert_eq!(status_name("draft"), "Draft");
+        assert_eq!(status_name("Waiting on notes"), "Waiting on notes");
+        assert_eq!(status_name("almost"), "Almost");
         let other = status_tone("Waiting on notes");
         assert_eq!(status_tone("waiting on notes"), other);
         assert!(["blue", "violet", "grey"].contains(&other));
+    }
+}
+
+/// Saved filters as library rows, with the form for a new one.
+#[component]
+fn FilterSection() -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let filters = state.read().binder.filters.clone();
+    let chosen = state.read().shown_filter().map(|filter| filter.id);
+    let open = state.read().open_menu == Some(FrameMenu::Filter);
+    rsx! {
+        div { class: "library-heading", "Filters" }
+        for filter in filters {
+            div { class: "library-item", key: "{filter.id}",
+                span { class: "fold-spacer" }
+                button {
+                    class: if chosen == Some(filter.id) { "library-row active" } else { "library-row" },
+                    aria_current: if chosen == Some(filter.id) { "true" } else { "false" },
+                    title: "{filter_summary(&filter)}",
+                    onclick: move |_| state.write().choose_filter(filter.id),
+                    svg { class: "glyph", view_box: "0 0 16 16", "aria-hidden": "true",
+                        path { d: "M2.5 3.5h11l-4.2 5v4l-2.6 1.2V8.5z", fill: "none", stroke: "currentColor", stroke_width: "1.2", stroke_linejoin: "round" }
+                    }
+                    span { class: "library-name", "{filter.name}" }
+                }
+                button {
+                    class: "item-delete",
+                    title: "Remove the filter “{filter.name}”. The scenes stay as they are.",
+                    aria_label: "Remove the filter {filter.name}",
+                    onclick: move |event| {
+                        event.stop_propagation();
+                        state.write().remove_filter(filter.id);
+                    },
+                    svg { class: "glyph", view_box: "0 0 16 16", "aria-hidden": "true",
+                        path { d: "M4.5 4.5l7 7M11.5 4.5l-7 7", fill: "none", stroke: "currentColor", stroke_width: "1.5", stroke_linecap: "round" }
+                    }
+                }
+            }
+        }
+        div { class: "menu-anchor library-add",
+            button {
+                class: if open { "library-add-btn open" } else { "library-add-btn" },
+                aria_haspopup: "dialog",
+                aria_expanded: "{open}",
+                onclick: move |_| state.write().toggle_menu(FrameMenu::Filter),
+                "+ Filter"
+            }
+            if open { FilterForm {} }
+        }
+    }
+}
+
+/// What a filter looks for, in a line: "Keyword Flashback · status Revise".
+fn filter_summary(filter: &SavedFilter) -> String {
+    let parts: Vec<String> = [
+        ("keyword", &filter.keyword),
+        ("status", &filter.status),
+        ("label", &filter.label),
+        ("text", &filter.text),
+    ]
+    .into_iter()
+    .filter(|(_, value)| !value.trim().is_empty())
+    .map(|(name, value)| format!("{name} “{}”", value.trim()))
+    .collect();
+    if parts.is_empty() {
+        "Every scene".to_string()
+    } else {
+        format!("Scenes with {}", parts.join(", "))
+    }
+}
+
+/// A new filter: a name, and what scenes must have. Every field may be left
+/// empty; an empty one matches anything.
+#[component]
+fn FilterForm() -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let known: Vec<String> = state.read().binder.keywords.iter().map(|keyword| keyword.name.clone()).collect();
+    let mut name = use_signal(String::new);
+    let mut keyword = use_signal(String::new);
+    let mut status = use_signal(String::new);
+
+    let mut text = use_signal(String::new);
+    rsx! {
+        div { class: "menu popover", role: "dialog", aria_label: "New filter",
+            label { r#for: "filter-name", "Name" }
+            input { id: "filter-name", placeholder: "Flashbacks to revise", value: "{name}", oninput: move |event| name.set(event.value()) }
+            label { r#for: "filter-keyword", "Keyword" }
+            select {
+                id: "filter-keyword",
+                onchange: move |event| keyword.set(event.value()),
+                option { value: "", selected: keyword().is_empty(), "Any" }
+                for word in known {
+                    option { value: "{word}", selected: keyword() == word, "{word}" }
+                }
+            }
+            label { r#for: "filter-status", "Status" }
+            StatusSelect { id: "filter-status", current: status(), any: true, onchange: move |value: String| status.set(value) }
+            label { r#for: "filter-text", "Words in the text" }
+            input { id: "filter-text", placeholder: "Any", value: "{text}", oninput: move |event| text.set(event.value()) }
+            button {
+                class: "primary filter-save",
+                onclick: move |_| {
+                    let filter = SavedFilter {
+                        id: Id::new(),
+                        name: name().trim().to_string(),
+                        keyword: keyword(),
+                        status: status().trim().to_string(),
+                        label: String::new(),
+                        text: text().trim().to_string(),
+                    };
+                    state.write().add_filter(filter);
+                },
+                "Save filter"
+            }
+        }
     }
 }

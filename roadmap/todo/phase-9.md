@@ -1,6 +1,6 @@
 # Phase 9 — Writing comfort, from Ulysses
 
-In progress: stages 1 to 6 are done.
+In progress: stages 1 to 7 are done.
 
 Phase 8 rebuilt the window around writing. This phase takes what the Ulysses writing app does well for the writer at the page, and fits it to how Writing Studio works: rich text on a page, a binder of books, chapters, and scenes, and everything on the writer's computer. It does not wait for Phase 6 or 7.
 
@@ -84,6 +84,8 @@ Checked by the existing state and contrast tests, plus state tests for what each
 - It reads the document the editor already holds, not the files.
 
 ### 7. Keywords and saved filters
+
+**Done.** `BinderNode::keywords`, and `BinderTree::keywords` (one color each) and `filters`, in `binder.json` (the lists only once used). The dashboard edits keywords; cards show them as dots; the corkboard and outliner narrow to one. A filter is a library row; its matches come from `BinderTree::scenes_matching` and, for text, the search index. Sync merges keywords like any other field of an item and the two lists by name and by id (`merge_by_key`). A scene matches through the chapter, part, or book it is in, so a tagged chapter brings its scenes; the corkboard and outliner keyword menu works the same way. Labels were folded into keywords (`BinderTree::fold_labels_into_keywords`, run when a project is read and after a Markdown import); the corkboard groups by first keyword. The SQLite cache keeps keywords and the two lists too (`binder_nodes.keywords`, `binder_lists`), so saves that rewrite `binder.json` from it keep them. Status is a dropdown (To do, Draft, Revise, Done, On hold, `STATUSES`) in the dashboard and the filter form; a status from an older project stays a choice and shows with a capital. Not done: editing a saved filter, which is removed and made again for now.
 
 - An item can carry several keywords, each with one of the binder colors, alongside the label it has now. The inspector edits them, the binder row shows their colors, and the corkboard and outliner can filter by them.
 - A saved filter (keywords, status, label, or text) shows in the binder as its own row and lists what matches across the books.

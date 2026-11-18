@@ -22,7 +22,9 @@ use writing_studio_diagnostics::SceneBeats;
 use writing_studio_document::{Block, BlockKind, Document, Inline};
 use writing_studio_format::{file_name, Header, SceneFile, SceneHeader, Value as HeaderValue};
 use writing_studio_plotting::{PlotGrid, PlotPoint, Plotline};
-use writing_studio_project::{BinderNode, BinderTree, NodeKind, ProjectMeta, ProjectSettings};
+use writing_studio_project::{
+    normalize_binder_color, BinderNode, BinderTree, Keyword, NodeKind, ProjectMeta, ProjectSettings, SavedFilter,
+};
 use writing_studio_research::{ResearchFile, ResearchItem, ResearchLibrary};
 use writing_studio_worldbuilding::{Culture, Location, LoreEntry, TimelineEvent, World};
 
@@ -127,9 +129,9 @@ impl Extras {
 /// The keys of each kind of line that the program writes. Any other key is
 /// kept as an extra; one of these never is, so that an extra cannot stand in
 /// for what the program knows.
-const BINDER_KEYS: [&str; 11] = [
+const BINDER_KEYS: [&str; 12] = [
     "id", "kind", "parent", "deleted", "restore_parent", "file", "status", "title", "synopsis", "label",
-    "color",
+    "color", "keywords",
 ];
 const ENTRY_KEYS: [&str; 2] = ["id", "file"];
 const RESEARCH_FILE_KEYS: [&str; 4] = ["id", "note", "name", "stored"];
@@ -522,10 +524,22 @@ pub(crate) fn binder_json(
                 }
             }
         }
+        if !node.keywords.is_empty() {
+            item.insert("keywords".into(), json!(node.keywords));
+        }
         add_json_extras(&mut item, extras.get(&node.id), &BINDER_KEYS);
         items.push(Value::Object(item));
     }
-    lined(&[("items", items)])
+    // The keyword colors and saved filters, only once there are any, so a
+    // project that has none keeps the file it had.
+    let mut sections = vec![("items", items)];
+    if !tree.keywords.is_empty() {
+        sections.push(("keywords", tree.keywords.iter().map(|keyword| json!(keyword)).collect()));
+    }
+    if !tree.filters.is_empty() {
+        sections.push(("filters", tree.filters.iter().map(|filter| json!(filter)).collect()));
+    }
+    lined(&sections)
 }
 
 /// The bible: each entry's id, file, and text, and then `bible.json`, which
@@ -976,6 +990,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
         node.synopsis = text_of(item, "synopsis");
         node.label = text_of(item, "label");
         node.color = text_of(item, "color");
+        node.keywords = keywords_of(item);
         if let Some(status) = item.get("status").and_then(Value::as_str) {
             node.status = status.to_string();
         }
@@ -1303,9 +1318,27 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
         }
     }
 
+    let mut binder = BinderTree::new(nodes);
+    binder.keywords = binder_file
+        .list("keywords")
+        .into_iter()
+        .filter_map(|value| serde_json::from_value::<Keyword>(value.clone()).ok())
+        .filter_map(|keyword| {
+            let name: String = keyword.name.trim().chars().take(KEYWORD_LIMIT).collect();
+            (!name.is_empty()).then(|| Keyword { name, color: normalize_binder_color(&keyword.color) })
+        })
+        .collect();
+    binder.filters = binder_file
+        .list("filters")
+        .into_iter()
+        .filter_map(|value| serde_json::from_value::<SavedFilter>(value.clone()).ok())
+        .collect();
+    // Labels are keywords now; a project from before keeps them that way.
+    binder.fold_labels_into_keywords();
+
     Ok(ProjectContent {
         meta,
-        binder: BinderTree::new(nodes),
+        binder,
         documents,
         beats,
         plot,
@@ -1644,7 +1677,9 @@ mod tests {
 
     #[test]
     fn a_project_written_as_files_reads_back_and_writes_the_same_files() {
-        let (content, source) = sample();
+        let (mut content, source) = sample();
+        // Reading turns labels into keywords, so the files compare once that is done.
+        content.binder.fold_labels_into_keywords();
         let first = temp("first");
         let placed = write_project_files(&first, &content).unwrap();
         let read = read_project_files(&first).unwrap();
@@ -1674,7 +1709,9 @@ mod tests {
         assert!(titles.contains(&"Cut"));
         let cut = read.binder.nodes.iter().find(|node| node.title == "Cut").unwrap();
         assert!(cut.deleted_at.is_some() && cut.restore_parent_id.is_some());
-        let before = read.binder.nodes.iter().find(|node| node.label == "A").unwrap();
+        // Its label came back as a keyword.
+        let before = read.binder.nodes.iter().find(|node| node.keywords.iter().any(|word| word == "A")).unwrap();
+        assert!(before.label.is_empty());
         assert_eq!(before.synopsis, "Two lines.\nOf synopsis.");
         assert_eq!(before.document_id, Some(before.id));
 
@@ -1721,6 +1758,57 @@ mod tests {
     }
 
     #[test]
+    fn keywords_and_saved_filters_read_back_and_a_project_without_them_keeps_its_file() {
+        let (mut content, source) = sample();
+        // A project with no labels, which reading would turn into keywords.
+        for node in &mut content.binder.nodes {
+            node.label.clear();
+        }
+        let plain = temp("plain");
+        write_project_files(&plain, &content).unwrap();
+        let before = fs::read_to_string(plain.join("binder.json")).unwrap();
+        assert!(!before.contains("keywords") && !before.contains("filters"));
+
+        let scene = content.binder.nodes.iter().find(|node| node.kind == NodeKind::Scene).unwrap().id;
+        let book = content.binder.nodes.iter().find(|node| node.kind == NodeKind::Book).unwrap().id;
+        content.binder.add_keyword(scene, "Flashback");
+        content.binder.add_keyword(book, "Draft two");
+        content.binder.filters.push(SavedFilter {
+            id: Id::new(),
+            name: "Flashbacks".into(),
+            keyword: "Flashback".into(),
+            status: String::new(),
+            label: String::new(),
+            text: "harbor".into(),
+        });
+        let tagged = temp("tagged");
+        write_project_files(&tagged, &content).unwrap();
+        let read = read_project_files(&tagged).unwrap();
+        assert_eq!(read.binder.get(scene).unwrap().keywords, ["Flashback"]);
+        assert_eq!(read.binder.get(book).unwrap().keywords, ["Draft two"]);
+        assert_eq!(read.binder.keywords, content.binder.keywords);
+        assert_eq!(read.binder.filters, content.binder.filters);
+
+        // What another machine wrote is checked: an empty or overlong
+        // keyword, and a color that is not a binder color, do not come in.
+        let path = tagged.join("binder.json");
+        let edited = fs::read_to_string(&path)
+            .unwrap()
+            .replace(r#""keywords":["Flashback"]"#, &format!(r#""keywords":["  ","{}","Flashback"]"#, "x".repeat(90)))
+            .replace(r#""color":"gold""#, r#""color":"chartreuse""#);
+        fs::write(&path, edited).unwrap();
+        let checked = read_project_files(&tagged).unwrap();
+        let words = &checked.binder.get(scene).unwrap().keywords;
+        assert_eq!(words.len(), 2);
+        assert!(words.iter().all(|word| !word.trim().is_empty() && word.chars().count() <= 40));
+        assert!(checked.binder.keywords.iter().all(|keyword| keyword.color != "chartreuse"));
+
+        for dir in [source, plain, tagged] {
+            let _ = fs::remove_dir_all(dir);
+        }
+    }
+
+    #[test]
     fn a_path_that_leaves_the_project_folder_is_refused() {
         let (content, source) = sample();
         let dir = temp("escape");
@@ -1751,4 +1839,23 @@ mod tests {
         assert_eq!(fs::read_dir(path.parent().unwrap()).unwrap().count(), 1);
         let _ = fs::remove_dir_all(dir);
     }
+}
+
+/// The longest keyword read from a file, as the binder keeps them.
+const KEYWORD_LIMIT: usize = 40;
+
+/// An item's keywords from its `binder.json` line: strings only, trimmed,
+/// none empty, none too long.
+fn keywords_of(item: &Value) -> Vec<String> {
+    item.get("keywords")
+        .and_then(Value::as_array)
+        .map(|words| {
+            words
+                .iter()
+                .filter_map(Value::as_str)
+                .map(|word| word.trim().chars().take(KEYWORD_LIMIT).collect::<String>())
+                .filter(|word| !word.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
 }

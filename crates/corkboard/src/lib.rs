@@ -10,7 +10,8 @@ pub struct CorkCard {
     pub title: String,
     pub synopsis: String,
     pub status: String,
-    pub label: String,
+    /// The scene's keywords, in the order given.
+    pub keywords: Vec<String>,
     pub color: String,
     pub word_count: u32,
 }
@@ -20,7 +21,7 @@ pub enum CorkGroup {
     #[default]
     Manuscript,
     Chapter,
-    Label,
+    Keyword,
     Color,
     Status,
 }
@@ -29,7 +30,7 @@ impl CorkGroup {
     pub const ALL: [CorkGroup; 5] = [
         CorkGroup::Manuscript,
         CorkGroup::Chapter,
-        CorkGroup::Label,
+        CorkGroup::Keyword,
         CorkGroup::Color,
         CorkGroup::Status,
     ];
@@ -38,7 +39,7 @@ impl CorkGroup {
         match self {
             Self::Manuscript => "Order",
             Self::Chapter => "Chapter",
-            Self::Label => "Label",
+            Self::Keyword => "Keyword",
             Self::Color => "Color",
             Self::Status => "Status",
         }
@@ -77,7 +78,7 @@ where
                 title: child.title.clone(),
                 synopsis: child.synopsis.clone(),
                 status: child.status.clone(),
-                label: child.label.clone(),
+                keywords: child.keywords.clone(),
                 color: child.color.clone(),
                 word_count: child.document_id.map(&mut *words_for).unwrap_or(0),
             }),
@@ -98,11 +99,11 @@ pub fn card_matches(card: &CorkCard, query: &str) -> bool {
     [
         card.title.as_str(),
         card.synopsis.as_str(),
-        card.label.as_str(),
         card.status.as_str(),
         card.container.as_str(),
     ]
     .iter()
+    .chain(card.keywords.iter().map(String::as_str).collect::<Vec<_>>().iter())
     .any(|field| field.to_lowercase().contains(&query))
 }
 
@@ -135,7 +136,8 @@ fn group_title(card: &CorkCard, group: CorkGroup) -> String {
     match group {
         CorkGroup::Manuscript => "Manuscript order".into(),
         CorkGroup::Chapter => named(&card.container, "Untitled"),
-        CorkGroup::Label => named(&card.label, "No label"),
+        // A card goes under its first keyword.
+        CorkGroup::Keyword => named(card.keywords.first().map(String::as_str).unwrap_or(""), "No keyword"),
         CorkGroup::Status => named(&card.status, "No status"),
         CorkGroup::Color => {
             if card.color.trim().is_empty() {
@@ -171,16 +173,16 @@ mod tests {
         let chapter_a = BinderNode::new(NodeKind::Chapter, "Chapter 1", Some(book.id), 0);
         let mut zebra = BinderNode::new(NodeKind::Scene, "Zebra", Some(chapter_a.id), 0);
         zebra.synopsis = "harbor at night".into();
-        zebra.label = "subplot".into();
+        zebra.keywords = vec!["subplot".into()];
         zebra.color = "gold".into();
         zebra.status = "draft".into();
         let mut alpha = BinderNode::new(NodeKind::Scene, "Alpha", Some(chapter_a.id), 1);
-        alpha.label = String::new();
+
         alpha.color = String::new();
         alpha.status = "revise".into();
         let chapter_b = BinderNode::new(NodeKind::Chapter, "Chapter 2", Some(book.id), 1);
         let mut later = BinderNode::new(NodeKind::Scene, "Later", Some(chapter_b.id), 0);
-        later.label = "subplot".into();
+        later.keywords = vec!["subplot".into()];
         later.color = "blue".into();
         later.status = "draft".into();
         BinderTree::new(vec![draft, book, chapter_a, zebra, alpha, chapter_b, later])
@@ -197,7 +199,7 @@ mod tests {
     }
 
     #[test]
-    fn filter_matches_synopsis_and_label() {
+    fn filter_matches_synopsis_and_keywords() {
         let cards = cards_from_binder(&sample(), |_| 0);
         let harbor: Vec<_> = cards
             .iter()
@@ -216,7 +218,7 @@ mod tests {
     #[test]
     fn groups_keep_manuscript_order_inside_each_bucket() {
         let cards = cards_from_binder(&sample(), |_| 0);
-        let by_label = group_cards(&cards, CorkGroup::Label);
+        let by_label = group_cards(&cards, CorkGroup::Keyword);
         assert_eq!(by_label[0].title, "subplot");
         assert_eq!(
             by_label[0]
@@ -226,7 +228,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["Zebra", "Later"]
         );
-        assert_eq!(by_label[1].title, "No label");
+        assert_eq!(by_label[1].title, "No keyword");
         let by_color = group_cards(&cards, CorkGroup::Color);
         assert_eq!(by_color[0].title, "Gold");
         assert_eq!(by_color[1].title, "No color");

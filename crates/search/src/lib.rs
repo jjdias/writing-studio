@@ -7,8 +7,8 @@ use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 
 use tantivy::collector::TopDocs;
-use tantivy::query::QueryParser;
-use tantivy::schema::{Schema, Value, STORED, STRING, TEXT};
+use tantivy::query::{BooleanQuery, Occur, RegexQuery, TermQuery};
+use tantivy::schema::{IndexRecordOption, Schema, Value, STORED, STRING, TEXT};
 use tantivy::indexer::IndexWriter;
 use tantivy::{doc, Index, IndexReader, ReloadPolicy, TantivyDocument, Term};
 use writing_studio_core::Id;
@@ -161,7 +161,7 @@ impl ManuscriptIndex {
     }
 
     fn search_committed(&self, query: &str) -> HashSet<Id> {
-        let Ok(parsed) = parse_query(&self.index, self.body_field, query) else {
+        let Some(parsed) = build_query(self.body_field, query) else {
             return HashSet::new();
         };
         let searcher = self.reader.searcher();
@@ -193,7 +193,10 @@ fn text_matches(query: &str, text: &str) -> bool {
         return false;
     }
     let words: HashSet<String> = query_terms(text).into_iter().collect();
-    terms.iter().all(|term| words.contains(term))
+    let Some((last, rest)) = terms.split_last() else {
+        return false;
+    };
+    rest.iter().all(|term| words.contains(term)) && words.iter().any(|word| word.starts_with(last.as_str()))
 }
 
 fn query_terms(query: &str) -> Vec<String> {
@@ -204,16 +207,29 @@ fn query_terms(query: &str) -> Vec<String> {
         .collect()
 }
 
-fn parse_query(
-    index: &Index,
+/// Every typed word must be in the text, and the last one may be the start
+/// of a word, so a search finds "desert" while "deser" is still being typed.
+fn build_query(
     body_field: tantivy::schema::Field,
     query: &str,
-) -> Result<Box<dyn tantivy::query::Query>, SearchError> {
-    let parser = QueryParser::for_index(index, vec![body_field]);
-    parser
-        .parse_query(query)
-        .or_else(|_| parser.parse_query(&plain_terms(query)))
-        .map_err(|err| SearchError(err.to_string()))
+) -> Option<Box<dyn tantivy::query::Query>> {
+    let terms = query_terms(query);
+    let (last, rest) = terms.split_last()?;
+    let mut parts: Vec<(Occur, Box<dyn tantivy::query::Query>)> = rest
+        .iter()
+        .map(|term| {
+            let exact: Box<dyn tantivy::query::Query> = Box::new(TermQuery::new(
+                Term::from_field_text(body_field, term),
+                IndexRecordOption::Basic,
+            ));
+            (Occur::Must, exact)
+        })
+        .collect();
+    // The terms are letters and digits only, so the pattern needs no escaping.
+    let prefix: Box<dyn tantivy::query::Query> =
+        Box::new(RegexQuery::from_pattern(&format!("{last}.*"), body_field).ok()?);
+    parts.push((Occur::Must, prefix));
+    Some(Box::new(BooleanQuery::new(parts)))
 }
 
 fn plain_terms(query: &str) -> String {
@@ -280,6 +296,27 @@ mod tests {
         index.set_pending(id, "unsaved lantern");
         assert!(index.search("lantern").contains(&id));
         assert!(!index.search("saved").contains(&id));
+    }
+
+    #[test]
+    fn every_word_is_needed_and_the_last_may_be_unfinished() {
+        let desert = Id::new();
+        let sea = Id::new();
+        let mut index = ManuscriptIndex::new();
+        index
+            .replace_all(&[
+                (desert, "Finch had learned that the desert kept nothing."),
+                (sea, "Finch walked to the sea."),
+            ])
+            .unwrap();
+        assert_eq!(index.search("deser"), HashSet::from([desert]));
+        assert_eq!(index.search("Finch des"), HashSet::from([desert]));
+        assert_eq!(index.search("finch"), HashSet::from([desert, sea]));
+        assert!(index.search("finch ocean").is_empty(), "both words are needed");
+        assert!(index.search("  ").is_empty());
+        // Unsaved text follows the same rule.
+        index.set_pending(sea, "Finch walked to the lighthouse.");
+        assert!(index.search("lightho").contains(&sea));
     }
 
     #[test]

@@ -30,20 +30,20 @@ pub(super) fn Inspector() -> Element {
                 oninput: move |event| state.write().update_selected_synopsis(event.value()),
                 onblur: move |_| state.write().save_all(),
             }
-            label { "Status" }
-            input {
-                value: "{node.status}",
-                oninput: move |event| state.write().update_selected_status(event.value()),
-                onblur: move |_| state.write().save_all(),
+            label { r#for: "scene-status", "Status" }
+            StatusSelect {
+                id: "scene-status",
+                current: node.status.clone(),
+                any: false,
+                onchange: move |status: String| {
+                    state.write().update_selected_status(status);
+                    state.write().save_all();
+                },
             }
             if !node.kind.is_root() {
-                label { "Label" }
-                input {
-                    value: "{node.label}",
-                    placeholder: "Short tag, such as subplot",
-                    oninput: move |event| state.write().update_selected_label(event.value()),
-                    onblur: move |_| state.write().save_all(),
-                }
+                Keywords { id: node.id }
+            }
+            if !node.kind.is_root() {
                 label { "Color" }
                 div { class: "swatch-row",
                     for swatch in BINDER_COLORS {
@@ -333,5 +333,74 @@ mod tests {
         assert_eq!(reading_time(115), "30 sec");
         assert_eq!(reading_time(230), "1 min");
         assert_eq!(reading_time(313), "1 min 21 sec");
+    }
+}
+
+/// The item's keywords as colored chips. Clicking a chip's dot gives the
+/// keyword the next color, everywhere; × takes it off this item. Enter in
+/// the field adds one.
+#[component]
+fn Keywords(id: Id) -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let words: Vec<(String, String)> = {
+        let current = state.read();
+        current
+            .binder
+            .get(id)
+            .map(|node| current.keyword_colors_of(node))
+            .unwrap_or_default()
+    };
+    let known: Vec<String> = state.read().binder.keywords.iter().map(|keyword| keyword.name.clone()).collect();
+    let mut draft = use_signal(String::new);
+    rsx! {
+        div { class: "dash-heading", "Keywords" }
+        div { class: "keyword-chips",
+            for (word, hex) in words {
+                span { class: "keyword-chip", key: "{word}",
+                    button {
+                        class: "keyword-dot",
+                        style: if hex.is_empty() { String::new() } else { format!("background: {hex}") },
+                        title: "Give “{word}” the next color",
+                        aria_label: "Change the color of {word}",
+                        onclick: {
+                            let word = word.clone();
+                            move |_| state.write().cycle_keyword_color(&word)
+                        },
+                    }
+                    span { "{word}" }
+                    button {
+                        class: "keyword-remove",
+                        title: "Take “{word}” off this item",
+                        aria_label: "Remove {word}",
+                        onclick: {
+                            let word = word.clone();
+                            move |_| state.write().remove_keyword(id, &word)
+                        },
+                        "×"
+                    }
+                }
+            }
+        }
+        input {
+            class: "keyword-field",
+            list: "known-keywords",
+            placeholder: "Add a keyword",
+            aria_label: "Add a keyword",
+            value: "{draft}",
+            oninput: move |event| draft.set(event.value()),
+            onkeydown: move |event| {
+                if event.key() == Key::Enter {
+                    event.prevent_default();
+                    let word = draft();
+                    state.write().add_keyword(id, &word);
+                    draft.set(String::new());
+                }
+            },
+        }
+        datalist { id: "known-keywords",
+            for word in known {
+                option { value: "{word}" }
+            }
+        }
     }
 }

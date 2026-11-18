@@ -14,7 +14,7 @@ use writing_studio_editor::EditorSession;
 use writing_studio_manuscript::{outline_rows, row_word_count};
 use writing_studio_project::{
     binder_color_hex, drag_width, format_elapsed, BinderNode, DropPlace, NodeKind, PanelChrome, PanelLayout,
-    Fade, FixedScroll, KeepPlace, Pace, PageStyle, PanelWidths, ProseFont, Theme, BINDER_COLORS, FIRST_LINE_INDENT_RANGE, LINE_HEIGHT_RANGE,
+    Fade, FixedScroll, KeepPlace, Pace, PageStyle, SavedFilter, PanelWidths, ProseFont, Theme, BINDER_COLORS, FIRST_LINE_INDENT_RANGE, LINE_HEIGHT_RANGE,
     LINE_LENGTH_RANGE, PARAGRAPH_SPACING_RANGE, INSPECTOR_WIDTH_DEFAULT, INSPECTOR_WIDTH_MAX,
     INSPECTOR_WIDTH_MIN, SIDEBAR_WIDTH_DEFAULT, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN,
 };

@@ -13,7 +13,11 @@ pub(super) fn binder_matches(
     let Some(node) = tree.get(id) else {
         return false;
     };
-    if matches_query(&node.title, query) || matches_query(&node.label, query) {
+    if matches_query(&node.title, query)
+        || matches_query(&node.label, query)
+        || matches_query(&node.status, query)
+        || node.keywords.iter().any(|word| matches_query(word, query))
+    {
         return true;
     }
     if node.document_id.is_some_and(|document_id| hits.contains(&document_id)) {
@@ -70,5 +74,28 @@ pub(super) fn TrashActions() -> Element {
                 if confirm_empty { "Confirm empty" } else { "Empty trash" }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use writing_studio_project::{BinderNode, BinderTree};
+
+    #[test]
+    fn a_search_matches_a_title_status_keyword_or_text() {
+        let draft = BinderNode::new(NodeKind::DraftRoot, "Manuscript", None, 0);
+        let mut scene = BinderNode::new(NodeKind::Scene, "The Last Message", Some(draft.id), 0);
+        scene.status = "Revise".into();
+        let id = scene.id;
+        let mut tree = BinderTree::new(vec![draft, scene]);
+        tree.add_keyword(id, "Flashback");
+        let none = HashSet::new();
+        for query in ["last mess", "revi", "flash", ""] {
+            assert!(binder_matches(&tree, id, query, &none), "{query}");
+        }
+        assert!(!binder_matches(&tree, id, "ocean", &none));
+        // Words in the text come from the search index, by the scene's text.
+        assert!(binder_matches(&tree, id, "ocean", &HashSet::from([id])));
     }
 }

@@ -20,8 +20,8 @@ use writing_studio_manuscript::{book_outline_words, outline_rows};
 use writing_studio_plotting::PlotGrid;
 use writing_studio_research::ResearchLibrary;
 use writing_studio_project::{
-    format_elapsed, normalize_binder_color, pace, BinderNode, BinderTree, NodeKind, Pace, PanelLayout,
-    DropPlace, KeepPlace, PageStyle, ProjectMeta, ProseFont, StoredSession, Theme,
+    binder_color_hex, format_elapsed, normalize_binder_color, pace, BinderNode, BinderTree, NodeKind, Pace, PanelLayout,
+    DropPlace, KeepPlace, PageStyle, ProjectMeta, ProseFont, SavedFilter, StoredSession, Theme,
 };
 use writing_studio_search::ManuscriptIndex;
 use writing_studio_spellcheck::{
@@ -103,6 +103,8 @@ pub struct SceneCard {
     pub title: String,
     pub opening: String,
     pub status: String,
+    /// Its keywords, each with its color's hex, or `""` for none.
+    pub keywords: Vec<(String, String)>,
 }
 
 /// The scenes one chapter or folder holds, in binder order.
@@ -125,6 +127,8 @@ pub enum FrameMenu {
     More,
     /// The binder's Book, Part, and Folder.
     Add,
+    /// The form for a new saved filter.
+    Filter,
 }
 
 /// A tab of the review panel under or beside the manuscript.
@@ -284,6 +288,11 @@ pub struct StudioState {
     /// The book, part, chapter, folder, or trash chosen in the library,
     /// whose scenes the scene list shows.
     pub library_selection: Option<Id>,
+    /// The saved filter chosen in the library, whose matches the scene list
+    /// shows in place of a container's scenes.
+    pub filter_selection: Option<Id>,
+    /// The keyword the corkboard and the outliner are narrowed to.
+    pub keyword_filter: Option<String>,
     pub confirm_character: Option<Id>,
     pub world: World,
     pub world_dirty: bool,
@@ -374,6 +383,8 @@ impl Default for StudioState {
             selected_character: None,
             selected_plotline: None,
             library_selection: None,
+            filter_selection: None,
+            keyword_filter: None,
             confirm_character: None,
             world: World::new(),
             world_dirty: false,
@@ -2040,6 +2051,7 @@ impl StudioState {
     /// opens Writing when another mode is open.
     pub fn choose_library(&mut self, id: Id) {
         self.library_selection = Some(id);
+        self.filter_selection = None;
         self.open_menu = None;
         self.focus_mode = false;
         // A book chosen here is the current book: its words and target are
@@ -2058,12 +2070,19 @@ impl StudioState {
     /// that holds them. A group holding scenes directly in the container
     /// itself has no title.
     pub fn scene_groups(&self) -> Vec<SceneGroup> {
-        let Some(container) = self.shown_container() else {
-            return Vec::new();
+        // A saved filter lists its matches from every book, by chapter.
+        let (container, scenes) = match self.shown_filter() {
+            Some(filter) => (None, self.filter_matches(&filter)),
+            None => {
+                let Some(container) = self.shown_container() else {
+                    return Vec::new();
+                };
+                (Some(container), self.binder.scenes_under(container))
+            }
         };
         let index = self.manuscript_index.borrow();
         let mut groups: Vec<SceneGroup> = Vec::new();
-        for (holder, scene) in self.binder.scenes_under(container) {
+        for (holder, scene) in scenes {
             let Some(node) = self.binder.get(scene) else {
                 continue;
             };
@@ -2076,12 +2095,13 @@ impl StudioState {
                     .unwrap_or_default()
                     .to_string(),
                 status: node.status.clone(),
+                keywords: self.keyword_colors_of(node),
             };
             match groups.last_mut() {
                 Some(group) if group.id == holder => group.scenes.push(card),
                 _ => groups.push(SceneGroup {
                     id: holder,
-                    title: if holder == container {
+                    title: if Some(holder) == container {
                         String::new()
                     } else {
                         self.binder.get(holder).map(|node| node.title.clone()).unwrap_or_default()
@@ -2091,6 +2111,120 @@ impl StudioState {
             }
         }
         groups
+    }
+
+    /// An item's keywords with each one's color as a hex value.
+    pub fn keyword_colors_of(&self, node: &BinderNode) -> Vec<(String, String)> {
+        node.keywords
+            .iter()
+            .map(|word| (word.clone(), binder_color_hex(self.binder.keyword_color(word)).to_string()))
+            .collect()
+    }
+
+    /// The saved filter chosen in the library, while it still exists.
+    pub fn shown_filter(&self) -> Option<SavedFilter> {
+        let id = self.filter_selection?;
+        self.binder.filters.iter().find(|filter| filter.id == id).cloned()
+    }
+
+    /// A filter's matching scenes, each with what holds it. The text is
+    /// looked up in the search index, which every save keeps current.
+    fn filter_matches(&self, filter: &SavedFilter) -> Vec<(Id, Id)> {
+        let with_text = (!filter.text.trim().is_empty())
+            .then(|| self.manuscript_index.borrow().search(&filter.text));
+        self.binder
+            .scenes_matching(filter)
+            .into_iter()
+            .filter(|scene| {
+                with_text.as_ref().is_none_or(|hits| {
+                    self.binder
+                        .get(*scene)
+                        .and_then(|node| node.document_id)
+                        .is_some_and(|document| hits.contains(&document))
+                })
+            })
+            .filter_map(|scene| Some((self.binder.get(scene)?.parent_id?, scene)))
+            .collect()
+    }
+
+    /// Show a saved filter's matches in the scene list.
+    pub fn choose_filter(&mut self, id: Id) {
+        self.filter_selection = Some(id);
+        self.open_menu = None;
+        self.focus_mode = false;
+        if !matches!(self.mode, WorkspaceMode::Writing | WorkspaceMode::History) {
+            self.mode = WorkspaceMode::Writing;
+        }
+    }
+
+    /// Keep a new saved filter, and show it. A filter with no name is named
+    /// for what it looks for.
+    pub fn add_filter(&mut self, mut filter: SavedFilter) {
+        if filter.name.trim().is_empty() {
+            let parts: Vec<&str> = [&filter.keyword, &filter.status, &filter.label, &filter.text]
+                .into_iter()
+                .map(|part| part.trim())
+                .filter(|part| !part.is_empty())
+                .collect();
+            filter.name = if parts.is_empty() { "All scenes".into() } else { parts.join(", ") };
+        }
+        let id = filter.id;
+        self.binder.filters.push(filter);
+        if self.persist_binder() {
+            self.status = "Filter saved.".into();
+        }
+        self.choose_filter(id);
+    }
+
+    pub fn remove_filter(&mut self, id: Id) {
+        self.binder.filters.retain(|filter| filter.id != id);
+        if self.filter_selection == Some(id) {
+            self.filter_selection = None;
+        }
+        if self.persist_binder() {
+            self.status = "Filter removed. The scenes stay as they are.".into();
+        }
+    }
+
+    pub fn add_keyword(&mut self, id: Id, name: &str) {
+        if self.binder.add_keyword(id, name) {
+            self.persist_binder();
+        }
+    }
+
+    pub fn remove_keyword(&mut self, id: Id, name: &str) {
+        if self.binder.remove_keyword(id, name) {
+            self.persist_binder();
+        }
+    }
+
+    pub fn cycle_keyword_color(&mut self, name: &str) {
+        if self.binder.cycle_keyword_color(name) {
+            self.persist_binder();
+        }
+    }
+
+    /// Whether a scene shows on the corkboard and in the outliner while
+    /// they are narrowed to a keyword.
+    pub fn keyword_allows(&self, id: Id) -> bool {
+        let Some(wanted) = self.keyword_filter.as_deref() else {
+            return true;
+        };
+        // The scene's own keywords, or those of the chapter, part, or book
+        // it is in, as a saved filter matches.
+        let mut at = Some(id);
+        let mut guard = 0;
+        while let Some(node) = at.and_then(|id| self.binder.get(id)) {
+            if node.keywords.iter().any(|word| word.eq_ignore_ascii_case(wanted)) {
+                return true;
+            }
+            at = node.parent_id;
+            guard += 1;
+            if guard > 10_000 {
+                break;
+            }
+        }
+        false
     }
 
     /// Open a menu, or close it when it is the one already open.
@@ -2763,6 +2897,10 @@ impl StudioState {
                 }
                 Err(err) => failed.push(format!("{name}: {err}")),
             }
+        }
+        // A label in a file's front matter comes in as a keyword.
+        if self.binder.fold_labels_into_keywords() {
+            self.persist_binder();
         }
         if let Some(id) = last {
             self.select_node(id);
@@ -4302,6 +4440,47 @@ mod tests {
         assert!(reopened.is_collapsed(book));
         reopened.toggle_collapsed(book);
         assert_eq!(inside_book(&reopened), before);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn keywords_show_on_cards_and_a_saved_filter_lists_their_scenes() {
+        let (mut state, dir) = open_state("keywords");
+        let tagged = state.selected.unwrap();
+        state.add_node(NodeKind::Scene);
+        let other = state.selected.unwrap();
+        state.add_keyword(tagged, "Flashback");
+        let card = |state: &StudioState, id: Id| {
+            state
+                .scene_groups()
+                .into_iter()
+                .flat_map(|group| group.scenes)
+                .find(|card| card.id == id)
+        };
+        let shown = card(&state, tagged).unwrap();
+        assert_eq!(shown.keywords.len(), 1);
+        assert!(!shown.keywords[0].1.is_empty(), "the keyword has a color");
+
+        state.add_filter(SavedFilter {
+            id: Id::new(),
+            name: String::new(),
+            keyword: "flashback".into(),
+            status: String::new(),
+            label: String::new(),
+            text: String::new(),
+        });
+        assert_eq!(state.binder.filters[0].name, "flashback");
+        assert!(card(&state, tagged).is_some());
+        assert!(card(&state, other).is_none(), "the filter shows only its matches");
+
+        state.keyword_filter = Some("Flashback".into());
+        assert!(state.keyword_allows(tagged) && !state.keyword_allows(other));
+
+        let filter = state.binder.filters[0].id;
+        state.remove_filter(filter);
+        assert!(state.binder.filters.is_empty() && state.filter_selection.is_none());
+        state.remove_keyword(tagged, "Flashback");
+        assert!(state.binder.keywords.is_empty());
         let _ = std::fs::remove_dir_all(dir);
     }
 

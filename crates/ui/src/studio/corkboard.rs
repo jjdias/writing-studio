@@ -16,12 +16,16 @@ pub(super) fn CorkboardPane() -> Element {
         })
         .collect();
     let has_scenes = !cards.is_empty();
-    let cards: Vec<_> = cards.into_iter().filter(|card| card_matches(card, &query)).collect();
+    let cards: Vec<_> = cards
+        .into_iter()
+        .filter(|card| card_matches(card, &query) && snapshot.keyword_allows(card.node_id))
+        .collect();
     let sections = group_cards(&cards, group);
     rsx! {
         div { class: "cork-pane",
             div { class: "cork-tools",
                 SeriesScopeSelect {}
+                KeywordSelect {}
                 input {
                     id: "cork-filter",
                     class: "cork-filter",
@@ -95,6 +99,7 @@ pub(super) fn CorkCardView(card: writing_studio_corkboard::CorkCard) -> Element 
     }
     // The binder color is the card's band. A card with no color keeps a
     // plain band, so every card has the same shape.
+    let keywords = card.keywords.join(", ");
     let stripe = if hex.is_empty() {
         String::new()
     } else {
@@ -142,11 +147,11 @@ pub(super) fn CorkCardView(card: writing_studio_corkboard::CorkCard) -> Element 
                 if card.status.is_empty() {
                     "{card.word_count} words"
                 } else {
-                    "{card.status} · {card.word_count} words"
+                    "{status_name(&card.status)} · {card.word_count} words"
                 }
             }
-            if !card.label.is_empty() {
-                span { class: "card-label", "{card.label}" }
+            if !card.keywords.is_empty() {
+                span { class: "card-label", "{keywords}" }
             }
         }
     }

@@ -92,7 +92,7 @@ impl ProjectStore {
             .conn
             .prepare(
                 "SELECT id, parent_id, kind, title, sort_index, document_id, synopsis, label, status, color,
-                        deleted_at, created_at, updated_at, restore_parent_id
+                        deleted_at, created_at, updated_at, restore_parent_id, keywords
                  FROM binder_nodes",
             )
             .map_err(sqlite)?;
@@ -101,7 +101,37 @@ impl ProjectStore {
             .map_err(sqlite)?
             .collect::<std::result::Result<Vec<_>, _>>()
             .map_err(sqlite)?;
-        Ok(BinderTree::new(nodes))
+        let mut tree = BinderTree::new(nodes);
+        tree.keywords = self
+            .load_binder_list("keywords")?
+            .and_then(|json| serde_json::from_str(&json).ok())
+            .unwrap_or_default();
+        tree.filters = self
+            .load_binder_list("filters")?
+            .and_then(|json| serde_json::from_str(&json).ok())
+            .unwrap_or_default();
+        Ok(tree)
+    }
+
+    /// One of the binder's lists (keyword colors, saved filters) from the
+    /// cache, or none when it was never stored.
+    fn load_binder_list(&self, name: &str) -> Result<Option<String>> {
+        self
+            .conn
+            .query_row("SELECT json FROM binder_lists WHERE name = ?1", params![name], |row| row.get(0))
+            .optional()
+            .map_err(sqlite)
+    }
+
+    fn store_binder_list(&self, name: &str, json: String) -> Result<()> {
+        self.conn
+            .execute(
+                "INSERT INTO binder_lists (name, json) VALUES (?1, ?2)
+                 ON CONFLICT(name) DO UPDATE SET json = excluded.json",
+                params![name, json],
+            )
+            .map_err(sqlite)?;
+        Ok(())
     }
 
     pub(crate) fn upsert_node_cached(&self, node: &BinderNode) -> Result<()> {
@@ -109,9 +139,10 @@ impl ProjectStore {
             .execute(
                 "INSERT INTO binder_nodes (
                     id, parent_id, kind, title, sort_index, document_id, synopsis, label, status, color,
-                    deleted_at, created_at, updated_at, restore_parent_id
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+                    deleted_at, created_at, updated_at, restore_parent_id, keywords
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
                  ON CONFLICT(id) DO UPDATE SET
+                    keywords=excluded.keywords,
                     parent_id=excluded.parent_id,
                     title=excluded.title,
                     sort_index=excluded.sort_index,
@@ -138,6 +169,7 @@ impl ProjectStore {
                     node.created_at.to_rfc3339(),
                     node.updated_at.to_rfc3339(),
                     node.restore_parent_id.map(|id| id.to_string()),
+                    serde_json::to_string(&node.keywords).unwrap_or_else(|_| "[]".into()),
                 ],
             )
             .map_err(sqlite)?;
@@ -148,6 +180,9 @@ impl ProjectStore {
         for node in &tree.nodes {
             self.upsert_node_cached(node)?;
         }
+        let json = |value: serde_json::Result<String>| value.map_err(|err| Error::message(err.to_string()));
+        self.store_binder_list("keywords", json(serde_json::to_string(&tree.keywords))?)?;
+        self.store_binder_list("filters", json(serde_json::to_string(&tree.filters))?)?;
         Ok(())
     }
 
@@ -868,6 +903,12 @@ pub(crate) fn row_to_node(row: &rusqlite::Row<'_>) -> BinderNode {
         label: row.get(7).unwrap_or_default(),
         status: row.get(8).unwrap_or_default(),
         color: row.get(9).unwrap_or_default(),
+        // Older caches have no keywords column, and read as none.
+        keywords: row
+            .get::<_, String>(14)
+            .ok()
+            .and_then(|json| serde_json::from_str(&json).ok())
+            .unwrap_or_default(),
         deleted_at: deleted.as_deref().and_then(|value| Timestamp::parse(value).ok()),
         restore_parent_id: row
             .get::<_, Option<String>>(13)

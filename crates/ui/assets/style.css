@@ -1329,3 +1329,23 @@ body[data-typing] .sash { opacity: 0; }
 .nav-list .nav-heading.level-3 .nav-text, .nav-list .nav-heading.level-4 .nav-text { padding-left: 12px; font-weight: 500; }
 .nav-list .nav-link .nav-text { color: var(--link); }
 .nav-list .nav-note .nav-text { font-style: italic; }
+
+/* Keywords (Phase 9 stage 7): chips in the dashboard, dots on cards. */
+.keyword-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.keyword-chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 4px 2px 6px; border-radius: 999px; background: var(--control); border: 1px solid var(--line); font-size: 12px; color: var(--text); }
+.keyword-dot { width: 10px; height: 10px; padding: 0; border: 0; border-radius: 50%; background: var(--muted); flex: 0 0 auto; }
+button.keyword-dot { cursor: pointer; }
+button.keyword-dot:hover { box-shadow: 0 0 0 2px var(--line); }
+.keyword-dot.small { width: 8px; height: 8px; display: inline-block; }
+.keyword-remove { padding: 0 4px; border: 0; background: transparent; color: var(--muted); font-size: 13px; line-height: 1; }
+.keyword-remove:hover { background: transparent; color: var(--danger); }
+.keyword-field { width: 100%; }
+.card-keywords { display: inline-flex; gap: 4px; margin-left: 6px; vertical-align: middle; }
+.scene-card .status-pill + .card-keywords { margin-left: 6px; }
+.filter-save { margin-top: 12px; width: 100%; }
+
+/* A chapter heading in the scene list keeps its full line height, so its
+   name is never clipped top or bottom; a long one ends with "…". */
+.scene-group-title { overflow: visible; line-height: 1.4; }
+.scene-group-toggle { min-height: 24px; line-height: 1.4; padding: 3px 4px; }
+.scene-group-name { line-height: 1.4; padding: 1px 0; }
