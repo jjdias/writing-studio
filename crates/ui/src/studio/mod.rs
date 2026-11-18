@@ -7,7 +7,7 @@ use dioxus::prelude::*;
 use writing_studio_core::Id;
 use writing_studio_corkboard::{card_matches, cards_from_binder, group_cards, CorkGroup};
 use writing_studio_document::{
-    DiffOp, Highlight, NoteKind, ParagraphChange, ReviewItem, ReviewKind, ReviewTarget,
+    DiffOp, Highlight, NavItem, NavKind, NoteKind, ParagraphChange, ReviewItem, ReviewKind, ReviewTarget,
     TrackedChange,
 };
 use writing_studio_editor::EditorSession;

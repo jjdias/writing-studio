@@ -1320,3 +1320,12 @@ body[data-typing] .sash { opacity: 0; }
 .deadline-row { display: flex; gap: 6px; align-items: center; }
 .deadline-row input { flex: 1; }
 .deadline-pace { margin: 6px 0 0; }
+
+/* The Navigate tab: headings indented by level, links and notes marked. */
+.nav-list .nav-item .review-anchor { flex: 1 1 auto; display: flex; gap: 8px; align-items: baseline; color: var(--text); }
+.nav-list .nav-kind { flex: 0 0 5.5em; font-size: 11px; color: var(--muted); }
+.nav-list .nav-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-list .nav-heading .nav-text { font-weight: 600; }
+.nav-list .nav-heading.level-3 .nav-text, .nav-list .nav-heading.level-4 .nav-text { padding-left: 12px; font-weight: 500; }
+.nav-list .nav-link .nav-text { color: var(--link); }
+.nav-list .nav-note .nav-text { font-style: italic; }

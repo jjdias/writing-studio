@@ -1,6 +1,6 @@
 # Phase 9 — Writing comfort, from Ulysses
 
-In progress: stages 1 to 5 are done.
+In progress: stages 1 to 6 are done.
 
 Phase 8 rebuilt the window around writing. This phase takes what the Ulysses writing app does well for the writer at the page, and fits it to how Writing Studio works: rich text on a page, a binder of books, chapters, and scenes, and everything on the writer's computer. It does not wait for Phase 6 or 7.
 
@@ -77,6 +77,8 @@ Checked by the existing state and contrast tests, plus state tests for what each
 - The deadline is shared with the book, in `project.json` with `book_word_goals`. It is optional: a project without one opens as it does now, and the format document says so.
 
 ### 6. Navigating the scene
+
+**Done.** `Document::navigation` lists the headings, links, and notes block by block (within one paragraph, links before notes), from the document the editor holds. The review panel's **Navigate** tab, after the others so the panel still opens where it did, jumps to a heading or link with `wsShowBlock` and to a note with `wsSelectReview`.
 
 - A Navigate tab in the review panel lists the open scene's headings, links, and notes in order. Choosing one moves to it in the page, the way the Notes tab already does.
 - It reads the document the editor already holds, not the files.

@@ -13,7 +13,7 @@ pub use diff::{
     compare_documents, compare_text, DiffOp, DiffParagraph, DiffSpan, DocumentDiff, ParagraphChange,
 };
 pub use model::{
-    normalize_link, Block, BlockKind, Document, Highlight, Inline, InlineNote, ListItem, Marks,
+    normalize_link, Block, BlockKind, Document, Highlight, Inline, InlineNote, ListItem, Marks, NavItem, NavKind,
     NoteKind, ReviewItem, ReviewKind, ReviewTarget,
 };
 

@@ -8,7 +8,7 @@ use writing_studio_characters::Cast;
 use writing_studio_corkboard::CorkGroup;
 use writing_studio_document::{
     accept_change, compare_documents, reject_change, tracked_changes, Document, DocumentDiff,
-    NoteKind, ReviewItem, ReviewKind, ReviewTarget, TrackedChange,
+    NavItem, NoteKind, ReviewItem, ReviewKind, ReviewTarget, TrackedChange,
 };
 use writing_studio_diagnostics::{
     findings, scene_facts, typical_words, BookContext, Finding, SceneBeats, SceneFacts,
@@ -133,6 +133,8 @@ pub enum ReviewTab {
     Notes,
     Changes,
     Spelling,
+    /// The scene's headings, links, and notes, to jump to.
+    Navigate,
 }
 
 impl ReviewTab {
@@ -141,6 +143,7 @@ impl ReviewTab {
             Self::Notes => "Notes",
             Self::Changes => "Changes",
             Self::Spelling => "Spelling",
+            Self::Navigate => "Navigate",
         }
     }
 
@@ -1503,6 +1506,15 @@ impl StudioState {
     }
 
     /// Notes and highlights in the open document.
+    /// The open scene's headings, links, and notes, from the document the
+    /// editor holds, not from its file.
+    pub fn navigation(&self) -> Vec<NavItem> {
+        self.session
+            .as_ref()
+            .map(|session| session.document().navigation())
+            .unwrap_or_default()
+    }
+
     pub fn review_items(&self) -> Vec<ReviewItem> {
         self.session
             .as_ref()

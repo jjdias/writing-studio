@@ -201,6 +201,24 @@ pub struct ReviewItem {
 }
 
 /// Where one inline sits, and which note and highlight it belongs to.
+/// One place to go to in a scene: a heading, a link, or a note.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NavItem {
+    /// The top-level block it is in.
+    pub block: usize,
+    /// The heading's or link's text, or the note's own words.
+    pub text: String,
+    pub kind: NavKind,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum NavKind {
+    Heading(u8),
+    Link(String),
+    /// The note's place among the scene's notes, as `ReviewTarget::Note` counts them.
+    Note(usize),
+}
+
 struct ReviewSlot {
     block: usize,
     run: usize,
@@ -330,6 +348,55 @@ impl Document {
                     });
                 }
                 items[highlight_at[index]].text.push_str(&inline.text);
+            }
+        }
+        items
+    }
+
+    /// The scene's headings, links, and notes block by block (within one
+    /// paragraph, its links before its notes), each
+    /// with the top-level block it is in, so a list can jump to it.
+    pub fn navigation(&self) -> Vec<NavItem> {
+        let mut first_block_of_note: Vec<usize> = Vec::new();
+        let mut note_text: Vec<String> = Vec::new();
+        for slot in self.review_slots() {
+            if let Some(index) = slot.note {
+                if index == first_block_of_note.len() {
+                    let inline = &inline_runs(&self.blocks[slot.block].kind)[slot.run][slot.inline];
+                    first_block_of_note.push(slot.block);
+                    note_text.push(inline.marks.note().unwrap_or_default().to_string());
+                }
+            }
+        }
+        let mut items = Vec::new();
+        for (block, item) in self.blocks.iter().enumerate() {
+            if let BlockKind::Heading { level, inlines } = &item.kind {
+                let text: String = inlines.iter().map(|inline| inline.text.as_str()).collect();
+                if !text.trim().is_empty() {
+                    items.push(NavItem { block, text: text.trim().to_string(), kind: NavKind::Heading(*level) });
+                }
+            }
+            for inlines in inline_runs(&item.kind) {
+                let mut open: Option<(&str, String)> = None;
+                for inline in inlines.iter() {
+                    match (&mut open, inline.marks.link.as_deref()) {
+                        (Some((url, text)), Some(link)) if *url == link => text.push_str(&inline.text),
+                        (_, link) => {
+                            if let Some((url, text)) = open.take() {
+                                items.push(NavItem { block, text: text.trim().to_string(), kind: NavKind::Link(url.to_string()) });
+                            }
+                            open = link.map(|url| (url, inline.text.clone()));
+                        }
+                    }
+                }
+                if let Some((url, text)) = open {
+                    items.push(NavItem { block, text: text.trim().to_string(), kind: NavKind::Link(url.to_string()) });
+                }
+            }
+            for (note, at) in first_block_of_note.iter().enumerate() {
+                if *at == block {
+                    items.push(NavItem { block, text: note_text[note].clone(), kind: NavKind::Note(note) });
+                }
             }
         }
         items
@@ -539,6 +606,32 @@ fn count_words(text: &str) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn navigation_lists_headings_links_and_notes_in_order() {
+        let mut doc = Document::new(Id::new());
+        doc.replace_html(
+            "<h2>The Map</h2>\
+             <p>Mara read the <a href=\"https://example.com/atlas\">atlas</a> by the window.</p>\
+             <p>The <span data-comment=\"Check the river\">river</span> ran <a href=\"https://example.com/up\">uphill</a>.</p>\
+             <h3>  </h3>",
+        );
+        let nav = doc.navigation();
+        let kinds: Vec<&NavKind> = nav.iter().map(|item| &item.kind).collect();
+        assert_eq!(
+            kinds,
+            [
+                &NavKind::Heading(2),
+                &NavKind::Link("https://example.com/atlas".into()),
+                &NavKind::Link("https://example.com/up".into()),
+                &NavKind::Note(0),
+            ]
+        );
+        assert_eq!(nav[0].text, "The Map");
+        assert_eq!(nav[1].text, "atlas");
+        assert_eq!((nav[2].block, nav[3].block), (2, 2));
+        assert_eq!(nav[3].text, "Check the river");
+    }
 
     #[test]
     fn round_trips_plain_text_as_blocks() {

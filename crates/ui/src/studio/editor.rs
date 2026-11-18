@@ -193,6 +193,7 @@ pub(super) fn review_anchor(text: &str) -> String {
 pub(super) fn ReviewPanel(unknown: Vec<UnknownWord>) -> Element {
     let mut state = use_context::<Signal<StudioState>>();
     let items: Vec<ReviewItem> = state.read().review_items();
+    let navigation: Vec<NavItem> = state.read().navigation();
     let started = state
         .read()
         .tracking
@@ -219,6 +220,9 @@ pub(super) fn ReviewPanel(unknown: Vec<UnknownWord>) -> Element {
     }
     if spelling_on && (!unknown.is_empty() || !project_words.is_empty()) {
         tabs.push((ReviewTab::Spelling, unknown.len()));
+    }
+    if !navigation.is_empty() {
+        tabs.push((ReviewTab::Navigate, navigation.len()));
     }
     let available: Vec<ReviewTab> = tabs.iter().map(|(tab, _)| *tab).collect();
     let Some(shown) = ReviewTab::shown(state.read().review_tab, &available) else {
@@ -279,6 +283,7 @@ pub(super) fn ReviewPanel(unknown: Vec<UnknownWord>) -> Element {
                             TrackPanel { started: started.unwrap_or_default(), changes }
                         },
                         ReviewTab::Spelling => rsx! { SpellPanel { unknown, project_words } },
+                        ReviewTab::Navigate => rsx! { NavList { items: navigation } },
                     }}
                 }
             }
@@ -1058,4 +1063,44 @@ pub(super) fn keep_place(options_json: String) {
         let mut eval = document::eval(&format!("{PLACE_JS}\ndioxus.send(wsKeepPlace({options_json}));"));
         let _ = eval.recv::<bool>().await;
     });
+}
+
+/// The scene's headings, links, and notes in order. Choosing one selects
+/// it on the page, the way the Notes tab does.
+#[component]
+pub(super) fn NavList(items: Vec<NavItem>) -> Element {
+    let state = use_context::<Signal<StudioState>>();
+    rsx! {
+        ul { class: "review-list nav-list",
+            for item in items {
+                {
+                    let (kind, class) = match &item.kind {
+                        NavKind::Heading(level) => (format!("Heading {level}"), format!("nav-item nav-heading level-{level}")),
+                        NavKind::Link(_) => ("Link".to_string(), "nav-item nav-link".to_string()),
+                        NavKind::Note(_) => ("Note".to_string(), "nav-item nav-note".to_string()),
+                    };
+                    let jump = match &item.kind {
+                        NavKind::Note(index) => format!("wsSelectReview(el, 'note', {index});"),
+                        _ => format!("wsShowBlock(el, {});", item.block),
+                    };
+                    let detail = match &item.kind {
+                        NavKind::Link(url) => url.clone(),
+                        _ => String::new(),
+                    };
+                    let text = review_anchor(&item.text);
+                    rsx! {
+                        li { class: "{class}",
+                            button {
+                                class: "review-anchor",
+                                title: if detail.is_empty() { "Show this in the manuscript".to_string() } else { detail.clone() },
+                                onclick: move |_| run_editor_script(state, jump.clone()),
+                                span { class: "nav-kind", "{kind}" }
+                                span { class: "nav-text", "{text}" }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
