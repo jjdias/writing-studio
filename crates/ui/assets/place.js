@@ -1,8 +1,9 @@
-// Keeping one's place on the page: fixed scrolling, a line marker, and
-// fading all but the current sentence or paragraph. Nothing here changes the
-// manuscript's own elements, so nothing of it reaches the saved text: the
-// fade is a CSS highlight (as the spelling underlines are) and the marker is
-// an element on the desk, outside the manuscript.
+// Keeping one's place on the page: fixed scrolling, a line marker, fading
+// all but the current sentence or paragraph, and the bars stepping back
+// while one types. Nothing here changes the manuscript's own elements, so
+// nothing of it reaches the saved text: the fade is a CSS highlight (as the
+// spelling underlines are), the marker is an element on the desk, outside
+// the manuscript, and the typing mark is on the body.
 //
 // A manuscript drawn again installs this again; the earlier listeners are
 // taken off first. Each selection change does only what the choices need:
@@ -137,6 +138,38 @@ function wsKeepPlace(options) {
         }
     };
 
+    // The bars step back while one types. The mark is on the body, which
+    // the program does not draw, so a redraw never takes it away.
+    const body = document.body;
+    delete body.dataset.typing;
+    let moved = 0;
+    const typed = (event) => {
+        if (event.ctrlKey || event.altKey || event.metaKey) {
+            delete body.dataset.typing;
+            return;
+        }
+        if (event.key.length === 1 || event.key === 'Enter' || event.key === 'Backspace' || event.key === 'Delete') {
+            body.dataset.typing = '1';
+            moved = 0;
+        }
+    };
+    const pointer = (event) => {
+        if (!body.dataset.typing) return;
+        // A hand resting on the mouse jitters; only a real move brings the bars back.
+        moved += Math.abs(event.movementX) + Math.abs(event.movementY);
+        if (moved > 8) delete body.dataset.typing;
+    };
+    const chord = (event) => {
+        if (event.ctrlKey || event.altKey || event.metaKey) delete body.dataset.typing;
+    };
+    const left = () => delete body.dataset.typing;
+    if (options.bars) {
+        el.addEventListener('keydown', typed);
+        el.addEventListener('blur', left);
+        document.addEventListener('mousemove', pointer);
+        document.addEventListener('keydown', chord);
+    }
+
     let queued = false;
     const soon = () => {
         if (queued) return;
@@ -151,6 +184,11 @@ function wsKeepPlace(options) {
     document.wsPlaceOff = () => {
         document.removeEventListener('selectionchange', soon);
         window.removeEventListener('resize', soon);
+        el.removeEventListener('keydown', typed);
+        el.removeEventListener('blur', left);
+        document.removeEventListener('mousemove', pointer);
+        document.removeEventListener('keydown', chord);
+        delete body.dataset.typing;
         if (highlights) highlights.delete('ws-current');
     };
     update();

@@ -1,6 +1,6 @@
 # Phase 9 — Writing comfort, from Ulysses
 
-In progress: stages 1 to 3 are done.
+In progress: stages 1 to 4 are done.
 
 Phase 8 rebuilt the window around writing. This phase takes what the Ulysses writing app does well for the writer at the page, and fits it to how Writing Studio works: rich text on a page, a binder of books, chapters, and scenes, and everything on the writer's computer. It does not wait for Phase 6 or 7.
 
@@ -44,7 +44,7 @@ The window after Phase 8 still reads as a tool: a dark activity bar, panels with
 
 Checked by the existing state and contrast tests, plus state tests for what each column shows when a library row is chosen. How it looks is not tested, as in Phase 8.
 
-**Where it stands.** Done: Light is the default and its colors are the brighter set above, with library, active-row, and status-pill tokens in every theme (all in the contrast test). The library column (`studio/library.rs`) replaces the activity bar and the top bar: project name, goal ring, Project, Settings, and shortcuts buttons, the manuscript's containers (`BinderTree::manuscript_containers`), Extras, and Trash. The scene list groups the chosen container's scenes by chapter (`StudioState::scene_groups`), with each scene's opening kept by the search index (`ManuscriptIndex::opening`) and its status pill. Library rows and scene cards keep the free drag and drop. A slim bar over the page holds the library toggle, Page / Cards / Outline, focus, and the inspector toggle. Then: the scene title is the page's heading, renamed in place, with the word count at its right (`PageTitle`); each chapter heading in the scene list has a ring that fills as its scenes reach a final status; the inspector is the dashboard, with Progress (characters, words, reading time) above the scene's fields; and labels are in sentence case, not capitals. The review panel's tabs stay under or beside the page rather than moving into the dashboard: they need the page's width for tracked changes, and Beside already puts them in a column. **Stage 1 is done.**
+**Where it stands.** Done: Light is the default and its colors are the brighter set above, with library, active-row, and status-pill tokens in every theme (all in the contrast test). The library column (`studio/library.rs`) replaces the activity bar and the top bar: project name, goal ring, Project, Settings, and shortcuts buttons, the manuscript's containers (`BinderTree::manuscript_containers`), Extras, and Trash. The scene list groups the chosen container's scenes by chapter (`StudioState::scene_groups`), with each scene's opening kept by the search index (`ManuscriptIndex::opening`) and its status pill. Library rows and scene cards keep the free drag and drop. A slim bar over the page holds the library toggle, Page / Cards / Outline, focus, and the inspector toggle, and no title: the scene's title is on the page. Then: the scene title is the page's heading, renamed in place, with the word count at its right (`PageTitle`); each chapter heading in the scene list has a ring that fills as its scenes reach a final status; the inspector is the dashboard, with Progress (characters, words, reading time) above the scene's fields; and labels are in sentence case, not capitals. The review panel's tabs stay under or beside the page rather than moving into the dashboard: they need the page's width for tracked changes, and Beside already puts them in a column. **Stage 1 is done.**
 
 ### 2. Page settings
 
@@ -63,6 +63,8 @@ Checked by the existing state and contrast tests, plus state tests for what each
 - These run in the page (`review.js` already follows the caret for the toolbar), and must not slow typing: no work per keystroke beyond finding the caret's line or paragraph.
 
 ### 4. Chrome that steps back
+
+**Done.** `KeepPlace::quiet_bars`, on unless turned off in Settings. `place.js` marks the body while one types in the manuscript, and the format toolbar, the bar over the page, the status bar, and the side columns fade by CSS, keeping their room so the page does not move; a pointer move of more than a few pixels, a Ctrl or Alt chord, or leaving the page clears the mark.
 
 - While the writer types, the format toolbar, the top bar, and the status bar fade, and they come back when the pointer moves or a key with Ctrl or Alt is pressed. A setting turns this off.
 - Focus mode stays as it is: the page and a word count.

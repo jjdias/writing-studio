@@ -24,10 +24,11 @@ pub(super) fn EditorPane() -> Element {
     use_effect(use_reactive((&epoch,), move |_| watch_marks(marks)));
     let keep = snapshot.keep_place();
     let keep_json = format!(
-        r#"{{"scroll":"{}","marker":{},"fade":"{}"}}"#,
+        r#"{{"scroll":"{}","marker":{},"fade":"{}","bars":{}}}"#,
         keep.scroll.as_str(),
         keep.line_marker,
-        keep.fade.as_str()
+        keep.fade.as_str(),
+        keep.quiet_bars
     );
     use_effect(use_reactive((&epoch, &keep_json), |(_, options)| keep_place(options)));
     let initial_html = if html.trim().is_empty() {

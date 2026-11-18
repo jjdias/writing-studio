@@ -1300,3 +1300,15 @@ kbd {
 ::highlight(ws-current) { color: var(--editor-text); }
 .check-label { display: flex !important; align-items: center; gap: 8px; color: var(--text) !important; }
 .check-label input { width: auto; }
+
+/* While one types, the bars and the side columns step back (they keep
+   their room, so the page does not move); moving the pointer,
+   a chord, or leaving the page brings them back (place.js). */
+.format-toolbar, .work-bar, .status, .library, .scene-list, .secondary.dashboard, .sash { transition: opacity 0.35s ease; }
+body[data-typing] .format-toolbar,
+body[data-typing] .work-bar,
+body[data-typing] .status,
+body[data-typing] .library,
+body[data-typing] .scene-list,
+body[data-typing] .secondary.dashboard,
+body[data-typing] .sash { opacity: 0; }

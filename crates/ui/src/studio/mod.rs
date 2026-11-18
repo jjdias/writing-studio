@@ -229,7 +229,6 @@ fn Workspace() -> Element {
     let mut state = use_context::<Signal<StudioState>>();
     let mode = state.read().mode;
     let focus = state.read().focus_mode;
-    let unsaved = state.read().has_unsaved();
     let overlay = state.read().overlay;
     let menu_open = state.read().open_menu.is_some();
     let chrome = use_context::<Signal<PanelChrome>>();
@@ -249,18 +248,6 @@ fn Workspace() -> Element {
     let library_on = if fold.binder { overlay_library } else { arrangement.sidebar_visible };
     let inspector_on = inspector_mode && if fold.inspector { overlay_inspector } else { arrangement.inspector_visible };
     let manuscript_view = matches!(mode, WorkspaceMode::Writing | WorkspaceMode::Corkboard | WorkspaceMode::Outliner);
-    let bar_title = {
-        let current = state.read();
-        if current.mode == WorkspaceMode::Writing {
-            current
-                .selected_node()
-                .map(|node| node.title.clone())
-                .unwrap_or_else(|| "Untitled".into())
-        } else {
-            current.mode.label().into()
-        }
-    };
-
     rsx! {
         if menu_open {
             div { class: "menu-backdrop", onclick: move |_| state.write().open_menu = None }
@@ -303,10 +290,6 @@ fn Workspace() -> Element {
                                     }
                                 }
                             }
-                        }
-                        span { class: "work-title", title: "{bar_title}", "{bar_title}" }
-                        if unsaved {
-                            span { class: "tab-dirty", role: "img", aria_label: "Unsaved changes", title: "Unsaved changes" }
                         }
                         div { class: "work-spacer" }
                         IconButton {
@@ -797,6 +780,17 @@ fn KeepPlaceSettings() -> Element {
                 },
             }
             "Mark the line I am on"
+        }
+        label { class: "check-label",
+            input {
+                r#type: "checkbox",
+                checked: keep.quiet_bars,
+                onchange: move |event| {
+                    let current = state.read().keep_place();
+                    set(KeepPlace { quiet_bars: event.checked(), ..current });
+                },
+            }
+            "Fade the bars while I type"
         }
     }
 }

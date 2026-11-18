@@ -289,9 +289,10 @@ pub enum Fade {
     Sentence,
 }
 
-/// Helps for keeping one's place on the page while writing. All are off
-/// until chosen. Missing on older projects.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+/// Helps for keeping one's place on the page while writing. Fixed
+/// scrolling, the marker, and fading are off until chosen; the bars stepping
+/// back while one types is on until turned off. Missing on older projects.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeepPlace {
     #[serde(default)]
     pub scroll: FixedScroll,
@@ -300,6 +301,25 @@ pub struct KeepPlace {
     pub line_marker: bool,
     #[serde(default)]
     pub fade: Fade,
+    /// The format toolbar, the bar over the page, and the status bar fade
+    /// while one types, and come back when the pointer moves.
+    #[serde(default = "default_quiet_bars")]
+    pub quiet_bars: bool,
+}
+
+fn default_quiet_bars() -> bool {
+    true
+}
+
+impl Default for KeepPlace {
+    fn default() -> Self {
+        Self {
+            scroll: FixedScroll::Off,
+            line_marker: false,
+            fade: Fade::Off,
+            quiet_bars: default_quiet_bars(),
+        }
+    }
 }
 
 impl FixedScroll {
@@ -635,6 +655,7 @@ mod keep_place_tests {
         assert_eq!(settings.keep_place.scroll, FixedScroll::Middle);
         assert_eq!(settings.keep_place.fade, Fade::Sentence);
         assert!(!settings.keep_place.line_marker);
+        assert!(settings.keep_place.quiet_bars, "the bars step back unless turned off");
         assert_eq!(FixedScroll::from_id("bottom"), Some(FixedScroll::Bottom));
         assert_eq!(Fade::from_id("word"), None);
     }
