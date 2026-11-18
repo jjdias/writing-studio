@@ -288,7 +288,7 @@ Missing tables are added when a project opens (`CREATE TABLE IF NOT EXISTS`).
 
 `project.json` holds the settings that go with the book:
 
-- `daily_word_goal`, `project_word_goal`, and `book_word_goals`, one `{ "book_id": "…", "goal": 80000 }` for each book with its own target. The first book with no entry uses `project_word_goal`; later ones use 80000.
+- `daily_word_goal`, `project_word_goal`, and `book_word_goals`, one `{ "book_id": "…", "goal": 80000, "deadline": "2027-01-31" }` for each book with its own target. `deadline` is optional, a `YYYY-MM-DD` day; a book with none leaves it out, and an older file without it reads the same. The first book with no entry uses `project_word_goal`; later ones use 80000.
 - `compile_title_page`.
 - `spelling`: `enabled`, `language` (a dictionary name such as `en_US`), and `words`, the project's accepted words, lowercase and sorted.
 

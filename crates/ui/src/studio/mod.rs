@@ -14,7 +14,7 @@ use writing_studio_editor::EditorSession;
 use writing_studio_manuscript::{outline_rows, row_word_count};
 use writing_studio_project::{
     binder_color_hex, drag_width, format_elapsed, BinderNode, DropPlace, NodeKind, PanelChrome, PanelLayout,
-    Fade, FixedScroll, KeepPlace, PageStyle, PanelWidths, ProseFont, Theme, BINDER_COLORS, FIRST_LINE_INDENT_RANGE, LINE_HEIGHT_RANGE,
+    Fade, FixedScroll, KeepPlace, Pace, PageStyle, PanelWidths, ProseFont, Theme, BINDER_COLORS, FIRST_LINE_INDENT_RANGE, LINE_HEIGHT_RANGE,
     LINE_LENGTH_RANGE, PARAGRAPH_SPACING_RANGE, INSPECTOR_WIDTH_DEFAULT, INSPECTOR_WIDTH_MAX,
     INSPECTOR_WIDTH_MIN, SIDEBAR_WIDTH_DEFAULT, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN,
 };
@@ -544,6 +544,11 @@ fn StatusBar() -> Element {
     } else {
         format!("{book_title}: {book_words} words")
     };
+    // With a deadline, the book's count says the pace that meets it.
+    let book_text = match state.read().compile_book_pace() {
+        Some(pace) => format!("{book_text} · {}", pace_text(pace)),
+        None => book_text,
+    };
     let today_text = if daily_goal > 0 {
         format!("Today {today_words} of {daily_goal}")
     } else {
@@ -571,6 +576,8 @@ fn GoalsPanel() -> Element {
     let goal = state.read().goal();
     let daily_goal = state.read().daily_goal();
     let book_title = state.read().compile_book_title();
+    let deadline = state.read().compile_book_deadline().unwrap_or_default();
+    let pace = state.read().compile_book_pace();
     rsx! {
         div { class: "menu popover", role: "dialog", aria_label: "Word targets",
             label { r#for: "goal-daily", "Words a day" }
@@ -590,6 +597,32 @@ fn GoalsPanel() -> Element {
                 value: "{goal}",
                 oninput: move |event| apply_goal(state, event.value(), false),
                 onblur: move |_| state.write().save_all(),
+            }
+            label { r#for: "goal-deadline", "Finish by" }
+            div { class: "deadline-row",
+                input {
+                    id: "goal-deadline",
+                    r#type: "date",
+                    value: "{deadline}",
+                    onchange: move |event| {
+                        let day = event.value();
+                        state.write().set_compile_book_deadline((!day.is_empty()).then_some(day));
+                        state.write().save_all();
+                    },
+                }
+                if !deadline.is_empty() {
+                    button {
+                        title: "Take the deadline off",
+                        onclick: move |_| {
+                            state.write().set_compile_book_deadline(None);
+                            state.write().save_all();
+                        },
+                        "Clear"
+                    }
+                }
+            }
+            if let Some(pace) = pace {
+                p { class: "hint deadline-pace", "{pace_text(pace)}" }
             }
         }
     }
@@ -792,5 +825,48 @@ fn KeepPlaceSettings() -> Element {
             }
             "Fade the bars while I type"
         }
+    }
+}
+
+/// A pace in words, as the targets panel and the status bar say it.
+pub(super) fn pace_text(pace: Pace) -> String {
+    match pace {
+        Pace::Reached => "Target reached".to_string(),
+        Pace::Due { days: 1, per_day } => format!("{per_day} words today to finish"),
+        Pace::Due { days, per_day } => format!("{per_day} words a day for {days} days"),
+        Pace::Passed { days_late, left } => {
+            let days = if days_late == 1 { "1 day".to_string() } else { format!("{days_late} days") };
+            format!("{left} words left, {days} past the deadline")
+        }
+    }
+}
+
+/// Time to a deadline the short way, as the library shows it: "1y 4mo",
+/// "5mo", "12d", "today".
+pub(super) fn time_left(days: u32) -> String {
+    match days {
+        0 | 1 => "today".to_string(),
+        days if days >= 365 => {
+            let (years, months) = (days / 365, (days % 365) / 30);
+            if months == 0 { format!("{years}y") } else { format!("{years}y {months}mo") }
+        }
+        days if days >= 30 => format!("{}mo", days / 30),
+        days => format!("{}d", days - 1),
+    }
+}
+
+#[cfg(test)]
+mod pace_tests {
+    use super::*;
+
+    #[test]
+    fn a_pace_and_the_time_left_read_plainly() {
+        assert_eq!(pace_text(Pace::Due { days: 3, per_day: 200 }), "200 words a day for 3 days");
+        assert_eq!(pace_text(Pace::Due { days: 1, per_day: 600 }), "600 words today to finish");
+        assert_eq!(pace_text(Pace::Passed { days_late: 1, left: 600 }), "600 words left, 1 day past the deadline");
+        assert_eq!(time_left(1), "today");
+        assert_eq!(time_left(13), "12d");
+        assert_eq!(time_left(150), "5mo");
+        assert_eq!(time_left(500), "1y 4mo");
     }
 }

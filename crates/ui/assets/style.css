@@ -1312,3 +1312,11 @@ body[data-typing] .library,
 body[data-typing] .scene-list,
 body[data-typing] .secondary.dashboard,
 body[data-typing] .sash { opacity: 0; }
+
+/* A book's deadline under its goal in the library, and in the targets panel. */
+.library-deadline { display: flex; align-items: center; gap: 8px; margin-top: 2px; padding: 2px 0; font-size: 13px; color: var(--muted); }
+.library-deadline .glyph { width: 16px; height: 16px; color: var(--gold); }
+.library-deadline-left { margin-left: auto; font-size: 12px; }
+.deadline-row { display: flex; gap: 6px; align-items: center; }
+.deadline-row input { flex: 1; }
+.deadline-pace { margin: 6px 0 0; }

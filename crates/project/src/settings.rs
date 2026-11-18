@@ -378,6 +378,40 @@ impl Fade {
 pub struct BookWordGoal {
     pub book_id: Id,
     pub goal: u32,
+    /// The day to reach the target by, as `YYYY-MM-DD`. Missing means none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deadline: Option<String>,
+}
+
+/// Where a book stands against its deadline.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Pace {
+    /// The target is reached.
+    Reached,
+    /// `days` left, today included, and the words a day that meet it.
+    Due { days: u32, per_day: u32 },
+    /// The deadline has passed with `left` words still to write.
+    Passed { days_late: u32, left: u32 },
+}
+
+/// The pace for `words` written toward `goal` by `deadline`, seen on
+/// `today` (both `YYYY-MM-DD`). Today counts as a day to write in, so on the
+/// deadline itself all that is left is due today. `None` when a day is not
+/// a date or there is no target.
+pub fn pace(goal: u32, words: u32, today: &str, deadline: &str) -> Option<Pace> {
+    if goal == 0 {
+        return None;
+    }
+    let until = writing_studio_core::days_between(today, deadline)?;
+    let left = goal.saturating_sub(words);
+    if left == 0 {
+        return Some(Pace::Reached);
+    }
+    if until < 0 {
+        return Some(Pace::Passed { days_late: (-until) as u32, left });
+    }
+    let days = until as u32 + 1;
+    Some(Pace::Due { days, per_day: left.div_ceil(days) })
 }
 
 pub fn drag_width(origin: u32, delta_px: i32, positive: bool, min: u32, max: u32) -> u32 {
@@ -512,10 +546,31 @@ impl ProjectSettings {
         {
             entry.goal = goal;
         } else {
-            self.book_word_goals.push(BookWordGoal { book_id, goal });
+            self.book_word_goals.push(BookWordGoal { book_id, goal, deadline: None });
         }
         if first_book {
             self.project_word_goal = goal;
+        }
+    }
+
+    pub fn deadline_for_book(&self, book_id: Id) -> Option<&str> {
+        self.book_word_goals
+            .iter()
+            .find(|entry| entry.book_id == book_id)
+            .and_then(|entry| entry.deadline.as_deref())
+    }
+
+    /// Set or clear a book's deadline. A book without its own target entry
+    /// gets one holding the target it has now, so the target does not move.
+    pub fn set_deadline_for_book(&mut self, book_id: Id, deadline: Option<String>, first_book: bool) {
+        let goal = self.goal_for_book(book_id, first_book);
+        match self
+            .book_word_goals
+            .iter_mut()
+            .find(|entry| entry.book_id == book_id)
+        {
+            Some(entry) => entry.deadline = deadline,
+            None => self.book_word_goals.push(BookWordGoal { book_id, goal, deadline }),
         }
     }
 
@@ -658,5 +713,38 @@ mod keep_place_tests {
         assert!(settings.keep_place.quiet_bars, "the bars step back unless turned off");
         assert_eq!(FixedScroll::from_id("bottom"), Some(FixedScroll::Bottom));
         assert_eq!(Fade::from_id("word"), None);
+    }
+}
+
+#[cfg(test)]
+mod deadline_tests {
+    use super::*;
+
+    #[test]
+    fn the_pace_is_the_words_a_day_left_counting_today() {
+        assert_eq!(pace(1_000, 400, "2026-11-17", "2026-11-19"), Some(Pace::Due { days: 3, per_day: 200 }));
+        // On the deadline itself, the rest is due today.
+        assert_eq!(pace(1_000, 400, "2026-11-19", "2026-11-19"), Some(Pace::Due { days: 1, per_day: 600 }));
+        // Rounded up, so keeping the pace reaches the target.
+        assert_eq!(pace(1_000, 0, "2026-11-17", "2026-11-19"), Some(Pace::Due { days: 3, per_day: 334 }));
+        assert_eq!(pace(1_000, 1_200, "2026-11-17", "2026-11-19"), Some(Pace::Reached));
+        assert_eq!(pace(1_000, 400, "2026-11-21", "2026-11-19"), Some(Pace::Passed { days_late: 2, left: 600 }));
+        assert_eq!(pace(0, 0, "2026-11-17", "2026-11-19"), None);
+        assert_eq!(pace(1_000, 0, "2026-11-17", "soon"), None);
+    }
+
+    #[test]
+    fn a_deadline_keeps_the_target_and_reads_back_from_older_files() {
+        let mut settings = ProjectSettings::default();
+        let book = Id::new();
+        settings.set_deadline_for_book(book, Some("2027-01-31".into()), true);
+        assert_eq!(settings.deadline_for_book(book), Some("2027-01-31"));
+        assert_eq!(settings.goal_for_book(book, true), settings.project_word_goal);
+        settings.set_deadline_for_book(book, None, true);
+        assert_eq!(settings.deadline_for_book(book), None);
+        // An entry written before deadlines existed still reads.
+        let old: BookWordGoal = serde_json::from_str(&format!(r#"{{"book_id":"{book}","goal":5}}"#)).unwrap();
+        assert_eq!(old.deadline, None);
+        assert!(!serde_json::to_string(&old).unwrap().contains("deadline"));
     }
 }

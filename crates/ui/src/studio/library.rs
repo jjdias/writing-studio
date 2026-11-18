@@ -32,6 +32,12 @@ pub(super) fn Library() -> Element {
     };
     let trash = state.read().binder.trash_root().map(|node| node.id);
     let fraction = if goal > 0 { (book_words as f64 / goal as f64).min(1.0) } else { 0.0 };
+    let deadline = state.read().compile_book_deadline();
+    let days_left = match state.read().compile_book_pace() {
+        Some(Pace::Due { days, .. }) => Some(time_left(days)),
+        Some(Pace::Passed { .. }) => Some("past".to_string()),
+        _ => None,
+    };
     let add_open = menu == Some(FrameMenu::Add);
     let add = move |kind: NodeKind| {
         move |_| {
@@ -54,6 +60,17 @@ pub(super) fn Library() -> Element {
                         if goal > 0 { "{book_words} of {goal} words" } else { "{book_words} words" }
                     }
                     if menu == Some(FrameMenu::Goals) { GoalsPanel {} }
+                }
+                if let Some(day) = deadline.clone() {
+                    div { class: "library-deadline", title: "The day to reach the target by",
+                        svg { class: "glyph", view_box: "0 0 16 16", "aria-hidden": "true",
+                            path { d: "M2.5 3.5h11v10h-11zM2.5 6.5h11M5.5 2v3M10.5 2v3", fill: "none", stroke: "currentColor", stroke_width: "1.2" }
+                        }
+                        span { "{day}" }
+                        if let Some(left) = days_left.clone() {
+                            span { class: "library-deadline-left", "{left}" }
+                        }
+                    }
                 }
                 div { class: "library-tools",
                     div { class: "menu-anchor",

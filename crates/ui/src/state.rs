@@ -20,7 +20,7 @@ use writing_studio_manuscript::{book_outline_words, outline_rows};
 use writing_studio_plotting::PlotGrid;
 use writing_studio_research::ResearchLibrary;
 use writing_studio_project::{
-    format_elapsed, normalize_binder_color, BinderNode, BinderTree, NodeKind, PanelLayout,
+    format_elapsed, normalize_binder_color, pace, BinderNode, BinderTree, NodeKind, Pace, PanelLayout,
     DropPlace, KeepPlace, PageStyle, ProjectMeta, ProseFont, StoredSession, Theme,
 };
 use writing_studio_search::ManuscriptIndex;
@@ -868,6 +868,54 @@ impl StudioState {
             self.settings_dirty = true;
             self.note_edit();
         }
+    }
+
+    /// The current book's deadline, as `YYYY-MM-DD`.
+    pub fn compile_book_deadline(&self) -> Option<String> {
+        let book = self.compile_book_id()?;
+        self.meta
+            .as_ref()?
+            .settings
+            .deadline_for_book(book)
+            .map(str::to_string)
+    }
+
+    /// Set or clear the current book's deadline. It goes with the book's
+    /// target in `project.json`, so every machine sees it.
+    pub fn set_compile_book_deadline(&mut self, deadline: Option<String>) {
+        let Some(book) = self.compile_book_id() else {
+            self.status = "Add a book to give it a deadline.".into();
+            return;
+        };
+        let deadline = deadline.filter(|day| writing_studio_core::days_between(day, day).is_some());
+        let first = self
+            .binder
+            .manuscript_books()
+            .first()
+            .is_some_and(|node| node.id == book);
+        let changed = self.meta.as_mut().is_some_and(|meta| {
+            if meta.settings.deadline_for_book(book) == deadline.as_deref() {
+                return false;
+            }
+            meta.settings.set_deadline_for_book(book, deadline, first);
+            meta.touch();
+            true
+        });
+        if changed {
+            self.settings_dirty = true;
+            self.note_edit();
+        }
+    }
+
+    /// Where the current book stands against its deadline, today.
+    pub fn compile_book_pace(&self) -> Option<Pace> {
+        let deadline = self.compile_book_deadline()?;
+        pace(
+            self.goal(),
+            self.compile_book_word_count(),
+            &writing_studio_core::local_day(),
+            &deadline,
+        )
     }
 
     pub fn set_compile_book_goal(&mut self, goal: u32) {
@@ -4242,6 +4290,24 @@ mod tests {
         assert!(reopened.is_collapsed(book));
         reopened.toggle_collapsed(book);
         assert_eq!(inside_book(&reopened), before);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_books_deadline_is_shared_and_gives_a_pace() {
+        let (mut state, dir) = open_state("deadline");
+        assert_eq!(state.compile_book_pace(), None);
+        state.set_compile_book_deadline(Some("not a day".into()));
+        assert_eq!(state.compile_book_deadline(), None);
+        state.set_compile_book_deadline(Some("2999-01-01".into()));
+        assert_eq!(state.compile_book_deadline().as_deref(), Some("2999-01-01"));
+        assert!(matches!(state.compile_book_pace(), Some(Pace::Due { .. })));
+        state.save_all();
+        let root = state.project_root().unwrap();
+        let shared = std::fs::read_to_string(root.join("project.json")).unwrap();
+        assert!(shared.contains("2999-01-01"), "the deadline goes with the book");
+        state.set_compile_book_deadline(None);
+        assert_eq!(state.compile_book_pace(), None);
         let _ = std::fs::remove_dir_all(dir);
     }
 

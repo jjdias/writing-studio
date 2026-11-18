@@ -34,3 +34,23 @@ impl Default for Timestamp {
 pub fn local_day() -> String {
     chrono::Local::now().format("%Y-%m-%d").to_string()
 }
+
+/// Days from one `YYYY-MM-DD` day to another: 1 for tomorrow, negative for a
+/// day already past. `None` when either is not a date.
+pub fn days_between(from: &str, to: &str) -> Option<i64> {
+    let parse = |day: &str| chrono::NaiveDate::parse_from_str(day.trim(), "%Y-%m-%d").ok();
+    Some((parse(to)? - parse(from)?).num_days())
+}
+
+#[cfg(test)]
+mod day_tests {
+    use super::*;
+
+    #[test]
+    fn days_between_counts_calendar_days() {
+        assert_eq!(days_between("2026-11-17", "2026-11-17"), Some(0));
+        assert_eq!(days_between("2026-11-17", "2026-12-31"), Some(44));
+        assert_eq!(days_between("2026-11-17", "2026-11-10"), Some(-7));
+        assert_eq!(days_between("2026-11-17", "someday"), None);
+    }
+}

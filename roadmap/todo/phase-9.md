@@ -1,6 +1,6 @@
 # Phase 9 — Writing comfort, from Ulysses
 
-In progress: stages 1 to 4 are done.
+In progress: stages 1 to 5 are done.
 
 Phase 8 rebuilt the window around writing. This phase takes what the Ulysses writing app does well for the writer at the page, and fits it to how Writing Studio works: rich text on a page, a binder of books, chapters, and scenes, and everything on the writer's computer. It does not wait for Phase 6 or 7.
 
@@ -70,6 +70,8 @@ Checked by the existing state and contrast tests, plus state tests for what each
 - Focus mode stays as it is: the page and a word count.
 
 ### 5. Goals with a deadline
+
+**Done.** `BookWordGoal::deadline` (optional, `YYYY-MM-DD`, shared in `project.json`), set with **Finish by** in the word targets panel. `pace` gives the words a day left, counting today and rounding up, or that the target is reached or the day has passed. The library shows the date and time left under the goal; the status bar adds the pace. The project format document describes the field.
 
 - A book can have a deadline beside its word target. The status bar and the word targets panel show how many words a day are left to meet it, from today's count.
 - The deadline is shared with the book, in `project.json` with `book_word_goals`. It is optional: a project without one opens as it does now, and the format document says so.
