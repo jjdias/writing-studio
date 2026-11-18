@@ -70,6 +70,25 @@ pub(super) fn Inspector() -> Element {
                 button { onclick: move |_| state.write().snapshot(), "Snapshot this document" }
                 SnapshotList {}
             }
+            if node.kind == NodeKind::Scene && !state.read().binder.is_in_trash(node.id) {
+                div { class: "scene-actions",
+                    // The buttons keep the focus off themselves, so the
+                    // caret is still in the manuscript when Split reads it.
+                    button {
+                        title: "Make a new scene from the caret to the end of this one",
+                        onmousedown: move |event| event.prevent_default(),
+                        onclick: move |_| split_at_caret(state),
+                        "Split at the caret"
+                    }
+                    button {
+                        title: "Join the next scene onto the end of this one",
+                        disabled: !state.read().can_merge_with_next(),
+                        onmousedown: move |event| event.prevent_default(),
+                        onclick: move |_| state.write().merge_with_next(),
+                        "Merge with next scene"
+                    }
+                }
+            }
             // Set apart from the fields, at the bottom.
             if state.read().binder.is_in_trash(node.id) && node.kind != NodeKind::TrashRoot {
                 div { class: "inspector-end",
@@ -403,4 +422,41 @@ fn Keywords(id: Id) -> Element {
             }
         }
     }
+}
+
+/// Split the open scene where the caret is. The page's text is taken in the
+/// same read, so the split cuts exactly what is on the page. The place is
+/// counted in characters, as the document counts them, not in the page's
+/// UTF-16 units.
+fn split_at_caret(mut state: Signal<StudioState>) {
+    spawn(async move {
+        let mut eval = document::eval(
+            r#"
+            const el = document.querySelector('[data-manuscript]');
+            const sel = window.getSelection();
+            let at = -1;
+            if (el && sel && sel.rangeCount && el.contains(sel.getRangeAt(0).startContainer)) {
+                const range = sel.getRangeAt(0);
+                const before = document.createRange();
+                before.selectNodeContents(el);
+                before.setEnd(range.startContainer, range.startOffset);
+                at = Array.from(before.toString()).length;
+            }
+            dioxus.send({ at, html: el ? el.innerHTML : '' });
+            "#,
+        );
+        let Ok(place) = eval.recv::<serde_json::Value>().await else {
+            return;
+        };
+        let at = place["at"].as_i64().unwrap_or(-1);
+        let html = place["html"].as_str().unwrap_or_default().to_string();
+        if at < 0 {
+            state.write().status = "Click in the scene where the new scene should start, then Split.".into();
+            return;
+        }
+        if !html.is_empty() {
+            commit_editor_html(state, html);
+        }
+        state.write().split_at(at as usize);
+    });
 }

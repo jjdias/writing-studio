@@ -93,6 +93,8 @@ Checked by the existing state and contrast tests, plus state tests for what each
 
 ### 8. Merge and split scenes
 
+**Done.** The dashboard has **Split at the caret** and **Merge with next scene** (`state/restructure.rs`). The cut is counted as the page counts text (`Document::split_point`, `split_blocks`), and a tracked scene's baseline is cut to match (`split_baseline`), so each part keeps the changes in its own text. Merge joins the next scene in the book (`BinderTree::scene_after`) rather than a selection of several scenes, since the binder has no multiple selection; merging again joins the one after. The text changes through the editor session, so Ctrl+Z undoes it as any edit; a step kept beside it (`StructureStep`) puts back the trashed or new scene and the baseline when that same undo runs, and clears redo. Opening another scene forgets the step, as it forgets the text's undo.
+
 - Merge joins the selected scenes into the first, in binder order, and moves the rest to the trash, so nothing is lost until the trash is emptied. Notes, highlights, and tracked changes go with their text.
 - Split makes a new scene from the caret to the end of the open scene, placed right after it.
 - Each is one undo step, takes a snapshot of every scene it changes first, and says what it did in the status line.

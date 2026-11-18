@@ -117,6 +117,17 @@ impl EditorSession {
         }
     }
 
+    /// The text the next undo goes back to.
+    pub fn undo_target(&self) -> Option<&Document> {
+        self.undo.last()
+    }
+
+    /// Forget what redo would bring back, for an undo that also changed
+    /// things outside the text, which redo could not do again.
+    pub fn clear_redo(&mut self) {
+        self.redo.clear();
+    }
+
     fn push_undo(&mut self) {
         self.undo.push(self.document.clone());
         if self.undo.len() > MAX_UNDO {

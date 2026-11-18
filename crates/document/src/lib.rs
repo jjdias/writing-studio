@@ -7,6 +7,7 @@
 mod diff;
 mod html;
 mod model;
+mod split;
 mod track;
 
 pub use diff::{
@@ -17,6 +18,7 @@ pub use model::{
     NoteKind, ReviewItem, ReviewKind, ReviewTarget,
 };
 
+pub use split::{split_baseline, split_blocks, SplitPoint};
 pub use track::{accept_change, reject_change, tracked_changes, TrackedChange};
 
 pub const DOCUMENT_SCHEMA_VERSION: u32 = 1;

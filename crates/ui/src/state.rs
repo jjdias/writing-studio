@@ -32,6 +32,8 @@ use writing_studio_synchronization::git::{self, Revision, SyncReport, SyncStatus
 use writing_studio_storage::{scene_document, BackupInfo, ProjectStore, SetAside, SnapshotInfo};
 use writing_studio_worldbuilding::World;
 
+mod restructure;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WorkspaceMode {
     Writing,
@@ -327,6 +329,8 @@ pub struct StudioState {
     pub confirm_kept: Option<String>,
     pub show_resolved_notes: bool,
     pub tracking: Option<Tracking>,
+    /// What undo puts back besides the text after a merge or a split.
+    structure_step: Option<restructure::StructureStep>,
     /// The dictionary in use. `None` while spellcheck is off or before a project is open.
     pub speller: Option<Rc<Speller>>,
     /// The unknown word whose suggestions are on screen.
@@ -413,6 +417,7 @@ impl Default for StudioState {
             confirm_kept: None,
             show_resolved_notes: false,
             tracking: None,
+            structure_step: None,
             speller: None,
             spell_focus: None,
             show_project_words: false,
@@ -1032,6 +1037,8 @@ impl StudioState {
 
     pub fn select_node(&mut self, id: Id) {
         self.flush_editor();
+        // A new editor session has no undo for the last merge or split.
+        self.structure_step = None;
         if self.selected != Some(id) {
             self.close_comparison();
         }
@@ -2771,6 +2778,7 @@ impl StudioState {
     }
 
     pub fn undo(&mut self) {
+        let structure = self.undo_is_structure_step();
         if let Some(session) = &mut self.session {
             if session.undo() {
                 let html = session.html();
@@ -2780,6 +2788,9 @@ impl StudioState {
                 self.editor_epoch = self.editor_epoch.saturating_add(1);
                 self.note_edit();
                 self.note_session_for_search();
+                if structure {
+                    self.undo_structure_step();
+                }
             }
         }
     }

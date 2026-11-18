@@ -493,6 +493,37 @@ impl BinderTree {
         scenes
     }
 
+    /// The scene after `id` in reading order, in the same book, even when it
+    /// is in the next chapter. Merging joins it into `id`.
+    pub fn scene_after(&self, id: Id) -> Option<Id> {
+        let book = self.book_of(id)?;
+        let scenes: Vec<Id> = self
+            .scenes_under(book)
+            .into_iter()
+            .map(|(_, scene)| scene)
+            .filter(|scene| self.get(*scene).is_some_and(|node| node.kind == NodeKind::Scene))
+            .collect();
+        let at = scenes.iter().position(|scene| *scene == id)?;
+        scenes.get(at + 1).copied()
+    }
+
+    /// The item just before `id` under the same parent.
+    pub fn previous_sibling(&self, id: Id) -> Option<Id> {
+        let parent = self.get(id)?.parent_id;
+        let siblings: Vec<Id> = self.children(parent).into_iter().map(|node| node.id).collect();
+        let at = siblings.iter().position(|sibling| *sibling == id)?;
+        at.checked_sub(1).map(|before| siblings[before])
+    }
+
+    /// Put `id` under `parent` right after `after`, or first when `after` is
+    /// `None`. Out of the trash too, for undoing a merge.
+    pub fn put_after(&mut self, id: Id, parent: Id, after: Option<Id>) -> Result<()> {
+        match after {
+            Some(after) => self.place(id, Some(parent), Some(after)),
+            None => self.place_first(id, parent),
+        }
+    }
+
     fn collect_scenes(&self, parent: Id, scenes: &mut Vec<(Id, Id)>) {
         for child in self.children(Some(parent)) {
             if matches!(child.kind, NodeKind::Scene | NodeKind::Note) {
@@ -1517,5 +1548,38 @@ mod keyword_tests {
             text: String::new(),
         };
         assert_eq!(tree.scenes_matching(&filter), [a, b]);
+    }
+}
+
+#[cfg(test)]
+mod merge_tests {
+    use super::*;
+
+    #[test]
+    fn the_next_scene_is_found_across_chapters_and_put_back_after_the_trash() {
+        let draft = BinderNode::new(NodeKind::DraftRoot, "Manuscript", None, 0);
+        let trash = BinderNode::new(NodeKind::TrashRoot, "Trash", None, 1);
+        let book = BinderNode::new(NodeKind::Book, "Book", Some(draft.id), 0);
+        let one = BinderNode::new(NodeKind::Chapter, "One", Some(book.id), 0);
+        let two = BinderNode::new(NodeKind::Chapter, "Two", Some(book.id), 1);
+        let a = BinderNode::new(NodeKind::Scene, "A", Some(one.id), 0);
+        let b = BinderNode::new(NodeKind::Scene, "B", Some(one.id), 1);
+        let c = BinderNode::new(NodeKind::Scene, "C", Some(one.id), 2);
+        let d = BinderNode::new(NodeKind::Scene, "D", Some(two.id), 0);
+        let (one_id, a_id, b_id, c_id, d_id) = (one.id, a.id, b.id, c.id, d.id);
+        let mut tree = BinderTree::new(vec![draft, trash, book, one, two, a, b, c, d]);
+        assert_eq!(tree.scene_after(a_id), Some(b_id));
+        assert_eq!(tree.scene_after(c_id), Some(d_id), "the next chapter's first scene");
+        assert_eq!(tree.scene_after(d_id), None);
+        assert_eq!(tree.previous_sibling(b_id), Some(a_id));
+        assert_eq!(tree.previous_sibling(a_id), None);
+
+        tree.trash(b_id).unwrap();
+        assert_eq!(tree.scene_after(a_id), Some(c_id));
+        tree.put_after(b_id, one_id, Some(a_id)).unwrap();
+        let order: Vec<Id> = tree.children(Some(one_id)).iter().map(|node| node.id).collect();
+        assert_eq!(order, [a_id, b_id, c_id]);
+        assert!(!tree.is_in_trash(b_id));
+        assert!(tree.get(b_id).unwrap().deleted_at.is_none());
     }
 }

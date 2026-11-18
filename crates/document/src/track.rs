@@ -101,7 +101,7 @@ fn apply(
 
 /// The text a block is compared by. A scene break has no text of its own, so
 /// it gets a mark that keeps it apart from an empty paragraph.
-fn block_text(block: &Block) -> String {
+pub(crate) fn block_text(block: &Block) -> String {
     match block.kind {
         BlockKind::SceneBreak => "* * *".into(),
         _ => block.plain_text(),
