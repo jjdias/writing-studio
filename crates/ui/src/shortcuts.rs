@@ -24,6 +24,9 @@ pub enum AppShortcut {
     ToggleSidebar,
     ToggleInspector,
     ShowShortcuts,
+    QuickOpen,
+    SplitScene,
+    MergeScene,
 }
 
 /// One line of the shortcuts window: what it does and the chord for it.
@@ -72,7 +75,7 @@ impl Listed {
 /// Every app chord, in the order the shortcuts window lists them. A test
 /// checks each one against `app_shortcut`, so the window cannot list a
 /// chord that does nothing.
-pub const LISTED: [Listed; 22] = [
+pub const LISTED: [Listed; 25] = [
     Listed::ctrl("Save", "s"),
     Listed::ctrl_shift("Snapshot this document", "s"),
     Listed::ctrl("Undo", "z"),
@@ -91,6 +94,9 @@ pub const LISTED: [Listed; 22] = [
     Listed::ctrl("History", "8"),
     Listed::ctrl("New scene", "n"),
     Listed::ctrl_shift("New chapter", "n"),
+    Listed::ctrl("Go to a scene or chapter", "p"),
+    Listed::ctrl_shift("Split the scene at the caret", "k"),
+    Listed::ctrl_shift("Merge the scene with the next one", "m"),
     Listed::ctrl("Open a project", "o"),
     Listed::ctrl_alt("Show or hide the binder", "b"),
     Listed::ctrl_alt("Show or hide the inspector", "i"),
@@ -141,6 +147,9 @@ pub fn app_shortcut(key: &str, ctrl: bool, shift: bool, alt: bool) -> Option<App
         ("n", true) => AppShortcut::NewChapter,
         ("o", false) => AppShortcut::OpenProject,
         ("/", false) => AppShortcut::ShowShortcuts,
+        ("p", false) => AppShortcut::QuickOpen,
+        ("k", true) => AppShortcut::SplitScene,
+        ("m", true) => AppShortcut::MergeScene,
         _ => return None,
     })
 }
@@ -176,6 +185,9 @@ mod tests {
         assert_eq!(app_shortcut("n", true, true, false), Some(AppShortcut::NewChapter));
         assert_eq!(app_shortcut("o", true, false, false), Some(AppShortcut::OpenProject));
         assert_eq!(app_shortcut("s", true, true, false), Some(AppShortcut::Snapshot));
+        assert_eq!(app_shortcut("p", true, false, false), Some(AppShortcut::QuickOpen));
+        assert_eq!(app_shortcut("K", true, true, false), Some(AppShortcut::SplitScene));
+        assert_eq!(app_shortcut("M", true, true, false), Some(AppShortcut::MergeScene));
         assert_eq!(
             app_shortcut("escape", false, false, false),
             Some(AppShortcut::ClearOrExitFocus)

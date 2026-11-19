@@ -400,21 +400,25 @@ fn Keywords(id: Id) -> Element {
                 }
             }
         }
-        input {
-            class: "keyword-field",
-            list: "known-keywords",
-            placeholder: "Add a keyword",
-            aria_label: "Add a keyword",
-            value: "{draft}",
-            oninput: move |event| draft.set(event.value()),
-            onkeydown: move |event| {
-                if event.key() == Key::Enter {
-                    event.prevent_default();
-                    let word = draft();
-                    state.write().add_keyword(id, &word);
-                    draft.set(String::new());
-                }
+        // Enter submits the form. A key handler on the field would also get
+        // the event the page sends when a suggestion is picked, which is not
+        // a key press and which Dioxus cannot read.
+        form {
+            class: "keyword-form",
+            onsubmit: move |event| {
+                event.prevent_default();
+                let word = draft();
+                state.write().add_keyword(id, &word);
+                draft.set(String::new());
             },
+            input {
+                class: "keyword-field",
+                list: "known-keywords",
+                placeholder: "Add a keyword",
+                aria_label: "Add a keyword",
+                value: "{draft}",
+                oninput: move |event| draft.set(event.value()),
+            }
         }
         datalist { id: "known-keywords",
             for word in known {
@@ -428,7 +432,7 @@ fn Keywords(id: Id) -> Element {
 /// same read, so the split cuts exactly what is on the page. The place is
 /// counted in characters, as the document counts them, not in the page's
 /// UTF-16 units.
-fn split_at_caret(mut state: Signal<StudioState>) {
+pub(super) fn split_at_caret(mut state: Signal<StudioState>) {
     spawn(async move {
         let mut eval = document::eval(
             r#"

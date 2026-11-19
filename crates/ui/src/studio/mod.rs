@@ -24,7 +24,7 @@ use writing_studio_spellcheck::UnknownWord;
 
 use crate::shortcuts::{app_shortcut, AppShortcut, IN_THE_MANUSCRIPT, LISTED};
 use crate::state::{
-    Beat, BibleLink, CompiledFormat, Earlier, FoldedPanel, FrameMenu, ReviewTab, SceneCard, SceneGroup, StudioState, WorkspaceMode,
+    Beat, BibleLink, CompiledFormat, Earlier, FoldedPanel, FrameMenu, QuickMatch, ReviewTab, SceneCard, SceneGroup, StudioState, WorkspaceMode,
     WorldSection,
 };
 
@@ -191,6 +191,7 @@ fn Studio() -> Element {
             },
             if open { Workspace {} } else { Welcome {} }
             if show_shortcuts { ShortcutsDialog {} }
+            if open && state.read().quick_open { QuickOpenDialog {} }
         }
     }
 }
@@ -339,6 +340,7 @@ fn Workspace() -> Element {
         } else {
             StatusBar {}
         }
+        ItemMenuView {}
     }
 }
 
@@ -527,7 +529,7 @@ fn SettingsPanel() -> Element {
 /// a count that does not fit drops out whole, and the save state stays.
 #[component]
 fn StatusBar() -> Element {
-    let state = use_context::<Signal<StudioState>>();
+    let mut state = use_context::<Signal<StudioState>>();
     let status = state.read().status.clone();
     let mode = state.read().mode;
     let words = state.read().word_count();
@@ -555,6 +557,7 @@ fn StatusBar() -> Element {
         format!("Today {today_words}")
     };
     let save_text = if unsaved { format!("Unsaved · {status}") } else { status };
+    let undo_offered = state.read().undo_offered();
     rsx! {
         footer { class: "status",
             span { class: "status-book", title: "{book_text}", "{book_text}" }
@@ -566,6 +569,15 @@ fn StatusBar() -> Element {
                 span { "This sitting {session_words} · {session_time}" }
             }
             span { class: "status-save", title: "{save_text}", "{save_text}" }
+            if undo_offered {
+                button {
+                    class: "status-undo",
+                    title: "Undo what the status line says",
+                    onmousedown: move |event| event.prevent_default(),
+                    onclick: move |_| state.write().take_undo_offer(),
+                    "Undo"
+                }
+            }
         }
     }
 }

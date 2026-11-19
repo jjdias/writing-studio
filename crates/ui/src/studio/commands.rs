@@ -138,6 +138,24 @@ pub(super) fn apply_shortcut(
             }
             toggle_inspector_panel(state, chrome, fold);
         }
+        AppShortcut::QuickOpen => {
+            if !open {
+                return false;
+            }
+            state.write().toggle_quick_open();
+        }
+        AppShortcut::SplitScene => {
+            if !open || state.read().mode != WorkspaceMode::Writing {
+                return false;
+            }
+            split_at_caret(state);
+        }
+        AppShortcut::MergeScene => {
+            if !open || state.read().mode != WorkspaceMode::Writing {
+                return false;
+            }
+            state.write().merge_with_next();
+        }
     }
     true
 }
@@ -155,6 +173,10 @@ pub(super) fn clear_or_exit_focus(mut state: Signal<StudioState>) -> bool {
         return true;
     }
     if state.write().cancel_confirmation() {
+        return true;
+    }
+    if state.write().clear_picked() {
+        state.write().status = "Scenes let go.".into();
         return true;
     }
     if state.read().focus_mode {

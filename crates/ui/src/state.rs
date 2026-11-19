@@ -133,6 +133,33 @@ pub enum FrameMenu {
     Filter,
 }
 
+/// What the status line's Undo button can take back.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum UndoOffer {
+    /// The last merge or split, through Ctrl+Z.
+    Structure,
+    /// An item moved to the trash, put back where it was.
+    Trash { id: Id, parent: Id, after: Option<Id>, reopen: bool },
+}
+
+/// A book, part, chapter, folder, or scene the Go to box can open.
+#[derive(Clone, Debug, PartialEq)]
+pub struct QuickMatch {
+    pub id: Id,
+    pub kind: NodeKind,
+    pub title: String,
+    /// What it is in: "Book One › Chapter 2".
+    pub place: String,
+}
+
+/// Where a right-click opened the menu of a binder item, in window pixels.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ItemMenu {
+    pub id: Id,
+    pub x: f64,
+    pub y: f64,
+}
+
 /// A tab of the review panel under or beside the manuscript.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ReviewTab {
@@ -293,6 +320,8 @@ pub struct StudioState {
     /// The saved filter chosen in the library, whose matches the scene list
     /// shows in place of a container's scenes.
     pub filter_selection: Option<Id>,
+    /// The saved filter the filter form is changing, or `None` for a new one.
+    pub editing_filter: Option<Id>,
     /// The keyword the corkboard and the outliner are narrowed to.
     pub keyword_filter: Option<String>,
     pub confirm_character: Option<Id>,
@@ -308,8 +337,20 @@ pub struct StudioState {
     pub mode: WorkspaceMode,
     pub focus_mode: bool,
     pub open_menu: Option<FrameMenu>,
+    /// The menu a right-click opened on a library row or a scene card.
+    pub item_menu: Option<ItemMenu>,
+    /// The library row whose name is being edited.
+    pub renaming: Option<Id>,
     /// The window that lists every shortcut.
     pub show_shortcuts: bool,
+    /// The Go to box (Ctrl+P) is open.
+    pub quick_open: bool,
+    /// Scenes picked together with Ctrl or Shift in the scene list, for one
+    /// action on all of them.
+    pub picked: Vec<Id>,
+    /// What the Undo button in the status line undoes, with the message it
+    /// belongs to: it shows only while that message does.
+    undo_offer: Option<(UndoOffer, String)>,
     /// A folded panel shown over the page until it is closed.
     pub overlay: Option<FoldedPanel>,
     /// The review panel's chosen tab, whether it is folded to its tab row,
@@ -388,6 +429,7 @@ impl Default for StudioState {
             selected_plotline: None,
             library_selection: None,
             filter_selection: None,
+            editing_filter: None,
             keyword_filter: None,
             confirm_character: None,
             world: World::new(),
@@ -402,7 +444,12 @@ impl Default for StudioState {
             mode: WorkspaceMode::Writing,
             focus_mode: false,
             open_menu: None,
+            item_menu: None,
+            renaming: None,
             show_shortcuts: false,
+            quick_open: false,
+            picked: Vec::new(),
+            undo_offer: None,
             overlay: None,
             review_tab: None,
             review_folded: false,
@@ -2084,7 +2131,14 @@ impl StudioState {
                 let Some(container) = self.shown_container() else {
                     return Vec::new();
                 };
-                (Some(container), self.binder.scenes_under(container))
+                // The trash lists what was moved there, whatever it is: a
+                // trashed part is one card, with its scenes inside it.
+                if self.binder.trash_root().is_some_and(|trash| trash.id == container) {
+                    let items = self.binder.children(Some(container)).into_iter().map(|node| (container, node.id)).collect();
+                    (Some(container), items)
+                } else {
+                    (Some(container), self.binder.scenes_under(container))
+                }
             }
         };
         let index = self.manuscript_index.borrow();
@@ -2093,15 +2147,22 @@ impl StudioState {
             let Some(node) = self.binder.get(scene) else {
                 continue;
             };
+            let opening = if matches!(node.kind, NodeKind::Scene | NodeKind::Note) {
+                node.document_id.and_then(|document| index.opening(document)).unwrap_or_default().to_string()
+            } else {
+                let held = self.binder.scenes_under(scene).len();
+                let what = node.kind.icon_label();
+                match held {
+                    0 => format!("{what}, empty"),
+                    1 => format!("{what} with 1 scene"),
+                    many => format!("{what} with {many} scenes"),
+                }
+            };
             let card = SceneCard {
                 id: scene,
                 title: node.title.clone(),
-                opening: node
-                    .document_id
-                    .and_then(|document| index.opening(document))
-                    .unwrap_or_default()
-                    .to_string(),
-                status: node.status.clone(),
+                opening,
+                status: if node.kind == NodeKind::Scene { node.status.clone() } else { String::new() },
                 keywords: self.keyword_colors_of(node),
             };
             match groups.last_mut() {
@@ -2176,11 +2237,35 @@ impl StudioState {
             filter.name = if parts.is_empty() { "All scenes".into() } else { parts.join(", ") };
         }
         let id = filter.id;
-        self.binder.filters.push(filter);
+        let status = match self.binder.filters.iter_mut().find(|kept| kept.id == id) {
+            Some(kept) => {
+                *kept = filter;
+                "Filter changed."
+            }
+            None => {
+                self.binder.filters.push(filter);
+                "Filter saved."
+            }
+        };
+        self.editing_filter = None;
+        self.open_menu = None;
         if self.persist_binder() {
-            self.status = "Filter saved.".into();
+            self.status = status.into();
         }
         self.choose_filter(id);
+    }
+
+    /// Open the filter form on a saved filter, to change it.
+    pub fn edit_filter(&mut self, id: Id) {
+        self.editing_filter = Some(id);
+        self.open_menu = Some(FrameMenu::Filter);
+    }
+
+    /// Open the filter form for a new filter, or close it.
+    pub fn toggle_new_filter(&mut self) {
+        let open = self.open_menu == Some(FrameMenu::Filter) && self.editing_filter.is_none();
+        self.editing_filter = None;
+        self.open_menu = if open { None } else { Some(FrameMenu::Filter) };
     }
 
     pub fn remove_filter(&mut self, id: Id) {
@@ -2250,6 +2335,8 @@ impl StudioState {
     /// whether one was open.
     pub fn close_popup(&mut self) -> bool {
         std::mem::take(&mut self.show_shortcuts)
+            || std::mem::take(&mut self.quick_open)
+            || self.item_menu.take().is_some()
             || self.open_menu.take().is_some()
             || self.overlay.take().is_some()
     }
@@ -3831,10 +3918,11 @@ impl StudioState {
     pub fn trash_item(&mut self, id: Id) {
         self.flush_editor();
         let title = self.binder.get(id).map(|node| node.title.clone()).unwrap_or_default();
+        let parent = self.binder.get(id).and_then(|node| node.parent_id);
+        let after = self.binder.previous_sibling(id);
         match self.binder.trash(id) {
             Ok(()) => {
                 if self.persist_binder() {
-                    self.status = format!("Moved “{title}” to the trash. Restore it from Trash in the library.");
                     let selected_gone = self.selected.is_some_and(|selected| self.binder.is_in_trash(selected));
                     if selected_gone {
                         if let Some(trash) = self.binder.trash_root() {
@@ -3842,10 +3930,167 @@ impl StudioState {
                             self.select_node(trash_id);
                         }
                     }
+                    self.status = format!("Moved “{title}” to the trash. Restore it from Trash in the library.");
+                    if let Some(parent) = parent {
+                        self.offer_undo(UndoOffer::Trash { id, parent, after, reopen: selected_gone });
+                    }
                 }
             }
             Err(err) => self.status = err.to_string(),
         }
+    }
+
+    /// Show an Undo button beside the message just set in the status line.
+    pub(crate) fn offer_undo(&mut self, offer: UndoOffer) {
+        self.undo_offer = Some((offer, self.status.clone()));
+    }
+
+    /// Whether the status line shows an Undo button: only beside the message
+    /// it came with, and for a merge or split only while Ctrl+Z would undo it.
+    pub fn undo_offered(&self) -> bool {
+        match &self.undo_offer {
+            Some((UndoOffer::Structure, status)) => *status == self.status && self.undo_is_structure_step(),
+            Some((UndoOffer::Trash { .. }, status)) => *status == self.status,
+            None => false,
+        }
+    }
+
+    /// Undo what the status line's Undo button offers.
+    pub fn take_undo_offer(&mut self) {
+        if !self.undo_offered() {
+            return;
+        }
+        let Some((offer, _)) = self.undo_offer.take() else {
+            return;
+        };
+        match offer {
+            UndoOffer::Structure => self.undo(),
+            UndoOffer::Trash { id, parent, after, reopen } => {
+                let title = self.binder.get(id).map(|node| node.title.clone()).unwrap_or_default();
+                match self.binder.put_after(id, parent, after) {
+                    Ok(()) => {
+                        if self.persist_binder() {
+                            if reopen {
+                                self.select_node(id);
+                            }
+                            self.status = format!("Put “{title}” back.");
+                        }
+                    }
+                    Err(err) => self.status = err.to_string(),
+                }
+            }
+        }
+    }
+
+    /// Open the Go to box, or close it.
+    pub fn toggle_quick_open(&mut self) {
+        self.open_menu = None;
+        self.item_menu = None;
+        self.quick_open = !self.quick_open;
+    }
+
+    /// The manuscript's books, parts, chapters, folders, and scenes whose
+    /// name, or the names of what they are in, have every word typed. Those
+    /// whose own name starts with what was typed come first, then those whose
+    /// name has every word, then the rest, each in reading order.
+    pub fn quick_matches(&self, query: &str) -> Vec<QuickMatch> {
+        let Some(draft) = self.binder.draft_root() else {
+            return Vec::new();
+        };
+        let mut items = Vec::new();
+        self.collect_quick(draft.id, "", &mut items);
+        let query = query.trim().to_lowercase();
+        let words: Vec<&str> = query.split_whitespace().collect();
+        let mut scored: Vec<(u8, QuickMatch)> = items
+            .into_iter()
+            .filter_map(|item| {
+                let title = item.title.to_lowercase();
+                let both = format!("{title} {}", item.place.to_lowercase());
+                if !words.iter().all(|word| both.contains(word)) {
+                    return None;
+                }
+                let score = if title.starts_with(&query) {
+                    0
+                } else if words.iter().all(|word| title.contains(word)) {
+                    1
+                } else {
+                    2
+                };
+                Some((score, item))
+            })
+            .collect();
+        scored.sort_by_key(|(score, _)| *score);
+        scored.into_iter().map(|(_, item)| item).collect()
+    }
+
+    fn collect_quick(&self, parent: Id, place: &str, items: &mut Vec<QuickMatch>) {
+        for child in self.binder.children(Some(parent)) {
+            if !matches!(
+                child.kind,
+                NodeKind::Book | NodeKind::Part | NodeKind::Chapter | NodeKind::Folder | NodeKind::Scene
+            ) {
+                continue;
+            }
+            let title = if child.title.trim().is_empty() { "Untitled".to_string() } else { child.title.clone() };
+            items.push(QuickMatch { id: child.id, kind: child.kind, title: title.clone(), place: place.to_string() });
+            let inner = if place.is_empty() { title } else { format!("{place} › {title}") };
+            self.collect_quick(child.id, &inner, items);
+        }
+    }
+
+    /// Open what the Go to box found: a scene on the page, anything else in
+    /// the scene list.
+    pub fn go_to(&mut self, id: Id) {
+        self.quick_open = false;
+        match self.binder.get(id).map(|node| node.kind) {
+            Some(NodeKind::Scene) => {
+                self.select_node(id);
+                self.mode = WorkspaceMode::Writing;
+            }
+            Some(_) => self.choose_library(id),
+            None => {}
+        }
+    }
+
+    /// Open the menu of a binder item where it was right-clicked. The roots
+    /// have none.
+    pub fn open_item_menu(&mut self, id: Id, x: f64, y: f64) {
+        if self.binder.get(id).is_some_and(|node| !node.kind.is_root()) {
+            self.open_menu = None;
+            self.item_menu = Some(ItemMenu { id, x, y });
+        }
+    }
+
+    /// Edit the name of a library row in place. The roots keep theirs.
+    pub fn start_rename(&mut self, id: Id) {
+        self.item_menu = None;
+        if self.binder.get(id).is_some_and(|node| !node.kind.is_root()) {
+            self.renaming = Some(id);
+        }
+    }
+
+    /// Open a scene and join the next one onto it, from the scene's menu.
+    pub fn merge_item_with_next(&mut self, id: Id) {
+        self.item_menu = None;
+        if self.selected != Some(id) {
+            self.select_node(id);
+        }
+        self.mode = WorkspaceMode::Writing;
+        self.merge_with_next();
+    }
+
+    /// Give a scene a status from its menu.
+    pub fn set_item_status(&mut self, id: Id, status: String) {
+        self.item_menu = None;
+        self.update_node_status(id, status);
+        self.save_all();
+    }
+
+    /// Take an item out of the trash from its menu.
+    pub fn restore_item(&mut self, id: Id) {
+        self.item_menu = None;
+        self.select_node(id);
+        self.restore_selected();
     }
 
     /// Rename a binder item from the library. An empty name is refused, so
@@ -4487,7 +4732,19 @@ mod tests {
         state.keyword_filter = Some("Flashback".into());
         assert!(state.keyword_allows(tagged) && !state.keyword_allows(other));
 
+        // Changing a saved filter keeps its row and shows what it finds now.
         let filter = state.binder.filters[0].id;
+        state.edit_filter(filter);
+        assert_eq!(state.editing_filter, Some(filter));
+        let mut changed = state.binder.filters[0].clone();
+        changed.keyword = String::new();
+        changed.name = "Everything".into();
+        state.add_filter(changed);
+        assert_eq!(state.binder.filters.len(), 1);
+        assert_eq!(state.binder.filters[0].name, "Everything");
+        assert!(card(&state, other).is_some());
+        assert_eq!(state.editing_filter, None);
+
         state.remove_filter(filter);
         assert!(state.binder.filters.is_empty() && state.filter_selection.is_none());
         state.remove_keyword(tagged, "Flashback");

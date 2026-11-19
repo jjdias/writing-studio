@@ -426,6 +426,7 @@ button.danger:hover, button.danger.armed { background: var(--danger-fill); borde
 .binder-item.selected:hover { background: var(--selection); }
 .binder-item .kind-glyph { width: 14px; height: 14px; flex: 0 0 14px; align-self: center; color: var(--muted); }
 .binder-item.selected .kind-glyph { color: inherit; }
+.quick-item .kind-glyph { width: 16px; height: 16px; flex: 0 0 16px; color: var(--gold); }
 .binder-row { position: relative; }
 .row-menu {
   position: absolute;
@@ -919,6 +920,7 @@ del.diff-removed { background: var(--diff-del-bg); text-decoration: line-through
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.status-undo { flex: 0 0 auto; height: 18px; padding: 0 8px; font-size: 11px; line-height: 16px; margin-left: 6px; }
 
 /* The inspector: the item's fields first, then sections that fold, then
    the one action that takes the item away, set apart at the bottom. */
@@ -1198,6 +1200,8 @@ kbd {
 .scene-card-wrap:hover .item-delete, .scene-card-wrap:focus-within .item-delete { opacity: 1; }
 .item-delete:hover { background: var(--hover); color: var(--danger); }
 .item-delete:focus-visible { opacity: 1; }
+.item-edit { right: 30px; }
+.item-edit:hover { color: var(--ink); }
 .item-delete .glyph { width: 14px; height: 14px; }
 .library-item .library-row { padding-right: 30px; }
 .scene-card-title { padding-right: 24px; }
@@ -1341,6 +1345,7 @@ button.keyword-dot:hover { box-shadow: 0 0 0 2px var(--line); }
 .keyword-remove { padding: 0 4px; border: 0; background: transparent; color: var(--muted); font-size: 13px; line-height: 1; }
 .keyword-remove:hover { background: transparent; color: var(--danger); }
 .keyword-field { width: 100%; }
+.keyword-form { display: contents; }
 .card-keywords { display: inline-flex; gap: 4px; margin-left: 6px; vertical-align: middle; }
 .scene-card .status-pill + .card-keywords { margin-left: 6px; }
 .filter-save { margin-top: 12px; width: 100%; }
@@ -1350,3 +1355,25 @@ button.keyword-dot:hover { box-shadow: 0 0 0 2px var(--line); }
 .scene-group-title { overflow: visible; line-height: 1.4; }
 .scene-group-toggle { min-height: 24px; line-height: 1.4; padding: 3px 4px; }
 .scene-group-name { line-height: 1.4; padding: 1px 0; }
+
+/* The menu a right-click opens on a library row or a scene card. It sits at
+   the pointer, so it is fixed to the window rather than to a bar. */
+.item-menu { position: fixed; top: auto; min-width: 12rem; }
+.menu-item.checked::before { content: "✓"; position: absolute; left: 8px; }
+.item-menu .menu-item { position: relative; padding-left: 26px; }
+.menu-item.danger-item { color: var(--danger); }
+.menu-item:disabled { color: var(--muted); background: transparent; }
+
+/* The Go to box (Ctrl+P), near the top of the window like a search. */
+.dialog.quick-open { top: 12vh; transform: translateX(-50%); width: min(34rem, calc(100vw - 32px)); padding: 8px; }
+.quick-field { width: 100%; font-size: 15px; padding: 8px 10px; }
+.quick-results { list-style: none; margin: 6px 0 0; padding: 0; max-height: 50vh; overflow-y: auto; }
+.quick-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
+.quick-item.active { background: var(--hover); }
+.quick-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.quick-place { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 50%; }
+.quick-empty { padding: 8px; color: var(--muted); }
+
+/* Scenes picked together with Ctrl or Shift: a ring, so the open one still
+   shows as the open one. */
+.scene-card.picked { box-shadow: inset 0 0 0 2px var(--gold); }

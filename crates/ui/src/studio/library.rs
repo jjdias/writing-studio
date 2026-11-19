@@ -196,19 +196,19 @@ fn LibraryRow(
     }
     let indent = depth * 14;
     let fold_label = if collapsed { format!("Show what is in {name}") } else { format!("Fold {name}") };
-    let mut editing = use_signal(|| false);
+    let editing = state.read().renaming == Some(id);
     let can_change = !kind.is_root();
     let start_rename = move || {
         if can_change {
-            editing.set(true);
+            state.write().start_rename(id);
             select_field(format!("rename-{id}"));
         }
     };
-    if editing() {
+    if editing {
         return rsx! {
             div { class: "library-item", style: "padding-left: {indent}px",
                 span { class: "fold-spacer" }
-                RenameField { id, name: name.clone(), editing }
+                RenameField { id, name: name.clone() }
             }
         };
     }
@@ -234,6 +234,11 @@ fn LibraryRow(
             draggable: !kind.is_root(),
             title: if can_change { "Double-click or press F2 to rename" } else { "" },
             onclick: move |_| state.write().choose_library(id),
+            oncontextmenu: move |event: MouseEvent| {
+                event.prevent_default();
+                let point = event.client_coordinates();
+                state.write().open_item_menu(id, point.x, point.y);
+            },
             ondoubleclick: move |_| {
                 let mut start = start_rename;
                 start();
@@ -243,6 +248,9 @@ fn LibraryRow(
                     event.prevent_default();
                     let mut start = start_rename;
                     start();
+                } else if let Some(step) = arrow_step(&event) {
+                    event.prevent_default();
+                    step_focus(".library button.library-row", step);
                 }
             },
             ondragstart: move |event| {
@@ -302,14 +310,14 @@ fn DeleteButton(id: Id, name: String) -> Element {
 /// The name of a book, part, chapter, or folder, edited in its row. Enter
 /// or leaving the field keeps it; Escape leaves the name as it was.
 #[component]
-fn RenameField(id: Id, name: String, editing: Signal<bool>) -> Element {
+fn RenameField(id: Id, name: String) -> Element {
     let mut state = use_context::<Signal<StudioState>>();
     let mut draft = use_signal(|| name.clone());
     let mut finish = move |keep: bool| {
-        if !editing() {
+        if state.peek().renaming != Some(id) {
             return;
         }
-        editing.set(false);
+        state.write().renaming = None;
         if keep {
             state.write().rename_item(id, &draft());
         }
@@ -493,6 +501,9 @@ fn SceneCardView(card: SceneCard, active: bool) -> Element {
     if active {
         class.push_str(" active");
     }
+    if state.read().picked.contains(&id) {
+        class.push_str(" picked");
+    }
     if dragging {
         class.push_str(" dragging");
     }
@@ -511,10 +522,31 @@ fn SceneCardView(card: SceneCard, active: bool) -> Element {
             class: "{class}",
             aria_current: if active { "true" } else { "false" },
             draggable: true,
-            onclick: move |_| {
+            onkeydown: move |event: KeyboardEvent| {
+                if let Some(step) = arrow_step(&event) {
+                    event.prevent_default();
+                    step_focus(".scene-list button.scene-card", step);
+                }
+            },
+            onclick: move |event: MouseEvent| {
+                let keys = event.modifiers();
+                if keys.ctrl() || keys.meta() {
+                    state.write().toggle_pick(id);
+                    return;
+                }
+                if keys.shift() {
+                    state.write().pick_range(id);
+                    return;
+                }
                 let mut current = state.write();
+                current.clear_picked();
                 current.select_node(id);
                 current.mode = WorkspaceMode::Writing;
+            },
+            oncontextmenu: move |event: MouseEvent| {
+                event.prevent_default();
+                let point = event.client_coordinates();
+                state.write().open_item_menu(id, point.x, point.y);
             },
             ondragstart: move |event| {
                 event.stop_propagation();
@@ -659,6 +691,8 @@ fn FilterSection() -> Element {
     let filters = state.read().binder.filters.clone();
     let chosen = state.read().shown_filter().map(|filter| filter.id);
     let open = state.read().open_menu == Some(FrameMenu::Filter);
+    let editing = state.read().editing_filter.and_then(|id| filters.iter().find(|filter| filter.id == id).cloned());
+    let form_key = editing.as_ref().map(|filter| filter.id.to_string()).unwrap_or_else(|| "new".into());
     rsx! {
         div { class: "library-heading", "Filters" }
         for filter in filters {
@@ -673,6 +707,18 @@ fn FilterSection() -> Element {
                         path { d: "M2.5 3.5h11l-4.2 5v4l-2.6 1.2V8.5z", fill: "none", stroke: "currentColor", stroke_width: "1.2", stroke_linejoin: "round" }
                     }
                     span { class: "library-name", "{filter.name}" }
+                }
+                button {
+                    class: "item-delete item-edit",
+                    title: "Change the filter “{filter.name}”",
+                    aria_label: "Change the filter {filter.name}",
+                    onclick: move |event| {
+                        event.stop_propagation();
+                        state.write().edit_filter(filter.id);
+                    },
+                    svg { class: "glyph", view_box: "0 0 16 16", "aria-hidden": "true",
+                        path { d: "M3 13l1-3.5 6.5-6.5 2.5 2.5-6.5 6.5z", fill: "none", stroke: "currentColor", stroke_width: "1.2", stroke_linejoin: "round" }
+                    }
                 }
                 button {
                     class: "item-delete",
@@ -693,10 +739,12 @@ fn FilterSection() -> Element {
                 class: if open { "library-add-btn open" } else { "library-add-btn" },
                 aria_haspopup: "dialog",
                 aria_expanded: "{open}",
-                onclick: move |_| state.write().toggle_menu(FrameMenu::Filter),
+                onclick: move |_| state.write().toggle_new_filter(),
                 "+ Filter"
             }
-            if open { FilterForm {} }
+            if open {
+                FilterForm { key: "{form_key}", editing: editing.clone() }
+            }
         }
     }
 }
@@ -723,16 +771,25 @@ fn filter_summary(filter: &SavedFilter) -> String {
 /// A new filter: a name, and what scenes must have. Every field may be left
 /// empty; an empty one matches anything.
 #[component]
-fn FilterForm() -> Element {
+fn FilterForm(editing: Option<SavedFilter>) -> Element {
     let mut state = use_context::<Signal<StudioState>>();
     let known: Vec<String> = state.read().binder.keywords.iter().map(|keyword| keyword.name.clone()).collect();
-    let mut name = use_signal(String::new);
-    let mut keyword = use_signal(String::new);
-    let mut status = use_signal(String::new);
-
-    let mut text = use_signal(String::new);
+    let start = editing.clone().unwrap_or_else(|| SavedFilter {
+        id: Id::new(),
+        name: String::new(),
+        keyword: String::new(),
+        status: String::new(),
+        label: String::new(),
+        text: String::new(),
+    });
+    let id = start.id;
+    let mut name = use_signal(|| start.name.clone());
+    let mut keyword = use_signal(|| start.keyword.clone());
+    let mut status = use_signal(|| start.status.clone());
+    let mut text = use_signal(|| start.text.clone());
+    let title = if editing.is_some() { "Change filter" } else { "New filter" };
     rsx! {
-        div { class: "menu popover", role: "dialog", aria_label: "New filter",
+        div { class: "menu popover", role: "dialog", aria_label: "{title}",
             label { r#for: "filter-name", "Name" }
             input { id: "filter-name", placeholder: "Flashbacks to revise", value: "{name}", oninput: move |event| name.set(event.value()) }
             label { r#for: "filter-keyword", "Keyword" }
@@ -741,7 +798,7 @@ fn FilterForm() -> Element {
                 onchange: move |event| keyword.set(event.value()),
                 option { value: "", selected: keyword().is_empty(), "Any" }
                 for word in known {
-                    option { value: "{word}", selected: keyword() == word, "{word}" }
+                    option { value: "{word}", selected: keyword().eq_ignore_ascii_case(&word), "{word}" }
                 }
             }
             label { r#for: "filter-status", "Status" }
@@ -752,7 +809,7 @@ fn FilterForm() -> Element {
                 class: "primary filter-save",
                 onclick: move |_| {
                     let filter = SavedFilter {
-                        id: Id::new(),
+                        id,
                         name: name().trim().to_string(),
                         keyword: keyword(),
                         status: status().trim().to_string(),
@@ -765,4 +822,248 @@ fn FilterForm() -> Element {
             }
         }
     }
+}
+
+/// The menu a right-click opens on a library row or a scene card: what can
+/// be done to that item without going to the dashboard. Its buttons keep the
+/// focus off themselves, so Split still finds the caret in the page.
+#[component]
+pub(super) fn ItemMenuView() -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let Some(menu) = state.read().item_menu else {
+        return rsx! {};
+    };
+    let id = menu.id;
+    let Some(node) = state.read().binder.get(id).cloned() else {
+        return rsx! {};
+    };
+    let in_trash = state.read().binder.is_in_trash(id);
+    let many = state.read().picked_with(id).len();
+    let scene = node.kind == NodeKind::Scene;
+    let open_here = scene && state.read().selected == Some(id) && state.read().mode == WorkspaceMode::Writing;
+    let has_next = scene && state.read().binder.scene_after(id).is_some();
+    let current = status_name(&node.status);
+    let close = move |_| state.write().item_menu = None;
+    // The menu opens at the pointer and moves back inside the window when it
+    // would not fit there.
+    let style = format!(
+        "left: {x}px; top: {y}px; transform: translate(min(0px, calc(100vw - 100% - {x}px - 8px)), min(0px, calc(100vh - 100% - {y}px - 8px)));",
+        x = menu.x,
+        y = menu.y
+    );
+    rsx! {
+        div { class: "menu-backdrop", onclick: close, oncontextmenu: move |event: MouseEvent| {
+            event.prevent_default();
+            state.write().item_menu = None;
+        } }
+        div { class: "menu item-menu", role: "menu", aria_label: "{node.title}", style: "{style}",
+            onmousedown: move |event| event.prevent_default(),
+            if many > 1 {
+                div { class: "menu-label", "{many} scenes" }
+                for status in STATUSES {
+                    button {
+                        role: "menuitem",
+                        class: "menu-item",
+                        onclick: move |_| state.write().set_picked_status(status.to_string()),
+                        "Mark as {status}"
+                    }
+                }
+                div { class: "menu-rule" }
+                button { role: "menuitem", class: "menu-item", onclick: move |_| state.write().merge_picked(), "Merge {many} scenes" }
+                div { class: "menu-rule" }
+                button {
+                    role: "menuitem",
+                    class: "menu-item danger-item",
+                    onclick: move |_| state.write().trash_picked(),
+                    "Move {many} scenes to trash"
+                }
+            } else if in_trash {
+                button { role: "menuitem", class: "menu-item", onclick: move |_| state.write().restore_item(id), "Restore from trash" }
+            } else {
+                if scene {
+                    button {
+                        role: "menuitem",
+                        class: "menu-item",
+                        onclick: move |_| {
+                            let mut current = state.write();
+                            current.item_menu = None;
+                            current.select_node(id);
+                            current.mode = WorkspaceMode::Writing;
+                        },
+                        "Open"
+                    }
+                } else {
+                    button {
+                        role: "menuitem",
+                        class: "menu-item",
+                        onclick: move |_| {
+                            let mut current = state.write();
+                            current.item_menu = None;
+                            current.choose_library(id);
+                        },
+                        "Show its scenes"
+                    }
+                    button {
+                        role: "menuitem",
+                        class: "menu-item",
+                        onclick: move |_| {
+                            state.write().start_rename(id);
+                            select_field(format!("rename-{id}"));
+                        },
+                        "Rename"
+                    }
+                }
+                if scene {
+                    div { class: "menu-rule" }
+                    div { class: "menu-label", "Status" }
+                    for status in STATUSES {
+                        button {
+                            role: "menuitemradio",
+                            aria_checked: "{current == status}",
+                            class: if current == status { "menu-item checked" } else { "menu-item" },
+                            onclick: move |_| state.write().set_item_status(id, status.to_string()),
+                            "{status}"
+                        }
+                    }
+                    div { class: "menu-rule" }
+                    if open_here {
+                        button {
+                            role: "menuitem",
+                            class: "menu-item",
+                            onclick: move |_| {
+                                state.write().item_menu = None;
+                                split_at_caret(state);
+                            },
+                            "Split at the caret"
+                        }
+                    }
+                    button {
+                        role: "menuitem",
+                        class: "menu-item",
+                        disabled: !has_next,
+                        onclick: move |_| state.write().merge_item_with_next(id),
+                        "Merge with next scene"
+                    }
+                }
+                div { class: "menu-rule" }
+                button {
+                    role: "menuitem",
+                    class: "menu-item danger-item",
+                    onclick: move |_| {
+                        state.write().item_menu = None;
+                        state.write().trash_item(id);
+                    },
+                    "Move to trash"
+                }
+            }
+        }
+    }
+}
+
+/// The Go to box (Ctrl+P): type part of a name, then Enter or a click opens
+/// it. The arrow keys move through what was found; Escape closes the box.
+#[component]
+pub(super) fn QuickOpenDialog() -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let mut query = use_signal(String::new);
+    let mut chosen = use_signal(|| 0usize);
+    let found: Vec<QuickMatch> = state.read().quick_matches(&query()).into_iter().take(30).collect();
+    let at = chosen().min(found.len().saturating_sub(1));
+    let ids: Vec<Id> = found.iter().map(|item| item.id).collect();
+    rsx! {
+        div { class: "dialog-backdrop", onclick: move |_| state.write().quick_open = false }
+        div { class: "dialog quick-open", role: "dialog", aria_modal: "true", aria_label: "Go to",
+            input {
+                class: "quick-field",
+                placeholder: "Go to a scene or chapter",
+                aria_label: "Go to a scene or chapter",
+                role: "combobox",
+                aria_expanded: "true",
+                aria_controls: "quick-results",
+                value: "{query}",
+                onmounted: move |event| async move {
+                    let _ = event.set_focus(true).await;
+                },
+                oninput: move |event| {
+                    query.set(event.value());
+                    chosen.set(0);
+                },
+                onkeydown: move |event| match event.key() {
+                    Key::ArrowDown => {
+                        event.prevent_default();
+                        if at + 1 < ids.len() {
+                            chosen.set(at + 1);
+                        }
+                    }
+                    Key::ArrowUp => {
+                        event.prevent_default();
+                        chosen.set(at.saturating_sub(1));
+                    }
+                    Key::Enter => {
+                        event.prevent_default();
+                        if let Some(id) = ids.get(at) {
+                            state.write().go_to(*id);
+                        }
+                    }
+                    _ => {}
+                },
+            }
+            ul { id: "quick-results", class: "quick-results", role: "listbox",
+                if found.is_empty() {
+                    li { class: "quick-empty", "Nothing has that name." }
+                }
+                for (index, item) in found.into_iter().enumerate() {
+                    li {
+                        key: "{item.id}",
+                        role: "option",
+                        aria_selected: "{index == at}",
+                        class: if index == at { "quick-item active" } else { "quick-item" },
+                        onmouseenter: move |_| chosen.set(index),
+                        onclick: move |_| state.write().go_to(item.id),
+                        KindGlyph { kind: item.kind }
+                        span { class: "quick-title", "{item.title}" }
+                        if !item.place.is_empty() {
+                            span { class: "quick-place", "{item.place}" }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// How far the arrow keys move the focus in a list: one row for Up and Down,
+/// to the ends for Home and End.
+fn arrow_step(event: &KeyboardEvent) -> Option<i32> {
+    match event.key() {
+        Key::ArrowDown => Some(1),
+        Key::ArrowUp => Some(-1),
+        Key::Home => Some(i32::MIN),
+        Key::End => Some(i32::MAX),
+        _ => None,
+    }
+}
+
+/// Move the focus `step` rows through the buttons `selector` finds, from the
+/// one that has it, and bring that row into view. Enter or Space on a row
+/// then opens it, as a click does.
+fn step_focus(selector: &'static str, step: i32) {
+    spawn(async move {
+        let script = format!(
+            r#"
+            const rows = [...document.querySelectorAll({selector})];
+            const at = rows.indexOf(document.activeElement);
+            if (at >= 0 && rows.length) {{
+                const step = {step};
+                const next = step <= -1000000 ? 0 : step >= 1000000 ? rows.length - 1 : Math.min(rows.length - 1, Math.max(0, at + step));
+                rows[next].focus();
+                rows[next].scrollIntoView({{ block: 'nearest' }});
+            }}
+            dioxus.send(true);
+            "#,
+            selector = serde_json::to_string(selector).unwrap_or_else(|_| "\"\"".into()),
+        );
+        let mut eval = document::eval(&script);
+        let _ = eval.recv::<bool>().await;
+    });
 }

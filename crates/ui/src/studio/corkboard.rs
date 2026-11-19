@@ -119,6 +119,11 @@ pub(super) fn CorkCardView(card: writing_studio_corkboard::CorkCard) -> Element 
                 state.write().select_node(id);
                 state.write().mode = WorkspaceMode::Writing;
             },
+            oncontextmenu: move |event: MouseEvent| {
+                event.prevent_default();
+                let point = event.client_coordinates();
+                state.write().open_item_menu(id, point.x, point.y);
+            },
             ondragstart: move |event| {
                 event.stop_propagation();
                 state.write().begin_drag(id);

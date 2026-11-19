@@ -53,7 +53,7 @@ fn ratio(one: &str, other: &str) -> f64 {
 }
 
 /// Text needs 4.5:1. A control's edge and the focus ring need 3:1.
-const TEXT: [(&str, &str); 24] = [
+const TEXT: [(&str, &str); 26] = [
     ("text", "library"),
     ("muted", "library"),
     ("row-active-fg", "row-active"),
@@ -78,14 +78,19 @@ const TEXT: [(&str, &str); 24] = [
     ("selection-fg", "selection"),
     ("on-fill", "primary"),
     ("on-fill", "danger-fill"),
+    // Menu rows and the Go to box's chosen row.
+    ("text", "hover"),
+    ("muted", "hover"),
 ];
 
-const EDGES: [(&str, &str); 5] = [
+const EDGES: [(&str, &str); 6] = [
     ("control-border", "panel"),
     ("control-border", "panel-2"),
     ("input-border", "panel"),
     ("input-border", "panel-2"),
     ("gold", "panel"),
+    // The ring on scenes picked together in the scene list.
+    ("gold", "library"),
 ];
 
 #[test]
