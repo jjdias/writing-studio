@@ -1,6 +1,6 @@
 # Phase 9 — Writing comfort, from Ulysses
 
-In progress: stages 1 to 7 are done.
+Done.
 
 Phase 8 rebuilt the window around writing. This phase takes what the Ulysses writing app does well for the writer at the page, and fits it to how Writing Studio works: rich text on a page, a binder of books, chapters, and scenes, and everything on the writer's computer. It does not wait for Phase 6 or 7.
 
