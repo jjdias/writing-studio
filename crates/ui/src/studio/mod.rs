@@ -24,7 +24,7 @@ use writing_studio_spellcheck::UnknownWord;
 
 use crate::shortcuts::{app_shortcut, AppShortcut, IN_THE_MANUSCRIPT, LISTED};
 use crate::state::{
-    Beat, BibleLink, CompiledFormat, Earlier, FoldedPanel, FrameMenu, QuickMatch, ReviewTab, SceneCard, SceneGroup, StudioState, WorkspaceMode,
+    Beat, BibleLink, Earlier, FoldedPanel, FrameMenu, QuickMatch, ReviewTab, SceneCard, SceneGroup, StudioState, WorkspaceMode,
     WorldSection,
 };
 
@@ -43,6 +43,7 @@ mod plot;
 mod corkboard;
 mod outliner;
 mod library;
+mod compile;
 
 use layout::*;
 use binder::*;
@@ -59,6 +60,7 @@ use plot::*;
 use corkboard::*;
 use outliner::*;
 use library::*;
+use compile::*;
 
 const STYLES: &str = include_str!("../../assets/style.css");
 const REVIEW_JS: &str = include_str!("../../assets/review.js");
@@ -192,6 +194,7 @@ fn Studio() -> Element {
             if open { Workspace {} } else { Welcome {} }
             if show_shortcuts { ShortcutsDialog {} }
             if open && state.read().quick_open { QuickOpenDialog {} }
+            if open && state.read().compile_open { CompileDialog {} }
         }
     }
 }
@@ -432,24 +435,16 @@ fn ProjectMenu() -> Element {
                 "Import Markdown files…"
             }
             div { class: "menu-rule" }
-            div { class: "menu-label", "Export {book_title}" }
             button {
                 class: "menu-item",
                 role: "menuitem",
+                title: "Compile {book_title} with a profile",
                 onclick: move |_| {
-                    state.write().open_menu = None;
-                    export_project(state, CompiledFormat::Markdown);
+                    let mut current = state.write();
+                    current.open_menu = None;
+                    current.compile_open = true;
                 },
-                "Markdown…"
-            }
-            button {
-                class: "menu-item",
-                role: "menuitem",
-                onclick: move |_| {
-                    state.write().open_menu = None;
-                    export_project(state, CompiledFormat::Docx);
-                },
-                "DOCX…"
+                "Compile…"
             }
             div { class: "menu-label", "Export the whole project" }
             button {

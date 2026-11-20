@@ -6275,6 +6275,7 @@ dependencies = [
  "writing-studio-format",
  "writing-studio-project",
  "writing-studio-templates",
+ "zip",
 ]
 
 [[package]]

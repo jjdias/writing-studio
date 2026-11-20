@@ -39,7 +39,7 @@ pub const FILES_FORMAT_VERSION: u32 = 2;
 const SHARED_SETTINGS: [&str; 5] = [
     "daily_word_goal",
     "project_word_goal",
-    "compile_title_page",
+    "compile_profiles",
     "book_word_goals",
     "spelling",
 ];

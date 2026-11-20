@@ -1,6 +1,6 @@
 use writing_studio_core::Id;
 use writing_studio_document::Document;
-use writing_studio_project::{BinderTree, NodeKind};
+use writing_studio_project::{BinderTree, NodeKind, PageSetup};
 
 pub struct CompileInput<'a> {
     pub title: &'a str,
@@ -9,12 +9,18 @@ pub struct CompileInput<'a> {
     pub book_id: Option<Id>,
     pub tree: &'a BinderTree,
     pub documents: &'a [Document],
+    /// The page, for the formats that have pages.
+    pub page: &'a PageSetup,
 }
 
 pub struct CompiledSection<'a> {
     pub heading_level: u8,
     pub title: String,
     pub document: Option<&'a Document>,
+    /// What the section is in the binder. `None` for the title page.
+    pub kind: Option<NodeKind>,
+    /// The first section after the title page.
+    pub after_title_page: bool,
 }
 
 pub fn collect_sections<'a>(input: &'a CompileInput<'a>) -> Vec<CompiledSection<'a>> {
@@ -24,6 +30,8 @@ pub fn collect_sections<'a>(input: &'a CompileInput<'a>) -> Vec<CompiledSection<
             heading_level: 1,
             title: input.title.to_string(),
             document: None,
+            kind: None,
+            after_title_page: false,
         });
     }
     let start_depth = if input.include_title_page { 2 } else { 1 };
@@ -40,10 +48,13 @@ pub fn collect_sections<'a>(input: &'a CompileInput<'a>) -> Vec<CompiledSection<
             }
         }
         walk(input, book.id, start_depth, &mut sections);
-        return sections;
-    }
-    if let Some(draft) = input.tree.draft_root() {
+    } else if let Some(draft) = input.tree.draft_root() {
         walk(input, draft.id, start_depth, &mut sections);
+    }
+    if input.include_title_page {
+        if let Some(next) = sections.get_mut(1) {
+            next.after_title_page = true;
+        }
     }
     sections
 }
@@ -69,6 +80,8 @@ fn walk<'a>(
             heading_level: depth.clamp(1, 6),
             title: node.title.clone(),
             document,
+            kind: Some(node.kind),
+            after_title_page: false,
         });
         walk(input, node.id, depth.saturating_add(1).min(6), sections);
     }

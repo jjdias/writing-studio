@@ -4,12 +4,17 @@
 //! are referenced by id and stored separately.
 
 mod binder;
+mod compile;
 mod settings;
 mod writing;
 
 pub use binder::{
     binder_color_hex, normalize_binder_color, BinderColor, BinderNode, BinderTree, DropPlace, Keyword, NodeKind,
     SavedFilter, BINDER_COLORS,
+};
+pub use compile::{
+    built_in_profile, built_in_profiles, BookProfile, CompileFormat, CompileProfile, LineSpacing, PageSetup, PageSize,
+    FONT_SIZE_RANGE, MARGIN_RANGE, PROFILE_LIMIT,
 };
 pub use settings::{
     drag_width, pace, BookWordGoal, Fade, FixedScroll, KeepPlace, PageStyle, PanelChrome, PanelLayout, PanelWidths, ProjectSettings, ProseFont, SidebarSide,

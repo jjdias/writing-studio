@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use writing_studio_core::Id;
 
+use crate::compile::{built_in_profile, built_in_profiles, BookProfile, CompileProfile, PROFILE_LIMIT};
 use crate::WritingLog;
 
 pub const SIDEBAR_WIDTH_DEFAULT: u32 = 260;
@@ -427,8 +428,13 @@ pub fn drag_width(origin: u32, delta_px: i32, positive: bool, min: u32, max: u32
 pub struct ProjectSettings {
     pub daily_word_goal: u32,
     pub project_word_goal: u32,
-    pub compile_title_page: bool,
     pub autosave_seconds: u32,
+    /// The project's own compile profiles. Empty means the built-in ones.
+    #[serde(default)]
+    pub compile_profiles: Vec<CompileProfile>,
+    /// The profile chosen last for each book, on this computer.
+    #[serde(default)]
+    pub compile_choices: Vec<BookProfile>,
     /// Daily baseline and completed writing sessions. Missing on older projects.
     #[serde(default)]
     pub writing: WritingLog,
@@ -504,8 +510,9 @@ impl Default for ProjectSettings {
         Self {
             daily_word_goal: 500,
             project_word_goal: 80_000,
-            compile_title_page: true,
             autosave_seconds: 2,
+            compile_profiles: Vec::new(),
+            compile_choices: Vec::new(),
             writing: WritingLog::default(),
             layout: PanelLayout::default(),
             theme: Theme::Light,
@@ -585,11 +592,143 @@ impl ProjectSettings {
         }
         changed
     }
+
+    /// The compile profiles, each with its values in range: the project's
+    /// own, or the built-in ones when it has none.
+    pub fn profiles(&self) -> Vec<CompileProfile> {
+        if self.compile_profiles.is_empty() {
+            return built_in_profiles();
+        }
+        let mut seen = Vec::new();
+        self.compile_profiles
+            .iter()
+            .filter(|profile| {
+                let first = !seen.contains(&profile.id);
+                seen.push(profile.id);
+                first
+            })
+            .take(PROFILE_LIMIT)
+            .cloned()
+            .map(CompileProfile::normalized)
+            .collect()
+    }
+
+    pub fn profile(&self, id: Id) -> Option<CompileProfile> {
+        self.profiles().into_iter().find(|profile| profile.id == id)
+    }
+
+    /// Keep a changed profile, or add a new one at the end.
+    pub fn save_profile(&mut self, profile: CompileProfile) {
+        let mut profiles = self.profiles();
+        let profile = profile.normalized();
+        match profiles.iter().position(|kept| kept.id == profile.id) {
+            Some(at) => profiles[at] = profile,
+            None if profiles.len() < PROFILE_LIMIT => profiles.push(profile),
+            None => return,
+        }
+        self.compile_profiles = profiles;
+    }
+
+    /// A copy of a profile under a new id, right after it. Returns its id.
+    pub fn copy_profile(&mut self, id: Id) -> Option<Id> {
+        let mut profiles = self.profiles();
+        if profiles.len() >= PROFILE_LIMIT {
+            return None;
+        }
+        let at = profiles.iter().position(|profile| profile.id == id)?;
+        let mut copy = profiles[at].clone();
+        copy.id = Id::new();
+        copy.name = format!("{} copy", copy.name);
+        let copy = copy.normalized();
+        let new_id = copy.id;
+        profiles.insert(at + 1, copy);
+        self.compile_profiles = profiles;
+        Some(new_id)
+    }
+
+    /// Remove a profile. Removing the last one brings back the built-in ones.
+    pub fn remove_profile(&mut self, id: Id) {
+        let mut profiles = self.profiles();
+        profiles.retain(|profile| profile.id != id);
+        self.compile_profiles = profiles;
+        self.compile_choices.retain(|choice| choice.profile_id != id);
+    }
+
+    /// Put a built-in profile back as it ships, where it is, or at the end
+    /// when it was removed.
+    pub fn restore_profile(&mut self, id: Id) {
+        let Some(original) = built_in_profile(id) else {
+            return;
+        };
+        self.save_profile(original);
+    }
+
+    /// The profile last used for `book_id` here, or the first one.
+    pub fn profile_for_book(&self, book_id: Id) -> Option<CompileProfile> {
+        let profiles = self.profiles();
+        let chosen = self
+            .compile_choices
+            .iter()
+            .find(|choice| choice.book_id == book_id)
+            .and_then(|choice| profiles.iter().find(|profile| profile.id == choice.profile_id));
+        chosen.or(profiles.first()).cloned()
+    }
+
+    pub fn choose_profile_for_book(&mut self, book_id: Id, profile_id: Id) {
+        match self.compile_choices.iter_mut().find(|choice| choice.book_id == book_id) {
+            Some(choice) => choice.profile_id = profile_id,
+            None => self.compile_choices.push(BookProfile { book_id, profile_id }),
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn profiles_start_built_in_and_can_be_copied_changed_removed_and_put_back() {
+        let mut settings = ProjectSettings::default();
+        let built_in = built_in_profiles();
+        assert_eq!(settings.profiles(), built_in);
+        let manuscript = built_in[0].id;
+
+        let copy = settings.copy_profile(manuscript).unwrap();
+        let profiles = settings.profiles();
+        assert_eq!(profiles.len(), built_in.len() + 1);
+        assert_eq!(profiles[1].id, copy, "the copy follows what it was copied from");
+        assert_eq!(profiles[1].name, "Manuscript copy");
+
+        let mut changed = settings.profile(manuscript).unwrap();
+        changed.name = "Agent submission".into();
+        changed.page.font_size = 99;
+        settings.save_profile(changed);
+        assert_eq!(settings.profile(manuscript).unwrap().name, "Agent submission");
+        assert_eq!(settings.profile(manuscript).unwrap().page.font_size, crate::FONT_SIZE_RANGE.1);
+
+        let book = Id::new();
+        settings.choose_profile_for_book(book, copy);
+        assert_eq!(settings.profile_for_book(book).unwrap().id, copy);
+        settings.remove_profile(copy);
+        assert_eq!(settings.profile_for_book(book).unwrap().id, manuscript, "back to the first");
+
+        settings.restore_profile(manuscript);
+        assert_eq!(settings.profile(manuscript).unwrap(), built_in[0]);
+        settings.remove_profile(manuscript);
+        settings.restore_profile(manuscript);
+        assert_eq!(settings.profiles().last().unwrap().id, manuscript, "a removed one comes back at the end");
+
+        for profile in settings.profiles() {
+            settings.remove_profile(profile.id);
+        }
+        assert_eq!(settings.profiles(), built_in, "with none left, the built-in ones are back");
+
+        // Profiles are shared: they round-trip through the project file.
+        settings.copy_profile(manuscript);
+        let json = serde_json::to_string(&settings).unwrap();
+        let read: ProjectSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(read.profiles(), settings.profiles());
+    }
 
     #[test]
     fn older_settings_keep_the_default_layout() {

@@ -378,7 +378,7 @@ mod tests {
         let settings: ProjectSettings = serde_json::from_str(json).unwrap();
         assert_eq!(settings.daily_word_goal, 250);
         assert_eq!(settings.project_word_goal, 1000);
-        assert!(!settings.compile_title_page);
+        assert!(settings.compile_profiles.is_empty(), "an older project has the built-in profiles");
         assert!(settings.writing.day.is_empty());
         assert!(settings.writing.sessions.is_empty());
     }

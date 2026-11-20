@@ -15,7 +15,6 @@ use writing_studio_diagnostics::{
 };
 use writing_studio_core::{autosave_due, autosave_wait, local_day, Id, Timestamp, PRODUCT_NAME};
 use writing_studio_editor::EditorSession;
-use writing_studio_export::{compile_docx, compile_markdown, CompileInput};
 use writing_studio_manuscript::{book_outline_words, outline_rows};
 use writing_studio_plotting::PlotGrid;
 use writing_studio_research::ResearchLibrary;
@@ -32,6 +31,7 @@ use writing_studio_synchronization::git::{self, Revision, SyncReport, SyncStatus
 use writing_studio_storage::{scene_document, BackupInfo, ProjectStore, SetAside, SnapshotInfo};
 use writing_studio_worldbuilding::World;
 
+mod compile;
 mod restructure;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -345,6 +345,8 @@ pub struct StudioState {
     pub show_shortcuts: bool,
     /// The Go to box (Ctrl+P) is open.
     pub quick_open: bool,
+    /// The Compile dialog is open.
+    pub compile_open: bool,
     /// Scenes picked together with Ctrl or Shift in the scene list, for one
     /// action on all of them.
     pub picked: Vec<Id>,
@@ -448,6 +450,7 @@ impl Default for StudioState {
             renaming: None,
             show_shortcuts: false,
             quick_open: false,
+            compile_open: false,
             picked: Vec::new(),
             undo_offer: None,
             overlay: None,
@@ -2336,6 +2339,7 @@ impl StudioState {
     pub fn close_popup(&mut self) -> bool {
         std::mem::take(&mut self.show_shortcuts)
             || std::mem::take(&mut self.quick_open)
+            || std::mem::take(&mut self.compile_open)
             || self.item_menu.take().is_some()
             || self.open_menu.take().is_some()
             || self.overlay.take().is_some()
@@ -2449,65 +2453,6 @@ impl StudioState {
                 Ok(path) => self.status = format!("Backup written to {}", path.display()),
                 Err(err) => self.status = format!("Backup failed: {err}"),
             }
-        }
-    }
-
-    pub fn prepare_export(&mut self, format: CompiledFormat) -> Option<ExportFile> {
-        self.save_all();
-        let Some(store) = self.store.clone() else {
-            self.status = "Open a project to compile.".into();
-            return None;
-        };
-        let documents = match store.borrow().load_all_documents() {
-            Ok(documents) => documents,
-            Err(err) => {
-                self.status = format!("Could not load manuscript for compile: {err}");
-                return None;
-            }
-        };
-        let Some(book_id) = self.compile_book_id() else {
-            self.status = "Add a book before compiling.".into();
-            return None;
-        };
-        let title = self
-            .binder
-            .get(book_id)
-            .map(|node| node.title.clone())
-            .unwrap_or_else(|| self.project_title());
-        let include_title_page = self
-            .meta
-            .as_ref()
-            .map(|meta| meta.settings.compile_title_page)
-            .unwrap_or(true);
-        let input = CompileInput {
-            title: &title,
-            include_title_page,
-            book_id: Some(book_id),
-            tree: &self.binder,
-            documents: &documents,
-        };
-        let file_stem = sanitize(&title);
-        match format {
-            CompiledFormat::Markdown => Some(ExportFile {
-                bytes: compile_markdown(&input).into_bytes(),
-                file_name: format!("{file_stem}.md"),
-                filter_name: "Markdown",
-                extension: "md",
-                kind_label: "Markdown",
-            }),
-            CompiledFormat::Docx => match compile_docx(&input) {
-                Ok(bytes) => Some(ExportFile {
-                    bytes,
-                    file_name: format!("{file_stem}.docx"),
-                    filter_name: "Word",
-                    extension: "docx",
-                    kind_label: "DOCX",
-                }),
-                Err(err) => {
-                    self.status = format!("Could not compile DOCX: {err}");
-                    None
-                }
-            },
         }
     }
 
@@ -4331,11 +4276,6 @@ impl StudioState {
         self.binder_dirty = true;
         self.note_edit();
     }
-}
-
-pub enum CompiledFormat {
-    Markdown,
-    Docx,
 }
 
 pub struct ExportFile {

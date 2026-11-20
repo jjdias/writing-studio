@@ -24,8 +24,10 @@ pub(super) fn open_project(
     publish_layout(state, chrome, widths);
 }
 
-pub(super) fn export_project(mut state: Signal<StudioState>, format: CompiledFormat) {
-    let Some(export) = state.write().prepare_export(format) else {
+/// Compile the current book with its profile and write the file where the
+/// writer chooses.
+pub(super) fn export_project(mut state: Signal<StudioState>) {
+    let Some(export) = state.write().prepare_compile() else {
         return;
     };
     let Some(path) = pick_save_file(export.filter_name, export.extension, export.file_name.clone()) else {

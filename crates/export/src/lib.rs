@@ -9,7 +9,7 @@ pub use docx::compile_docx;
 pub use markdown::compile_markdown;
 
 use writing_studio_document::Document;
-use writing_studio_project::BinderTree;
+use writing_studio_project::{BinderTree, PageSetup};
 
 pub fn manuscript_plain_text(tree: &BinderTree, docs: &[Document]) -> String {
     compile_markdown(&CompileInput {
@@ -18,6 +18,7 @@ pub fn manuscript_plain_text(tree: &BinderTree, docs: &[Document]) -> String {
         book_id: None,
         tree,
         documents: docs,
+        page: &PageSetup::default(),
     })
 }
 
@@ -61,6 +62,7 @@ mod tests {
             book_id: None,
             tree: &tree,
             documents: &docs,
+            page: &PageSetup::default(),
         });
         assert!(markdown.contains("# Test Novel"));
         assert!(markdown.contains("**Hello**"));
@@ -106,6 +108,7 @@ mod tests {
             book_id: None,
             tree: &tree,
             documents: &documents,
+            page: &PageSetup::default(),
         });
         assert!(markdown.starts_with("# Notes \\*Novel\\*\n"), "{markdown}");
         assert!(markdown.contains("### \\# Second\n"), "{markdown}");
@@ -124,10 +127,47 @@ mod tests {
             book_id: None,
             tree: &tree,
             documents: &seeded.documents,
+            page: &PageSetup::default(),
         })
         .unwrap();
         assert!(bytes.starts_with(b"PK"));
         assert!(bytes.len() > 100);
+    }
+
+    #[test]
+    fn docx_takes_the_page_from_the_profile() {
+        use std::io::Read;
+        use writing_studio_project::{LineSpacing, PageSize};
+        let seeded = blank_novel("Paged Novel");
+        let tree = BinderTree::new(seeded.nodes);
+        let page = PageSetup {
+            font: "Garamond".into(),
+            font_size: 11,
+            line_spacing: LineSpacing::Double,
+            size: PageSize::A4,
+            margin: 12,
+            indent: true,
+            chapter_new_page: true,
+        };
+        let bytes = compile_docx(&CompileInput {
+            title: "Paged Novel",
+            include_title_page: true,
+            book_id: None,
+            tree: &tree,
+            documents: &seeded.documents,
+            page: &page,
+        })
+        .unwrap();
+        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        let mut xml = String::new();
+        archive.by_name("word/document.xml").unwrap().read_to_string(&mut xml).unwrap();
+        assert!(xml.contains(r#"w:w="11906""#) && xml.contains(r#"w:h="16838""#), "A4");
+        assert!(xml.contains(r#"w:top="1728""#), "1.2 inch margins");
+        assert!(xml.contains(r#"w:line="480""#), "double spaced");
+        assert!(xml.contains(r#"w:firstLine="720""#), "indented paragraphs");
+        assert!(xml.contains("Garamond"));
+        assert!(xml.contains("<w:sz w:val=\"22\""), "11 point text");
+        assert!(xml.contains("w:pageBreakBefore"), "the text after the title page starts a page");
     }
 
     #[test]
@@ -166,6 +206,7 @@ mod tests {
             book_id: Some(first_id),
             tree: &tree,
             documents: &[tide, ridge],
+            page: &PageSetup::default(),
         });
         assert!(markdown.contains("# Harbor"));
         assert!(markdown.contains("Salt on the pier."));
