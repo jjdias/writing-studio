@@ -102,6 +102,11 @@ fn head_fingerprint(node: &BinderNode, beats: &SceneBeats) -> u64 {
 /// of HTML files.
 const KEPT_FOLDERS: [&str; 8] = ["", "manuscript", "characters", "places", "cultures", "lore", "timeline", "research"];
 
+/// Whether `path` is a project folder, of this format or an earlier one.
+fn is_project(path: &Path) -> bool {
+    ["project.json", PROJECT_FORMAT_FILE, PROJECT_DB_FILE].iter().any(|marker| path.join(marker).is_file())
+}
+
 fn format_version(root: &Path) -> Result<u32> {
     let path = root.join(PROJECT_FORMAT_FILE);
     // The first projects had no marker.
@@ -148,6 +153,28 @@ impl ProjectStore {
     /// Where this machine keeps its backups of the project.
     pub(crate) fn backups_dir(&self) -> PathBuf {
         self.root.join(LOCAL_DIR).join("backups")
+    }
+
+    /// Where a new project goes when the writer chooses `folder`: `folder`
+    /// itself when it is an empty `.writingstudio` folder, which the writer
+    /// made for it, or else a new `folder_name` folder inside it. A folder
+    /// that is a project, or is inside one, is refused, so a project never
+    /// ends up inside another.
+    pub fn new_project_root(folder: &Path, folder_name: &str) -> Result<PathBuf> {
+        if let Some(project) = folder.ancestors().find(|path| is_project(path)) {
+            let name = project.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+            return Err(Error::message(format!(
+                "that folder is the project “{name}” or inside it; choose a folder outside any project"
+            )));
+        }
+        let named_for_a_project = folder.extension().is_some_and(|extension| extension == "writingstudio");
+        // The folder picker can return a folder that is gone, such as one
+        // deleted while the picker still listed it. Treat it as empty.
+        let empty = !folder.exists() || fs::read_dir(folder).is_ok_and(|mut entries| entries.next().is_none());
+        if named_for_a_project && empty {
+            return Ok(folder.to_path_buf());
+        }
+        Ok(folder.join(folder_name))
     }
 
     pub fn create(root: impl AsRef<Path>, title: &str) -> Result<Self> {
@@ -762,6 +789,33 @@ mod tests {
         assert!(fs::read_to_string(file_of(&store, scene.id)).unwrap().contains("Start writing this scene."));
         assert!(ProjectStore::create(&dir, "Again").is_err());
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_new_project_never_goes_inside_another_and_uses_an_empty_folder_made_for_it() {
+        let parent = temp("new-root");
+        fs::create_dir_all(&parent).unwrap();
+        // A plain folder gets a project folder inside it.
+        assert_eq!(ProjectStore::new_project_root(&parent, "Tide.writingstudio").unwrap(), parent.join("Tide.writingstudio"));
+        // An empty folder named for a project is used as it is.
+        let made = parent.join("Tide.writingstudio");
+        fs::create_dir_all(&made).unwrap();
+        assert_eq!(ProjectStore::new_project_root(&made, "Tide.writingstudio").unwrap(), made);
+        // So is one that is gone, as when the picker still lists a deleted folder.
+        let gone = parent.join("Gone.writingstudio");
+        assert_eq!(ProjectStore::new_project_root(&gone, "Gone.writingstudio").unwrap(), gone);
+        // Once it holds a project, neither it nor a folder inside it can hold another.
+        drop(ProjectStore::create(&made, "Tide").unwrap());
+        assert!(ProjectStore::new_project_root(&made, "Tide.writingstudio").is_err());
+        let inside = made.join("manuscript");
+        let refused = ProjectStore::new_project_root(&inside, "Other.writingstudio").unwrap_err().to_string();
+        assert!(refused.contains("Tide.writingstudio"), "{refused}");
+        // A folder named for a project that holds other things gets one inside.
+        let busy = parent.join("Busy.writingstudio");
+        fs::create_dir_all(&busy).unwrap();
+        fs::write(busy.join("notes.txt"), "x").unwrap();
+        assert_eq!(ProjectStore::new_project_root(&busy, "Busy.writingstudio").unwrap(), busy.join("Busy.writingstudio"));
+        let _ = fs::remove_dir_all(parent);
     }
 
     #[test]

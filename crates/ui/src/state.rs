@@ -1022,9 +1022,15 @@ impl StudioState {
     pub fn create_project_in(&mut self, folder: PathBuf) {
         let title = self.new_title.trim();
         let title = if title.is_empty() { "Untitled Novel" } else { title };
-        let root: PathBuf = folder.join(format!("{}.writingstudio", sanitize(title)));
+        let root = match ProjectStore::new_project_root(&folder, &format!("{}.writingstudio", sanitize(title))) {
+            Ok(root) => root,
+            Err(err) => {
+                self.status = format!("Could not create the project here: {err}.");
+                return;
+            }
+        };
         match ProjectStore::create(&root, title) {
-            Ok(store) => self.attach_store(store, "Created project and saved locally."),
+            Ok(store) => self.attach_store(store, &format!("Created the project in {}.", root.display())),
             Err(err) => self.status = format!("Could not create project: {err}"),
         }
     }

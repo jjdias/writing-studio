@@ -7,7 +7,7 @@ This guide describes the program as it is, Phases 1 to 5. What comes next is in 
 ## Start
 
 1. `cargo run -p writing-studio-desktop`
-2. **New project** — pick an empty parent folder. The app creates `Title.writingstudio`.
+2. **New project** — choose where the project folder goes. The app makes `Title.writingstudio` there; if you choose an empty folder whose name already ends in `.writingstudio`, the project goes in it as it is. A folder that is a project, or is inside one, is refused, so projects never end up one inside another. The status line says where the project was made.
 3. **Open project** — select an existing `.writingstudio` folder.
 
 ## The project folder

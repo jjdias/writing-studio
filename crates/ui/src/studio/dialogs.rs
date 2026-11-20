@@ -5,7 +5,7 @@ pub(super) fn create_project(
     chrome: Signal<PanelChrome>,
     widths: Signal<PanelWidths>,
 ) {
-    let Some(folder) = pick_folder("Choose a folder for the new project") else {
+    let Some(folder) = pick_folder("Choose where the project folder goes") else {
         return;
     };
     state.write().create_project_in(folder);

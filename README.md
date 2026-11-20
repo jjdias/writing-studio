@@ -26,7 +26,7 @@ Then run:
 cargo run -p writing-studio-desktop
 ```
 
-On the welcome screen, create a project and choose a folder for it. Writing Studio makes a `YourTitle.writingstudio` folder there. Add a chapter and a scene, and start writing. Press **Ctrl+/** at any time to see every shortcut.
+On the welcome screen, create a project and choose where its folder goes, outside any other project. Writing Studio makes a `YourTitle.writingstudio` folder there. Add a chapter and a scene, and start writing. Press **Ctrl+/** at any time to see every shortcut.
 
 ## Learn more
 

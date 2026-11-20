@@ -922,6 +922,19 @@ Four.");
     }
 
     #[test]
+    fn a_new_project_inside_the_open_one_is_refused_and_says_why() {
+        let (mut state, dir) = open_state("nested");
+        let root = state.project_root().unwrap();
+        let title = state.project_title();
+        state.create_project_in(root.join("manuscript"));
+        assert!(state.status.starts_with("Could not create the project here"), "{}", state.status);
+        assert_eq!(state.project_root().unwrap(), root, "the open project stays open");
+        assert_eq!(state.project_title(), title);
+        assert!(!root.join("manuscript").join("Untitled-Novel.writingstudio").exists());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn typing_after_a_merge_is_undone_before_the_merge() {
         let (mut state, dir) = open_state("merge-typing");
         let first = state.selected.unwrap();
