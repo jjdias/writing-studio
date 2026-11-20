@@ -23,7 +23,7 @@ Writing Studio is **open source** (MIT OR Apache-2.0) and **free for the communi
 | 9 | Writing comfort, from Ulysses: a brighter layout, page settings, deadlines, keywords | Done | [done/phase-9.md](done/phase-9.md) |
 | Bonus | Work with no phase yet | Not started | [todo/bonus.md](todo/bonus.md) |
 
-Phases 1 to 5.1 are on `master`.
+Phases 1 to 5.1, 8, and 9 are on `master`.
 
 ## How the work is done now
 
@@ -41,7 +41,7 @@ None listed. The last three items were cleared at the end of Phase 5: a check us
 
 ## What to do next
 
-Any of Phases 6, 7, and 8; they do not depend on each other.
+Phase 6, publishing. Phase 7 does not depend on it, but packaging is easier once the output formats are settled.
 
 ## Product principles
 

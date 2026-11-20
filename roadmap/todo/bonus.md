@@ -2,13 +2,6 @@
 
 None of this is started, and none of it is promised. Each entry says what is missing today and what would fix it. An entry moves into a phase when it is picked up.
 
-## Editing at the same time
-
-Not current work. This was part of the earlier plan for Phase 5, with a server. Most books are written by one person, or by a team in which one person edits, so sync through git covers the need.
-
-- Two writers in the same project at the same moment, each seeing the other's changes as they are made.
-- This needs a connection between the two programs. It must stay optional, and a project used this way must stay the same plain-text project.
-
 ## Guided sync setup
 
 Moved here from Phase 5. Today a writer makes the repository with their git host and sets up git's keys or token themselves, following `documentation/SYNC.md`.
@@ -96,17 +89,6 @@ Not current work. The tests cover the document model, storage, the state behind 
 
 - A test run that starts the app on a temporary project and drives the toolbar, the review panels, History, and the outliner.
 - Run it in the automated builds of Phase 7.
-
-## One project per book, and a bible project beside it
-
-Not current work. The series layout in use is one project that holds the bible and every related book. This bonus keeps the other layout available later. The bible would still exist in one place, as files on disk, and would not be copied into each book.
-
-The bible is its own `.writingstudio` folder. Each novel stores a path to that folder. The book project keeps the manuscript, snapshots, and backups. Characters, world notes, plot, and research are read from the bible and written back there.
-
-- Store a local path from a book project to one bible folder. The path is a folder, not an account.
-- Read and edit characters, world notes, plot, and research in that folder.
-- If the bible folder is missing or moved, the book still opens and the manuscript stays writable. The bible panel says the folder is unavailable.
-- Open the bible next to the manuscript. A scene can point at a character, place, or note in the bible.
 
 ## Keep research files with a backup
 

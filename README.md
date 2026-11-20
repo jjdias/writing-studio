@@ -1,104 +1,42 @@
 # Writing Studio
 
-Open-source, local-first writing studio in Rust. Organize a manuscript, write scenes, recover work, and compile a draft. **Free for the community** under MIT OR Apache-2.0. No account is required. Sync between machines is planned through git, with any host the writer chooses; it will never be required to write.
+A free, open-source writing app for novels and series. Plan the book, write it scene by scene, and compile a draft, all on your own computer. No account is needed, and nothing leaves your machine unless you choose to sync.
 
-## Phase 1
+## What you can do
 
-A working desktop app:
+- **Organize the book.** Books, parts, chapters, and scenes in a library you rearrange by dragging. See the scenes as a list, as cards on a corkboard, or as an outline.
+- **Write.** A quiet page with your choice of font, line length, and spacing, focus mode, and the bars fading while you type.
+- **Keep track.** Daily and book word targets, a deadline with the pace that meets it, keywords and saved filters, and a status for each scene.
+- **Develop the story.** Characters, world notes, a plot grid, and research, shared by every book in a series.
+- **Revise.** Notes, highlights, tracked changes, snapshots to compare, spellcheck, and checks on each scene's goal, conflict, and outcome.
+- **Never lose work.** Autosave, snapshots, and backups. Each scene is a plain HTML file that any browser can open.
+- **Compile.** Export a book as Markdown or Word (DOCX).
+- **Sync if you want to.** Keep a project on several computers through git, with any host you choose ([how](documentation/SYNC.md)). It is never needed to write.
 
-- Cargo workspace with a shared core and a Dioxus desktop shell
-- Versioned project folder (`*.writingstudio`): each scene is an HTML file, with a SQLite cache beside them
-- Binder: manuscript, chapters, scenes, drag-and-drop, trash/restore
-- Structured documents per scene, edited as rich text mapped onto the block model
-- Undo/redo, word counts, snapshots, folder backups, timed local autosave
-- Writing, corkboard, outliner, and history workspace modes
-- Compile one book to local Markdown or DOCX
+## Get started
 
-Full list: [`roadmap/done/phase-1.md`](roadmap/done/phase-1.md).
+You need:
 
-## Phase 2
+- [Rust](https://www.rust-lang.org/tools/install), stable, 1.80 or later
+- On Windows, the [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) and WebView2 (already installed on Windows 10 and 11)
 
-The writing environment around that studio:
-
-- Links, notes, highlights, headings, code blocks, and scene breaks stored on the scene
-- Full-text search, binder labels and colors, corkboard grouping, and an editable outliner
-- Daily targets, sittings, themes, and a panel layout saved in the project
-
-Full list: [`roadmap/done/phase-2.md`](roadmap/done/phase-2.md).
-
-## Phase 3
-
-Story development in the same local project:
-
-- One project holds every book in a series, plus one shared bible
-- Plot grid, character profiles, world notes, and a research library of notes and files
-- Binder, corkboard, outliner, and search can show one book or the whole series
-- Compile, the word target, today, and the sitting follow the current book
-- Bible entries can point at scenes. Research is edited only in Research
-
-Full list: [`roadmap/done/phase-3.md`](roadmap/done/phase-3.md).
-
-## Phase 4
-
-Professional editing, still local:
-
-- Compare a snapshot with the current text or with another snapshot
-- Notes with a kind that can be resolved, and highlights in four colors
-- Track changes to a scene, then accept or reject them
-- Spellcheck on this computer, with a project dictionary
-- Scene diagnostics: goal, conflict, and outcome, with checks on the text
-
-Full list: [`roadmap/done/phase-4.md`](roadmap/done/phase-4.md).
-
-## Phase 5
-
-Projects as plain files:
-
-- Each scene is an HTML file that any browser opens, with the book's structure in JSON beside it
-- A SQLite cache on each computer, filled from the files when a project opens
-- Scenes can be written as Markdown for other writing tools
-- Optional sync between computers through git, with any git host ([how](documentation/SYNC.md))
-
-Full list: [`roadmap/done/phase-5.md`](roadmap/done/phase-5.md).
-
-Phases 1 through 5 are done. See the [roadmap](roadmap/README.md) for what is next.
-
-## Requirements
-
-- Rust stable (1.80+)
-- Windows: [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) so bundled SQLite can compile
-- WebView2 (usually already installed on Windows 10/11)
-
-## Run
+Then run:
 
 ```bash
 cargo run -p writing-studio-desktop
 ```
 
-Create a project from the welcome screen. Choose an empty parent folder; Writing Studio writes `YourTitle.writingstudio/`.
+On the welcome screen, create a project and choose a folder for it. Writing Studio makes a `YourTitle.writingstudio` folder there. Add a chapter and a scene, and start writing. Press **Ctrl+/** at any time to see every shortcut.
 
-## Tests
+## Learn more
 
-```bash
-cargo test --workspace --exclude writing-studio-desktop --exclude writing-studio-ui
-```
-
-Desktop/UI crates need a windowing runtime and are not part of the default library test sweep.
-
-## Documentation
-
-- [Phase 1 features](roadmap/done/phase-1.md)
-- [Phase 2 features](roadmap/done/phase-2.md)
-- [Phase 3 features](roadmap/done/phase-3.md)
-- [Phase 4 features](roadmap/done/phase-4.md)
-- [Phase 5 features](roadmap/done/phase-5.md)
-- [Usage](documentation/USAGE.md)
-- [Architecture](documentation/ARCHITECTURE.md)
-- [Project format](documentation/PROJECT_FORMAT.md)
-- [Roadmap](roadmap/README.md)
+- [Using Writing Studio](documentation/USAGE.md): every feature, step by step
+- [Sync between computers](documentation/SYNC.md)
+- [How a project is stored](documentation/PROJECT_FORMAT.md)
+- For contributors: [architecture](documentation/ARCHITECTURE.md) and the [roadmap](roadmap/README.md)
 
 ## License
 
-MIT OR Apache-2.0. Use, study, modify, and share it with the community.
+MIT OR Apache-2.0. Use, study, change, and share it.
 
 Spellcheck uses the `spellbook` crate (MPL-2.0) and bundles the Hunspell English (US) dictionary, which has its own permissive license: see [`crates/spellcheck/dictionaries/`](crates/spellcheck/dictionaries/README.md).
