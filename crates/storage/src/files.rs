@@ -129,9 +129,9 @@ impl Extras {
 /// The keys of each kind of line that the program writes. Any other key is
 /// kept as an extra; one of these never is, so that an extra cannot stand in
 /// for what the program knows.
-const BINDER_KEYS: [&str; 12] = [
+const BINDER_KEYS: [&str; 13] = [
     "id", "kind", "parent", "deleted", "restore_parent", "file", "status", "title", "synopsis", "label",
-    "color", "keywords",
+    "color", "keywords", "left_out",
 ];
 const ENTRY_KEYS: [&str; 2] = ["id", "file"];
 const RESEARCH_FILE_KEYS: [&str; 4] = ["id", "note", "name", "stored"];
@@ -526,6 +526,9 @@ pub(crate) fn binder_json(
         }
         if !node.keywords.is_empty() {
             item.insert("keywords".into(), json!(node.keywords));
+        }
+        if node.left_out {
+            item.insert("left_out".into(), json!(true));
         }
         add_json_extras(&mut item, extras.get(&node.id), &BINDER_KEYS);
         items.push(Value::Object(item));
@@ -991,6 +994,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
         node.label = text_of(item, "label");
         node.color = text_of(item, "color");
         node.keywords = keywords_of(item);
+        node.left_out = item.get("left_out").and_then(Value::as_bool).unwrap_or(false);
         if let Some(status) = item.get("status").and_then(Value::as_str) {
             node.status = status.to_string();
         }

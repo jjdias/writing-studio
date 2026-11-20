@@ -43,6 +43,16 @@ pub(super) fn Inspector() -> Element {
             if !node.kind.is_root() {
                 Keywords { id: node.id }
             }
+            if !node.kind.is_root() && !state.read().binder.is_in_research(node.id) && !state.read().binder.is_in_trash(node.id) {
+                label { class: "check-label compile-check",
+                    input {
+                        r#type: "checkbox",
+                        checked: !node.left_out,
+                        onchange: move |event| state.write().set_left_out(node.id, !event.checked()),
+                    }
+                    "Include in compile"
+                }
+            }
             if !node.kind.is_root() {
                 label { "Color" }
                 div { class: "swatch-row",

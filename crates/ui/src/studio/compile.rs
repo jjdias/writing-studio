@@ -1,5 +1,7 @@
 use super::*;
-use writing_studio_project::{CompileFormat, CompileProfile, LineSpacing, PageSize, FONT_SIZE_RANGE, MARGIN_RANGE};
+use writing_studio_project::{
+    CompileFormat, CompileProfile, HeadingStyle, LineSpacing, PageSize, SceneSeparator, FONT_SIZE_RANGE, MARGIN_RANGE,
+};
 
 /// Project → Compile…: choose the book and the profile, change the profile,
 /// and compile. Every change to a profile is kept as it is made.
@@ -110,6 +112,70 @@ pub(super) fn CompileDialog() -> Element {
                         }
                         "Title page"
                     }
+                }
+                div { class: "compile-grid",
+                    label { r#for: "profile-chapters", "Chapters" }
+                    div { class: "compile-row",
+                        select {
+                            id: "profile-chapters",
+                            onchange: move |event| {
+                                if let Some(style) = HeadingStyle::ALL.into_iter().find(|style| style.label() == event.value()) {
+                                    change_profile(state, move |profile| profile.chapters = style);
+                                }
+                            },
+                            for style in HeadingStyle::ALL {
+                                option { value: "{style.label()}", selected: style == profile.chapters, "{style.label()}" }
+                            }
+                        }
+                        input {
+                            class: "compile-word",
+                            aria_label: "The word before a chapter's number",
+                            title: "The word before a chapter's number, in the book's language",
+                            value: "{profile.chapter_word}",
+                            onchange: move |event| {
+                                let word = event.value();
+                                change_profile(state, move |profile| profile.chapter_word = word);
+                            },
+                        }
+                    }
+                    label { r#for: "profile-parts", "Parts" }
+                    div { class: "compile-row",
+                        select {
+                            id: "profile-parts",
+                            onchange: move |event| {
+                                if let Some(style) = HeadingStyle::ALL.into_iter().find(|style| style.label() == event.value()) {
+                                    change_profile(state, move |profile| profile.parts = style);
+                                }
+                            },
+                            for style in HeadingStyle::ALL {
+                                option { value: "{style.label()}", selected: style == profile.parts, "{style.label()}" }
+                            }
+                        }
+                        input {
+                            class: "compile-word",
+                            aria_label: "The word before a part's number",
+                            title: "The word before a part's number, in the book's language",
+                            value: "{profile.part_word}",
+                            onchange: move |event| {
+                                let word = event.value();
+                                change_profile(state, move |profile| profile.part_word = word);
+                            },
+                        }
+                    }
+                    label { r#for: "profile-scenes", "Between scenes" }
+                    select {
+                        id: "profile-scenes",
+                        onchange: move |event| {
+                            if let Some(separator) = SceneSeparator::ALL.into_iter().find(|separator| separator.label() == event.value()) {
+                                change_profile(state, move |profile| profile.scenes = separator);
+                            }
+                        },
+                        for separator in SceneSeparator::ALL {
+                            option { value: "{separator.label()}", selected: separator == profile.scenes, "{separator.label()}" }
+                        }
+                    }
+                    span {}
+                    span { class: "hint", "{heading_example(&profile)}" }
                 }
                 if profile.format.has_pages() {
                     div { class: "compile-grid",
@@ -230,4 +296,10 @@ fn change_profile(mut state: Signal<StudioState>, edit: impl FnOnce(&mut Compile
     };
     edit(&mut current);
     state.write().change_compile_profile(current);
+}
+
+/// How the profile heads a chapter, shown under its choices: "Chapter 1: The
+/// Harbor".
+fn heading_example(profile: &CompileProfile) -> String {
+    format!("A chapter reads “{}”.", profile.chapters.heading(&profile.chapter_word, 1, "The Harbor"))
 }

@@ -13,7 +13,8 @@ pub use binder::{
     SavedFilter, BINDER_COLORS,
 };
 pub use compile::{
-    built_in_profile, built_in_profiles, BookProfile, CompileFormat, CompileProfile, LineSpacing, PageSetup, PageSize,
+    built_in_profile, built_in_profiles, BookProfile, CompileFormat, CompileProfile, HeadingStyle, LineSpacing, PageSetup, PageSize,
+    SceneSeparator,
     FONT_SIZE_RANGE, MARGIN_RANGE, PROFILE_LIMIT,
 };
 pub use settings::{

@@ -183,6 +183,9 @@ fn LibraryRow(
     if active {
         class.push_str(" active");
     }
+    if state.read().binder.is_left_out(id) {
+        class.push_str(" left-out");
+    }
     if dragging {
         class.push_str(" dragging");
     }
@@ -500,6 +503,9 @@ fn SceneCardView(card: SceneCard, active: bool) -> Element {
     let mut class = String::from("scene-card");
     if active {
         class.push_str(" active");
+    }
+    if card.left_out {
+        class.push_str(" left-out");
     }
     if state.read().picked.contains(&id) {
         class.push_str(" picked");
@@ -838,6 +844,7 @@ pub(super) fn ItemMenuView() -> Element {
         return rsx! {};
     };
     let in_trash = state.read().binder.is_in_trash(id);
+    let in_research = state.read().binder.is_in_research(id);
     let many = state.read().picked_with(id).len();
     let scene = node.kind == NodeKind::Scene;
     let open_here = scene && state.read().selected == Some(id) && state.read().mode == WorkspaceMode::Writing;
@@ -943,6 +950,21 @@ pub(super) fn ItemMenuView() -> Element {
                         disabled: !has_next,
                         onclick: move |_| state.write().merge_item_with_next(id),
                         "Merge with next scene"
+                    }
+                }
+                if !in_research {
+                    div { class: "menu-rule" }
+                    button {
+                        role: "menuitemcheckbox",
+                        aria_checked: "{!node.left_out}",
+                        class: if node.left_out { "menu-item" } else { "menu-item checked" },
+                        onclick: move |_| {
+                            let next = !state.read().binder.get(id).is_some_and(|node| node.left_out);
+                            let mut current = state.write();
+                            current.item_menu = None;
+                            current.set_left_out(id, next);
+                        },
+                        "Include in compile"
                     }
                 }
                 div { class: "menu-rule" }

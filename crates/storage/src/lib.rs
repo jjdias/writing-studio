@@ -92,7 +92,7 @@ impl ProjectStore {
             .conn
             .prepare(
                 "SELECT id, parent_id, kind, title, sort_index, document_id, synopsis, label, status, color,
-                        deleted_at, created_at, updated_at, restore_parent_id, keywords
+                        deleted_at, created_at, updated_at, restore_parent_id, keywords, left_out
                  FROM binder_nodes",
             )
             .map_err(sqlite)?;
@@ -139,10 +139,11 @@ impl ProjectStore {
             .execute(
                 "INSERT INTO binder_nodes (
                     id, parent_id, kind, title, sort_index, document_id, synopsis, label, status, color,
-                    deleted_at, created_at, updated_at, restore_parent_id, keywords
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+                    deleted_at, created_at, updated_at, restore_parent_id, keywords, left_out
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
                  ON CONFLICT(id) DO UPDATE SET
                     keywords=excluded.keywords,
+                    left_out=excluded.left_out,
                     parent_id=excluded.parent_id,
                     title=excluded.title,
                     sort_index=excluded.sort_index,
@@ -170,6 +171,7 @@ impl ProjectStore {
                     node.updated_at.to_rfc3339(),
                     node.restore_parent_id.map(|id| id.to_string()),
                     serde_json::to_string(&node.keywords).unwrap_or_else(|_| "[]".into()),
+                    node.left_out,
                 ],
             )
             .map_err(sqlite)?;
@@ -909,6 +911,8 @@ pub(crate) fn row_to_node(row: &rusqlite::Row<'_>) -> BinderNode {
             .ok()
             .and_then(|json| serde_json::from_str(&json).ok())
             .unwrap_or_default(),
+        // Older caches have no such column either, and compile everything.
+        left_out: row.get(15).unwrap_or(false),
         deleted_at: deleted.as_deref().and_then(|value| Timestamp::parse(value).ok()),
         restore_parent_id: row
             .get::<_, Option<String>>(13)

@@ -2,7 +2,7 @@ use docx_rs::{
     Docx, DocxError, Hyperlink, HyperlinkType, LineSpacing, PageMargin, Paragraph, Run, RunFonts, SpecialIndentType,
 };
 use writing_studio_document::{normalize_link, BlockKind, Document, Inline};
-use writing_studio_project::{NodeKind, PageSetup};
+use writing_studio_project::{NodeKind, PageSetup, SceneSeparator};
 
 use crate::compile::{collect_sections, CompileInput};
 
@@ -58,9 +58,10 @@ impl Style {
 }
 
 pub fn compile_docx(input: &CompileInput<'_>) -> Result<Vec<u8>, DocxError> {
-    let style = Style::of(input.page);
-    let (width, height) = input.page.size.twips();
-    let margin = input.page.margin as i32 * TENTH_INCH;
+    let page = &input.profile.page;
+    let style = Style::of(page);
+    let (width, height) = page.size.twips();
+    let margin = page.margin as i32 * TENTH_INCH;
     let mut docx = Docx::new()
         .page_size(width, height)
         .page_margin(PageMargin::new().top(margin).bottom(margin).left(margin).right(margin))
@@ -71,10 +72,19 @@ pub fn compile_docx(input: &CompileInput<'_>) -> Result<Vec<u8>, DocxError> {
         // Each part and chapter starts a page, and so does what follows the
         // title page; the first section starts the first page anyway.
         let new_page = !first
-            && input.page.chapter_new_page
+            && page.chapter_new_page
             && (section.kind.is_some_and(|kind| matches!(kind, NodeKind::Book | NodeKind::Part | NodeKind::Chapter))
                 || section.after_title_page);
-        docx = docx.add_paragraph(heading_paragraph(&style, &section.title, section.heading_level).page_break_before(new_page));
+        match section.break_before {
+            Some(SceneSeparator::Break) => docx = docx.add_paragraph(scene_break(&style)),
+            Some(SceneSeparator::Blank) => {
+                docx = docx.add_paragraph(Paragraph::new().add_run(Run::new().add_text("").size(style.size)))
+            }
+            _ => {}
+        }
+        if let Some(title) = &section.title {
+            docx = docx.add_paragraph(heading_paragraph(&style, title, section.heading_level).page_break_before(new_page));
+        }
         if let Some(document) = section.document {
             docx = add_document(docx, &style, document);
         }
@@ -116,17 +126,18 @@ fn add_document(mut docx: Docx, style: &Style, document: &Document) -> Docx {
                     ));
                 }
             }
-            BlockKind::SceneBreak => {
-                docx = docx.add_paragraph(
-                    Paragraph::new()
-                        .align(docx_rs::AlignmentType::Center)
-                        .line_spacing(LineSpacing::new().line(style.line))
-                        .add_run(Run::new().add_text("* * *").size(style.size).fonts(style.fonts())),
-                );
-            }
+            BlockKind::SceneBreak => docx = docx.add_paragraph(scene_break(style)),
         }
     }
     docx
+}
+
+/// A centered "* * *".
+fn scene_break(style: &Style) -> Paragraph {
+    Paragraph::new()
+        .align(docx_rs::AlignmentType::Center)
+        .line_spacing(LineSpacing::new().line(style.line))
+        .add_run(Run::new().add_text("* * *").size(style.size).fonts(style.fonts()))
 }
 
 fn heading_paragraph(style: &Style, title: &str, level: u8) -> Paragraph {

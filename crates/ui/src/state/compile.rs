@@ -22,6 +22,24 @@ impl StudioState {
         }
     }
 
+    /// Leave an item out of compile, with what it holds, or take it back in.
+    pub fn set_left_out(&mut self, id: Id, left_out: bool) {
+        let Some(node) = self.binder.get(id) else {
+            return;
+        };
+        if node.kind.is_root() || node.left_out == left_out {
+            return;
+        }
+        let title = node.title.clone();
+        self.edit_node(id, |node| node.left_out = left_out);
+        self.save_all();
+        self.status = if left_out {
+            format!("“{title}” is left out of compile.")
+        } else {
+            format!("“{title}” is compiled again.")
+        };
+    }
+
     /// Make `id` the book that is compiled, without changing what the
     /// library shows.
     pub fn remember_book_for_compile(&mut self, id: Id) {
@@ -124,11 +142,10 @@ impl StudioState {
         let title = self.binder.get(book_id).map(|node| node.title.clone()).unwrap_or_else(|| self.project_title());
         let input = CompileInput {
             title: &title,
-            include_title_page: profile.title_page,
             book_id: Some(book_id),
             tree: &self.binder,
             documents: &documents,
-            page: &profile.page,
+            profile: &profile,
         };
         let bytes = match profile.format {
             CompileFormat::Markdown => compile_markdown(&input).into_bytes(),
@@ -180,6 +197,15 @@ mod tests {
         let file = state.prepare_compile().unwrap();
         assert_eq!(file.extension, "md");
         assert!(String::from_utf8(file.bytes).unwrap().contains("The harbor was quiet."));
+
+        // A scene left out stays in the binder and out of the file.
+        let scene = state.selected.unwrap();
+        state.set_left_out(scene, true);
+        assert!(state.scene_groups().iter().flat_map(|group| &group.scenes).any(|card| card.id == scene && card.left_out));
+        let file = state.prepare_compile().unwrap();
+        assert!(!String::from_utf8(file.bytes).unwrap().contains("The harbor was quiet."));
+        state.set_left_out(scene, false);
+        assert!(!state.binder.get(scene).unwrap().left_out);
 
         state.copy_compile_profile();
         let mut copy = state.compile_profile().unwrap();

@@ -320,8 +320,8 @@ pub fn merge(base: &ProjectContent, ours: &ProjectContent, theirs: &ProjectConte
 }
 
 fn same_node(a: &BinderNode, b: &BinderNode) -> bool {
-    (a.parent_id, a.kind, &a.title, &a.synopsis, &a.status, &a.label, &a.color, &a.keywords, a.deleted_at, a.restore_parent_id)
-        == (b.parent_id, b.kind, &b.title, &b.synopsis, &b.status, &b.label, &b.color, &b.keywords, b.deleted_at, b.restore_parent_id)
+    (a.parent_id, a.kind, &a.title, &a.synopsis, &a.status, &a.label, &a.color, &a.keywords, a.left_out, a.deleted_at, a.restore_parent_id)
+        == (b.parent_id, b.kind, &b.title, &b.synopsis, &b.status, &b.label, &b.color, &b.keywords, b.left_out, b.deleted_at, b.restore_parent_id)
 }
 
 /// Each field of an item on its own: one side's change is taken; a field
@@ -336,7 +336,7 @@ fn merge_node(b: &BinderNode, o: &BinderNode, t: &BinderNode, conflicts: &mut Ve
             clash |= c;
         )*};
     }
-    take!(parent_id, title, synopsis, status, label, color, keywords, deleted_at, restore_parent_id);
+    take!(parent_id, title, synopsis, status, label, color, keywords, left_out, deleted_at, restore_parent_id);
     if clash {
         conflicts.push(Conflict {
             item: o.id,

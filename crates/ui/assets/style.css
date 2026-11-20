@@ -1389,3 +1389,8 @@ button.keyword-dot:hover { box-shadow: 0 0 0 2px var(--line); }
 .compile-profile { margin: 12px 0 0; padding: 4px 12px 8px; border: 1px solid var(--line); border-radius: var(--radius); }
 .compile-profile legend { padding: 0 6px; font-weight: 600; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+
+/* An item compile leaves out stays in its list, dimmed. */
+.library-row.left-out .library-name, .scene-card.left-out { opacity: 0.55; }
+.compile-check { margin-top: 12px; }
+.compile-row input.compile-word { flex: 0 0 7rem; }

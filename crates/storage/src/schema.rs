@@ -188,6 +188,11 @@ pub fn install(conn: &Connection) -> rusqlite::Result<()> {
         "ALTER TABLE binder_nodes ADD COLUMN keywords TEXT NOT NULL DEFAULT '[]'",
         [],
     );
+    // Whether an item is left out of compile, 1 or 0.
+    let _ = conn.execute(
+        "ALTER TABLE binder_nodes ADD COLUMN left_out INTEGER NOT NULL DEFAULT 0",
+        [],
+    );
     conn.execute_batch("CREATE TABLE IF NOT EXISTS binder_lists (name TEXT PRIMARY KEY, json TEXT NOT NULL);")?;
     Ok(())
 }

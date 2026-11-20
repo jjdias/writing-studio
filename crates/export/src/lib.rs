@@ -9,17 +9,29 @@ pub use docx::compile_docx;
 pub use markdown::compile_markdown;
 
 use writing_studio_document::Document;
-use writing_studio_project::{BinderTree, PageSetup};
+use writing_studio_project::{BinderTree, CompileProfile, HeadingStyle, SceneSeparator};
+#[cfg(test)]
+use writing_studio_project::PageSetup;
 
 pub fn manuscript_plain_text(tree: &BinderTree, docs: &[Document]) -> String {
     compile_markdown(&CompileInput {
         title: "Manuscript",
-        include_title_page: false,
+        profile: &as_written(false),
         book_id: None,
         tree,
         documents: docs,
-        page: &PageSetup::default(),
     })
+}
+
+/// Every heading as it is written in the binder, scenes included: the book
+/// as the writer sees it, not as a profile would set it.
+fn as_written(title_page: bool) -> CompileProfile {
+    let mut profile = writing_studio_project::built_in_profiles().remove(0);
+    profile.title_page = title_page;
+    profile.chapters = HeadingStyle::Title;
+    profile.parts = HeadingStyle::Title;
+    profile.scenes = SceneSeparator::Title;
+    profile
 }
 
 #[cfg(test)]
@@ -58,11 +70,10 @@ mod tests {
         let tree = BinderTree::new(seeded.nodes);
         let markdown = compile_markdown(&CompileInput {
             title: "Test Novel",
-            include_title_page: true,
+            profile: &as_written(true),
             book_id: None,
             tree: &tree,
             documents: &docs,
-            page: &PageSetup::default(),
         });
         assert!(markdown.contains("# Test Novel"));
         assert!(markdown.contains("**Hello**"));
@@ -104,11 +115,10 @@ mod tests {
         ];
         let markdown = compile_markdown(&CompileInput {
             title: "Notes *Novel*",
-            include_title_page: true,
+            profile: &as_written(true),
             book_id: None,
             tree: &tree,
             documents: &documents,
-            page: &PageSetup::default(),
         });
         assert!(markdown.starts_with("# Notes \\*Novel\\*\n"), "{markdown}");
         assert!(markdown.contains("### \\# Second\n"), "{markdown}");
@@ -123,11 +133,10 @@ mod tests {
         let tree = BinderTree::new(seeded.nodes);
         let bytes = compile_docx(&CompileInput {
             title: "Docx Novel",
-            include_title_page: true,
+            profile: &as_written(true),
             book_id: None,
             tree: &tree,
             documents: &seeded.documents,
-            page: &PageSetup::default(),
         })
         .unwrap();
         assert!(bytes.starts_with(b"PK"));
@@ -151,11 +160,10 @@ mod tests {
         };
         let bytes = compile_docx(&CompileInput {
             title: "Paged Novel",
-            include_title_page: true,
+            profile: &CompileProfile { page, ..as_written(true) },
             book_id: None,
             tree: &tree,
             documents: &seeded.documents,
-            page: &page,
         })
         .unwrap();
         let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
@@ -202,11 +210,10 @@ mod tests {
         let tree = BinderTree::new(vec![draft, first, second, chapter, scene, other_chapter, other]);
         let markdown = compile_markdown(&CompileInput {
             title: "Series",
-            include_title_page: true,
+            profile: &as_written(true),
             book_id: Some(first_id),
             tree: &tree,
             documents: &[tide, ridge],
-            page: &PageSetup::default(),
         });
         assert!(markdown.contains("# Harbor"));
         assert!(markdown.contains("Salt on the pier."));
@@ -214,5 +221,60 @@ mod tests {
         assert!(!markdown.contains("Inland"));
         assert!(!markdown.contains("Dust on the road."));
         assert!(!markdown.contains("Ridge"));
+    }
+
+    #[test]
+    fn a_profile_numbers_chapters_breaks_between_scenes_and_leaves_out_what_is_left_out() {
+        let draft = BinderNode::new(NodeKind::DraftRoot, "Manuscript", None, 0);
+        let book = BinderNode::new(NodeKind::Book, "Harbor", Some(draft.id), 0);
+        let one = BinderNode::new(NodeKind::Chapter, "Chapter 1", Some(book.id), 0);
+        let skipped = BinderNode::new(NodeKind::Chapter, "Notes to self", Some(book.id), 1);
+        let two = BinderNode::new(NodeKind::Chapter, "The Ridge", Some(book.id), 2);
+        let scene = |title: &str, parent: &BinderNode, at| BinderNode::new(NodeKind::Scene, title, Some(parent.id), at);
+        let (a, b, c) = (scene("Dawn", &one, 0), scene("Noon", &one, 1), scene("Dusk", &one, 2));
+        let d = scene("Climb", &two, 0);
+        let hidden = scene("Cut", &skipped, 0);
+        let text = |node: &BinderNode, words: &str| Document::from_plain_text(node.document_id.unwrap(), words);
+        let documents =
+            vec![text(&a, "First light."), text(&b, "High sun."), text(&c, "Last light."), text(&d, "Up."), text(&hidden, "Gone.")];
+        let mut c = c;
+        c.left_out = true;
+        let mut skipped = skipped;
+        skipped.left_out = true;
+        let book_id = book.id;
+        let tree = BinderTree::new(vec![draft, book, one, skipped, two, a, b, c, d, hidden]);
+        let mut profile = writing_studio_project::built_in_profiles().remove(1);
+        profile.title_page = false;
+        let markdown = compile_markdown(&CompileInput {
+            title: "Harbor",
+            book_id: Some(book_id),
+            tree: &tree,
+            documents: &documents,
+            profile: &profile,
+        });
+        assert!(markdown.contains("# Chapter 1\n"), "a placeholder title is not repeated: {markdown}");
+        assert!(markdown.contains("# Chapter 2: The Ridge\n"), "numbered among the compiled chapters: {markdown}");
+        assert!(!markdown.contains("Dawn") && !markdown.contains("Noon"), "no scene titles: {markdown}");
+        let first = markdown.find("First light.").unwrap();
+        let second = markdown.find("High sun.").unwrap();
+        assert!(markdown[first..second].contains("* * *"), "a break between scenes: {markdown}");
+        let climb = markdown.find("Up.").unwrap();
+        let heading = markdown.find("Chapter 2").unwrap();
+        assert!(!markdown[heading..climb].contains("* * *"), "none before a chapter's first scene: {markdown}");
+        assert!(!markdown.contains("Last light."), "a scene left out: {markdown}");
+        assert!(!markdown.contains("Gone.") && !markdown.contains("Notes to self"), "a chapter left out, with its scenes");
+
+        profile.chapters = HeadingStyle::NumberWords;
+        profile.chapter_word = "Capítulo".into();
+        profile.scenes = SceneSeparator::Title;
+        let markdown = compile_markdown(&CompileInput {
+            title: "Harbor",
+            book_id: Some(book_id),
+            tree: &tree,
+            documents: &documents,
+            profile: &profile,
+        });
+        assert!(markdown.contains("Capítulo Two"), "{markdown}");
+        assert!(markdown.contains("Noon") && !markdown.contains("* * *"), "{markdown}");
     }
 }

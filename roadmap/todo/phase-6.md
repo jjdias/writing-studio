@@ -1,6 +1,6 @@
 # Phase 6 — Publishing (local)
 
-In progress: stage 1 is done.
+In progress: stages 1 and 2 are done.
 
 Writing Studio compiles one book to Markdown or DOCX today, with a title page and nothing else to choose. This phase turns compile into publishing: the writer says what the book should look like once, as a profile, and gets a manuscript to send out, an ebook, a print-ready PDF, or a web page, from the same text. All of it happens on the writer's computer.
 
@@ -25,6 +25,8 @@ In this order: profiles first, because every format after them reads one. Then w
 - `compile_title_page` becomes part of each profile. The old setting is no longer read: a project opens with the built-in profiles, which have a title page.
 
 ### 2. What is compiled, and how it is set
+
+**Done.** `BinderNode::left_out` (`"left_out": true` in `binder.json`, a column in the cache, merged by sync like any field) and `BinderTree::is_left_out`, which also counts what an item is in. The profile has `chapters` and `parts` (`HeadingStyle`), the words before their numbers, and `scenes` (`SceneSeparator`). `collect_sections` numbers the compiled chapters and parts across the book, sets scenes apart as the profile says, and skips what is left out. The dashboard and the right-click menu have **Include in compile**; a left-out row is dimmed in the library and the scene list. Number words are English only. The outliner does not dim left-out rows yet.
 
 - **Include in compile**, on each book, part, chapter, and scene: on by default, a checkbox in the dashboard and in the right-click menu. A part or chapter left out leaves out what it holds. The scene list and the outliner show a left-out item dimmed.
 - **Chapter headings**, per profile: the chapter's title, a number ("Chapter 1", or "Chapter One"), or both ("Chapter 1: The Harbor"). Parts the same way.

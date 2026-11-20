@@ -98,11 +98,106 @@ impl LineSpacing {
     }
 }
 
+/// How a chapter's or a part's heading reads in the compiled book.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HeadingStyle {
+    /// "The Harbor".
+    Title,
+    /// "Chapter 1".
+    Number,
+    /// "Chapter One".
+    NumberWords,
+    /// "Chapter 1: The Harbor".
+    #[default]
+    NumberAndTitle,
+}
+
+impl HeadingStyle {
+    pub const ALL: [HeadingStyle; 4] =
+        [HeadingStyle::NumberAndTitle, HeadingStyle::Number, HeadingStyle::NumberWords, HeadingStyle::Title];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            HeadingStyle::Title => "Its title",
+            HeadingStyle::Number => "Its number",
+            HeadingStyle::NumberWords => "Its number in words",
+            HeadingStyle::NumberAndTitle => "Its number and title",
+        }
+    }
+
+    /// The heading of the `number`th one, counted from 1. A title that is
+    /// only the word and a number, as a new chapter's is, is not repeated:
+    /// "Chapter 2" reads "Chapter 2", not "Chapter 2: Chapter 2". A heading
+    /// with no title to show falls back to the number.
+    pub fn heading(self, word: &str, number: usize, title: &str) -> String {
+        let title = title.trim();
+        let numbered = |count: String| if word.is_empty() { count } else { format!("{word} {count}") };
+        let placeholder = title.is_empty()
+            || (!word.is_empty()
+                && title.to_lowercase().strip_prefix(&word.to_lowercase()).is_some_and(|rest| {
+                    rest.trim().chars().all(|ch| ch.is_ascii_digit()) && !rest.trim().is_empty()
+                }));
+        match self {
+            HeadingStyle::Title if !placeholder => title.to_string(),
+            HeadingStyle::NumberWords => numbered(number_words(number)),
+            HeadingStyle::NumberAndTitle if !placeholder => format!("{}: {title}", numbered(number.to_string())),
+            _ => numbered(number.to_string()),
+        }
+    }
+}
+
+/// A number up to ninety-nine in English words, with a capital; larger ones
+/// stay digits.
+fn number_words(number: usize) -> String {
+    const ONES: [&str; 20] = [
+        "Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve",
+        "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen",
+    ];
+    const TENS: [&str; 10] = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+    match number {
+        0..=19 => ONES[number].to_string(),
+        20..=99 if number % 10 == 0 => TENS[number / 10].to_string(),
+        20..=99 => format!("{}-{}", TENS[number / 10], ONES[number % 10].to_lowercase()),
+        _ => number.to_string(),
+    }
+}
+
+/// What sets a scene off from the one before it in the same chapter.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SceneSeparator {
+    /// A centered "* * *".
+    #[default]
+    Break,
+    /// An empty line.
+    Blank,
+    /// The scene's title as a heading.
+    Title,
+    /// Nothing: the scenes run on.
+    Nothing,
+}
+
+impl SceneSeparator {
+    pub const ALL: [SceneSeparator; 4] =
+        [SceneSeparator::Break, SceneSeparator::Blank, SceneSeparator::Title, SceneSeparator::Nothing];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            SceneSeparator::Break => "A scene break (* * *)",
+            SceneSeparator::Blank => "An empty line",
+            SceneSeparator::Title => "The scene's title",
+            SceneSeparator::Nothing => "Nothing",
+        }
+    }
+}
+
 pub const FONT_SIZE_RANGE: (u32, u32) = (8, 24);
 /// Margins in tenths of an inch.
 pub const MARGIN_RANGE: (u32, u32) = (2, 30);
 const NAME_MAX: usize = 60;
 const FONT_MAX: usize = 60;
+const WORD_MAX: usize = 24;
 /// More than this many profiles in a project file are ignored.
 pub const PROFILE_LIMIT: usize = 40;
 
@@ -148,6 +243,28 @@ pub struct CompileProfile {
     pub title_page: bool,
     #[serde(default)]
     pub page: PageSetup,
+    /// How a chapter's heading reads.
+    #[serde(default)]
+    pub chapters: HeadingStyle,
+    /// How a part's heading reads.
+    #[serde(default)]
+    pub parts: HeadingStyle,
+    /// The word in front of a chapter's number, in the book's language.
+    #[serde(default = "default_chapter_word")]
+    pub chapter_word: String,
+    #[serde(default = "default_part_word")]
+    pub part_word: String,
+    /// What sets one scene off from the next in a chapter.
+    #[serde(default)]
+    pub scenes: SceneSeparator,
+}
+
+fn default_chapter_word() -> String {
+    "Chapter".into()
+}
+
+fn default_part_word() -> String {
+    "Part".into()
 }
 
 fn default_true() -> bool {
@@ -172,6 +289,11 @@ pub fn built_in_profiles() -> Vec<CompileProfile> {
             // Standard manuscript format: a 12 point serif, double spaced,
             // one-inch margins, indented paragraphs.
             page: PageSetup { line_spacing: LineSpacing::Double, ..PageSetup::default() },
+            chapters: HeadingStyle::NumberAndTitle,
+            parts: HeadingStyle::NumberAndTitle,
+            chapter_word: default_chapter_word(),
+            part_word: default_part_word(),
+            scenes: SceneSeparator::Break,
         },
         CompileProfile {
             id: fixed_id(PLAIN_TEXT_ID),
@@ -179,6 +301,11 @@ pub fn built_in_profiles() -> Vec<CompileProfile> {
             format: CompileFormat::Markdown,
             title_page: true,
             page: PageSetup::default(),
+            chapters: HeadingStyle::NumberAndTitle,
+            parts: HeadingStyle::NumberAndTitle,
+            chapter_word: default_chapter_word(),
+            part_word: default_part_word(),
+            scenes: SceneSeparator::Break,
         },
     ]
 }
@@ -203,6 +330,8 @@ impl CompileProfile {
         }
         self.page.font_size = self.page.font_size.clamp(FONT_SIZE_RANGE.0, FONT_SIZE_RANGE.1);
         self.page.margin = self.page.margin.clamp(MARGIN_RANGE.0, MARGIN_RANGE.1);
+        self.chapter_word = clean_text(&self.chapter_word, WORD_MAX);
+        self.part_word = clean_text(&self.part_word, WORD_MAX);
         self
     }
 
@@ -241,12 +370,15 @@ mod tests {
             format: CompileFormat::Docx,
             title_page: false,
             page: PageSetup { font: String::new(), font_size: 400, margin: 0, ..PageSetup::default() },
+            chapter_word: "  Capítulo	".into(),
+            ..built_in_profiles().remove(0)
         }
         .normalized();
         assert_eq!(wild.name, "Badname");
         assert_eq!(wild.page.font, "Times New Roman");
         assert_eq!(wild.page.font_size, FONT_SIZE_RANGE.1);
         assert_eq!(wild.page.margin, MARGIN_RANGE.0);
+        assert_eq!(wild.chapter_word, "Capítulo", "a word in the book's own language");
         assert!(!wild.is_built_in());
     }
 
@@ -257,5 +389,23 @@ mod tests {
         assert_eq!(profile.format, CompileFormat::Docx);
         assert!(profile.title_page);
         assert_eq!(profile.page, PageSetup::default());
+        assert_eq!(profile.chapters, HeadingStyle::NumberAndTitle);
+        assert_eq!(profile.chapter_word, "Chapter");
+        assert_eq!(profile.scenes, SceneSeparator::Break);
+    }
+
+    #[test]
+    fn chapter_headings_read_as_the_profile_says_without_repeating_a_placeholder_title() {
+        let style = HeadingStyle::NumberAndTitle;
+        assert_eq!(style.heading("Chapter", 3, "The Harbor"), "Chapter 3: The Harbor");
+        assert_eq!(style.heading("Chapter", 2, "Chapter 2"), "Chapter 2", "a new chapter's own name");
+        assert_eq!(style.heading("Chapter", 2, ""), "Chapter 2");
+        assert_eq!(style.heading("Chapter", 2, "Chapters of the sea"), "Chapter 2: Chapters of the sea");
+        assert_eq!(HeadingStyle::Number.heading("Part", 4, "Inland"), "Part 4");
+        assert_eq!(HeadingStyle::NumberWords.heading("Chapter", 21, "x"), "Chapter Twenty-one");
+        assert_eq!(HeadingStyle::NumberWords.heading("Chapter", 140, "x"), "Chapter 140");
+        assert_eq!(HeadingStyle::Title.heading("Chapter", 5, "The Ridge"), "The Ridge");
+        assert_eq!(HeadingStyle::Title.heading("Chapter", 5, "Chapter 5"), "Chapter 5");
+        assert_eq!(HeadingStyle::Number.heading("", 7, "x"), "7", "no word, only the number");
     }
 }

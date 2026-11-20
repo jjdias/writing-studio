@@ -107,6 +107,8 @@ pub struct SceneCard {
     pub status: String,
     /// Its keywords, each with its color's hex, or `""` for none.
     pub keywords: Vec<(String, String)>,
+    /// Compile leaves it out, by itself or with what it is in.
+    pub left_out: bool,
 }
 
 /// The scenes one chapter or folder holds, in binder order.
@@ -2167,6 +2169,7 @@ impl StudioState {
                 opening,
                 status: if node.kind == NodeKind::Scene { node.status.clone() } else { String::new() },
                 keywords: self.keyword_colors_of(node),
+                left_out: self.binder.is_left_out(scene),
             };
             match groups.last_mut() {
                 Some(group) if group.id == holder => group.scenes.push(card),

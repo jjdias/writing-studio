@@ -141,6 +141,10 @@ pub struct BinderNode {
     /// are the binder's, one for each keyword.
     #[serde(default)]
     pub keywords: Vec<String>,
+    /// Left out of compile, with what it holds. Missing on older items,
+    /// which are compiled.
+    #[serde(default)]
+    pub left_out: bool,
     pub deleted_at: Option<Timestamp>,
     pub restore_parent_id: Option<Id>,
     pub created_at: Timestamp,
@@ -170,6 +174,7 @@ impl BinderNode {
             status: String::from("draft"),
             color: String::new(),
             keywords: Vec::new(),
+            left_out: false,
             deleted_at: None,
             restore_parent_id: None,
             created_at: now,
@@ -491,6 +496,24 @@ impl BinderTree {
         let mut scenes = Vec::new();
         self.collect_scenes(container, &mut scenes);
         scenes
+    }
+
+    /// Whether compile leaves `id` out: it was left out, or something it is
+    /// in was.
+    pub fn is_left_out(&self, id: Id) -> bool {
+        let mut at = Some(id);
+        let mut guard = 0;
+        while let Some(current) = at.and_then(|id| self.get(id)) {
+            if current.left_out {
+                return true;
+            }
+            at = current.parent_id;
+            guard += 1;
+            if guard > 256 {
+                return false;
+            }
+        }
+        false
     }
 
     /// The scene after `id` in reading order, in the same book, even when it
@@ -1581,5 +1604,24 @@ mod merge_tests {
         assert_eq!(order, [a_id, b_id, c_id]);
         assert!(!tree.is_in_trash(b_id));
         assert!(tree.get(b_id).unwrap().deleted_at.is_none());
+    }
+}
+
+#[cfg(test)]
+mod left_out_tests {
+    use super::*;
+
+    #[test]
+    fn a_scene_is_left_out_by_itself_or_by_what_it_is_in() {
+        let draft = BinderNode::new(NodeKind::DraftRoot, "Manuscript", None, 0);
+        let book = BinderNode::new(NodeKind::Book, "Book", Some(draft.id), 0);
+        let mut chapter = BinderNode::new(NodeKind::Chapter, "Chapter", Some(book.id), 0);
+        let scene = BinderNode::new(NodeKind::Scene, "Scene", Some(chapter.id), 0);
+        let (chapter_id, scene_id) = (chapter.id, scene.id);
+        chapter.left_out = true;
+        let mut tree = BinderTree::new(vec![draft, book, chapter, scene]);
+        assert!(tree.is_left_out(scene_id));
+        tree.get_mut(chapter_id).unwrap().left_out = false;
+        assert!(!tree.is_left_out(scene_id));
     }
 }

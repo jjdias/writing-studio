@@ -557,7 +557,7 @@ impl ProjectStore {
         self.conn
             .query_row(
                 "SELECT id, parent_id, kind, title, sort_index, document_id, synopsis, label, status, color,
-                        deleted_at, created_at, updated_at, restore_parent_id, keywords
+                        deleted_at, created_at, updated_at, restore_parent_id, keywords, left_out
                  FROM binder_nodes WHERE document_id = ?1",
                 params![document_id.to_string()],
                 |row| Ok(row_to_node(row)),
@@ -771,6 +771,7 @@ mod tests {
         let scene = scene_of(&store);
         let mut tree = store.load_binder().unwrap();
         tree.add_keyword(scene.id, "Flashback");
+        tree.get_mut(scene.id).unwrap().left_out = true;
         tree.filters.push(writing_studio_project::SavedFilter {
             id: Id::new(),
             name: "Flashbacks".into(),
@@ -793,6 +794,8 @@ mod tests {
         store.persist_scene_beats(&HashMap::new()).unwrap();
         let cached = store.load_binder().unwrap();
         assert_eq!(cached.get(scene.id).unwrap().keywords, ["Flashback"]);
+        assert!(cached.get(scene.id).unwrap().left_out);
+        assert!(fs::read_to_string(dir.join("binder.json")).unwrap().contains(r#""left_out":true"#));
         assert_eq!(cached.filters.len(), 1);
         assert!(fs::read_to_string(dir.join("binder.json")).unwrap().contains("Flashback"));
         drop(store);
@@ -801,6 +804,8 @@ mod tests {
         let reopened = ProjectStore::open(&dir).unwrap();
         let read = reopened.load_binder().unwrap();
         assert_eq!(read.get(scene.id).unwrap().keywords, ["Flashback"]);
+        assert!(read.get(scene.id).unwrap().left_out, "left out of compile outlasts closing");
+        assert!(!read.get(chapter).unwrap().left_out);
         assert_eq!(read.keyword_color("flashback"), tree.keyword_color("Flashback"));
         assert_eq!(read.filters, tree.filters);
         drop(reopened);
