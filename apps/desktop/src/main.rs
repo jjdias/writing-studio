@@ -1,3 +1,7 @@
+// A release build on Windows opens no console window beside the program;
+// a debug build keeps one for its log.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use dioxus::desktop::tao::window::Icon;
 use dioxus::desktop::{Config, LogicalSize, WindowBuilder};
 

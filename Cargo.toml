@@ -72,3 +72,10 @@ zip = { version = "8.6", default-features = false, features = ["deflate"] }
 roxmltree = "0.20"
 tantivy = "0.22"
 spellbook = "0.4"
+
+# The build that is packaged: optimized as one unit and stripped of debug
+# symbols, so the download is small and the program starts quickly.
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
