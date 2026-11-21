@@ -354,6 +354,9 @@ pub struct StudioState {
     /// What the check before compiling found, shown in the Compile dialog
     /// until the book is compiled or the dialog is closed.
     pub compile_check: Option<compile::CompileCheck>,
+    /// The book as one web page, shown in the Compile dialog in place of
+    /// the profile while it is open.
+    pub compile_preview: Option<String>,
     /// Scenes picked together with Ctrl or Shift in the scene list, for one
     /// action on all of them.
     pub picked: Vec<Id>,
@@ -459,6 +462,7 @@ impl Default for StudioState {
             quick_open: false,
             compile_open: false,
             compile_check: None,
+            compile_preview: None,
             picked: Vec::new(),
             undo_offer: None,
             overlay: None,

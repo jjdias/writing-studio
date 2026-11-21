@@ -165,6 +165,7 @@ impl StudioState {
     pub fn close_compile(&mut self) {
         self.compile_open = false;
         self.compile_check = None;
+        self.compile_preview = None;
     }
 
     /// The book and everything in it, in reading order, without the trash.
@@ -367,37 +368,11 @@ impl StudioState {
     /// The current book compiled with its profile, ready to be written where
     /// the writer chooses.
     pub fn prepare_compile(&mut self) -> Option<ExportFile> {
-        self.save_all();
-        let Some(store) = self.store.clone() else {
-            self.status = "Open a project to compile.".into();
-            return None;
-        };
-        let Some(profile) = self.compile_profile() else {
-            return None;
-        };
-        let documents = match store.borrow().load_all_documents() {
-            Ok(documents) => documents,
-            Err(err) => {
-                self.status = format!("Could not load manuscript for compile: {err}");
-                return None;
-            }
-        };
-        let Some(book_id) = self.compile_book_id() else {
-            self.status = "Add a book before compiling.".into();
-            return None;
-        };
-        let title = self.binder.get(book_id).map(|node| node.title.clone()).unwrap_or_else(|| self.project_title());
-        let (author, subtitle) = self.compile_author_and_subtitle();
-        let input = CompileInput {
-            title: &title,
-            book_id: Some(book_id),
-            tree: &self.binder,
-            documents: &documents,
-            profile: &profile,
-            author: &author,
-            subtitle: &subtitle,
-            year: writing_studio_core::local_year(),
-        };
+        let gathered = self.gather_compile()?;
+        let store = self.store.clone()?;
+        let (profile, documents, book_id) = (&gathered.profile, gathered.documents.as_slice(), gathered.book_id);
+        let title = gathered.title.clone();
+        let input = gathered.input(&self.binder);
         let bytes = match profile.format {
             CompileFormat::Markdown => compile_markdown(&input).into_bytes(),
             CompileFormat::Html => compile_html(&input).into_bytes(),
@@ -429,8 +404,67 @@ impl StudioState {
             filter_name: profile.format.label(),
             extension,
             kind_label: profile.format.label(),
-            summary: self.compiled_summary(book_id, &documents),
+            summary: self.compiled_summary(book_id, documents),
         })
+    }
+
+    /// The current book as the profile sets it, as one web page for the
+    /// Compile dialog to show. Nothing is written. Whatever the profile's
+    /// format, the preview is the web page with the profile's type, so a
+    /// Word or ebook profile shows its text and matter, not its pages.
+    pub fn preview_compile(&mut self) -> Option<String> {
+        let gathered = self.gather_compile()?;
+        Some(compile_html(&gathered.input(&self.binder)))
+    }
+
+    /// What a compile of the current book reads, after saving the text.
+    fn gather_compile(&mut self) -> Option<Gathered> {
+        self.save_all();
+        let Some(store) = self.store.clone() else {
+            self.status = "Open a project to compile.".into();
+            return None;
+        };
+        let profile = self.compile_profile()?;
+        let documents = match store.borrow().load_all_documents() {
+            Ok(documents) => documents,
+            Err(err) => {
+                self.status = format!("Could not load manuscript for compile: {err}");
+                return None;
+            }
+        };
+        let Some(book_id) = self.compile_book_id() else {
+            self.status = "Add a book before compiling.".into();
+            return None;
+        };
+        let title = self.binder.get(book_id).map(|node| node.title.clone()).unwrap_or_else(|| self.project_title());
+        let (author, subtitle) = self.compile_author_and_subtitle();
+        Some(Gathered { profile, documents, book_id, title, author, subtitle })
+    }
+}
+
+/// The book, its profile, and the names for its title page, read once for
+/// a compile or a preview.
+struct Gathered {
+    profile: CompileProfile,
+    documents: Vec<writing_studio_document::Document>,
+    book_id: Id,
+    title: String,
+    author: String,
+    subtitle: String,
+}
+
+impl Gathered {
+    fn input<'a>(&'a self, tree: &'a writing_studio_project::BinderTree) -> CompileInput<'a> {
+        CompileInput {
+            title: &self.title,
+            book_id: Some(self.book_id),
+            tree,
+            documents: &self.documents,
+            profile: &self.profile,
+            author: &self.author,
+            subtitle: &self.subtitle,
+            year: writing_studio_core::local_year(),
+        }
     }
 }
 
@@ -446,6 +480,25 @@ mod tests {
         state.create_project_in(dir.clone());
         assert!(state.session.is_some(), "{}", state.status);
         (state, dir)
+    }
+
+    #[test]
+    fn the_preview_is_the_web_page_for_any_profile_and_writes_nothing() {
+        let (mut state, dir) = open_state("preview");
+        state.apply_editor_text("The harbor was quiet.".into());
+        let manuscript = state.compile_profiles()[0].clone();
+        assert_eq!(manuscript.format, CompileFormat::Docx);
+        state.choose_compile_profile(manuscript.id);
+        let before: Vec<_> = std::fs::read_dir(&dir).unwrap().flatten().map(|entry| entry.path()).collect();
+        // The text not yet saved is in it: the preview saves first, as a compile does.
+        state.apply_editor_text("The harbor was quiet. A gull called.".into());
+        let page = state.preview_compile().unwrap();
+        assert!(page.starts_with("<!DOCTYPE html>"));
+        assert!(page.contains("The harbor was quiet. A gull called."), "{page}");
+        assert!(page.contains("font-family: \"Times New Roman\""), "the profile's own type");
+        let after: Vec<_> = std::fs::read_dir(&dir).unwrap().flatten().map(|entry| entry.path()).collect();
+        assert_eq!(before, after, "nothing is written beside the project");
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

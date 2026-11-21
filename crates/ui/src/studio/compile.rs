@@ -18,6 +18,9 @@ pub(super) fn CompileDialog() -> Element {
     if let Some(check) = state.read().compile_check.clone().filter(|check| !check.lines.is_empty()) {
         return rsx! { CompileCheckView { check } };
     }
+    if let Some(page) = state.read().compile_preview.clone() {
+        return rsx! { CompilePreview { page, profile: profile.name.clone() } };
+    }
     let chosen = profile.id;
     let built_in = profile.is_built_in();
     let page = profile.page.clone();
@@ -499,20 +502,67 @@ pub(super) fn CompileDialog() -> Element {
             }
             div { class: "dialog-actions",
                 button {
+                    title: "The book as this profile sets it, before anything is written",
+                    onclick: move |_| {
+                        let page = state.write().preview_compile();
+                        state.write().compile_preview = page;
+                    },
+                    "Preview"
+                }
+                button {
                     class: "primary",
                     title: "Looks over the book first, then asks where to save",
-                    onclick: move |_| {
-                        let check = state.write().check_compile();
-                        let clean = check.lines.is_empty();
-                        state.write().compile_check = Some(check);
-                        // With nothing to show, go straight on to compiling.
-                        if clean {
-                            state.write().compile_open = false;
-                            export_project(state);
-                        }
-                    },
+                    onclick: move |_| start_compile(state),
                     "Compile…"
                 }
+            }
+        }
+    }
+}
+
+/// Look over the book, and compile straight away when there is nothing to
+/// show; otherwise the dialog shows what the check found.
+fn start_compile(mut state: Signal<StudioState>) {
+    state.write().compile_preview = None;
+    let check = state.write().check_compile();
+    let clean = check.lines.is_empty();
+    state.write().compile_check = Some(check);
+    if clean {
+        state.write().compile_open = false;
+        export_project(state);
+    }
+}
+
+/// The book as the profile sets it, as the web page compile makes it, in a
+/// frame that runs nothing and loads nothing from outside.
+#[component]
+fn CompilePreview(page: String, profile: String) -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    rsx! {
+        div { class: "dialog-backdrop", onclick: move |_| state.write().close_compile() }
+        div { class: "dialog compile-dialog compile-preview", role: "dialog", aria_modal: "true", aria_labelledby: "preview-title",
+            div { class: "dialog-head",
+                h2 { id: "preview-title", "Preview: {profile}" }
+                button { onclick: move |_| state.write().close_compile(), "Close" }
+            }
+            p { class: "hint", "The text and matter as this profile sets them, as a web page. Word and ebook pages break where the reader's page does." }
+            iframe {
+                class: "preview-frame",
+                title: "Preview of the compiled book",
+                // No scripts, forms, or outside loads: the page is the
+                // writer's own text, shown and nothing more.
+                "sandbox": "",
+                srcdoc: "{page}",
+            }
+            div { class: "dialog-actions",
+                button {
+                    onmounted: move |event| async move {
+                        let _ = event.set_focus(true).await;
+                    },
+                    onclick: move |_| state.write().compile_preview = None,
+                    "Back"
+                }
+                button { class: "primary", onclick: move |_| start_compile(state), "Compile…" }
             }
         }
     }

@@ -1,6 +1,6 @@
 # Phase 6 — Publishing (local)
 
-In progress: stages 1 to 6 are done; stage 7, preview, is left.
+Every stage is done. The phase closes once the writer has tried it.
 
 Writing Studio compiles one book to Markdown or DOCX today, with a title page and nothing else to choose. This phase turns compile into publishing: the writer says what the book should look like once, as a profile, and gets a manuscript to send out, an ebook, or a web page, from the same text. All of it happens on the writer's computer.
 
@@ -70,6 +70,8 @@ PDF was stage 6. It moved to [bonus.md](bonus.md#pdf-compile) before it started:
 - After a compile, the status line says what was made: the file, the profile, how many chapters and words, and what the check found.
 
 ### 7. Preview
+
+**Done.** `StudioState::preview_compile` saves the text and returns `compile_html` of the current book with its profile, whatever the profile's format; the dialog shows it in an `iframe` with `srcdoc` and an empty `sandbox`, so nothing in it runs or loads. It shares `gather_compile` with the compile, so the two read the book the same way. Nothing is written.
 
 - **Preview** in the Compile dialog shows the book as the profile sets it, in the window, from the HTML compile with the profile's page settings, before any file is written.
 
