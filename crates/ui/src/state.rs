@@ -34,6 +34,8 @@ use writing_studio_worldbuilding::World;
 mod compile;
 mod restructure;
 
+pub use compile::{CheckFinding, CompileCheck};
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WorkspaceMode {
     Writing,
@@ -349,6 +351,9 @@ pub struct StudioState {
     pub quick_open: bool,
     /// The Compile dialog is open.
     pub compile_open: bool,
+    /// What the check before compiling found, shown in the Compile dialog
+    /// until the book is compiled or the dialog is closed.
+    pub compile_check: Option<compile::CompileCheck>,
     /// Scenes picked together with Ctrl or Shift in the scene list, for one
     /// action on all of them.
     pub picked: Vec<Id>,
@@ -453,6 +458,7 @@ impl Default for StudioState {
             show_shortcuts: false,
             quick_open: false,
             compile_open: false,
+            compile_check: None,
             picked: Vec::new(),
             undo_offer: None,
             overlay: None,
@@ -4293,6 +4299,8 @@ pub struct ExportFile {
     pub filter_name: &'static str,
     pub extension: &'static str,
     pub kind_label: &'static str,
+    /// What was compiled, in a few words: "12 chapters, 84210 words".
+    pub summary: String,
 }
 
 fn sanitize(title: &str) -> String {

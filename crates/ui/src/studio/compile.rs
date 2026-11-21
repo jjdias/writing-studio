@@ -15,6 +15,9 @@ pub(super) fn CompileDialog() -> Element {
     let Some(profile) = state.read().compile_profile() else {
         return rsx! {};
     };
+    if let Some(check) = state.read().compile_check.clone().filter(|check| !check.lines.is_empty()) {
+        return rsx! { CompileCheckView { check } };
+    }
     let chosen = profile.id;
     let built_in = profile.is_built_in();
     let page = profile.page.clone();
@@ -26,7 +29,7 @@ pub(super) fn CompileDialog() -> Element {
     let also_by_example = profile.also_by_heading(&author);
     let copyright_example = matter.copyright_line(writing_studio_core::local_year(), &author);
     rsx! {
-        div { class: "dialog-backdrop", onclick: move |_| state.write().compile_open = false }
+        div { class: "dialog-backdrop", onclick: move |_| state.write().close_compile() }
         div { class: "dialog compile-dialog", role: "dialog", aria_modal: "true", aria_labelledby: "compile-title",
             div { class: "dialog-head",
                 h2 { id: "compile-title", "Compile" }
@@ -34,7 +37,7 @@ pub(super) fn CompileDialog() -> Element {
                     onmounted: move |event| async move {
                         let _ = event.set_focus(true).await;
                     },
-                    onclick: move |_| state.write().compile_open = false,
+                    onclick: move |_| state.write().close_compile(),
                     "Close"
                 }
             }
@@ -497,11 +500,81 @@ pub(super) fn CompileDialog() -> Element {
             div { class: "dialog-actions",
                 button {
                     class: "primary",
+                    title: "Looks over the book first, then asks where to save",
+                    onclick: move |_| {
+                        let check = state.write().check_compile();
+                        let clean = check.lines.is_empty();
+                        state.write().compile_check = Some(check);
+                        // With nothing to show, go straight on to compiling.
+                        if clean {
+                            state.write().compile_open = false;
+                            export_project(state);
+                        }
+                    },
+                    "Compile…"
+                }
+            }
+        }
+    }
+}
+
+/// What the check before compiling found, grouped by kind, each line
+/// opening its item. Nothing in it stops a compile.
+#[component]
+fn CompileCheckView(check: CompileCheck) -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let groups: Vec<(&'static str, Vec<_>)> = CheckFinding::GROUPS
+        .iter()
+        .map(|group| (*group, check.lines.iter().filter(|line| line.finding.group() == *group).cloned().collect::<Vec<_>>()))
+        .filter(|(_, lines)| !lines.is_empty())
+        .collect();
+    let summary = check.summary();
+    rsx! {
+        div { class: "dialog-backdrop", onclick: move |_| state.write().close_compile() }
+        div { class: "dialog compile-dialog", role: "dialog", aria_modal: "true", aria_labelledby: "check-title",
+            div { class: "dialog-head",
+                h2 { id: "check-title", "Before you compile" }
+                button { onclick: move |_| state.write().close_compile(), "Close" }
+            }
+            p { class: "hint", "The book has {summary}. None of it stops the compile; click a line to open it." }
+            for (group, lines) in groups {
+                section { class: "check-group",
+                    h3 { "{group}" }
+                    ul {
+                        for line in lines {
+                            li {
+                                button {
+                                    class: "check-line",
+                                    onclick: move |_| {
+                                        let mut current = state.write();
+                                        current.close_compile();
+                                        current.go_to(line.id);
+                                    },
+                                    span { if line.title.trim().is_empty() { "Untitled" } else { "{line.title}" } }
+                                    if let Some(count) = line.finding.count() {
+                                        span { class: "check-count", "{count}" }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            div { class: "dialog-actions",
+                button {
+                    onmounted: move |event| async move {
+                        let _ = event.set_focus(true).await;
+                    },
+                    onclick: move |_| state.write().compile_check = None,
+                    "Back"
+                }
+                button {
+                    class: "primary",
                     onclick: move |_| {
                         state.write().compile_open = false;
                         export_project(state);
                     },
-                    "Compile…"
+                    "Compile anyway…"
                 }
             }
         }

@@ -112,3 +112,15 @@ The model is the same idea as a note app’s tags: many tags on one item, nested
 - Compile, word counts, and the outliner ignore tags.
 - Emptying trash drops tags on the deleted items. A tag that nothing uses anymore leaves the list.
 - Start with binder items. Research notes can use the same list. Characters and world records can follow later.
+
+## PDF compile
+
+Moved here from Phase 6, where it was stage 6, before it started. Today a book compiles to Word, an ebook, a web page, or Markdown; a PDF means printing the web page from a browser or saving the Word file as PDF.
+
+- A paged PDF for print and for reading on screen: the page size, margins, font, and line spacing of the profile, page numbers, chapters starting on a new page (on a right-hand page for print), and justified text with hyphenation. A built-in *Paperback* profile (6 × 9 in, a serif, justified) comes with it.
+- **It needs a decision before it starts.** A good PDF needs real typesetting: line breaking, hyphenation, fonts, page layout. The choices are:
+  - **Typst as a library** (Apache-2.0): a full typesetting engine in Rust, offline, with good line breaking and hyphenation. It is a large dependency, and the program has to carry at least one font family with a license that allows it (for example Libertinus or Source Serif, both OFL).
+  - **A small PDF crate** such as `printpdf`: much smaller, but the program would do its own line breaking and page layout, which is a lot of code to own and will look worse.
+  - **Printing the HTML compile through the window's own engine** (WebView2 on Windows): no new dependency, but each platform's web view does it differently or not at all, and page control (right-hand chapter starts, running heads) is limited.
+- The recommendation is Typst: it is the only one that gives a book-quality PDF without this project writing a typesetter. Its weight is a cost to weigh with the maintainer before it is added (see `.claude/rules/architecture.md`).
+- Checked by a test that reads the file back: the right page count and size, and the text in order.

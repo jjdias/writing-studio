@@ -24,7 +24,8 @@ use writing_studio_spellcheck::UnknownWord;
 
 use crate::shortcuts::{app_shortcut, AppShortcut, IN_THE_MANUSCRIPT, LISTED};
 use crate::state::{
-    Beat, BibleLink, Earlier, FoldedPanel, FrameMenu, QuickMatch, ReviewTab, SceneCard, SceneGroup, StudioState, WorkspaceMode,
+    Beat, BibleLink, CheckFinding, CompileCheck, Earlier, FoldedPanel, FrameMenu, QuickMatch, ReviewTab, SceneCard, SceneGroup,
+    StudioState, WorkspaceMode,
     WorldSection,
 };
 

@@ -1403,3 +1403,10 @@ button.keyword-dot:hover { box-shadow: 0 0 0 2px var(--line); }
 .compile-grid > label[for^="matter-"] { align-self: start; padding-top: 6px; }
 .compile-grid p.hint { margin: 4px 0 0; }
 .compile-grid textarea.under-heading { margin-top: 6px; }
+/* The check before compiling: a short list by kind, each line a button
+   that opens its item, with a count at the right where it says more. */
+.check-group h3 { margin: 14px 0 4px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.check-group ul { list-style: none; margin: 0; padding: 0; }
+.check-line { display: flex; width: 100%; justify-content: space-between; gap: 12px; text-align: left; background: none; border-color: transparent; }
+.check-line:hover, .check-line:focus-visible { border-color: var(--control-border); }
+.check-count { color: var(--muted); font-variant-numeric: tabular-nums; }

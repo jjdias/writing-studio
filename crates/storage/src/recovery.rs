@@ -152,6 +152,18 @@ impl ProjectStore {
         Ok(())
     }
 
+    /// The documents whose changes are being tracked, so a check over a whole
+    /// book loads only their baselines.
+    pub fn tracked_document_ids(&self) -> Result<Vec<Id>> {
+        let mut statement = self.conn.prepare("SELECT document_id FROM tracking_baselines").map_err(sqlite)?;
+        let ids = statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(sqlite)?
+            .filter_map(|id| id.ok().and_then(|id| id.parse().ok()))
+            .collect();
+        Ok(ids)
+    }
+
     /// The baseline and when tracking began, or `None` when the document is
     /// not tracked.
     pub fn load_tracking_baseline(&self, document_id: Id) -> Result<Option<(Document, Timestamp)>> {

@@ -25,8 +25,11 @@ pub(super) fn open_project(
 }
 
 /// Compile the current book with its profile and write the file where the
-/// writer chooses.
+/// writer chooses. The status line says what was made, and what the check
+/// before it found.
 pub(super) fn export_project(mut state: Signal<StudioState>) {
+    let check = state.write().compile_check.take();
+    let profile = state.read().compile_profile().map(|profile| profile.name).unwrap_or_default();
     let Some(export) = state.write().prepare_compile() else {
         return;
     };
@@ -35,7 +38,13 @@ pub(super) fn export_project(mut state: Signal<StudioState>) {
     };
     match std::fs::write(&path, export.bytes) {
         Ok(()) => {
-            state.write().status = format!("Compiled {} to {}", export.kind_label, path.display());
+            let found = match check.map(|check| check.summary()) {
+                Some(found) if !found.is_empty() => format!(" The check found {found}."),
+                Some(_) => " The check found nothing to look at.".into(),
+                None => String::new(),
+            };
+            state.write().status =
+                format!("Compiled {} with “{profile}” to {}: {}.{found}", export.kind_label, path.display(), export.summary);
         }
         Err(err) => state.write().status = format!("Could not write {}: {err}", export.kind_label),
     }

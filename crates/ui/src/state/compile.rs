@@ -2,11 +2,204 @@
 
 use writing_studio_core::Id;
 use writing_studio_export::{compile_docx, compile_epub, compile_html, compile_markdown, CompileInput, EpubExtras};
-use writing_studio_project::{CompileFormat, CompileProfile, ProjectSettings};
+use writing_studio_document::{tracked_changes, ReviewKind};
+use writing_studio_project::{BinderNode, CompileFormat, CompileProfile, HeadingStyle, NodeKind, ProjectSettings, SceneSeparator};
 
 use super::{sanitize, ExportFile, StudioState};
 
+/// Something in the book that may not be meant to go out. None of it stops
+/// a compile.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CheckFinding {
+    LeftOut,
+    NoWords,
+    /// A part, chapter, or scene with no title where the profile prints it.
+    NoTitle,
+    OpenNotes(usize),
+    WaitingChanges(usize),
+    UnknownWords(usize),
+}
+
+impl CheckFinding {
+    /// The kinds in the order the dialog lists them.
+    pub const GROUPS: [&'static str; 6] =
+        ["Left out of the compile", "No words yet", "No title", "Open notes", "Tracked changes waiting", "Unknown words"];
+
+    pub fn group(self) -> &'static str {
+        let at = match self {
+            CheckFinding::LeftOut => 0,
+            CheckFinding::NoWords => 1,
+            CheckFinding::NoTitle => 2,
+            CheckFinding::OpenNotes(_) => 3,
+            CheckFinding::WaitingChanges(_) => 4,
+            CheckFinding::UnknownWords(_) => 5,
+        };
+        Self::GROUPS[at]
+    }
+
+    /// What the line says after the item's title, when a count says more
+    /// than the group does.
+    pub fn count(self) -> Option<usize> {
+        match self {
+            CheckFinding::OpenNotes(n) | CheckFinding::WaitingChanges(n) | CheckFinding::UnknownWords(n) => Some(n),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CheckLine {
+    pub id: Id,
+    pub title: String,
+    pub finding: CheckFinding,
+}
+
+/// What the check before compiling found, item by item in reading order.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CompileCheck {
+    pub lines: Vec<CheckLine>,
+}
+
+impl CompileCheck {
+    /// The findings in a sentence for the status line: "2 open notes and 1
+    /// scene with no words".
+    pub fn summary(&self) -> String {
+        let items = |pick: fn(CheckFinding) -> bool| self.lines.iter().filter(|line| pick(line.finding)).count();
+        let sum = |pick: fn(CheckFinding) -> Option<usize>| self.lines.iter().filter_map(|line| pick(line.finding)).sum::<usize>();
+        let parts: Vec<String> = [
+            (items(|f| f == CheckFinding::LeftOut), "item left out", "items left out"),
+            (items(|f| f == CheckFinding::NoWords), "scene with no words", "scenes with no words"),
+            (items(|f| f == CheckFinding::NoTitle), "item with no title", "items with no title"),
+            (sum(|f| matches!(f, CheckFinding::OpenNotes(_)).then(|| f.count().unwrap_or(0))), "open note", "open notes"),
+            (
+                sum(|f| matches!(f, CheckFinding::WaitingChanges(_)).then(|| f.count().unwrap_or(0))),
+                "tracked change waiting",
+                "tracked changes waiting",
+            ),
+            (sum(|f| matches!(f, CheckFinding::UnknownWords(_)).then(|| f.count().unwrap_or(0))), "unknown word", "unknown words"),
+        ]
+        .into_iter()
+        .filter(|(n, _, _)| *n > 0)
+        .map(|(n, one, many)| format!("{n} {}", if n == 1 { one } else { many }))
+        .collect();
+        match parts.as_slice() {
+            [] => String::new(),
+            [one] => one.clone(),
+            [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+        }
+    }
+}
+
 impl StudioState {
+    /// Look over the current book before it is compiled: what compile
+    /// leaves out, scenes with no words, titles the profile would print
+    /// empty, open notes, tracked changes waiting, and unknown words when
+    /// spellcheck is on. The text is saved first, so the check sees what
+    /// the compile will.
+    pub fn check_compile(&mut self) -> CompileCheck {
+        self.save_all();
+        let mut check = CompileCheck::default();
+        let (Some(store), Some(book), Some(profile)) = (self.store.clone(), self.compile_book_id(), self.compile_profile())
+        else {
+            return check;
+        };
+        let store = store.borrow();
+        let tracked: std::collections::HashSet<Id> = store.tracked_document_ids().unwrap_or_default().into_iter().collect();
+        let accepted = self.accepted_words();
+        let prints_title = |style: HeadingStyle| matches!(style, HeadingStyle::Title | HeadingStyle::NumberAndTitle);
+        let mut push = |node: &BinderNode, finding| {
+            check.lines.push(CheckLine { id: node.id, title: node.title.clone(), finding });
+        };
+        for node in self.book_in_order(book) {
+            if node.left_out {
+                push(node, CheckFinding::LeftOut);
+                continue;
+            }
+            // Inside something left out: not compiled, so not checked.
+            if self.binder.is_left_out(node.id) {
+                continue;
+            }
+            let untitled = node.title.trim().is_empty()
+                && match node.kind {
+                    NodeKind::Chapter => prints_title(profile.chapters),
+                    NodeKind::Part => prints_title(profile.parts),
+                    NodeKind::Scene => profile.scenes == SceneSeparator::Title,
+                    _ => false,
+                };
+            if untitled {
+                push(node, CheckFinding::NoTitle);
+            }
+            let Some(document) = node.document_id.and_then(|id| store.load_document(id).ok()) else {
+                continue;
+            };
+            if node.kind == NodeKind::Scene && document.word_count() == 0 {
+                push(node, CheckFinding::NoWords);
+            }
+            let notes = document
+                .review_items()
+                .iter()
+                .filter(|item| matches!(item.kind, ReviewKind::Note { resolved: false, .. }))
+                .count();
+            if notes > 0 {
+                push(node, CheckFinding::OpenNotes(notes));
+            }
+            if tracked.contains(&document.id) {
+                if let Ok(Some((baseline, _))) = store.load_tracking_baseline(document.id) {
+                    let waiting = tracked_changes(&baseline, &document).len();
+                    if waiting > 0 {
+                        push(node, CheckFinding::WaitingChanges(waiting));
+                    }
+                }
+            }
+            if let Some(speller) = &self.speller {
+                let unknown = speller.unknown_words(&document.to_plain_text(), &accepted).len();
+                if unknown > 0 {
+                    push(node, CheckFinding::UnknownWords(unknown));
+                }
+            }
+        }
+        check
+    }
+
+    /// Close the Compile dialog and forget what its check found.
+    pub fn close_compile(&mut self) {
+        self.compile_open = false;
+        self.compile_check = None;
+    }
+
+    /// The book and everything in it, in reading order, without the trash.
+    fn book_in_order(&self, book: Id) -> Vec<&BinderNode> {
+        let mut out = Vec::new();
+        let Some(root) = self.binder.get(book) else {
+            return out;
+        };
+        let mut stack = vec![root];
+        while let Some(node) = stack.pop() {
+            if self.binder.is_in_trash(node.id) {
+                continue;
+            }
+            out.push(node);
+            let mut children = self.binder.children(Some(node.id));
+            children.reverse();
+            stack.extend(children);
+        }
+        out
+    }
+
+    /// The compiled book in a few words: "12 chapters, 84210 words".
+    fn compiled_summary(&self, book: Id, documents: &[writing_studio_document::Document]) -> String {
+        let compiled: Vec<&BinderNode> =
+            self.book_in_order(book).into_iter().filter(|node| !self.binder.is_left_out(node.id)).collect();
+        let chapters = compiled.iter().filter(|node| node.kind == NodeKind::Chapter).count();
+        let words: u32 = compiled
+            .iter()
+            .filter_map(|node| node.document_id)
+            .filter_map(|id| documents.iter().find(|document| document.id == id))
+            .map(|document| document.word_count())
+            .sum();
+        let chapters = if chapters == 1 { "1 chapter".to_string() } else { format!("{chapters} chapters") };
+        format!("{chapters}, {words} words")
+    }
     /// The project's compile profiles, or the built-in ones.
     pub fn compile_profiles(&self) -> Vec<CompileProfile> {
         self.meta.as_ref().map(|meta| meta.settings.profiles()).unwrap_or_default()
@@ -236,6 +429,7 @@ impl StudioState {
             filter_name: profile.format.label(),
             extension,
             kind_label: profile.format.label(),
+            summary: self.compiled_summary(book_id, &documents),
         })
     }
 }
@@ -252,6 +446,66 @@ mod tests {
         state.create_project_in(dir.clone());
         assert!(state.session.is_some(), "{}", state.status);
         (state, dir)
+    }
+
+    #[test]
+    fn the_check_before_compiling_finds_each_kind_once_and_skips_what_is_left_out() {
+        use writing_studio_document::{Block, BlockKind, Document, Inline, Marks};
+        let (mut state, dir) = open_state("check");
+        let first = state.selected.unwrap();
+        state.apply_editor_text("The harbr was quiet.".into());
+        state.add_node(NodeKind::Scene);
+        let empty = state.selected.unwrap();
+        state.add_node(NodeKind::Scene);
+        let noted = state.selected.unwrap();
+        state.add_node(NodeKind::Scene);
+        let cut = state.selected.unwrap();
+        state.add_node(NodeKind::Chapter);
+        let untitled = state.selected.unwrap();
+        state.update_node_title(untitled, String::new());
+        state.select_node(first);
+        state.set_left_out(cut, true);
+
+        // A scene with an open note, a resolved one, and a change waiting.
+        let doc = state.binder.get(noted).unwrap().document_id.unwrap();
+        let run = |text: &str, marks: Marks| Inline { id: Id::new(), text: text.into(), marks };
+        let note = |text: &str, resolved| Marks { comment: Some(text.into()), comment_resolved: resolved, ..Marks::default() };
+        let mut text = Document::new(doc);
+        text.blocks = vec![Block {
+            id: Id::new(),
+            kind: BlockKind::Paragraph {
+                inlines: vec![run("Salt ", note("check", false)), run("on the pier.", note("done", true))],
+            },
+        }];
+        {
+            let store = state.store.as_ref().unwrap().borrow();
+            store.save_document(&text).unwrap();
+            // The baseline had one more paragraph: one change, as the
+            // Changes tab would list it.
+            store.save_tracking_baseline(&Document::from_plain_text(doc, "Salt on the pier.\nA gull.")).unwrap();
+            // Words in the left-out scene, which neither the check nor the count may see.
+            let cut_doc = state.binder.get(cut).unwrap().document_id.unwrap();
+            store.save_document(&Document::from_plain_text(cut_doc, "Never compiled harbr words.")).unwrap();
+        }
+
+        let check = state.check_compile();
+        let found = |id| check.lines.iter().filter(|line| line.id == id).map(|line| line.finding).collect::<Vec<_>>();
+        assert_eq!(found(first), [CheckFinding::UnknownWords(1)], "{:?}", check.lines);
+        assert_eq!(found(empty), [CheckFinding::NoWords]);
+        assert_eq!(found(noted), [CheckFinding::OpenNotes(1), CheckFinding::WaitingChanges(1)]);
+        assert_eq!(found(cut), [CheckFinding::LeftOut], "a left-out scene is not checked for words");
+        assert_eq!(found(untitled), [CheckFinding::NoTitle]);
+        assert_eq!(
+            check.summary(),
+            "1 item left out, 1 scene with no words, 1 item with no title, 1 open note, 1 tracked change waiting and 1 unknown word"
+        );
+
+        // After the compile the status says what was made; with nothing
+        // found, the check is clean.
+        let file = state.prepare_compile().unwrap();
+        assert_eq!(file.summary, "2 chapters, 8 words", "the left-out scene's words are not counted");
+        assert!(CompileCheck::default().summary().is_empty());
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
