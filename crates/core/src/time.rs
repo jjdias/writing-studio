@@ -19,6 +19,12 @@ impl Timestamp {
         self.0.to_rfc3339()
     }
 
+    /// To the second, in UTC, as `2026-11-21T09:30:00Z`: the form an EPUB
+    /// package dates itself with.
+    pub fn to_utc_seconds(self) -> String {
+        self.0.format("%Y-%m-%dT%H:%M:%SZ").to_string()
+    }
+
     pub fn parse(value: &str) -> Result<Self, chrono::ParseError> {
         Ok(Self(DateTime::parse_from_rfc3339(value)?.with_timezone(&Utc)))
     }

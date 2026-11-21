@@ -22,6 +22,7 @@ pub(super) fn CompileDialog() -> Element {
     let (author, subtitle) = state.read().compile_author_and_subtitle();
     let matter = profile.matter.clone();
     let language = profile.language;
+    let has_cover = state.read().compile_has_cover();
     let also_by_example = profile.also_by_heading(&author);
     let copyright_example = matter.copyright_line(writing_studio_core::local_year(), &author);
     rsx! {
@@ -65,6 +66,24 @@ pub(super) fn CompileDialog() -> Element {
                     title: "Shared by every book in the project",
                     value: "{author}",
                     onchange: move |event| state.write().set_author(&event.value()),
+                }
+                if profile.format == CompileFormat::Epub {
+                    span { class: "compile-group", "Cover" }
+                    div { class: "compile-row",
+                        span { class: "hint", if has_cover { "This book has a cover." } else { "No cover yet." } }
+                        button {
+                            title: "A PNG or JPEG picture, kept with the project for this book",
+                            onclick: move |_| {
+                                if let Some(path) = pick_picture() {
+                                    state.write().set_compile_cover(&path);
+                                }
+                            },
+                            if has_cover { "Change…" } else { "Choose…" }
+                        }
+                        if has_cover {
+                            button { onclick: move |_| state.write().remove_compile_cover(), "Remove" }
+                        }
+                    }
                 }
                 label { r#for: "compile-profile", "Profile" }
                 div { class: "compile-row",
@@ -417,7 +436,13 @@ pub(super) fn CompileDialog() -> Element {
                         }
                         if !profile.format.has_pages() {
                             span {}
-                            span { class: "hint", "A web page opens the spacing a little, as reading on a screen needs. Printed, each chapter starts a new page." }
+                            span { class: "hint",
+                                if profile.format == CompileFormat::Epub {
+                                    "An ebook reader starts with this type, and the reader can change it."
+                                } else {
+                                    "A web page opens the spacing a little, as reading on a screen needs. Printed, each chapter starts a new page."
+                                }
+                            }
                         }
                     }
                 }

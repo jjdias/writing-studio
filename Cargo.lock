@@ -6304,6 +6304,7 @@ name = "writing-studio-export"
 version = "0.1.0"
 dependencies = [
  "docx-rs",
+ "roxmltree",
  "writing-studio-core",
  "writing-studio-document",
  "writing-studio-format",
@@ -6441,6 +6442,7 @@ dependencies = [
  "writing-studio-storage",
  "writing-studio-synchronization",
  "writing-studio-worldbuilding",
+ "zip",
 ]
 
 [[package]]

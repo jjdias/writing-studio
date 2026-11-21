@@ -2,11 +2,13 @@
 
 mod compile;
 mod docx;
+mod epub;
 mod html;
 mod markdown;
 
 pub use compile::CompileInput;
 pub use docx::compile_docx;
+pub use epub::{compile_epub, EpubExtras};
 pub use html::compile_html;
 pub use markdown::compile_markdown;
 
@@ -266,6 +268,116 @@ mod tests {
             }
         }
         assert!(open.is_empty(), "left open: {open:?}");
+    }
+
+    #[test]
+    fn epub_is_a_well_formed_package_with_mimetype_first_and_every_file_it_lists() {
+        use std::collections::HashMap;
+        use std::io::Read;
+        let draft = BinderNode::new(NodeKind::DraftRoot, "Manuscript", None, 0);
+        let book = BinderNode::new(NodeKind::Book, "Salt & <Smoke>", Some(draft.id), 0);
+        let part = BinderNode::new(NodeKind::Part, "Sea", Some(book.id), 0);
+        let one = BinderNode::new(NodeKind::Chapter, "The Pier", Some(part.id), 0);
+        let two = BinderNode::new(NodeKind::Chapter, "Inland", Some(part.id), 1);
+        let dawn = BinderNode::new(NodeKind::Scene, "Dawn", Some(one.id), 0);
+        let noon = BinderNode::new(NodeKind::Scene, "Noon", Some(one.id), 1);
+        let road = BinderNode::new(NodeKind::Scene, "Road", Some(two.id), 0);
+        let mut first = Document::new(dawn.document_id.unwrap());
+        first.blocks = vec![Block {
+            id: writing_studio_core::Id::new(),
+            kind: BlockKind::Paragraph {
+                inlines: vec![Inline {
+                    id: writing_studio_core::Id::new(),
+                    text: "Salt\u{7} on the\npier & <rope>".into(),
+                    marks: Marks { comment: Some("check the tide".into()), ..Marks::default() },
+                }],
+            },
+        }];
+        let second = Document::from_plain_text(noon.document_id.unwrap(), "High sun.");
+        let third = Document::from_plain_text(road.document_id.unwrap(), "Dust.");
+        let book_id = book.id;
+        let tree = BinderTree::new(vec![draft, book, part, one, two, dawn, noon, road]);
+        let mut profile = writing_studio_project::built_in_profiles().remove(0);
+        profile.matter.contents = true;
+        profile.matter.dedication = true;
+        profile.matter.dedication_text = "For Ana".into();
+        profile.matter.about_author = true;
+        profile.matter.about_author_text = "Maya lives by the sea.".into();
+        let input = CompileInput {
+            title: "Series",
+            book_id: Some(book_id),
+            author: "Maya Reis",
+            subtitle: "A Novel",
+            year: 2026,
+            tree: &tree,
+            documents: &[first, second, third],
+            profile: &profile,
+        };
+        let png = b"\x89PNG\r\n\x1a\nnot really a picture".as_slice();
+        let bytes =
+            compile_epub(&input, &EpubExtras { modified: "2026-11-21T09:30:00Z", cover: Some(png) }).unwrap();
+
+        // `mimetype` first, stored, with nothing between its name and its
+        // text, so a reader knows the file from its first bytes.
+        assert_eq!(&bytes[30..38], b"mimetype");
+        assert_eq!(&bytes[38..58], b"application/epub+zip");
+        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        assert_eq!(archive.by_index(0).unwrap().compression(), zip::CompressionMethod::Stored);
+        let mut files = HashMap::new();
+        for index in 0..archive.len() {
+            let mut entry = archive.by_index(index).unwrap();
+            let mut content = Vec::new();
+            entry.read_to_end(&mut content).unwrap();
+            files.insert(entry.name().to_string(), content);
+        }
+        let text = |name: &str| String::from_utf8(files[name].clone()).unwrap();
+        for (name, content) in &files {
+            if [".xhtml", ".opf", ".xml"].iter().any(|ending| name.ends_with(ending)) {
+                let content = std::str::from_utf8(content).unwrap();
+                let options = roxmltree::ParsingOptions { allow_dtd: true, ..Default::default() };
+                roxmltree::Document::parse_with_options(content, options).unwrap_or_else(|err| panic!("{name}: {err}\n{content}"));
+            }
+        }
+
+        let package_text = text("OEBPS/content.opf");
+        let package = roxmltree::Document::parse(&package_text).unwrap();
+        let items: HashMap<&str, &str> = package
+            .descendants()
+            .filter(|node| node.has_tag_name("item"))
+            .map(|node| (node.attribute("id").unwrap(), node.attribute("href").unwrap()))
+            .collect();
+        for href in items.values() {
+            assert!(files.contains_key(&format!("OEBPS/{href}")), "{href} is in the book");
+        }
+        let spine: Vec<&str> =
+            package.descendants().filter(|node| node.has_tag_name("itemref")).map(|node| node.attribute("idref").unwrap()).collect();
+        assert!(spine.iter().all(|id| items.contains_key(id)), "{spine:?}");
+        assert_eq!(spine[0], "cover", "the cover comes first");
+        assert!(package_text.contains(&format!("urn:uuid:{book_id}")), "the book's own id");
+        assert!(package_text.contains("<dc:title>Salt &amp; &lt;Smoke&gt;</dc:title>"));
+        assert!(package_text.contains("<dc:creator>Maya Reis</dc:creator>"));
+        assert!(package_text.contains("<meta property=\"dcterms:modified\">2026-11-21T09:30:00Z</meta>"));
+        assert!(files.contains_key("OEBPS/cover.png"));
+
+        // A page each for the matter, the part, and each chapter, in order.
+        let page = |n: usize| text(&format!("OEBPS/page-{n:03}.xhtml"));
+        assert!(page(1).contains("class=\"title-page\"") && page(2).contains("For Ana") && page(3).contains("Contents"));
+        assert!(page(4).contains("Part 1: Sea") && !page(4).contains("Chapter 1"));
+        assert!(page(5).contains("Chapter 1: The Pier") && page(5).contains("High sun.") && page(5).contains("<hr/>"));
+        assert!(page(6).contains("Chapter 2: Inland") && page(7).contains("About the author"));
+        assert!(page(5).contains("Salt on the<br/>pier &amp; &lt;rope&gt;"), "{}", page(5));
+        assert!(page(3).contains("href=\"page-005.xhtml#chapter-2\""), "the contents link ahead: {}", page(3));
+
+        // The navigation nests a chapter in its part; a note links both ways.
+        let nav = text("OEBPS/nav.xhtml");
+        assert!(nav.contains("Part 1: Sea</a>\n<ol>\n<li><a href=\"page-005.xhtml#chapter-2\">"), "{nav}");
+        assert!(page(5).contains("<a id=\"ref-1\" href=\"notes.xhtml#note-1\" role=\"doc-noteref\" epub:type=\"noteref\">1</a>"));
+        assert!(text("OEBPS/notes.xhtml").contains("check the tide <a href=\"page-005.xhtml#ref-1\""));
+
+        // A picture that is not PNG or JPEG is left out, and the book is whole without it.
+        let bytes = compile_epub(&input, &EpubExtras { modified: "2026-11-21T09:30:00Z", cover: Some(b"<svg/>") }).unwrap();
+        let archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        assert!(!archive.file_names().any(|name| name.contains("cover")));
     }
 
     #[test]

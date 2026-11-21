@@ -7,12 +7,14 @@ mod autosave;
 mod error;
 mod event;
 mod id;
+mod image;
 mod time;
 
 pub use autosave::{autosave_due, autosave_wait};
 pub use error::{Error, Result};
 pub use event::StudioEvent;
 pub use id::{Id, NodeId};
+pub use image::ImageKind;
 pub use time::{days_between, local_day, local_year, Timestamp};
 
 /// Current on-disk project format. Bump only with a documented migration.

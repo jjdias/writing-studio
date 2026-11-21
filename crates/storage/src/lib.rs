@@ -25,7 +25,7 @@ use std::path::{Path, PathBuf};
 
 use rusqlite::{params, Connection, OptionalExtension};
 use writing_studio_core::{
-    Error, Id, Result, Timestamp,
+    Error, Id, ImageKind, Result, Timestamp,
 };
 use writing_studio_characters::{Cast, Character, CharacterRelationship, Motivation};
 use writing_studio_diagnostics::SceneBeats;
@@ -34,6 +34,9 @@ use writing_studio_plotting::{PlotGrid, PlotPoint, Plotline};
 use writing_studio_project::{BinderNode, BinderTree, NodeKind, ProjectMeta, ProjectSettings};
 use writing_studio_worldbuilding::{Culture, Location, LoreEntry, TimelineEvent, World};
 use writing_studio_research::{ResearchFile, ResearchItem, ResearchLibrary, stored_attachment_name};
+
+/// The largest picture a book's cover can be.
+pub const COVER_LIMIT: u64 = 20 * 1024 * 1024;
 
 pub struct ProjectStore {
     pub root: PathBuf,
@@ -716,6 +719,71 @@ impl ProjectStore {
     /// project's files.
     pub fn research_file_path(&self, stored_name: &str) -> Result<PathBuf> {
         self.attachment_path(stored_name)
+    }
+
+    /// Copy a picture into the project as a book's cover, in place of the
+    /// one it had. Only a PNG or JPEG of at most `COVER_LIMIT` bytes is
+    /// taken, judged by what is in the file rather than its name.
+    pub fn set_book_cover(&self, book_id: Id, source: &Path) -> Result<ImageKind> {
+        let size = fs::metadata(source).map_err(|_| Error::message("choose a picture for the cover"))?.len();
+        if size > COVER_LIMIT {
+            return Err(Error::message("a cover can be at most 20 MB"));
+        }
+        let bytes = fs::read(source)?;
+        let Some(kind) = ImageKind::of(&bytes) else {
+            return Err(Error::message("a cover has to be a PNG or JPEG picture"));
+        };
+        files::write_atomic(&self.cover_path(book_id, kind)?, &bytes)?;
+        for other in [ImageKind::Png, ImageKind::Jpeg].into_iter().filter(|other| *other != kind) {
+            let old = self.cover_path(book_id, other)?;
+            if old.is_file() {
+                fs::remove_file(old)?;
+            }
+        }
+        Ok(kind)
+    }
+
+    /// A book's cover, when it has one. The file came with the project, so it
+    /// is checked as a new one is: a picture of a kind a cover can be, and
+    /// not too large.
+    pub fn book_cover(&self, book_id: Id) -> Result<Option<Vec<u8>>> {
+        for kind in [ImageKind::Png, ImageKind::Jpeg] {
+            let path = self.cover_path(book_id, kind)?;
+            let Ok(metadata) = fs::metadata(&path) else {
+                continue;
+            };
+            if !metadata.is_file() || metadata.len() > COVER_LIMIT {
+                continue;
+            }
+            let bytes = fs::read(&path)?;
+            if ImageKind::of(&bytes) == Some(kind) {
+                return Ok(Some(bytes));
+            }
+        }
+        Ok(None)
+    }
+
+    /// Whether a book has a cover file, without reading it: for showing so.
+    pub fn has_book_cover(&self, book_id: Id) -> bool {
+        [ImageKind::Png, ImageKind::Jpeg]
+            .into_iter()
+            .any(|kind| self.cover_path(book_id, kind).is_ok_and(|path| path.is_file()))
+    }
+
+    pub fn remove_book_cover(&self, book_id: Id) -> Result<()> {
+        for kind in [ImageKind::Png, ImageKind::Jpeg] {
+            let path = self.cover_path(book_id, kind)?;
+            if path.is_file() {
+                fs::remove_file(path)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Covers are kept beside research files, where git keeps files as they
+    /// are, named after the book so a series has one each.
+    fn cover_path(&self, book_id: Id, kind: ImageKind) -> Result<PathBuf> {
+        files::inside(&self.root, "book cover", &format!("attachments/covers/{book_id}.{}", kind.extension()))
     }
 
     fn remove_stored_file(&self, stored_name: &str) -> Result<()> {
@@ -1438,6 +1506,44 @@ mod tests {
         assert_eq!(loaded.events.len(), 1);
         assert_eq!(loaded.events[0].when_label, "Year 12");
         assert_eq!(loaded.events[0].location_id, Some(loaded.locations[0].id));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_book_cover_is_a_picture_kept_in_the_project_one_to_a_book() {
+        let dir = env::temp_dir().join(format!("ws-cover-{}", Id::new()));
+        let store = ProjectStore::create(&dir, "Covered Novel").unwrap();
+        let book = Id::new();
+        let other_book = Id::new();
+        let picture = |name: &str, bytes: &[u8]| {
+            let path = env::temp_dir().join(format!("ws-{name}-{}", Id::new()));
+            fs::write(&path, bytes).unwrap();
+            path
+        };
+        let png = picture("cover.png", b"\x89PNG\r\n\x1a\npicture");
+        let jpeg = picture("cover.jpg", &[0xFF, 0xD8, 0xFF, 0xE0, 1, 2]);
+        let named_png = picture("fake.png", b"<svg onload=alert(1)>");
+
+        assert_eq!(store.book_cover(book).unwrap(), None);
+        assert_eq!(store.set_book_cover(book, &png).unwrap(), ImageKind::Png);
+        assert!(dir.join("attachments").join("covers").join(format!("{book}.png")).is_file());
+        assert_eq!(store.book_cover(other_book).unwrap(), None, "a cover is one book's");
+        // A JPEG in its place leaves one cover, not two.
+        store.set_book_cover(book, &jpeg).unwrap();
+        assert_eq!(store.book_cover(book).unwrap().unwrap()[..3], [0xFF, 0xD8, 0xFF]);
+        assert!(!dir.join("attachments").join("covers").join(format!("{book}.png")).exists());
+        // A file named like a picture that is not one is refused, and the cover stays.
+        let refused = store.set_book_cover(book, &named_png).unwrap_err().to_string();
+        assert!(refused.contains("PNG or JPEG"), "{refused}");
+        assert!(store.book_cover(book).unwrap().is_some());
+        // A file that came with the project as a cover but is not a picture is not used.
+        fs::write(dir.join("attachments").join("covers").join(format!("{other_book}.png")), b"<html>").unwrap();
+        assert_eq!(store.book_cover(other_book).unwrap(), None);
+        store.remove_book_cover(book).unwrap();
+        assert_eq!(store.book_cover(book).unwrap(), None);
+        for path in [png, jpeg, named_png] {
+            let _ = fs::remove_file(path);
+        }
         let _ = fs::remove_dir_all(dir);
     }
 

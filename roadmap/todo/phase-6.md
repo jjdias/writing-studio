@@ -1,6 +1,6 @@
 # Phase 6 — Publishing (local)
 
-In progress: stages 1 to 4 are done.
+In progress: stages 1 to 5 are done.
 
 Writing Studio compiles one book to Markdown or DOCX today, with a title page and nothing else to choose. This phase turns compile into publishing: the writer says what the book should look like once, as a profile, and gets a manuscript to send out, an ebook, a print-ready PDF, or a web page, from the same text. All of it happens on the writer's computer.
 
@@ -51,6 +51,8 @@ In this order: profiles first, because every format after them reads one. Then w
 - The text is written by the document's own HTML writer (`Document::to_html`), so a scene compiles as it was stored, escaped the same way.
 
 ### 5. EPUB
+
+**Done.** `compile_epub` (`crates/export/src/epub.rs`) writes an EPUB 3 package with the web page's section writer, as XHTML: a page to each part, chapter, and page of matter, `nav.xhtml` nesting chapters in their parts, notes on a page of their own linked both ways, and `content.opf` with the title, author, language, date, `dcterms:modified`, and `urn:uuid:` of the book's own id. A character XML does not allow is taken out. The cover is `attachments/covers/<book id>.png` or `.jpg` (`ProjectStore::set_book_cover`), taken only when its first bytes are a PNG or JPEG (`ImageKind`), at most 20 MB, and checked again when read, since it can come by sync. `zip` is now a dependency of export rather than only of its tests; `roxmltree`, already in the build through fontdb, checks the XML in the tests. The built-in **Ebook** profile has a copyright page and a table of contents. Not checked against epubcheck, which needs Java.
 
 - An EPUB 3 file: one XHTML file per chapter, the navigation document from the table of contents, and the package metadata (title, author, language, a stable identifier kept in the project, the date).
 - An optional cover image chosen from the computer and kept in the project folder.

@@ -148,7 +148,7 @@ fn lines_of(text: &str) -> Vec<String> {
 }
 
 /// The compiled parts and chapters, as their headings read.
-fn contents_of(body: &[CompiledSection<'_>]) -> Vec<ContentsEntry> {
+pub(crate) fn contents_of(body: &[CompiledSection<'_>]) -> Vec<ContentsEntry> {
     let headed = || {
         body.iter().filter(|section| matches!(section.kind, Some(NodeKind::Part | NodeKind::Chapter)))
     };

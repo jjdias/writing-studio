@@ -49,6 +49,20 @@ pub(super) fn pick_file(title: &str) -> Option<std::path::PathBuf> {
         .flatten()
 }
 
+/// A picture for a book's cover. The name only narrows the list: what is in
+/// the file is checked when it is taken.
+pub(super) fn pick_picture() -> Option<std::path::PathBuf> {
+    std::thread::spawn(|| {
+        rfd::FileDialog::new()
+            .set_title("Choose a cover picture")
+            .add_filter("Pictures", &["png", "jpg", "jpeg"])
+            .pick_file()
+    })
+    .join()
+    .ok()
+    .flatten()
+}
+
 pub(super) fn pick_markdown_files() -> Vec<std::path::PathBuf> {
     std::thread::spawn(|| {
         rfd::FileDialog::new()

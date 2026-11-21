@@ -67,5 +67,8 @@ docx-rs = "0.4"
 # The same zip that docx-rs already builds, for reading compiled files back
 # in tests and, later in Phase 6, for writing EPUB.
 zip = { version = "8.6", default-features = false, features = ["deflate"] }
+# Reads compiled ebooks back in tests, to check every file is well-formed XML.
+# Already in the build through fontdb.
+roxmltree = "0.20"
 tantivy = "0.22"
 spellbook = "0.4"

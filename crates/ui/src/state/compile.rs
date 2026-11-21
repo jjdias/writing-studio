@@ -1,7 +1,7 @@
 //! Compiling a book with a profile, and keeping the project's profiles.
 
 use writing_studio_core::Id;
-use writing_studio_export::{compile_docx, compile_html, compile_markdown, CompileInput};
+use writing_studio_export::{compile_docx, compile_epub, compile_html, compile_markdown, CompileInput, EpubExtras};
 use writing_studio_project::{CompileFormat, CompileProfile, ProjectSettings};
 
 use super::{sanitize, ExportFile, StudioState};
@@ -117,6 +117,37 @@ impl StudioState {
         (meta.settings.author_name(), subtitle)
     }
 
+    /// Whether the current book has a cover for its ebook.
+    pub fn compile_has_cover(&self) -> bool {
+        match (&self.store, self.compile_book_id()) {
+            (Some(store), Some(book)) => store.borrow().has_book_cover(book),
+            _ => false,
+        }
+    }
+
+    /// Copy a picture into the project as the current book's cover.
+    pub fn set_compile_cover(&mut self, source: &std::path::Path) {
+        let (Some(store), Some(book)) = (self.store.clone(), self.compile_book_id()) else {
+            return;
+        };
+        let result = store.borrow().set_book_cover(book, source);
+        self.status = match result {
+            Ok(_) => "The cover is kept with the project for this book's ebook.".into(),
+            Err(err) => format!("Could not use that picture as the cover: {err}."),
+        };
+    }
+
+    pub fn remove_compile_cover(&mut self) {
+        let (Some(store), Some(book)) = (self.store.clone(), self.compile_book_id()) else {
+            return;
+        };
+        let result = store.borrow().remove_book_cover(book);
+        self.status = match result {
+            Ok(()) => "Removed the cover.".into(),
+            Err(err) => format!("Could not remove the cover: {err}."),
+        };
+    }
+
     /// The writer's name, shared by every book in the project.
     pub fn set_author(&mut self, author: &str) {
         self.edit_settings(|settings| settings.set_author(author));
@@ -177,6 +208,19 @@ impl StudioState {
         let bytes = match profile.format {
             CompileFormat::Markdown => compile_markdown(&input).into_bytes(),
             CompileFormat::Html => compile_html(&input).into_bytes(),
+            CompileFormat::Epub => {
+                // A cover that cannot be read leaves the ebook without one
+                // rather than without the ebook.
+                let cover = store.borrow().book_cover(book_id).ok().flatten();
+                let modified = writing_studio_core::Timestamp::now().to_utc_seconds();
+                match compile_epub(&input, &EpubExtras { modified: &modified, cover: cover.as_deref() }) {
+                    Ok(bytes) => bytes,
+                    Err(err) => {
+                        self.status = format!("Could not compile the ebook: {err}");
+                        return None;
+                    }
+                }
+            }
             CompileFormat::Docx => match compile_docx(&input) {
                 Ok(bytes) => bytes,
                 Err(err) => {
@@ -246,7 +290,7 @@ mod tests {
         let (mut state, dir) = open_state("profiles");
         state.apply_editor_text("The harbor was quiet.".into());
         let profiles = state.compile_profiles();
-        assert_eq!(profiles.len(), 3, "the built-in ones");
+        assert_eq!(profiles.len(), 4, "the built-in ones");
         assert_eq!(state.compile_profile().unwrap().id, profiles[0].id);
         let file = state.prepare_compile().unwrap();
         assert_eq!(file.extension, "docx");
@@ -261,6 +305,22 @@ mod tests {
         assert_eq!(file.extension, "html");
         let page = String::from_utf8(file.bytes).unwrap();
         assert!(page.starts_with("<!DOCTYPE html>") && page.contains("<p>The harbor was quiet.</p>"), "{page}");
+
+        // An ebook, with the cover kept in the project for this book.
+        state.choose_compile_profile(profiles[3].id);
+        assert!(!state.compile_has_cover());
+        let picture = dir.join("cover-source.png");
+        std::fs::write(&picture, b"\x89PNG\r\n\x1a\npicture").unwrap();
+        state.set_compile_cover(&picture);
+        assert!(state.compile_has_cover(), "{}", state.status);
+        let file = state.prepare_compile().unwrap();
+        assert_eq!(file.extension, "epub");
+        let names: Vec<String> =
+            zip::ZipArchive::new(std::io::Cursor::new(file.bytes)).unwrap().file_names().map(String::from).collect();
+        assert_eq!(names[0], "mimetype");
+        assert!(names.iter().any(|name| name == "OEBPS/cover.png"), "{names:?}");
+        state.remove_compile_cover();
+        assert!(!state.compile_has_cover());
         state.choose_compile_profile(profiles[1].id);
 
         // A scene left out stays in the binder and out of the file.

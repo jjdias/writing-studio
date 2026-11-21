@@ -18,16 +18,20 @@ pub enum CompileFormat {
     Markdown,
     /// One web page, with its stylesheet in it.
     Html,
+    /// An EPUB 3 ebook.
+    Epub,
 }
 
 impl CompileFormat {
-    pub const ALL: [CompileFormat; 3] = [CompileFormat::Docx, CompileFormat::Html, CompileFormat::Markdown];
+    pub const ALL: [CompileFormat; 4] =
+        [CompileFormat::Docx, CompileFormat::Epub, CompileFormat::Html, CompileFormat::Markdown];
 
     pub fn label(self) -> &'static str {
         match self {
             CompileFormat::Docx => "Word (DOCX)",
             CompileFormat::Markdown => "Markdown",
             CompileFormat::Html => "Web page (HTML)",
+            CompileFormat::Epub => "Ebook (EPUB)",
         }
     }
 
@@ -36,6 +40,7 @@ impl CompileFormat {
             CompileFormat::Docx => "docx",
             CompileFormat::Markdown => "md",
             CompileFormat::Html => "html",
+            CompileFormat::Epub => "epub",
         }
     }
 
@@ -47,7 +52,7 @@ impl CompileFormat {
     /// Whether the format sets its own type, so the font, size, line
     /// spacing, and indent apply.
     pub fn sets_type(self) -> bool {
-        matches!(self, CompileFormat::Docx | CompileFormat::Html)
+        matches!(self, CompileFormat::Docx | CompileFormat::Html | CompileFormat::Epub)
     }
 }
 
@@ -543,6 +548,7 @@ fn default_true() -> bool {
 const MANUSCRIPT_ID: &str = "6a0c1f3e-2b7d-4c4e-9a51-0d8e6b1f7c01";
 const PLAIN_TEXT_ID: &str = "6a0c1f3e-2b7d-4c4e-9a51-0d8e6b1f7c02";
 const WEB_PAGE_ID: &str = "6a0c1f3e-2b7d-4c4e-9a51-0d8e6b1f7c03";
+const EBOOK_ID: &str = "6a0c1f3e-2b7d-4c4e-9a51-0d8e6b1f7c04";
 
 fn fixed_id(text: &str) -> Id {
     text.parse().expect("built-in profile ids are valid")
@@ -595,6 +601,21 @@ pub fn built_in_profiles() -> Vec<CompileProfile> {
             part_word: default_part_word(),
             scenes: SceneSeparator::Break,
             matter: Matter { contents: true, ..Matter::default() },
+            language: BookLanguage::English,
+        },
+        CompileProfile {
+            id: fixed_id(EBOOK_ID),
+            name: "Ebook".into(),
+            format: CompileFormat::Epub,
+            title_page: true,
+            // An ebook reader sets its own type; this is what it starts with.
+            page: PageSetup { font: "Georgia".into(), ..PageSetup::default() },
+            chapters: HeadingStyle::NumberAndTitle,
+            parts: HeadingStyle::NumberAndTitle,
+            chapter_word: default_chapter_word(),
+            part_word: default_part_word(),
+            scenes: SceneSeparator::Break,
+            matter: Matter { copyright: true, contents: true, ..Matter::default() },
             language: BookLanguage::English,
         },
     ]

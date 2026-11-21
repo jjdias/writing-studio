@@ -27,3 +27,6 @@ writing-studio-spellcheck.workspace = true
 writing-studio-storage.workspace = true
 writing-studio-synchronization.workspace = true
 writing-studio-worldbuilding.workspace = true
+
+[dev-dependencies]
+zip.workspace = true
