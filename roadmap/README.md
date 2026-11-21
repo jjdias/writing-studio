@@ -18,7 +18,7 @@ Writing Studio is **open source** (MIT OR Apache-2.0) and **free for the communi
 | 5 | Plain-text projects, and sync through git | Done | [done/phase-5.md](done/phase-5.md) |
 | 5.1 | What format 2 still needs to be safe to rely on | Done (items 3 and 4 dropped) | [done/phase-5.md](done/phase-5.md) |
 | 6 | Publishing: compile profiles, matter, HTML, EPUB | Done (PDF moved to bonus) | [done/phase-6.md](done/phase-6.md) |
-| 7 | Cross-platform release | To do | [todo/phase-7.md](todo/phase-7.md) |
+| 7 | Windows and Linux release: CI, packages, licenses, releases | In progress | [todo/phase-7.md](todo/phase-7.md) |
 | 8 | UI and UX overhaul: a window built around writing | Done | [done/phase-8.md](done/phase-8.md) |
 | 9 | Writing comfort, from Ulysses: a brighter layout, page settings, deadlines, keywords | Done | [done/phase-9.md](done/phase-9.md) |
 | Bonus | Work with no phase yet | Not started | [todo/bonus.md](todo/bonus.md) |
@@ -41,7 +41,7 @@ None listed. The last three items were cleared at the end of Phase 5: a check us
 
 ## What to do next
 
-Phase 7, the cross-platform release: the output formats it packages are settled.
+Phase 7, the Windows and Linux release. macOS, iOS, Android, and the web were dropped: see [todo/phase-7.md](todo/phase-7.md).
 
 ## Product principles
 

@@ -124,3 +124,10 @@ Moved here from Phase 6, where it was stage 6, before it started. Today a book c
   - **Printing the HTML compile through the window's own engine** (WebView2 on Windows): no new dependency, but each platform's web view does it differently or not at all, and page control (right-hand chapter starts, running heads) is limited.
 - The recommendation is Typst: it is the only one that gives a book-quality PDF without this project writing a typesetter. Its weight is a cost to weigh with the maintainer before it is added (see `.claude/rules/architecture.md`).
 - Checked by a test that reads the file back: the right page count and size, and the text in order.
+
+## Sync without installed git
+
+Moved here from Phase 7. It was there for phones, which were dropped. Today sync runs the `git` installed on the computer; without it the program writes and compiles, and sync says git is missing.
+
+- A git engine built into the program, so sync needs nothing installed.
+- It needs a decision first on how the program keeps SSH keys or tokens, which it does not do today (`.claude/rules/security.md`).

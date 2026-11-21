@@ -19,6 +19,7 @@ You need:
 
 - [Rust](https://www.rust-lang.org/tools/install), stable, 1.80 or later
 - On Windows, the [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) and WebView2 (already installed on Windows 10 and 11)
+- On Linux, WebKitGTK and GTK 3 with their headers. On Debian or Ubuntu: `sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libxdo-dev libayatana-appindicator3-dev`
 
 Then run:
 
