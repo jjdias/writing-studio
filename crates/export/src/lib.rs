@@ -2,10 +2,12 @@
 
 mod compile;
 mod docx;
+mod html;
 mod markdown;
 
 pub use compile::CompileInput;
 pub use docx::compile_docx;
+pub use html::compile_html;
 pub use markdown::compile_markdown;
 
 use writing_studio_document::Document;
@@ -239,6 +241,89 @@ mod tests {
         assert!(!markdown.contains("Inland"));
         assert!(!markdown.contains("Dust on the road."));
         assert!(!markdown.contains("Ridge"));
+    }
+
+    /// Every element the page opens is closed, in order. Void elements
+    /// (`<br>`, `<hr>`, `<meta>`) close themselves.
+    fn assert_balanced(html: &str) {
+        const VOID: [&str; 5] = ["br", "hr", "meta", "img", "link"];
+        let mut open: Vec<String> = Vec::new();
+        let mut rest = html;
+        while let Some(at) = rest.find('<') {
+            rest = &rest[at + 1..];
+            let end = rest.find('>').expect("a tag is closed");
+            let tag = &rest[..end];
+            rest = &rest[end + 1..];
+            if tag.starts_with('!') {
+                continue;
+            }
+            let name: String = tag.trim_start_matches('/').chars().take_while(|ch| ch.is_ascii_alphanumeric()).collect();
+            if let Some(closing) = tag.strip_prefix('/') {
+                let closing: String = closing.chars().take_while(|ch| ch.is_ascii_alphanumeric()).collect();
+                assert_eq!(open.pop().as_deref(), Some(closing.as_str()), "closed in order, before {rest:.80}");
+            } else if !VOID.contains(&name.as_str()) {
+                open.push(name);
+            }
+        }
+        assert!(open.is_empty(), "left open: {open:?}");
+    }
+
+    #[test]
+    fn html_is_one_well_formed_escaped_page_with_matter_contents_and_notes_both_ways() {
+        let draft = BinderNode::new(NodeKind::DraftRoot, "Manuscript", None, 0);
+        let book = BinderNode::new(NodeKind::Book, "Salt & <Smoke>", Some(draft.id), 0);
+        let one = BinderNode::new(NodeKind::Chapter, "The \"Pier\"", Some(book.id), 0);
+        let two = BinderNode::new(NodeKind::Chapter, "Inland", Some(book.id), 1);
+        let dawn = BinderNode::new(NodeKind::Scene, "Dawn", Some(one.id), 0);
+        let noon = BinderNode::new(NodeKind::Scene, "Noon", Some(one.id), 1);
+        let road = BinderNode::new(NodeKind::Scene, "Road", Some(two.id), 0);
+        let mut first = Document::new(dawn.document_id.unwrap());
+        first.blocks = vec![Block {
+            id: writing_studio_core::Id::new(),
+            kind: BlockKind::Paragraph {
+                inlines: vec![Inline {
+                    id: writing_studio_core::Id::new(),
+                    text: "<script>alert(1)</script> tide".into(),
+                    marks: Marks { comment: Some("check </li> & tide".into()), ..Marks::default() },
+                }],
+            },
+        }];
+        let second = Document::from_plain_text(noon.document_id.unwrap(), "High sun.");
+        let third = Document::from_plain_text(road.document_id.unwrap(), "Dust.");
+        let book_id = book.id;
+        let tree = BinderTree::new(vec![draft, book, one, two, dawn, noon, road]);
+        let mut profile = writing_studio_project::built_in_profiles().remove(2);
+        assert_eq!(profile.format, writing_studio_project::CompileFormat::Html, "the Web page profile");
+        profile.page.font = "Evil\"; } body { color: red".into();
+        profile.matter.dedication = true;
+        profile.matter.dedication_text = "For <Ana>".into();
+        let html = compile_html(&CompileInput {
+            title: "Series",
+            book_id: Some(book_id),
+            author: "Maya \"M\" Reis",
+            subtitle: "",
+            year: 2026,
+            tree: &tree,
+            documents: &[first, second, third],
+            profile: &profile,
+        });
+        assert_balanced(&html);
+        assert!(html.starts_with("<!DOCTYPE html>\n<html lang=\"en\">"), "{html:.80}");
+        assert!(html.contains("<title>Salt &amp; &lt;Smoke&gt;</title>"));
+        assert!(html.contains("<meta name=\"author\" content=\"Maya &quot;M&quot; Reis\">"));
+        assert!(!html.contains("<script"), "text is never markup: {html}");
+        assert!(html.contains("&lt;script&gt;alert(1)&lt;/script&gt; tide"));
+        assert!(html.contains("<p>For &lt;Ana&gt;</p>"));
+        assert!(html.contains("font-family: \"Evil  body  color: red\""), "a font name cannot leave its string");
+        // The contents link to the chapters, and each note links both ways.
+        assert!(html.contains("<a href=\"#chapter-1\">Chapter 1: The &quot;Pier&quot;</a>"), "{html}");
+        assert!(html.contains("<h2 id=\"chapter-2\" class=\"opens\">Chapter 2: Inland</h2>"), "{html}");
+        assert!(html.contains("<a id=\"ref-1\" href=\"#note-1\" role=\"doc-noteref\">1</a>"));
+        assert!(html.contains("<li id=\"note-1\">check &lt;/li&gt; &amp; tide <a href=\"#ref-1\""));
+        let first_text = html.find("tide").unwrap();
+        let noon_text = html.find("High sun.").unwrap();
+        assert!(html[first_text..noon_text].contains("<hr>"), "a scene break between scenes");
+        assert!(html.find("<h2>Notes</h2>").unwrap() > html.find("Dust.").unwrap(), "notes at the end");
     }
 
     #[test]

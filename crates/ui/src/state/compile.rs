@@ -1,7 +1,7 @@
 //! Compiling a book with a profile, and keeping the project's profiles.
 
 use writing_studio_core::Id;
-use writing_studio_export::{compile_docx, compile_markdown, CompileInput};
+use writing_studio_export::{compile_docx, compile_html, compile_markdown, CompileInput};
 use writing_studio_project::{CompileFormat, CompileProfile, ProjectSettings};
 
 use super::{sanitize, ExportFile, StudioState};
@@ -176,6 +176,7 @@ impl StudioState {
         };
         let bytes = match profile.format {
             CompileFormat::Markdown => compile_markdown(&input).into_bytes(),
+            CompileFormat::Html => compile_html(&input).into_bytes(),
             CompileFormat::Docx => match compile_docx(&input) {
                 Ok(bytes) => bytes,
                 Err(err) => {
@@ -245,7 +246,7 @@ mod tests {
         let (mut state, dir) = open_state("profiles");
         state.apply_editor_text("The harbor was quiet.".into());
         let profiles = state.compile_profiles();
-        assert_eq!(profiles.len(), 2, "the built-in ones");
+        assert_eq!(profiles.len(), 3, "the built-in ones");
         assert_eq!(state.compile_profile().unwrap().id, profiles[0].id);
         let file = state.prepare_compile().unwrap();
         assert_eq!(file.extension, "docx");
@@ -255,6 +256,12 @@ mod tests {
         let file = state.prepare_compile().unwrap();
         assert_eq!(file.extension, "md");
         assert!(String::from_utf8(file.bytes).unwrap().contains("The harbor was quiet."));
+        state.choose_compile_profile(profiles[2].id);
+        let file = state.prepare_compile().unwrap();
+        assert_eq!(file.extension, "html");
+        let page = String::from_utf8(file.bytes).unwrap();
+        assert!(page.starts_with("<!DOCTYPE html>") && page.contains("<p>The harbor was quiet.</p>"), "{page}");
+        state.choose_compile_profile(profiles[1].id);
 
         // A scene left out stays in the binder and out of the file.
         let scene = state.selected.unwrap();

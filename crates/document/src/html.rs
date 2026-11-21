@@ -11,8 +11,38 @@ use crate::model::{
 
 impl Document {
     pub fn to_html(&self) -> String {
-        self.blocks.iter().map(block_to_html).collect()
+        self.blocks.iter().map(|block| block_to_html(block, &mut None)).collect()
     }
+
+    /// The text as a reader of the compiled book sees it, written and
+    /// escaped as `to_html` writes it: highlights and resolved notes are
+    /// left out, and at the end of each open note `note` is given the note's
+    /// text (with its kind in front, as compile writes it) and returns the
+    /// HTML to put there, such as a footnote mark. What `note` returns is
+    /// written as it is, so it must escape what it takes from the note.
+    pub fn to_reader_html(&self, note: &mut dyn FnMut(&str) -> String) -> String {
+        let mut reader = self.clone();
+        reader.edit_marks(|marks| {
+            marks.highlight = None;
+            marks.comment = marks.compile_note();
+            marks.comment_kind = NoteKind::Comment;
+            marks.comment_resolved = false;
+        });
+        let mut note = Some(note);
+        reader.blocks.iter().map(|block| block_to_html(block, &mut note)).collect()
+    }
+}
+
+/// Text escaped for HTML, in an element or in a quoted attribute.
+pub fn escape_html(text: &str) -> String {
+    escape_attr(text)
+}
+
+/// Where the reader's HTML puts an open note: `None` writes the note into
+/// the text, as the editor needs it.
+type NoteWriter<'a> = Option<&'a mut dyn FnMut(&str) -> String>;
+
+impl Document {
 
     pub fn replace_html(&mut self, html: &str) {
         let parsed = parse_html(html);
@@ -21,25 +51,25 @@ impl Document {
     }
 }
 
-fn block_to_html(block: &Block) -> String {
+fn block_to_html(block: &Block, notes: &mut NoteWriter<'_>) -> String {
     match &block.kind {
-        BlockKind::Paragraph { inlines } => format!("<p>{}</p>", inlines_to_html(inlines, true)),
+        BlockKind::Paragraph { inlines } => format!("<p>{}</p>", inlines_to_html(inlines, true, notes)),
         BlockKind::Heading { level, inlines } => {
             let level = (*level).clamp(1, 6);
-            format!("<h{level}>{}</h{level}>", inlines_to_html(inlines, true))
+            format!("<h{level}>{}</h{level}>", inlines_to_html(inlines, true, notes))
         }
         BlockKind::Quote { inlines } => {
-            format!("<blockquote>{}</blockquote>", inlines_to_html(inlines, true))
+            format!("<blockquote>{}</blockquote>", inlines_to_html(inlines, true, notes))
         }
         BlockKind::List { ordered, items } => {
             let tag = if *ordered { "ol" } else { "ul" };
             let body: String = items
                 .iter()
-                .map(|item| format!("<li>{}</li>", inlines_to_html(&item.inlines, true)))
+                .map(|item| format!("<li>{}</li>", inlines_to_html(&item.inlines, true, notes)))
                 .collect();
             format!("<{tag}>{body}</{tag}>")
         }
-        BlockKind::Code { inlines } => format!("<pre>{}</pre>", inlines_to_html(inlines, false)),
+        BlockKind::Code { inlines } => format!("<pre>{}</pre>", inlines_to_html(inlines, false, notes)),
         BlockKind::SceneBreak => "<hr>".into(),
     }
 }
@@ -47,8 +77,23 @@ fn block_to_html(block: &Block) -> String {
 /// `breaks` writes a line break as `<br>`, as a browser shows one outside
 /// code. A browser also shows nothing for an empty block, and hides a final
 /// `<br>`, so one more is added for an empty block or one ending in a break.
-fn inlines_to_html(inlines: &[Inline], breaks: bool) -> String {
-    let mut out: String = inlines.iter().map(|inline| inline_to_html(inline, breaks)).collect();
+fn inlines_to_html(inlines: &[Inline], breaks: bool, notes: &mut NoteWriter<'_>) -> String {
+    let mut out = String::new();
+    for (at, inline) in inlines.iter().enumerate() {
+        let Some(write_note) = notes.as_mut() else {
+            out.push_str(&inline_to_html(inline, breaks));
+            continue;
+        };
+        let note = inline.marks.comment.as_deref();
+        let mut plain = inline.clone();
+        plain.marks.comment = None;
+        out.push_str(&inline_to_html(&plain, breaks));
+        // A note over several runs is marked once, after the last of them.
+        let ends_note = inlines.get(at + 1).map(|next| next.marks.comment.as_deref()) != Some(note);
+        if let Some(note) = note.filter(|_| ends_note) {
+            out.push_str(&write_note(note));
+        }
+    }
     let text: String = inlines.iter().map(|inline| inline.text.as_str()).collect();
     if breaks && (text.is_empty() || text.ends_with('\n')) {
         out.push_str("<br>");
@@ -494,6 +539,33 @@ fn unescape(text: &str) -> String {
 mod tests {
     use super::*;
     use crate::model::{join_inlines, Document};
+
+    #[test]
+    fn reader_html_marks_each_open_note_once_and_leaves_out_highlights_and_resolved_notes() {
+        let run = |text: &str, marks: Marks| Inline { id: Id::new(), text: text.into(), marks };
+        let noted = |note: &str| Marks { comment: Some(note.into()), ..Marks::default() };
+        let mut document = Document::new(Id::new());
+        document.blocks = vec![Block {
+            id: Id::new(),
+            kind: BlockKind::Paragraph {
+                inlines: vec![
+                    run("The <harbor> ", noted("check & tide")),
+                    run("was", Marks { bold: true, ..noted("check & tide") }),
+                    run(" quiet", Marks { highlight: Some(Highlight::Pink), ..Marks::default() }),
+                    run(" and", Marks { comment_resolved: true, ..noted("done") }),
+                    run(" cold.", Marks { comment_kind: NoteKind::Question, ..noted("how cold?") }),
+                ],
+            },
+        }];
+        let mut seen = Vec::new();
+        let html = document.to_reader_html(&mut |note| {
+            seen.push(note.to_string());
+            format!("<sup>{}</sup>", seen.len())
+        });
+        assert_eq!(seen, ["check & tide", "Question: how cold?"], "one mark for a note over two runs");
+        assert_eq!(html, "<p>The &lt;harbor&gt; <strong>was</strong><sup>1</sup> quiet and cold.<sup>2</sup></p>");
+        assert!(document.to_html().contains("ws-hl"), "the editor's HTML still has the highlight");
+    }
 
     #[test]
     fn html_round_trips_marks_and_blocks() {

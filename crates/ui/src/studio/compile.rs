@@ -82,7 +82,7 @@ pub(super) fn CompileDialog() -> Element {
                             option { value: "{kept.id}", selected: kept.id == chosen, "{kept.name}" }
                         }
                         for gone in removed {
-                            option { value: "restore:{gone.id}", "Put back “{gone.name}”" }
+                            option { value: "restore:{gone.id}", "Add “{gone.name}”" }
                         }
                     }
                     button { title: "Make a copy of this profile to change", onclick: move |_| state.write().copy_compile_profile(), "Copy" }
@@ -360,7 +360,7 @@ pub(super) fn CompileDialog() -> Element {
                         }
                     }
                 }
-                if profile.format.has_pages() {
+                if profile.format.sets_type() {
                     div { class: "compile-grid",
                         label { r#for: "page-font", "Font" }
                         select {
@@ -403,6 +403,26 @@ pub(super) fn CompileDialog() -> Element {
                                 option { value: "{spacing.label()}", selected: spacing == page.line_spacing, "{spacing.label()}" }
                             }
                         }
+                        span {}
+                        label { class: "check-label",
+                            input {
+                                r#type: "checkbox",
+                                checked: page.indent,
+                                onchange: move |event| {
+                                    let on = event.checked();
+                                    change_profile(state, move |profile| profile.page.indent = on);
+                                },
+                            }
+                            "Indent paragraphs"
+                        }
+                        if !profile.format.has_pages() {
+                            span {}
+                            span { class: "hint", "A web page opens the spacing a little, as reading on a screen needs. Printed, each chapter starts a new page." }
+                        }
+                    }
+                }
+                if profile.format.has_pages() {
+                    div { class: "compile-grid",
                         label { r#for: "page-paper", "Page" }
                         select {
                             id: "page-paper",
@@ -433,18 +453,6 @@ pub(super) fn CompileDialog() -> Element {
                                 },
                             }
                             span { class: "hint", "inches" }
-                        }
-                        span {}
-                        label { class: "check-label",
-                            input {
-                                r#type: "checkbox",
-                                checked: page.indent,
-                                onchange: move |event| {
-                                    let on = event.checked();
-                                    change_profile(state, move |profile| profile.page.indent = on);
-                                },
-                            }
-                            "Indent paragraphs"
                         }
                         span {}
                         label { class: "check-label",

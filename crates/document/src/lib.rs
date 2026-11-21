@@ -6,6 +6,7 @@
 
 mod diff;
 mod html;
+pub use html::escape_html;
 mod model;
 mod split;
 mod track;

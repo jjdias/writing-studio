@@ -16,15 +16,18 @@ pub enum CompileFormat {
     #[default]
     Docx,
     Markdown,
+    /// One web page, with its stylesheet in it.
+    Html,
 }
 
 impl CompileFormat {
-    pub const ALL: [CompileFormat; 2] = [CompileFormat::Docx, CompileFormat::Markdown];
+    pub const ALL: [CompileFormat; 3] = [CompileFormat::Docx, CompileFormat::Html, CompileFormat::Markdown];
 
     pub fn label(self) -> &'static str {
         match self {
             CompileFormat::Docx => "Word (DOCX)",
             CompileFormat::Markdown => "Markdown",
+            CompileFormat::Html => "Web page (HTML)",
         }
     }
 
@@ -32,12 +35,19 @@ impl CompileFormat {
         match self {
             CompileFormat::Docx => "docx",
             CompileFormat::Markdown => "md",
+            CompileFormat::Html => "html",
         }
     }
 
-    /// Whether the format has pages, so the page settings apply to it.
+    /// Whether the format has pages, so the page size and margins apply.
     pub fn has_pages(self) -> bool {
         matches!(self, CompileFormat::Docx)
+    }
+
+    /// Whether the format sets its own type, so the font, size, line
+    /// spacing, and indent apply.
+    pub fn sets_type(self) -> bool {
+        matches!(self, CompileFormat::Docx | CompileFormat::Html)
     }
 }
 
@@ -171,6 +181,24 @@ impl BookLanguage {
             BookLanguage::Portuguese => "Português",
             BookLanguage::Spanish => "Español",
             BookLanguage::French => "Français",
+        }
+    }
+
+    /// The language's tag, for a web page or an ebook to name it.
+    pub fn code(self) -> &'static str {
+        match self {
+            BookLanguage::English => "en",
+            BookLanguage::Portuguese => "pt-BR",
+            BookLanguage::Spanish => "es",
+            BookLanguage::French => "fr",
+        }
+    }
+
+    /// The heading over the notes at the end of a web page or an ebook.
+    pub fn notes(self) -> &'static str {
+        match self {
+            BookLanguage::English | BookLanguage::French => "Notes",
+            BookLanguage::Portuguese | BookLanguage::Spanish => "Notas",
         }
     }
 
@@ -514,6 +542,7 @@ fn default_true() -> bool {
 
 const MANUSCRIPT_ID: &str = "6a0c1f3e-2b7d-4c4e-9a51-0d8e6b1f7c01";
 const PLAIN_TEXT_ID: &str = "6a0c1f3e-2b7d-4c4e-9a51-0d8e6b1f7c02";
+const WEB_PAGE_ID: &str = "6a0c1f3e-2b7d-4c4e-9a51-0d8e6b1f7c03";
 
 fn fixed_id(text: &str) -> Id {
     text.parse().expect("built-in profile ids are valid")
@@ -550,6 +579,22 @@ pub fn built_in_profiles() -> Vec<CompileProfile> {
             part_word: default_part_word(),
             scenes: SceneSeparator::Break,
             matter: Matter::default(),
+            language: BookLanguage::English,
+        },
+        CompileProfile {
+            id: fixed_id(WEB_PAGE_ID),
+            name: "Web page".into(),
+            format: CompileFormat::Html,
+            title_page: true,
+            // A screen reads best with a little more room between lines than
+            // a page, which the stylesheet gives every spacing.
+            page: PageSetup { font: "Georgia".into(), ..PageSetup::default() },
+            chapters: HeadingStyle::NumberAndTitle,
+            parts: HeadingStyle::NumberAndTitle,
+            chapter_word: default_chapter_word(),
+            part_word: default_part_word(),
+            scenes: SceneSeparator::Break,
+            matter: Matter { contents: true, ..Matter::default() },
             language: BookLanguage::English,
         },
     ]

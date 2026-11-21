@@ -1,6 +1,6 @@
 # Phase 6 — Publishing (local)
 
-In progress: stages 1 to 3 are done.
+In progress: stages 1 to 4 are done.
 
 Writing Studio compiles one book to Markdown or DOCX today, with a title page and nothing else to choose. This phase turns compile into publishing: the writer says what the book should look like once, as a profile, and gets a manuscript to send out, an ebook, a print-ready PDF, or a web page, from the same text. All of it happens on the writer's computer.
 
@@ -43,6 +43,8 @@ In this order: profiles first, because every format after them reads one. Then w
 - Matter is part of the compile only: it is not a scene and does not count toward the book's words or targets.
 
 ### 4. HTML
+
+**Done.** `compile_html` (`crates/export/src/html.rs`) writes one page from `collect_sections`, with the text from `Document::to_reader_html`, which writes and escapes as `to_html` does but leaves out highlights and resolved notes and hands each open note to the caller for its footnote mark. The page takes the font, size, line spacing, and indent from the profile rather than the editor's page settings, which are this computer's own: a profile is shared, so every computer compiles the same page. The built-in **Web page** profile has a table of contents. The language tag and the notes heading come from the book language.
 
 - One self-contained `.html` file: the book's text with its formatting, the front and back matter, and the page settings of Phase 9 as its stylesheet. No scripts and no outside files, so it opens anywhere and can be put on a website as it is.
 - Notes as footnotes at the end, linked both ways, as in the Markdown compile. Highlights left out.
