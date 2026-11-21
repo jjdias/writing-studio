@@ -18,6 +18,9 @@ pub fn manuscript_plain_text(tree: &BinderTree, docs: &[Document]) -> String {
         title: "Manuscript",
         profile: &as_written(false),
         book_id: None,
+        author: "",
+        subtitle: "",
+        year: 2026,
         tree,
         documents: docs,
     })
@@ -72,6 +75,9 @@ mod tests {
             title: "Test Novel",
             profile: &as_written(true),
             book_id: None,
+            author: "",
+            subtitle: "",
+            year: 2026,
             tree: &tree,
             documents: &docs,
         });
@@ -117,6 +123,9 @@ mod tests {
             title: "Notes *Novel*",
             profile: &as_written(true),
             book_id: None,
+            author: "",
+            subtitle: "",
+            year: 2026,
             tree: &tree,
             documents: &documents,
         });
@@ -135,6 +144,9 @@ mod tests {
             title: "Docx Novel",
             profile: &as_written(true),
             book_id: None,
+            author: "",
+            subtitle: "",
+            year: 2026,
             tree: &tree,
             documents: &seeded.documents,
         })
@@ -162,6 +174,9 @@ mod tests {
             title: "Paged Novel",
             profile: &CompileProfile { page, ..as_written(true) },
             book_id: None,
+            author: "",
+            subtitle: "",
+            year: 2026,
             tree: &tree,
             documents: &seeded.documents,
         })
@@ -212,6 +227,9 @@ mod tests {
             title: "Series",
             profile: &as_written(true),
             book_id: Some(first_id),
+            author: "",
+            subtitle: "",
+            year: 2026,
             tree: &tree,
             documents: &[tide, ridge],
         });
@@ -221,6 +239,88 @@ mod tests {
         assert!(!markdown.contains("Inland"));
         assert!(!markdown.contains("Dust on the road."));
         assert!(!markdown.contains("Ridge"));
+    }
+
+    #[test]
+    fn front_and_back_matter_go_around_the_text_in_order_and_empty_pages_are_left_out() {
+        use std::io::Read;
+        let draft = BinderNode::new(NodeKind::DraftRoot, "Manuscript", None, 0);
+        let book = BinderNode::new(NodeKind::Book, "Harbor", Some(draft.id), 0);
+        let part = BinderNode::new(NodeKind::Part, "Sea", Some(book.id), 0);
+        let one = BinderNode::new(NodeKind::Chapter, "The Pier", Some(part.id), 0);
+        let cut = BinderNode::new(NodeKind::Chapter, "Cut", Some(part.id), 1);
+        let scene = BinderNode::new(NodeKind::Scene, "Dawn", Some(one.id), 0);
+        let text = Document::from_plain_text(scene.document_id.unwrap(), "Salt on the pier.");
+        let mut cut = cut;
+        cut.left_out = true;
+        let book_id = book.id;
+        let tree = BinderTree::new(vec![draft, book, part, one, cut, scene]);
+        let mut profile = writing_studio_project::built_in_profiles().remove(1);
+        let matter = &mut profile.matter;
+        matter.copyright = true;
+        matter.dedication = true;
+        matter.dedication_text = "For Ana,\nwho waited.".into();
+        matter.contents = true;
+        matter.about_author = true;
+        matter.about_author_text = "Maya lives by the sea.\n\nShe writes at night.".into();
+        matter.also_by = true;
+        matter.also_by_text = "Inland\n\nThe Ridge\n".into();
+        let input = |profile: &CompileProfile, author: &str, docx: bool| {
+            let input = CompileInput {
+                title: "Harbor",
+                book_id: Some(book_id),
+                author,
+                subtitle: "A Novel",
+                year: 2026,
+                tree: &tree,
+                documents: std::slice::from_ref(&text),
+                profile,
+            };
+            if docx { compile_docx(&input).unwrap() } else { compile_markdown(&input).into_bytes() }
+        };
+        let markdown_of = |profile: &CompileProfile, author: &str| String::from_utf8(input(profile, author, false)).unwrap();
+        let markdown = markdown_of(&profile, "Maya Reis");
+        let order = [
+            "# Harbor\n",
+            "*A Novel*",
+            "Maya Reis",
+            "Copyright © 2026 Maya Reis. All rights reserved.",
+            "*For Ana,*",
+            "*who waited.*",
+            "## Contents",
+            "- Part 1: Sea",
+            "- – Chapter 1: The Pier",
+            "## Part 1: Sea",
+            "Salt on the pier.",
+            "## About the author",
+            "She writes at night.",
+            "## Also by Maya Reis",
+            "- The Ridge",
+        ];
+        let mut from = 0;
+        for piece in order {
+            let at = markdown[from..].find(piece).unwrap_or_else(|| panic!("{piece:?} after {from} in {markdown}"));
+            from += at + piece.len();
+        }
+        assert!(!markdown.contains("Cut"), "a chapter left out is not in the contents: {markdown}");
+
+        // With nothing to say, a page is left out, and no author leaves no gap.
+        profile.matter.dedication_text = "  ".into();
+        profile.matter.also_by_text = String::new();
+        let markdown = markdown_of(&profile, "");
+        assert!(markdown.contains("Copyright © 2026. All rights reserved."), "{markdown}");
+        assert!(!markdown.contains("For Ana") && !markdown.contains("Also by"), "{markdown}");
+
+        // In Word each page of matter starts a page of its own.
+        let bytes = input(&profile, "Maya Reis", true);
+        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        let mut xml = String::new();
+        archive.by_name("word/document.xml").unwrap().read_to_string(&mut xml).unwrap();
+        for piece in ["Harbor", "A Novel", "Copyright © 2026 Maya Reis", "Contents", "Salt on the pier.", "About the author"] {
+            assert!(xml.contains(piece), "{piece} in the DOCX");
+        }
+        // The copyright page, the contents, the text, and the back matter.
+        assert!(xml.matches("w:pageBreakBefore").count() >= 4, "{}", xml.matches("w:pageBreakBefore").count());
     }
 
     #[test]
@@ -248,6 +348,9 @@ mod tests {
         let markdown = compile_markdown(&CompileInput {
             title: "Harbor",
             book_id: Some(book_id),
+            author: "",
+            subtitle: "",
+            year: 2026,
             tree: &tree,
             documents: &documents,
             profile: &profile,
@@ -270,6 +373,9 @@ mod tests {
         let markdown = compile_markdown(&CompileInput {
             title: "Harbor",
             book_id: Some(book_id),
+            author: "",
+            subtitle: "",
+            year: 2026,
             tree: &tree,
             documents: &documents,
             profile: &profile,

@@ -198,6 +198,10 @@ pub const MARGIN_RANGE: (u32, u32) = (2, 30);
 const NAME_MAX: usize = 60;
 const FONT_MAX: usize = 60;
 const WORD_MAX: usize = 24;
+/// The copyright line and the dedication.
+const LINE_MAX: usize = 400;
+/// About the author and the list of other books.
+const PASSAGE_MAX: usize = 4000;
 /// More than this many profiles in a project file are ignored.
 pub const PROFILE_LIMIT: usize = 40;
 
@@ -257,6 +261,68 @@ pub struct CompileProfile {
     /// What sets one scene off from the next in a chapter.
     #[serde(default)]
     pub scenes: SceneSeparator,
+    /// The pages before and after the text, other than the title page.
+    #[serde(default)]
+    pub matter: Matter,
+}
+
+/// The front and back matter a profile puts around the text. Each page is on
+/// or off, and the text of each is kept even while it is off. Matter is made
+/// at compile time: it is not a scene and counts toward no word target.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Matter {
+    pub copyright: bool,
+    /// One line. `{year}` becomes the year of the compile, `{author}` the
+    /// project's author.
+    pub copyright_text: String,
+    pub dedication: bool,
+    pub dedication_text: String,
+    /// A table of contents from the compiled parts and chapters.
+    pub contents: bool,
+    pub about_author: bool,
+    pub about_author_text: String,
+    pub also_by: bool,
+    /// The writer's other books, one to a line.
+    pub also_by_text: String,
+}
+
+impl Default for Matter {
+    fn default() -> Self {
+        Self {
+            copyright: false,
+            copyright_text: "Copyright © {year} {author}. All rights reserved.".into(),
+            dedication: false,
+            dedication_text: String::new(),
+            contents: false,
+            about_author: false,
+            about_author_text: String::new(),
+            also_by: false,
+            also_by_text: String::new(),
+        }
+    }
+}
+
+impl Matter {
+    /// The copyright line with the year and the author filled in.
+    pub fn copyright_line(&self, year: i32, author: &str) -> String {
+        let line = self.copyright_text.replace("{year}", &year.to_string()).replace("{author}", author.trim());
+        // An empty author leaves "2026 ." behind; tidy the space it leaves.
+        line.split_whitespace().collect::<Vec<_>>().join(" ").replace(" .", ".").replace(" ,", ",")
+    }
+
+    /// The titles listed under "Also by", without empty lines.
+    pub fn also_by_titles(&self) -> Vec<String> {
+        self.also_by_text.lines().map(str::trim).filter(|line| !line.is_empty()).map(String::from).collect()
+    }
+
+    fn normalized(mut self) -> Self {
+        self.copyright_text = clean_text(&self.copyright_text.replace(['\r', '\n', '\t'], " "), LINE_MAX);
+        self.dedication_text = clean_lines(&self.dedication_text, LINE_MAX);
+        self.about_author_text = clean_lines(&self.about_author_text, PASSAGE_MAX);
+        self.also_by_text = clean_lines(&self.also_by_text, PASSAGE_MAX);
+        self
+    }
 }
 
 fn default_chapter_word() -> String {
@@ -294,6 +360,7 @@ pub fn built_in_profiles() -> Vec<CompileProfile> {
             chapter_word: default_chapter_word(),
             part_word: default_part_word(),
             scenes: SceneSeparator::Break,
+            matter: Matter::default(),
         },
         CompileProfile {
             id: fixed_id(PLAIN_TEXT_ID),
@@ -306,6 +373,7 @@ pub fn built_in_profiles() -> Vec<CompileProfile> {
             chapter_word: default_chapter_word(),
             part_word: default_part_word(),
             scenes: SceneSeparator::Break,
+            matter: Matter::default(),
         },
     ]
 }
@@ -332,6 +400,7 @@ impl CompileProfile {
         self.page.margin = self.page.margin.clamp(MARGIN_RANGE.0, MARGIN_RANGE.1);
         self.chapter_word = clean_text(&self.chapter_word, WORD_MAX);
         self.part_word = clean_text(&self.part_word, WORD_MAX);
+        self.matter = self.matter.normalized();
         self
     }
 
@@ -340,8 +409,15 @@ impl CompileProfile {
     }
 }
 
-fn clean_text(text: &str, max: usize) -> String {
+pub(crate) fn clean_text(text: &str, max: usize) -> String {
     text.chars().filter(|ch| !ch.is_control()).collect::<String>().trim().chars().take(max).collect()
+}
+
+/// Text that keeps its line breaks: each line cleaned, Windows line ends
+/// made plain, and the whole cut to `max` characters.
+fn clean_lines(text: &str, max: usize) -> String {
+    let lines: Vec<String> = text.lines().map(|line| clean_text(line, max)).collect();
+    lines.join("\n").trim().chars().take(max).collect()
 }
 
 /// The profile chosen last for a book on this computer.
@@ -392,6 +468,20 @@ mod tests {
         assert_eq!(profile.chapters, HeadingStyle::NumberAndTitle);
         assert_eq!(profile.chapter_word, "Chapter");
         assert_eq!(profile.scenes, SceneSeparator::Break);
+    }
+
+    #[test]
+    fn matter_from_a_file_keeps_its_lines_and_loses_control_characters() {
+        let mut profile = built_in_profiles().remove(0);
+        assert_eq!(profile.matter, Matter::default(), "no matter but the title page until the writer asks");
+        profile.matter.about_author_text = "Maya\u{7} lives by the sea.\r\n\r\nShe writes at night.  ".into();
+        profile.matter.copyright_text = "© {year}\n{author}".into();
+        profile.matter.also_by_text = "x".repeat(PASSAGE_MAX + 10);
+        let matter = profile.normalized().matter;
+        assert_eq!(matter.about_author_text, "Maya lives by the sea.\n\nShe writes at night.");
+        assert_eq!(matter.copyright_line(2026, "Maya Reis"), "© 2026 Maya Reis", "the copyright is one line");
+        assert_eq!(matter.also_by_text.chars().count(), PASSAGE_MAX);
+        assert_eq!(Matter::default().copyright_line(2026, ""), "Copyright © 2026. All rights reserved.");
     }
 
     #[test]

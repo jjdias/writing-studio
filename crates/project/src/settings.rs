@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use writing_studio_core::Id;
 
-use crate::compile::{built_in_profile, built_in_profiles, BookProfile, CompileProfile, PROFILE_LIMIT};
+use crate::compile::{built_in_profile, built_in_profiles, clean_text, BookProfile, CompileProfile, PROFILE_LIMIT};
 use crate::WritingLog;
 
 pub const SIDEBAR_WIDTH_DEFAULT: u32 = 260;
@@ -384,6 +384,16 @@ pub struct BookWordGoal {
     pub deadline: Option<String>,
 }
 
+/// A book's subtitle, printed on its title page.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BookSubtitle {
+    pub book_id: Id,
+    pub subtitle: String,
+}
+
+const AUTHOR_MAX: usize = 120;
+const SUBTITLE_MAX: usize = 200;
+
 /// Where a book stands against its deadline.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Pace {
@@ -472,6 +482,12 @@ pub struct ProjectSettings {
     /// Spellcheck switch, dictionary, and the project's own words. Missing on older projects.
     #[serde(default)]
     pub spelling: SpellingSettings,
+    /// The writer's name as the books print it. Shared, like the title.
+    #[serde(default)]
+    pub author: String,
+    /// Each book's subtitle. A book with no entry has none.
+    #[serde(default)]
+    pub book_subtitles: Vec<BookSubtitle>,
 }
 
 /// Spellcheck choices stored with the project.
@@ -524,6 +540,8 @@ impl Default for ProjectSettings {
             book_word_goals: Vec::new(),
             show_whole_series: true,
             spelling: SpellingSettings::default(),
+            author: String::new(),
+            book_subtitles: Vec::new(),
         }
     }
 }
@@ -585,12 +603,40 @@ impl ProjectSettings {
     pub fn drop_book(&mut self, book_id: Id, next_book: Option<Id>) -> bool {
         let before = self.book_word_goals.len();
         self.book_word_goals.retain(|entry| entry.book_id != book_id);
-        let mut changed = self.book_word_goals.len() != before;
+        let subtitles = self.book_subtitles.len();
+        self.book_subtitles.retain(|entry| entry.book_id != book_id);
+        let mut changed = self.book_word_goals.len() != before || self.book_subtitles.len() != subtitles;
         if self.compile_book_id == Some(book_id) {
             self.compile_book_id = next_book;
             changed = true;
         }
         changed
+    }
+
+    /// The author's name, cleaned: a project file can come from anywhere.
+    pub fn author_name(&self) -> String {
+        clean_text(&self.author, AUTHOR_MAX)
+    }
+
+    pub fn set_author(&mut self, author: &str) {
+        self.author = clean_text(author, AUTHOR_MAX);
+    }
+
+    pub fn subtitle_for_book(&self, book_id: Id) -> String {
+        self.book_subtitles
+            .iter()
+            .find(|entry| entry.book_id == book_id)
+            .map(|entry| clean_text(&entry.subtitle, SUBTITLE_MAX))
+            .unwrap_or_default()
+    }
+
+    /// Set a book's subtitle; an empty one removes its entry.
+    pub fn set_subtitle_for_book(&mut self, book_id: Id, subtitle: &str) {
+        let subtitle = clean_text(subtitle, SUBTITLE_MAX);
+        self.book_subtitles.retain(|entry| entry.book_id != book_id);
+        if !subtitle.is_empty() {
+            self.book_subtitles.push(BookSubtitle { book_id, subtitle });
+        }
     }
 
     /// The compile profiles, each with its values in range: the project's

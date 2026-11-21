@@ -19,6 +19,9 @@ pub(super) fn CompileDialog() -> Element {
     let built_in = profile.is_built_in();
     let page = profile.page.clone();
     let margin = format!("{:.1}", page.margin as f64 / 10.0);
+    let (author, subtitle) = state.read().compile_author_and_subtitle();
+    let matter = profile.matter.clone();
+    let copyright_example = matter.copyright_line(writing_studio_core::local_year(), &author);
     rsx! {
         div { class: "dialog-backdrop", onclick: move |_| state.write().compile_open = false }
         div { class: "dialog compile-dialog", role: "dialog", aria_modal: "true", aria_labelledby: "compile-title",
@@ -44,6 +47,22 @@ pub(super) fn CompileDialog() -> Element {
                     for (id, title) in books {
                         option { value: "{id}", selected: Some(id) == book, "{title}" }
                     }
+                }
+                label { r#for: "compile-subtitle", "Subtitle" }
+                input {
+                    id: "compile-subtitle",
+                    placeholder: "None",
+                    title: "This book's subtitle, for its title page",
+                    value: "{subtitle}",
+                    onchange: move |event| state.write().set_compile_subtitle(&event.value()),
+                }
+                label { r#for: "compile-author", "Author" }
+                input {
+                    id: "compile-author",
+                    placeholder: "Your name as the book prints it",
+                    title: "Shared by every book in the project",
+                    value: "{author}",
+                    onchange: move |event| state.write().set_author(&event.value()),
                 }
                 label { r#for: "compile-profile", "Profile" }
                 div { class: "compile-row",
@@ -99,18 +118,6 @@ pub(super) fn CompileDialog() -> Element {
                         for format in CompileFormat::ALL {
                             option { value: "{format.extension()}", selected: format == profile.format, "{format.label()}" }
                         }
-                    }
-                    span {}
-                    label { class: "check-label",
-                        input {
-                            r#type: "checkbox",
-                            checked: profile.title_page,
-                            onchange: move |event| {
-                                let on = event.checked();
-                                change_profile(state, move |profile| profile.title_page = on);
-                            },
-                        }
-                        "Title page"
                     }
                 }
                 div { class: "compile-grid",
@@ -176,6 +183,133 @@ pub(super) fn CompileDialog() -> Element {
                     }
                     span {}
                     span { class: "hint", "{heading_example(&profile)}" }
+                }
+                div { class: "compile-grid",
+                    span { class: "compile-group", "Front matter" }
+                    div { class: "compile-checks",
+                        label { class: "check-label",
+                            input {
+                                r#type: "checkbox",
+                                checked: profile.title_page,
+                                onchange: move |event| {
+                                    let on = event.checked();
+                                    change_profile(state, move |profile| profile.title_page = on);
+                                },
+                            }
+                            "Title page"
+                        }
+                        label { class: "check-label",
+                            input {
+                                r#type: "checkbox",
+                                checked: matter.copyright,
+                                onchange: move |event| {
+                                    let on = event.checked();
+                                    change_profile(state, move |profile| profile.matter.copyright = on);
+                                },
+                            }
+                            "Copyright page"
+                        }
+                        label { class: "check-label",
+                            input {
+                                r#type: "checkbox",
+                                checked: matter.dedication,
+                                onchange: move |event| {
+                                    let on = event.checked();
+                                    change_profile(state, move |profile| profile.matter.dedication = on);
+                                },
+                            }
+                            "Dedication"
+                        }
+                        label { class: "check-label",
+                            input {
+                                r#type: "checkbox",
+                                checked: matter.contents,
+                                onchange: move |event| {
+                                    let on = event.checked();
+                                    change_profile(state, move |profile| profile.matter.contents = on);
+                                },
+                            }
+                            "Contents"
+                        }
+                    }
+                    if matter.copyright {
+                        label { r#for: "matter-copyright", "Copyright" }
+                        div {
+                            input {
+                                id: "matter-copyright",
+                                value: "{matter.copyright_text}",
+                                onchange: move |event| {
+                                    let text = event.value();
+                                    change_profile(state, move |profile| profile.matter.copyright_text = text);
+                                },
+                            }
+                            p { class: "hint", "{{year}} and {{author}} are filled in: “{copyright_example}”" }
+                        }
+                    }
+                    if matter.dedication {
+                        label { r#for: "matter-dedication", "Dedication" }
+                        textarea {
+                            id: "matter-dedication",
+                            rows: "2",
+                            value: "{matter.dedication_text}",
+                            onchange: move |event| {
+                                let text = event.value();
+                                change_profile(state, move |profile| profile.matter.dedication_text = text);
+                            },
+                        }
+                    }
+                    span { class: "compile-group", "Back matter" }
+                    div { class: "compile-checks",
+                        label { class: "check-label",
+                            input {
+                                r#type: "checkbox",
+                                checked: matter.about_author,
+                                onchange: move |event| {
+                                    let on = event.checked();
+                                    change_profile(state, move |profile| profile.matter.about_author = on);
+                                },
+                            }
+                            "About the author"
+                        }
+                        label { class: "check-label",
+                            input {
+                                r#type: "checkbox",
+                                checked: matter.also_by,
+                                onchange: move |event| {
+                                    let on = event.checked();
+                                    change_profile(state, move |profile| profile.matter.also_by = on);
+                                },
+                            }
+                            "Also by"
+                        }
+                    }
+                    if matter.about_author {
+                        label { r#for: "matter-about", "About the author" }
+                        textarea {
+                            id: "matter-about",
+                            rows: "4",
+                            value: "{matter.about_author_text}",
+                            onchange: move |event| {
+                                let text = event.value();
+                                change_profile(state, move |profile| profile.matter.about_author_text = text);
+                            },
+                        }
+                    }
+                    if matter.also_by {
+                        label { r#for: "matter-also-by", "Also by" }
+                        div {
+                            textarea {
+                                id: "matter-also-by",
+                                rows: "3",
+                                value: "{matter.also_by_text}",
+                                onchange: move |event| {
+                                    let text = event.value();
+                                    change_profile(state, move |profile| profile.matter.also_by_text = text);
+                                },
+                            }
+                            p { class: "hint", "One title to a line." }
+                        }
+                    }
                 }
                 if profile.format.has_pages() {
                     div { class: "compile-grid",

@@ -1,15 +1,17 @@
 use docx_rs::{
-    Docx, DocxError, Hyperlink, HyperlinkType, LineSpacing, PageMargin, Paragraph, Run, RunFonts, SpecialIndentType,
+    AlignmentType, Docx, DocxError, Hyperlink, HyperlinkType, LineSpacing, PageMargin, Paragraph, Run, RunFonts, SpecialIndentType,
 };
 use writing_studio_document::{normalize_link, BlockKind, Document, Inline};
 use writing_studio_project::{NodeKind, PageSetup, SceneSeparator};
 
-use crate::compile::{collect_sections, CompileInput};
+use crate::compile::{collect_sections, CompileInput, MatterPage};
 
 /// A tenth of an inch, in twentieths of a point.
 const TENTH_INCH: i32 = 144;
 /// The first-line indent of a paragraph: half an inch.
 const INDENT: i32 = 720;
+/// How far down the page a title or a dedication starts: two inches.
+const TITLE_DROP: u32 = 2880;
 
 /// The profile's page as Word applies it to each paragraph.
 struct Style {
@@ -69,24 +71,35 @@ pub fn compile_docx(input: &CompileInput<'_>) -> Result<Vec<u8>, DocxError> {
         .default_size(style.size);
     let mut first = true;
     for section in collect_sections(input) {
-        // Each part and chapter starts a page, and so does what follows the
-        // title page; the first section starts the first page anyway.
+        // Each page of matter starts a page, and so does the text after the
+        // front matter. Each part and chapter does when the profile says so.
+        // The first section starts the first page anyway.
         let new_page = !first
-            && page.chapter_new_page
-            && (section.kind.is_some_and(|kind| matches!(kind, NodeKind::Book | NodeKind::Part | NodeKind::Chapter))
-                || section.after_title_page);
+            && (section.matter.is_some()
+                || section.after_front_matter
+                || (page.chapter_new_page
+                    && section.kind.is_some_and(|kind| matches!(kind, NodeKind::Book | NodeKind::Part | NodeKind::Chapter))));
+        let mut paragraphs = Vec::new();
         match section.break_before {
-            Some(SceneSeparator::Break) => docx = docx.add_paragraph(scene_break(&style)),
-            Some(SceneSeparator::Blank) => {
-                docx = docx.add_paragraph(Paragraph::new().add_run(Run::new().add_text("").size(style.size)))
-            }
+            Some(SceneSeparator::Break) => paragraphs.push(scene_break(&style)),
+            Some(SceneSeparator::Blank) => paragraphs.push(Paragraph::new().add_run(Run::new().add_text("").size(style.size))),
             _ => {}
         }
-        if let Some(title) = &section.title {
-            docx = docx.add_paragraph(heading_paragraph(&style, title, section.heading_level).page_break_before(new_page));
+        match (&section.matter, &section.title) {
+            (Some(MatterPage::Title { subtitle, author }), Some(title)) => {
+                paragraphs.extend(title_page(&style, title, subtitle, author));
+            }
+            (_, Some(title)) => paragraphs.push(heading_paragraph(&style, title, section.heading_level)),
+            _ => {}
+        }
+        if let Some(matter) = &section.matter {
+            paragraphs.extend(matter_paragraphs(&style, matter));
         }
         if let Some(document) = section.document {
-            docx = add_document(docx, &style, document);
+            paragraphs.extend(document_paragraphs(&style, document));
+        }
+        for (index, paragraph) in paragraphs.into_iter().enumerate() {
+            docx = docx.add_paragraph(if index == 0 && new_page { paragraph.page_break_before(true) } else { paragraph });
         }
         first = false;
     }
@@ -95,41 +108,103 @@ pub fn compile_docx(input: &CompileInput<'_>) -> Result<Vec<u8>, DocxError> {
     Ok(buf)
 }
 
-fn add_document(mut docx: Docx, style: &Style, document: &Document) -> Docx {
+/// The title a third of the way down the page, then the subtitle and the
+/// author, all centered.
+fn title_page(style: &Style, title: &str, subtitle: &str, author: &str) -> Vec<Paragraph> {
+    let centered = |text: &str, size: usize| {
+        Paragraph::new()
+            .align(AlignmentType::Center)
+            .line_spacing(LineSpacing::new().line(style.line))
+            .add_run(Run::new().add_text(text).size(size).fonts(style.fonts()))
+    };
+    let mut paragraphs = vec![Paragraph::new()
+        .align(AlignmentType::Center)
+        .line_spacing(LineSpacing::new().before(TITLE_DROP).after(240))
+        .add_run(Run::new().add_text(title).bold().size(style.heading_size(1)).fonts(style.fonts()))];
+    if !subtitle.is_empty() {
+        paragraphs.push(centered(subtitle, style.heading_size(3)));
+    }
+    if !author.is_empty() {
+        paragraphs.push(centered(author, style.size));
+    }
+    paragraphs
+}
+
+fn matter_paragraphs(style: &Style, matter: &MatterPage) -> Vec<Paragraph> {
+    let line = |text: &str, italic: bool, align: AlignmentType| {
+        let mut run = Run::new().add_text(text).size(style.size).fonts(style.fonts());
+        if italic {
+            run = run.italic();
+        }
+        Paragraph::new().align(align).line_spacing(LineSpacing::new().line(style.line)).add_run(run)
+    };
+    match matter {
+        MatterPage::Title { .. } => Vec::new(),
+        MatterPage::Copyright(text) => vec![line(text, false, AlignmentType::Left)],
+        MatterPage::Dedication(lines) => lines
+            .iter()
+            .enumerate()
+            .map(|(index, text)| {
+                let paragraph = line(text, true, AlignmentType::Center);
+                // The dedication starts down the page, as the title does.
+                if index == 0 {
+                    paragraph.line_spacing(LineSpacing::new().before(TITLE_DROP).line(style.line))
+                } else {
+                    paragraph
+                }
+            })
+            .collect(),
+        MatterPage::Contents(entries) => entries
+            .iter()
+            .map(|entry| {
+                line(&entry.title, false, AlignmentType::Left)
+                    .indent(Some(INDENT * i32::from(entry.depth)), None, None, None)
+            })
+            .collect(),
+        MatterPage::AboutAuthor(paragraphs) => paragraphs
+            .iter()
+            .map(|text| style.body(Paragraph::new().add_run(Run::new().add_text(text).size(style.size).fonts(style.fonts()))))
+            .collect(),
+        MatterPage::AlsoBy(titles) => titles.iter().map(|text| line(text, true, AlignmentType::Left)).collect(),
+    }
+}
+
+fn document_paragraphs(style: &Style, document: &Document) -> Vec<Paragraph> {
+    let mut paragraphs = Vec::new();
     for block in &document.blocks {
         match &block.kind {
             BlockKind::Paragraph { inlines } => {
-                docx = docx.add_paragraph(style.body(add_inlines(Paragraph::new(), style, inlines, style.size, false, false)));
+                paragraphs.push(style.body(add_inlines(Paragraph::new(), style, inlines, style.size, false, false)));
             }
             BlockKind::Heading { level, inlines } => {
                 let size = style.heading_size(level.saturating_add(1));
-                docx = docx.add_paragraph(add_inlines(Paragraph::new(), style, inlines, size, true, false));
+                paragraphs.push(add_inlines(Paragraph::new(), style, inlines, size, true, false));
             }
             BlockKind::Quote { inlines } => {
                 let paragraph = add_inlines(Paragraph::new(), style, inlines, style.size, false, true);
-                docx = docx.add_paragraph(paragraph.indent(Some(INDENT), None, Some(INDENT), None));
+                paragraphs.push(paragraph.indent(Some(INDENT), None, Some(INDENT), None));
             }
             BlockKind::List { ordered, items } => {
                 for (index, item) in items.iter().enumerate() {
                     let marker = if *ordered { format!("{}. ", index + 1) } else { "• ".into() };
                     let mut paragraph = Paragraph::new().add_run(Run::new().add_text(&marker).size(style.size).fonts(style.fonts()));
                     paragraph = add_inlines(paragraph, style, &item.inlines, style.size, false, false);
-                    docx = docx.add_paragraph(paragraph.line_spacing(LineSpacing::new().line(style.line)));
+                    paragraphs.push(paragraph.line_spacing(LineSpacing::new().line(style.line)));
                 }
             }
             BlockKind::Code { .. } => {
                 let text = block.plain_text();
                 let lines: Vec<&str> = if text.is_empty() { vec![""] } else { text.split('\n').collect() };
                 for line in lines {
-                    docx = docx.add_paragraph(Paragraph::new().add_run(
+                    paragraphs.push(Paragraph::new().add_run(
                         Run::new().add_text(line).size(style.size.saturating_sub(2)).fonts(RunFonts::new().ascii("Consolas")),
                     ));
                 }
             }
-            BlockKind::SceneBreak => docx = docx.add_paragraph(scene_break(style)),
+            BlockKind::SceneBreak => paragraphs.push(scene_break(style)),
         }
     }
-    docx
+    paragraphs
 }
 
 /// A centered "* * *".

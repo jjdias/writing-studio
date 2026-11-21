@@ -8,8 +8,37 @@ pub struct CompileInput<'a> {
     pub book_id: Option<Id>,
     pub tree: &'a BinderTree,
     pub documents: &'a [Document],
-    /// The title page, the headings, what goes between scenes, and the page.
+    /// The title page, the headings, what goes between scenes, the matter,
+    /// and the page.
     pub profile: &'a CompileProfile,
+    /// The writer's name, for the title page, the copyright line, and "Also by".
+    pub author: &'a str,
+    /// The book's subtitle, for the title page.
+    pub subtitle: &'a str,
+    /// The year the copyright line gives.
+    pub year: i32,
+}
+
+/// A page of front or back matter: made by the compile, not a scene.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MatterPage {
+    /// The section's title is the book's.
+    Title { subtitle: String, author: String },
+    Copyright(String),
+    /// One line of the dedication to each entry.
+    Dedication(Vec<String>),
+    Contents(Vec<ContentsEntry>),
+    /// One paragraph to each entry.
+    AboutAuthor(Vec<String>),
+    AlsoBy(Vec<String>),
+}
+
+/// A part or chapter in the table of contents. `depth` is 0 for the
+/// outermost ones compiled.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ContentsEntry {
+    pub depth: u8,
+    pub title: String,
 }
 
 pub struct CompiledSection<'a> {
@@ -17,55 +46,119 @@ pub struct CompiledSection<'a> {
     /// The heading, or `None` for a scene the profile sets off without one.
     pub title: Option<String>,
     pub document: Option<&'a Document>,
-    /// What the section is in the binder. `None` for the title page.
+    /// What the section is in the binder. `None` for matter.
     pub kind: Option<NodeKind>,
-    /// The first section after the title page.
-    pub after_title_page: bool,
+    /// Set for a page of front or back matter.
+    pub matter: Option<MatterPage>,
+    /// The first section of the text after the front matter.
+    pub after_front_matter: bool,
     /// A scene break or an empty line between this scene and the one before
     /// it in the same chapter.
     pub break_before: Option<SceneSeparator>,
 }
 
-/// The book in reading order, as the profile sets it. An item left out of
-/// compile is skipped with what it holds, and so is the trash. Parts and
-/// chapters are numbered among those compiled, across the book.
-pub fn collect_sections<'a>(input: &'a CompileInput<'a>) -> Vec<CompiledSection<'a>> {
-    let mut walker = Walker { input, sections: Vec::new(), chapters: 0, parts: 0 };
-    let title_page = input.profile.title_page;
-    if title_page {
-        walker.sections.push(CompiledSection {
-            heading_level: 1,
-            title: Some(input.title.to_string()),
+impl CompiledSection<'_> {
+    fn matter(heading_level: u8, title: Option<String>, page: MatterPage) -> Self {
+        Self {
+            heading_level,
+            title,
             document: None,
             kind: None,
-            after_title_page: false,
+            matter: Some(page),
+            after_front_matter: false,
             break_before: None,
-        });
-    }
-    let start_depth = if title_page { 2 } else { 1 };
-    if let Some(book_id) = input.book_id {
-        let Some(book) = input.tree.get(book_id) else {
-            return walker.sections;
-        };
-        if book.kind != NodeKind::Book || input.tree.is_in_trash(book.id) || book.left_out {
-            return walker.sections;
         }
-        if title_page {
-            if let Some(page) = walker.sections.first_mut() {
-                page.title = Some(book.title.clone());
+    }
+}
+
+/// The book in reading order, as the profile sets it, between its front and
+/// back matter. An item left out of compile is skipped with what it holds,
+/// and so is the trash. Parts and chapters are numbered among those
+/// compiled, across the book. A matter page with no text is left out.
+pub fn collect_sections<'a>(input: &'a CompileInput<'a>) -> Vec<CompiledSection<'a>> {
+    let profile = input.profile;
+    let (root, title) = match input.book_id {
+        Some(book_id) => match input.tree.get(book_id) {
+            Some(book) if book.kind == NodeKind::Book && !input.tree.is_in_trash(book.id) && !book.left_out => {
+                (Some(book.id), book.title.clone())
             }
-        }
-        walker.walk(book.id, start_depth);
-    } else if let Some(draft) = input.tree.draft_root() {
-        walker.walk(draft.id, start_depth);
+            _ => (None, input.title.to_string()),
+        },
+        None => (input.tree.draft_root().map(|draft| draft.id), input.title.to_string()),
+    };
+    // Under a title page the book's own heading is the first level, so
+    // its parts and chapters start one below it.
+    let depth = if profile.title_page { 2 } else { 1 };
+    let mut walker = Walker { input, sections: Vec::new(), chapters: 0, parts: 0 };
+    if let Some(root) = root {
+        walker.walk(root, depth);
     }
-    let mut sections = walker.sections;
-    if title_page {
-        if let Some(next) = sections.get_mut(1) {
-            next.after_title_page = true;
+    let mut body = walker.sections;
+
+    let matter = &profile.matter;
+    let author = input.author.trim();
+    let mut sections = Vec::new();
+    if profile.title_page {
+        let page = MatterPage::Title { subtitle: input.subtitle.trim().to_string(), author: author.to_string() };
+        sections.push(CompiledSection::matter(1, Some(title), page));
+    }
+    if matter.copyright {
+        let line = matter.copyright_line(input.year, author);
+        if !line.is_empty() {
+            sections.push(CompiledSection::matter(depth, None, MatterPage::Copyright(line)));
+        }
+    }
+    if matter.dedication {
+        let lines = lines_of(&matter.dedication_text);
+        if !lines.is_empty() {
+            sections.push(CompiledSection::matter(depth, None, MatterPage::Dedication(lines)));
+        }
+    }
+    if matter.contents {
+        let entries = contents_of(&body);
+        if !entries.is_empty() {
+            sections.push(CompiledSection::matter(depth, Some("Contents".into()), MatterPage::Contents(entries)));
+        }
+    }
+    if !sections.is_empty() {
+        if let Some(first) = body.first_mut() {
+            first.after_front_matter = true;
+        }
+    }
+    sections.append(&mut body);
+    if matter.about_author {
+        let paragraphs = lines_of(&matter.about_author_text);
+        if !paragraphs.is_empty() {
+            let page = MatterPage::AboutAuthor(paragraphs);
+            sections.push(CompiledSection::matter(depth, Some("About the author".into()), page));
+        }
+    }
+    if matter.also_by {
+        let titles = matter.also_by_titles();
+        if !titles.is_empty() {
+            let heading = if author.is_empty() { "Also by the author".to_string() } else { format!("Also by {author}") };
+            sections.push(CompiledSection::matter(depth, Some(heading), MatterPage::AlsoBy(titles)));
         }
     }
     sections
+}
+
+fn lines_of(text: &str) -> Vec<String> {
+    text.lines().map(str::trim).filter(|line| !line.is_empty()).map(String::from).collect()
+}
+
+/// The compiled parts and chapters, as their headings read.
+fn contents_of(body: &[CompiledSection<'_>]) -> Vec<ContentsEntry> {
+    let headed = || {
+        body.iter().filter(|section| matches!(section.kind, Some(NodeKind::Part | NodeKind::Chapter)))
+    };
+    let top = headed().map(|section| section.heading_level).min().unwrap_or(1);
+    headed()
+        .filter_map(|section| {
+            let title = section.title.clone()?;
+            Some(ContentsEntry { depth: section.heading_level - top, title })
+        })
+        .collect()
 }
 
 struct Walker<'a> {
@@ -115,7 +208,8 @@ impl<'a> Walker<'a> {
                 title,
                 document,
                 kind: Some(node.kind),
-                after_title_page: false,
+                matter: None,
+                after_front_matter: false,
                 break_before,
             });
             self.walk(node.id, depth.saturating_add(1).min(6));

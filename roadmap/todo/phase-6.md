@@ -1,6 +1,6 @@
 # Phase 6 — Publishing (local)
 
-In progress: stages 1 and 2 are done.
+In progress: stages 1 to 3 are done.
 
 Writing Studio compiles one book to Markdown or DOCX today, with a title page and nothing else to choose. This phase turns compile into publishing: the writer says what the book should look like once, as a profile, and gets a manuscript to send out, an ebook, a print-ready PDF, or a web page, from the same text. All of it happens on the writer's computer.
 
@@ -34,6 +34,8 @@ In this order: profiles first, because every format after them reads one. Then w
 - **Compile order** is the binder's order, in reading order. A compile lists the order it used in its summary (stage 7), so the writer sees what went in.
 
 ### 3. Front and back matter
+
+**Done.** `Matter` (`crates/project/src/compile.rs`) is part of each profile: the copyright line, dedication, contents, about the author, and also by, each on or off, with its text kept while it is off. The author (`author`) and each book's subtitle (`book_subtitles`) are shared settings. `collect_sections` puts the matter around the text as `MatterPage` sections, leaves a page with no text out, and builds the contents from the compiled parts and chapters. Word starts each page of matter on a new page; Markdown sets them one after another. The subtitle is per book rather than per project, so each book of a series has its own. The matter headings ("Contents", "About the author", "Also by") are English only, like the number words. A Word table of contents lists the headings without page numbers.
 
 - **Front matter**, per profile, each one on or off: a title page (title, subtitle, author), a copyright page (one line of text the writer edits, with the year filled in), a dedication, and a table of contents (from the parts and chapters that are compiled).
 - **Back matter:** "About the author" and "Also by", as text the writer edits.

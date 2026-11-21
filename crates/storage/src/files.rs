@@ -36,10 +36,12 @@ pub const FILES_FORMAT_VERSION: u32 = 2;
 /// Settings that every machine working on the project shares. Every other
 /// setting is about one machine's window and writing habits, and stays in
 /// `.local/`.
-const SHARED_SETTINGS: [&str; 5] = [
+const SHARED_SETTINGS: [&str; 7] = [
     "daily_word_goal",
     "project_word_goal",
     "compile_profiles",
+    "author",
+    "book_subtitles",
     "book_word_goals",
     "spelling",
 ];

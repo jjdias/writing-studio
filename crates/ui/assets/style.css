@@ -1394,3 +1394,11 @@ button.keyword-dot:hover { box-shadow: 0 0 0 2px var(--line); }
 .library-row.left-out .library-name, .scene-card.left-out { opacity: 0.55; }
 .compile-check { margin-top: 12px; }
 .compile-row input.compile-word { flex: 0 0 7rem; }
+/* Front and back matter: the pages as a row of checks, and the text of each
+   one that is on under it. */
+.compile-grid > .compile-group { font-size: 12px; color: var(--muted); }
+.compile-checks { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.compile-grid textarea, .compile-grid > div > input { width: 100%; box-sizing: border-box; }
+.compile-grid textarea { min-height: 0; }
+.compile-grid > label[for^="matter-"] { align-self: start; padding-top: 6px; }
+.compile-grid p.hint { margin: 4px 0 0; }

@@ -35,6 +35,12 @@ pub fn local_day() -> String {
     chrono::Local::now().format("%Y-%m-%d").to_string()
 }
 
+/// The year on this computer's calendar.
+pub fn local_year() -> i32 {
+    use chrono::Datelike;
+    chrono::Local::now().year()
+}
+
 /// Days from one `YYYY-MM-DD` day to another: 1 for tomorrow, negative for a
 /// day already past. `None` when either is not a date.
 pub fn days_between(from: &str, to: &str) -> Option<i64> {

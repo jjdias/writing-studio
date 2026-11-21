@@ -107,6 +107,29 @@ impl StudioState {
             .collect()
     }
 
+    /// The project's author and the current book's subtitle, for the title
+    /// page.
+    pub fn compile_author_and_subtitle(&self) -> (String, String) {
+        let Some(meta) = self.meta.as_ref() else {
+            return Default::default();
+        };
+        let subtitle = self.compile_book_id().map(|book| meta.settings.subtitle_for_book(book)).unwrap_or_default();
+        (meta.settings.author_name(), subtitle)
+    }
+
+    /// The writer's name, shared by every book in the project.
+    pub fn set_author(&mut self, author: &str) {
+        self.edit_settings(|settings| settings.set_author(author));
+    }
+
+    /// The current book's subtitle.
+    pub fn set_compile_subtitle(&mut self, subtitle: &str) {
+        let Some(book) = self.compile_book_id() else {
+            return;
+        };
+        self.edit_settings(|settings| settings.set_subtitle_for_book(book, subtitle));
+    }
+
     fn edit_settings(&mut self, change: impl FnOnce(&mut ProjectSettings)) {
         let Some(meta) = self.meta.as_mut() else {
             return;
@@ -140,12 +163,16 @@ impl StudioState {
             return None;
         };
         let title = self.binder.get(book_id).map(|node| node.title.clone()).unwrap_or_else(|| self.project_title());
+        let (author, subtitle) = self.compile_author_and_subtitle();
         let input = CompileInput {
             title: &title,
             book_id: Some(book_id),
             tree: &self.binder,
             documents: &documents,
             profile: &profile,
+            author: &author,
+            subtitle: &subtitle,
+            year: writing_studio_core::local_year(),
         };
         let bytes = match profile.format {
             CompileFormat::Markdown => compile_markdown(&input).into_bytes(),
@@ -180,6 +207,37 @@ mod tests {
         state.create_project_in(dir.clone());
         assert!(state.session.is_some(), "{}", state.status);
         (state, dir)
+    }
+
+    #[test]
+    fn the_author_and_subtitle_are_shared_and_printed_with_the_matter() {
+        let (mut state, dir) = open_state("matter");
+        state.apply_editor_text("The harbor was quiet.".into());
+        let plain = state.compile_profiles()[1].id;
+        state.choose_compile_profile(plain);
+        state.set_author("  Maya Reis\n");
+        state.set_compile_subtitle("A Novel");
+        let mut profile = state.compile_profile().unwrap();
+        profile.matter.copyright = true;
+        profile.matter.about_author = true;
+        profile.matter.about_author_text = "Maya lives by the sea.".into();
+        state.change_compile_profile(profile);
+        let text = String::from_utf8(state.prepare_compile().unwrap().bytes).unwrap();
+        let year = writing_studio_core::local_year();
+        assert!(text.contains("*A Novel*") && text.contains("\nMaya Reis\n"), "{text}");
+        assert!(text.contains(&format!("Copyright © {year} Maya Reis.")), "{text}");
+        assert!(text.contains("Maya lives by the sea."), "{text}");
+
+        state.save_all();
+        let root = state.project_root().unwrap();
+        let shared = std::fs::read_to_string(root.join("project.json")).unwrap();
+        assert!(shared.contains("\"author\": \"Maya Reis\"") && shared.contains("book_subtitles"), "{shared}");
+        let mut reopened = StudioState::default();
+        reopened.open_project_at(root);
+        assert_eq!(reopened.compile_author_and_subtitle(), ("Maya Reis".into(), "A Novel".into()));
+        reopened.set_compile_subtitle("");
+        assert_eq!(reopened.compile_author_and_subtitle().1, "", "an empty subtitle removes it");
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
