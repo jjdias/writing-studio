@@ -117,7 +117,7 @@ pub fn collect_sections<'a>(input: &'a CompileInput<'a>) -> Vec<CompiledSection<
     if matter.contents {
         let entries = contents_of(&body);
         if !entries.is_empty() {
-            sections.push(CompiledSection::matter(depth, Some("Contents".into()), MatterPage::Contents(entries)));
+            sections.push(CompiledSection::matter(depth, Some(profile.contents_heading()), MatterPage::Contents(entries)));
         }
     }
     if !sections.is_empty() {
@@ -130,13 +130,13 @@ pub fn collect_sections<'a>(input: &'a CompileInput<'a>) -> Vec<CompiledSection<
         let paragraphs = lines_of(&matter.about_author_text);
         if !paragraphs.is_empty() {
             let page = MatterPage::AboutAuthor(paragraphs);
-            sections.push(CompiledSection::matter(depth, Some("About the author".into()), page));
+            sections.push(CompiledSection::matter(depth, Some(profile.about_author_heading()), page));
         }
     }
     if matter.also_by {
         let titles = matter.also_by_titles();
         if !titles.is_empty() {
-            let heading = if author.is_empty() { "Also by the author".to_string() } else { format!("Also by {author}") };
+            let heading = profile.also_by_heading(author);
             sections.push(CompiledSection::matter(depth, Some(heading), MatterPage::AlsoBy(titles)));
         }
     }
@@ -182,11 +182,11 @@ impl<'a> Walker<'a> {
             let (title, break_before) = match node.kind {
                 NodeKind::Chapter => {
                     self.chapters += 1;
-                    (Some(profile.chapters.heading(&profile.chapter_word, self.chapters, &node.title)), None)
+                    (Some(profile.chapters.heading(profile.language, &profile.chapter_word, self.chapters, &node.title)), None)
                 }
                 NodeKind::Part => {
                     self.parts += 1;
-                    (Some(profile.parts.heading(&profile.part_word, self.parts, &node.title)), None)
+                    (Some(profile.parts.heading(profile.language, &profile.part_word, self.parts, &node.title)), None)
                 }
                 NodeKind::Scene => {
                     // A scene right after another scene is set off from it;

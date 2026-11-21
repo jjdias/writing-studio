@@ -130,7 +130,7 @@ impl HeadingStyle {
     /// only the word and a number, as a new chapter's is, is not repeated:
     /// "Chapter 2" reads "Chapter 2", not "Chapter 2: Chapter 2". A heading
     /// with no title to show falls back to the number.
-    pub fn heading(self, word: &str, number: usize, title: &str) -> String {
+    pub fn heading(self, language: BookLanguage, word: &str, number: usize, title: &str) -> String {
         let title = title.trim();
         let numbered = |count: String| if word.is_empty() { count } else { format!("{word} {count}") };
         let placeholder = title.is_empty()
@@ -140,27 +140,187 @@ impl HeadingStyle {
                 }));
         match self {
             HeadingStyle::Title if !placeholder => title.to_string(),
-            HeadingStyle::NumberWords => numbered(number_words(number)),
+            HeadingStyle::NumberWords => numbered(language.number_words(number)),
             HeadingStyle::NumberAndTitle if !placeholder => format!("{}: {title}", numbered(number.to_string())),
             _ => numbered(number.to_string()),
         }
     }
 }
 
-/// A number up to ninety-nine in English words, with a capital; larger ones
-/// stay digits.
-fn number_words(number: usize) -> String {
+/// The language a book is printed in: it sets the number words, the words
+/// before a number, and the headings of the matter. Each of those can still
+/// be changed in the profile.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BookLanguage {
+    #[default]
+    English,
+    Portuguese,
+    Spanish,
+    French,
+}
+
+impl BookLanguage {
+    pub const ALL: [BookLanguage; 4] =
+        [BookLanguage::English, BookLanguage::Portuguese, BookLanguage::Spanish, BookLanguage::French];
+
+    /// The language's name in itself, as the menu lists it.
+    pub fn label(self) -> &'static str {
+        match self {
+            BookLanguage::English => "English",
+            BookLanguage::Portuguese => "Português",
+            BookLanguage::Spanish => "Español",
+            BookLanguage::French => "Français",
+        }
+    }
+
+    pub fn chapter_word(self) -> &'static str {
+        match self {
+            BookLanguage::English => "Chapter",
+            BookLanguage::Portuguese | BookLanguage::Spanish => "Capítulo",
+            BookLanguage::French => "Chapitre",
+        }
+    }
+
+    pub fn part_word(self) -> &'static str {
+        match self {
+            BookLanguage::English => "Part",
+            BookLanguage::Portuguese | BookLanguage::Spanish => "Parte",
+            BookLanguage::French => "Partie",
+        }
+    }
+
+    pub fn contents(self) -> &'static str {
+        match self {
+            BookLanguage::English => "Contents",
+            BookLanguage::Portuguese => "Sumário",
+            BookLanguage::Spanish => "Índice",
+            BookLanguage::French => "Table des matières",
+        }
+    }
+
+    pub fn about_author(self) -> &'static str {
+        match self {
+            BookLanguage::English => "About the author",
+            BookLanguage::Portuguese => "Sobre o autor",
+            BookLanguage::Spanish => "Sobre el autor",
+            BookLanguage::French => "À propos de l’auteur",
+        }
+    }
+
+    /// "Also by {author}", where `{author}` is the project's author.
+    pub fn also_by(self) -> &'static str {
+        match self {
+            BookLanguage::English => "Also by {author}",
+            BookLanguage::Portuguese => "Outros livros de {author}",
+            BookLanguage::Spanish => "Otros libros de {author}",
+            BookLanguage::French => "Du même auteur",
+        }
+    }
+
+    /// "Also by" when the project has no author.
+    fn also_by_no_author(self) -> &'static str {
+        match self {
+            BookLanguage::English => "Also by the author",
+            BookLanguage::Portuguese => "Outros livros do autor",
+            BookLanguage::Spanish => "Otros libros del autor",
+            BookLanguage::French => "Du même auteur",
+        }
+    }
+
+    pub fn copyright(self) -> &'static str {
+        match self {
+            BookLanguage::English => "Copyright © {year} {author}. All rights reserved.",
+            BookLanguage::Portuguese => "Copyright © {year} {author}. Todos os direitos reservados.",
+            BookLanguage::Spanish => "Copyright © {year} {author}. Todos los derechos reservados.",
+            BookLanguage::French => "Copyright © {year} {author}. Tous droits réservés.",
+        }
+    }
+
+    /// A number up to ninety-nine in words, with a capital; larger ones stay
+    /// digits.
+    pub fn number_words(self, number: usize) -> String {
+        let words = match self {
+            BookLanguage::English => english_number(number),
+            BookLanguage::Portuguese => portuguese_number(number),
+            BookLanguage::Spanish => spanish_number(number),
+            BookLanguage::French => french_number(number),
+        };
+        let Some(words) = words else {
+            return number.to_string();
+        };
+        let mut chars = words.chars();
+        chars.next().map(|first| first.to_uppercase().chain(chars).collect()).unwrap_or_default()
+    }
+}
+
+fn english_number(number: usize) -> Option<String> {
     const ONES: [&str; 20] = [
-        "Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve",
-        "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen",
+        "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve",
+        "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen",
     ];
-    const TENS: [&str; 10] = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
-    match number {
+    const TENS: [&str; 10] = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
+    Some(match number {
         0..=19 => ONES[number].to_string(),
         20..=99 if number % 10 == 0 => TENS[number / 10].to_string(),
-        20..=99 => format!("{}-{}", TENS[number / 10], ONES[number % 10].to_lowercase()),
-        _ => number.to_string(),
-    }
+        20..=99 => format!("{}-{}", TENS[number / 10], ONES[number % 10]),
+        _ => return None,
+    })
+}
+
+/// Brazilian spelling: "dezesseis", "vinte e um".
+fn portuguese_number(number: usize) -> Option<String> {
+    const ONES: [&str; 20] = [
+        "zero", "um", "dois", "três", "quatro", "cinco", "seis", "sete", "oito", "nove", "dez", "onze", "doze", "treze",
+        "catorze", "quinze", "dezesseis", "dezessete", "dezoito", "dezenove",
+    ];
+    const TENS: [&str; 10] =
+        ["", "", "vinte", "trinta", "quarenta", "cinquenta", "sessenta", "setenta", "oitenta", "noventa"];
+    Some(match number {
+        0..=19 => ONES[number].to_string(),
+        20..=99 if number % 10 == 0 => TENS[number / 10].to_string(),
+        20..=99 => format!("{} e {}", TENS[number / 10], ONES[number % 10]),
+        _ => return None,
+    })
+}
+
+fn spanish_number(number: usize) -> Option<String> {
+    const ONES: [&str; 30] = [
+        "cero", "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez", "once", "doce", "trece",
+        "catorce", "quince", "dieciséis", "diecisiete", "dieciocho", "diecinueve", "veinte", "veintiuno", "veintidós",
+        "veintitrés", "veinticuatro", "veinticinco", "veintiséis", "veintisiete", "veintiocho", "veintinueve",
+    ];
+    const TENS: [&str; 10] = ["", "", "veinte", "treinta", "cuarenta", "cincuenta", "sesenta", "setenta", "ochenta", "noventa"];
+    Some(match number {
+        0..=29 => ONES[number].to_string(),
+        30..=99 if number % 10 == 0 => TENS[number / 10].to_string(),
+        30..=99 => format!("{} y {}", TENS[number / 10], ONES[number % 10]),
+        _ => return None,
+    })
+}
+
+/// "vingt et un", "soixante-dix", "quatre-vingts", "quatre-vingt-dix-neuf".
+fn french_number(number: usize) -> Option<String> {
+    const ONES: [&str; 20] = [
+        "zéro", "un", "deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf", "dix", "onze", "douze", "treize",
+        "quatorze", "quinze", "seize", "dix-sept", "dix-huit", "dix-neuf",
+    ];
+    const TENS: [&str; 7] = ["", "", "vingt", "trente", "quarante", "cinquante", "soixante"];
+    Some(match number {
+        0..=19 => ONES[number].to_string(),
+        // Seventy and ninety count on from sixty and eighty by the teens.
+        20..=79 => {
+            let (ten, rest) = if number >= 60 { (6, number - 60) } else { (number / 10, number % 10) };
+            match rest {
+                0 => TENS[ten].to_string(),
+                1 | 11 => format!("{} et {}", TENS[ten], ONES[rest]),
+                _ => format!("{}-{}", TENS[ten], ONES[rest]),
+            }
+        }
+        80 => "quatre-vingts".to_string(),
+        81..=99 => format!("quatre-vingt-{}", ONES[number - 80]),
+        _ => return None,
+    })
 }
 
 /// What sets a scene off from the one before it in the same chapter.
@@ -202,6 +362,7 @@ const WORD_MAX: usize = 24;
 const LINE_MAX: usize = 400;
 /// About the author and the list of other books.
 const PASSAGE_MAX: usize = 4000;
+const HEADING_MAX: usize = 80;
 /// More than this many profiles in a project file are ignored.
 pub const PROFILE_LIMIT: usize = 40;
 
@@ -264,6 +425,9 @@ pub struct CompileProfile {
     /// The pages before and after the text, other than the title page.
     #[serde(default)]
     pub matter: Matter,
+    /// The language the book is printed in.
+    #[serde(default)]
+    pub language: BookLanguage,
 }
 
 /// The front and back matter a profile puts around the text. Each page is on
@@ -285,13 +449,18 @@ pub struct Matter {
     pub also_by: bool,
     /// The writer's other books, one to a line.
     pub also_by_text: String,
+    /// The headings of the matter pages. Empty means the book language's.
+    pub contents_heading: String,
+    pub about_author_heading: String,
+    /// `{author}` becomes the project's author.
+    pub also_by_heading: String,
 }
 
 impl Default for Matter {
     fn default() -> Self {
         Self {
             copyright: false,
-            copyright_text: "Copyright © {year} {author}. All rights reserved.".into(),
+            copyright_text: BookLanguage::English.copyright().into(),
             dedication: false,
             dedication_text: String::new(),
             contents: false,
@@ -299,6 +468,9 @@ impl Default for Matter {
             about_author_text: String::new(),
             also_by: false,
             also_by_text: String::new(),
+            contents_heading: String::new(),
+            about_author_heading: String::new(),
+            also_by_heading: String::new(),
         }
     }
 }
@@ -321,6 +493,9 @@ impl Matter {
         self.dedication_text = clean_lines(&self.dedication_text, LINE_MAX);
         self.about_author_text = clean_lines(&self.about_author_text, PASSAGE_MAX);
         self.also_by_text = clean_lines(&self.also_by_text, PASSAGE_MAX);
+        self.contents_heading = clean_text(&self.contents_heading, HEADING_MAX);
+        self.about_author_heading = clean_text(&self.about_author_heading, HEADING_MAX);
+        self.also_by_heading = clean_text(&self.also_by_heading, HEADING_MAX);
         self
     }
 }
@@ -361,6 +536,7 @@ pub fn built_in_profiles() -> Vec<CompileProfile> {
             part_word: default_part_word(),
             scenes: SceneSeparator::Break,
             matter: Matter::default(),
+            language: BookLanguage::English,
         },
         CompileProfile {
             id: fixed_id(PLAIN_TEXT_ID),
@@ -374,6 +550,7 @@ pub fn built_in_profiles() -> Vec<CompileProfile> {
             part_word: default_part_word(),
             scenes: SceneSeparator::Break,
             matter: Matter::default(),
+            language: BookLanguage::English,
         },
     ]
 }
@@ -407,10 +584,52 @@ impl CompileProfile {
     pub fn is_built_in(&self) -> bool {
         built_in_profile(self.id).is_some()
     }
+
+    /// Print the book in `language`. The words before a number and the
+    /// copyright line follow it when they are still the old language's own;
+    /// a word or line the writer changed is kept.
+    pub fn set_language(&mut self, language: BookLanguage) {
+        let old = self.language;
+        if self.chapter_word == old.chapter_word() {
+            self.chapter_word = language.chapter_word().into();
+        }
+        if self.part_word == old.part_word() {
+            self.part_word = language.part_word().into();
+        }
+        if self.matter.copyright_text == old.copyright() {
+            self.matter.copyright_text = language.copyright().into();
+        }
+        self.language = language;
+    }
+
+    /// The table of contents' heading.
+    pub fn contents_heading(&self) -> String {
+        or_default(&self.matter.contents_heading, self.language.contents())
+    }
+
+    pub fn about_author_heading(&self) -> String {
+        or_default(&self.matter.about_author_heading, self.language.about_author())
+    }
+
+    /// "Also by", with the author filled in, or the language's words for
+    /// "the author" when the project has none.
+    pub fn also_by_heading(&self, author: &str) -> String {
+        let author = author.trim();
+        let own = self.matter.also_by_heading.trim();
+        if own.is_empty() && author.is_empty() {
+            return self.language.also_by_no_author().into();
+        }
+        let heading = if own.is_empty() { self.language.also_by() } else { own };
+        heading.replace("{author}", author).split_whitespace().collect::<Vec<_>>().join(" ")
+    }
 }
 
 pub(crate) fn clean_text(text: &str, max: usize) -> String {
     text.chars().filter(|ch| !ch.is_control()).collect::<String>().trim().chars().take(max).collect()
+}
+
+fn or_default(own: &str, default: &str) -> String {
+    if own.trim().is_empty() { default.into() } else { own.trim().into() }
 }
 
 /// Text that keeps its line breaks: each line cleaned, Windows line ends
@@ -485,17 +704,55 @@ mod tests {
     }
 
     #[test]
+    fn number_words_and_headings_follow_the_book_language() {
+        let words = |language: BookLanguage, numbers: &[usize]| {
+            numbers.iter().map(|n| language.number_words(*n)).collect::<Vec<_>>()
+        };
+        assert_eq!(words(BookLanguage::English, &[1, 21, 40, 100]), ["One", "Twenty-one", "Forty", "100"]);
+        assert_eq!(words(BookLanguage::Portuguese, &[2, 16, 21, 99]), ["Dois", "Dezesseis", "Vinte e um", "Noventa e nove"]);
+        assert_eq!(words(BookLanguage::Spanish, &[16, 21, 22, 31]), ["Dieciséis", "Veintiuno", "Veintidós", "Treinta y uno"]);
+        assert_eq!(
+            words(BookLanguage::French, &[17, 21, 70, 71, 77, 80, 81, 91, 99]),
+            [
+                "Dix-sept", "Vingt et un", "Soixante-dix", "Soixante et onze", "Soixante-dix-sept", "Quatre-vingts",
+                "Quatre-vingt-un", "Quatre-vingt-onze", "Quatre-vingt-dix-neuf"
+            ]
+        );
+
+        let mut profile = built_in_profiles().remove(0);
+        profile.part_word = "Livro".into();
+        profile.set_language(BookLanguage::Portuguese);
+        assert_eq!(profile.chapter_word, "Capítulo", "the language's own word follows it");
+        assert_eq!(profile.part_word, "Livro", "a word the writer chose is kept");
+        assert_eq!(profile.matter.copyright_text, BookLanguage::Portuguese.copyright());
+        assert_eq!(
+            profile.chapters.heading(profile.language, &profile.chapter_word, 2, "O Porto"),
+            "Capítulo 2: O Porto"
+        );
+        assert_eq!(HeadingStyle::NumberWords.heading(profile.language, "Capítulo", 3, ""), "Capítulo Três");
+        assert_eq!(profile.contents_heading(), "Sumário");
+        assert_eq!(profile.also_by_heading("Maya Reis"), "Outros livros de Maya Reis");
+        assert_eq!(profile.also_by_heading(""), "Outros livros do autor");
+        profile.matter.contents_heading = " Índice geral ".into();
+        profile.matter.also_by_heading = "Da mesma autora".into();
+        assert_eq!(profile.contents_heading(), "Índice geral");
+        assert_eq!(profile.also_by_heading("Maya Reis"), "Da mesma autora");
+        let json = r#"{"id":"6a0c1f3e-2b7d-4c4e-9a51-0d8e6b1f7c99","name":"Older"}"#;
+        assert_eq!(serde_json::from_str::<CompileProfile>(json).unwrap().language, BookLanguage::English);
+    }
+
+    #[test]
     fn chapter_headings_read_as_the_profile_says_without_repeating_a_placeholder_title() {
         let style = HeadingStyle::NumberAndTitle;
-        assert_eq!(style.heading("Chapter", 3, "The Harbor"), "Chapter 3: The Harbor");
-        assert_eq!(style.heading("Chapter", 2, "Chapter 2"), "Chapter 2", "a new chapter's own name");
-        assert_eq!(style.heading("Chapter", 2, ""), "Chapter 2");
-        assert_eq!(style.heading("Chapter", 2, "Chapters of the sea"), "Chapter 2: Chapters of the sea");
-        assert_eq!(HeadingStyle::Number.heading("Part", 4, "Inland"), "Part 4");
-        assert_eq!(HeadingStyle::NumberWords.heading("Chapter", 21, "x"), "Chapter Twenty-one");
-        assert_eq!(HeadingStyle::NumberWords.heading("Chapter", 140, "x"), "Chapter 140");
-        assert_eq!(HeadingStyle::Title.heading("Chapter", 5, "The Ridge"), "The Ridge");
-        assert_eq!(HeadingStyle::Title.heading("Chapter", 5, "Chapter 5"), "Chapter 5");
-        assert_eq!(HeadingStyle::Number.heading("", 7, "x"), "7", "no word, only the number");
+        assert_eq!(style.heading(BookLanguage::English, "Chapter", 3, "The Harbor"), "Chapter 3: The Harbor");
+        assert_eq!(style.heading(BookLanguage::English, "Chapter", 2, "Chapter 2"), "Chapter 2", "a new chapter's own name");
+        assert_eq!(style.heading(BookLanguage::English, "Chapter", 2, ""), "Chapter 2");
+        assert_eq!(style.heading(BookLanguage::English, "Chapter", 2, "Chapters of the sea"), "Chapter 2: Chapters of the sea");
+        assert_eq!(HeadingStyle::Number.heading(BookLanguage::English, "Part", 4, "Inland"), "Part 4");
+        assert_eq!(HeadingStyle::NumberWords.heading(BookLanguage::English, "Chapter", 21, "x"), "Chapter Twenty-one");
+        assert_eq!(HeadingStyle::NumberWords.heading(BookLanguage::English, "Chapter", 140, "x"), "Chapter 140");
+        assert_eq!(HeadingStyle::Title.heading(BookLanguage::English, "Chapter", 5, "The Ridge"), "The Ridge");
+        assert_eq!(HeadingStyle::Title.heading(BookLanguage::English, "Chapter", 5, "Chapter 5"), "Chapter 5");
+        assert_eq!(HeadingStyle::Number.heading(BookLanguage::English, "", 7, "x"), "7", "no word, only the number");
     }
 }

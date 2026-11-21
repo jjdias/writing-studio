@@ -1,6 +1,6 @@
 use super::*;
 use writing_studio_project::{
-    CompileFormat, CompileProfile, HeadingStyle, LineSpacing, PageSize, SceneSeparator, FONT_SIZE_RANGE, MARGIN_RANGE,
+    BookLanguage, CompileFormat, CompileProfile, HeadingStyle, LineSpacing, PageSize, SceneSeparator, FONT_SIZE_RANGE, MARGIN_RANGE,
 };
 
 /// Project → Compile…: choose the book and the profile, change the profile,
@@ -21,6 +21,8 @@ pub(super) fn CompileDialog() -> Element {
     let margin = format!("{:.1}", page.margin as f64 / 10.0);
     let (author, subtitle) = state.read().compile_author_and_subtitle();
     let matter = profile.matter.clone();
+    let language = profile.language;
+    let also_by_example = profile.also_by_heading(&author);
     let copyright_example = matter.copyright_line(writing_studio_core::local_year(), &author);
     rsx! {
         div { class: "dialog-backdrop", onclick: move |_| state.write().compile_open = false }
@@ -117,6 +119,19 @@ pub(super) fn CompileDialog() -> Element {
                         },
                         for format in CompileFormat::ALL {
                             option { value: "{format.extension()}", selected: format == profile.format, "{format.label()}" }
+                        }
+                    }
+                    label { r#for: "profile-language", "Language" }
+                    select {
+                        id: "profile-language",
+                        title: "The number words, the word before a chapter's number, and the headings of the matter",
+                        onchange: move |event| {
+                            if let Some(language) = BookLanguage::ALL.into_iter().find(|language| language.label() == event.value()) {
+                                change_profile(state, move |profile| profile.set_language(language));
+                            }
+                        },
+                        for language in BookLanguage::ALL {
+                            option { value: "{language.label()}", selected: language == profile.language, "{language.label()}" }
                         }
                     }
                 }
@@ -258,6 +273,18 @@ pub(super) fn CompileDialog() -> Element {
                             },
                         }
                     }
+                    if matter.contents {
+                        label { r#for: "matter-contents-heading", "Contents heading" }
+                        input {
+                            id: "matter-contents-heading",
+                            placeholder: "{language.contents()}",
+                            value: "{matter.contents_heading}",
+                            onchange: move |event| {
+                                let text = event.value();
+                                change_profile(state, move |profile| profile.matter.contents_heading = text);
+                            },
+                        }
+                    }
                     span { class: "compile-group", "Back matter" }
                     div { class: "compile-checks",
                         label { class: "check-label",
@@ -285,21 +312,43 @@ pub(super) fn CompileDialog() -> Element {
                     }
                     if matter.about_author {
                         label { r#for: "matter-about", "About the author" }
-                        textarea {
-                            id: "matter-about",
-                            rows: "4",
-                            value: "{matter.about_author_text}",
-                            onchange: move |event| {
-                                let text = event.value();
-                                change_profile(state, move |profile| profile.matter.about_author_text = text);
-                            },
+                        div {
+                            input {
+                                aria_label: "About the author heading",
+                                placeholder: "{language.about_author()}",
+                                value: "{matter.about_author_heading}",
+                                onchange: move |event| {
+                                    let text = event.value();
+                                    change_profile(state, move |profile| profile.matter.about_author_heading = text);
+                                },
+                            }
+                            textarea {
+                                id: "matter-about",
+                                class: "under-heading",
+                                rows: "4",
+                                value: "{matter.about_author_text}",
+                                onchange: move |event| {
+                                    let text = event.value();
+                                    change_profile(state, move |profile| profile.matter.about_author_text = text);
+                                },
+                            }
                         }
                     }
                     if matter.also_by {
                         label { r#for: "matter-also-by", "Also by" }
                         div {
+                            input {
+                                aria_label: "Also by heading",
+                                placeholder: "{language.also_by()}",
+                                value: "{matter.also_by_heading}",
+                                onchange: move |event| {
+                                    let text = event.value();
+                                    change_profile(state, move |profile| profile.matter.also_by_heading = text);
+                                },
+                            }
                             textarea {
                                 id: "matter-also-by",
+                                class: "under-heading",
                                 rows: "3",
                                 value: "{matter.also_by_text}",
                                 onchange: move |event| {
@@ -307,20 +356,23 @@ pub(super) fn CompileDialog() -> Element {
                                     change_profile(state, move |profile| profile.matter.also_by_text = text);
                                 },
                             }
-                            p { class: "hint", "One title to a line." }
+                            p { class: "hint", "The heading, then one title to a line. {{author}} in the heading is filled in: “{also_by_example}”." }
                         }
                     }
                 }
                 if profile.format.has_pages() {
                     div { class: "compile-grid",
                         label { r#for: "page-font", "Font" }
-                        input {
+                        select {
                             id: "page-font",
-                            value: "{page.font}",
+                            title: "The fonts on this computer. The file names the font; another computer without it uses one of its own.",
                             onchange: move |event| {
                                 let font = event.value();
                                 change_profile(state, move |profile| profile.page.font = font);
                             },
+                            for (font, label) in crate::fonts::font_choices(&page.font, crate::fonts::installed_families()) {
+                                option { value: "{font}", selected: font.eq_ignore_ascii_case(&page.font), "{label}" }
+                            }
                         }
                         label { r#for: "page-size-pt", "Size" }
                         div { class: "compile-row",
@@ -435,5 +487,5 @@ fn change_profile(mut state: Signal<StudioState>, edit: impl FnOnce(&mut Compile
 /// How the profile heads a chapter, shown under its choices: "Chapter 1: The
 /// Harbor".
 fn heading_example(profile: &CompileProfile) -> String {
-    format!("A chapter reads “{}”.", profile.chapters.heading(&profile.chapter_word, 1, "The Harbor"))
+    format!("A chapter reads “{}”.", profile.chapters.heading(profile.language, &profile.chapter_word, 1, "The Harbor"))
 }

@@ -2,6 +2,7 @@
 
 #[cfg(test)]
 mod contrast;
+mod fonts;
 mod shortcuts;
 mod state;
 mod studio;

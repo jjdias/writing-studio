@@ -77,6 +77,47 @@ fn join_beat(first: &str, second: &str) -> String {
     }
 }
 
+/// The title of the scene a split makes: the open scene's title numbered,
+/// "Tide (2)", and the next free number when the chapter already has one,
+/// so splitting "Tide (2)" gives "Tide (3)". A number in brackets at the end,
+/// or the "(continued)" older splits added, is not part of the name.
+fn split_title(title: &str, siblings: &[String]) -> String {
+    let base = split_base(title).0;
+    let taken = siblings
+        .iter()
+        .filter_map(|sibling| match split_base(sibling) {
+            (name, number) if name == base => Some(number.unwrap_or(1)),
+            _ => None,
+        })
+        .max()
+        .unwrap_or(1);
+    if base.is_empty() {
+        return format!("Scene ({})", taken + 1);
+    }
+    format!("{base} ({})", taken + 1)
+}
+
+/// A title without a trailing " (n)" or " (continued)" (any number of
+/// them), and the number it had. A number of 1000 or more, such as a year
+/// in "Summer (1999)", is part of the name.
+fn split_base(title: &str) -> (&str, Option<u32>) {
+    let mut rest = title.trim();
+    let mut number = None;
+    while let Some(open) = rest.strip_suffix(')').and_then(|inner| inner.rfind(" (").map(|at| (inner, at))) {
+        let (inner, at) = open;
+        let tag = &inner[at + 2..];
+        if tag == "continued" {
+            number = Some(number.unwrap_or(1) + 1);
+        } else if let Some(n) = tag.parse::<u32>().ok().filter(|n| (1..1000).contains(n)) {
+            number = Some(number.map_or(n, |found: u32| found.max(n)));
+        } else {
+            break;
+        }
+        rest = inner[..at].trim_end();
+    }
+    (rest, number)
+}
+
 impl StudioState {
     /// Give the open scene what pointed at the joined one: plot points move
     /// to it, and characters and world entries linked to the joined scene are
@@ -490,7 +531,9 @@ impl StudioState {
         }
 
         let (head, tail) = split_blocks(&current.blocks, point);
-        let mut scene = BinderNode::new(NodeKind::Scene, format!("{} (continued)", node.title), Some(parent), node.sort_index + 1);
+        let siblings: Vec<String> = self.binder.children(Some(parent)).iter().map(|sibling| sibling.title.clone()).collect();
+        let title = split_title(&node.title, &siblings);
+        let mut scene = BinderNode::new(NodeKind::Scene, title.clone(), Some(parent), node.sort_index + 1);
         scene.status = node.status.clone();
         scene.keywords = node.keywords.clone();
         scene.color = node.color.clone();
@@ -546,8 +589,8 @@ impl StudioState {
             kind: StepKind::Split { scene: scene_id },
         });
         self.status = format!(
-            "Split “{}”. The text after the caret is the new scene “{} (continued)”; Ctrl+Z joins them again.",
-            node.title, node.title
+            "Split “{}”. The text after the caret is the new scene “{title}”; Ctrl+Z joins them again.",
+            node.title
         );
         self.offer_undo(UndoOffer::Structure);
     }
@@ -648,6 +691,18 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
+    #[test]
+    fn a_split_numbers_the_new_scene_after_the_highest_number_in_the_chapter() {
+        let titles = |list: &[&str]| list.iter().map(|title| title.to_string()).collect::<Vec<_>>();
+        assert_eq!(split_title("Tide", &titles(&["Tide"])), "Tide (2)");
+        assert_eq!(split_title("Tide (2)", &titles(&["Tide", "Tide (2)"])), "Tide (3)");
+        assert_eq!(split_title("Tide", &titles(&["Tide", "Tide (2)", "Tide (3)"])), "Tide (4)", "no number twice");
+        assert_eq!(split_title("Tide (continued) (continued)", &titles(&["Tide (continued) (continued)"])), "Tide (4)");
+        assert_eq!(split_title("Summer (1999)", &titles(&["Summer (1999)"])), "Summer (1999) (2)", "a year is a name");
+        assert_eq!(split_title("Act (two)", &titles(&["Act (two)"])), "Act (two) (2)");
+        assert_eq!(split_title("  ", &titles(&["  "])), "Scene (2)");
+    }
+
     fn open_state(tag: &str) -> (StudioState, PathBuf) {
         let dir = std::env::temp_dir().join(format!("ws-ui-{tag}-{}", Id::new()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -682,7 +737,7 @@ mod tests {
         let at = order.iter().position(|id| *id == first).unwrap();
         let second = order[at + 1];
         let new = state.binder.get(second).unwrap().clone();
-        assert!(new.title.ends_with("(continued)"));
+        assert_eq!(new.title, format!("{} (2)", state.binder.get(first).unwrap().title));
         assert_eq!(new.keywords, ["Mara"]);
         assert_eq!(text_of(&state, first), "Before the cut.");
         assert_eq!(text_of(&state, second), "After the change.");

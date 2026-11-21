@@ -29,6 +29,8 @@ pub(super) fn OutlinerPane() -> Element {
             synopsis: meta.synopsis.clone(),
             words: row_word_count(line.document_id, |id| words_for_document(&snapshot, id)),
             starts_chapter: false,
+            chapter_left_out: snapshot.binder.is_left_out(line.chapter_id),
+            scene_left_out: line.scene_id.is_some_and(|id| snapshot.binder.is_left_out(id)),
         };
         if books.last().map(|book| book.id) != Some(line.book_id) {
             let title = snapshot
@@ -97,7 +99,9 @@ pub(super) fn OutlinerPane() -> Element {
                             // chapter without scenes keeps its own status,
                             // synopsis, and words on that row.
                             if row.starts_chapter {
-                                tr { class: "chapter-row",
+                                tr {
+                                    class: if row.chapter_left_out { "chapter-row left-out" } else { "chapter-row" },
+                                    title: if row.chapter_left_out { "Left out of compile" } else { "" },
                                     td { colspan: if row.scene_id.is_some() { "4" } else { "1" },
                                         input {
                                             class: "cell-input chapter-input",
@@ -115,6 +119,8 @@ pub(super) fn OutlinerPane() -> Element {
                             }
                             if let Some(scene_id) = row.scene_id {
                                 tr {
+                                    class: if row.scene_left_out { "left-out" } else { "" },
+                                    title: if row.scene_left_out { "Left out of compile" } else { "" },
                                     td { class: "scene-cell",
                                         button {
                                             class: "row-open",
@@ -287,4 +293,7 @@ pub(super) struct OwnedOutlineRow {
     pub(super) words: u32,
     /// The first row of its chapter, which draws the chapter's group row.
     pub(super) starts_chapter: bool,
+    /// Compile leaves the chapter out, or the scene, with what holds them.
+    pub(super) chapter_left_out: bool,
+    pub(super) scene_left_out: bool,
 }

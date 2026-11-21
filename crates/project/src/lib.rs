@@ -14,7 +14,7 @@ pub use binder::{
 };
 pub use compile::{
     built_in_profile, built_in_profiles, BookProfile, CompileFormat, CompileProfile, HeadingStyle, LineSpacing, PageSetup, PageSize,
-    Matter, SceneSeparator,
+    BookLanguage, Matter, SceneSeparator,
     FONT_SIZE_RANGE, MARGIN_RANGE, PROFILE_LIMIT,
 };
 pub use settings::{
