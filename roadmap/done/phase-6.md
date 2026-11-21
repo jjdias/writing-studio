@@ -1,6 +1,6 @@
 # Phase 6 — Publishing (local)
 
-Every stage is done. The phase closes once the writer has tried it.
+Done. Stages 1 to 7 are on `master`; PDF, which was stage 6, moved to the bonus list before it started.
 
 Writing Studio compiles one book to Markdown or DOCX today, with a title page and nothing else to choose. This phase turns compile into publishing: the writer says what the book should look like once, as a profile, and gets a manuscript to send out, an ebook, or a web page, from the same text. All of it happens on the writer's computer.
 
@@ -59,7 +59,7 @@ In this order: profiles first, because every format after them reads one. Then w
 - Built with the `zip` crate, which `docx-rs` already brings in: no new crate in the build, only a new direct use of one already there.
 - Checked by tests that read the file back: the entries in the right order (`mimetype` first and stored), every file in the manifest present, and every XHTML file well formed.
 
-PDF was stage 6. It moved to [bonus.md](bonus.md#pdf-compile) before it started: it needs a typesetting engine chosen first, and the other formats did not wait on it.
+PDF was stage 6. It moved to [bonus.md](../todo/bonus.md#pdf-compile) before it started: it needs a typesetting engine chosen first, and the other formats did not wait on it.
 
 ### 6. Check the manuscript before compiling
 
