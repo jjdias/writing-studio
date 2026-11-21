@@ -4,3 +4,10 @@ default_platform = "desktop"
 
 [web.app]
 title = "Writing Studio"
+
+# How the packages name the program (Phase 7, stage 3 builds them).
+[bundle]
+identifier = "io.github.jjdias.WritingStudio"
+publisher = "Writing Studio contributors"
+icon = ["icons/32.png", "icons/128.png", "icons/256.png", "icons/icon.ico"]
+short_description = "A writing app for novels and series"

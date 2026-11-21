@@ -1,6 +1,6 @@
 # Phase 7 — Windows and Linux release
 
-In progress: stage 1. The CI workflow is written; it has not run yet.
+In progress: stages 1 and 2 are done.
 
 Today Writing Studio runs by building it from source with `cargo run`. This phase makes it something a writer downloads and installs on Windows or Linux, built and checked by the project's own CI, with no cost to the project.
 
@@ -25,12 +25,16 @@ Today Writing Studio runs by building it from source with `cargo run`. This phas
 
 ### 1. CI on Windows and Linux
 
+**Done.** `.github/workflows/ci.yml` builds and tests the workspace on both. The first Linux build passed with nothing to fix: 258 tests on Linux and 256 on Windows, the two more on Linux being the symlink checks that only run on Unix. A run takes about four minutes on Linux and five on Windows from a cold cache.
+
 - A GitHub Actions workflow runs on every push and pull request: build the workspace and run its tests on `windows-latest` and `ubuntu-latest`.
 - The Linux job installs the system libraries the window needs (WebKitGTK 4.1, GTK 3, and what Dioxus desktop's menus use). Whatever does not build or pass on Linux is fixed in this stage: the first Linux build is where it shows.
 - `cargo fmt --check` is not added: the code is not formatted with rustfmt today, and formatting it all is a change of its own.
 - The README says what a Linux computer needs to build from source.
 
 ### 2. The program's identity
+
+**Done.** The icon is a pen nib on ink blue, drawn in `apps/desktop/icons/icon.svg`. `make-icons.ps1` beside it makes the PNGs, `icon.ico` (16 to 256 px), and `window-64.rgba`, the window's icon as raw pixels, with only what Windows has: Edge draws the SVG and .NET scales and writes the files. The window takes the raw pixels, so the program needs no image decoder. `Dioxus.toml` has the id, the publisher, and the icons for stage 3. **About Writing Studio** is at the end of Help: the version, the license, the source, and what spelling carries, as text, since a link would open inside the window. The third-party notice it will point to comes with stage 4.
 
 - An icon, in the sizes Windows and Linux ask for, as the window's icon and the packages'. It needs a design the maintainer approves.
 - An id for the desktop files and the installer (`io.github.jjdias.WritingStudio`), and the publisher's name.

@@ -348,7 +348,8 @@ fn Workspace() -> Element {
     }
 }
 
-/// Every shortcut, from Help or Ctrl+/. Escape or Close puts it away.
+/// Every shortcut, and what the program is, from Help or Ctrl+/. Escape or
+/// Close puts it away.
 #[component]
 fn ShortcutsDialog() -> Element {
     let mut state = use_context::<Signal<StudioState>>();
@@ -390,9 +391,30 @@ fn ShortcutsDialog() -> Element {
                     }
                 }
             }
+            About {}
         }
     }
 }
+
+/// The program's version, its license, and what it carries from others.
+/// Text only: a link would open inside the window, not in a browser.
+#[component]
+fn About() -> Element {
+    rsx! {
+        section { class: "about", aria_labelledby: "about-title",
+            h3 { id: "about-title", "About Writing Studio" }
+            p { "Version {VERSION}. Free and open source under the MIT or Apache-2.0 license, at your choice." }
+            p { "Source and releases: github.com/jjdias/writing-studio" }
+            p {
+                "Spelling uses the spellbook library (MPL-2.0) and the Hunspell English (US) dictionary, "
+                "which keeps its own license. Both come with the program, with their notices."
+            }
+        }
+    }
+}
+
+/// The version of this build, from the workspace's `Cargo.toml`.
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[component]
 fn ProjectMenu() -> Element {

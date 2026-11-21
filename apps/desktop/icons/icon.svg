@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>Writing Studio</title>
+  <rect width="512" height="512" rx="112" fill="#1d4e89"/>
+  <path d="M256 430 L170 250 Q160 225 175 205 L215 150 Q256 95 297 150 L337 205 Q352 225 342 250 Z" fill="#f6f1e7"/>
+  <path d="M256 430 L256 272" stroke="#1d4e89" stroke-width="12" stroke-linecap="round"/>
+  <circle cx="256" cy="255" r="17" fill="#1d4e89"/>
+</svg>

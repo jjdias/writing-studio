@@ -1413,3 +1413,6 @@ button.keyword-dot:hover { box-shadow: 0 0 0 2px var(--line); }
 /* The preview: as large as the window allows, the page in a frame. */
 .compile-dialog.compile-preview { width: min(60rem, calc(100vw - 32px)); height: calc(100vh - 64px); display: flex; flex-direction: column; }
 .preview-frame { flex: 1 1 auto; min-height: 0; width: 100%; border: 1px solid var(--line); border-radius: var(--radius); background: #fbf8f1; }
+/* About, at the end of Help: quiet text under the shortcuts. */
+.about { margin-top: 18px; padding-top: 10px; border-top: 1px solid var(--line); }
+.about p { margin: 6px 0; font-size: 13px; color: var(--muted); }

@@ -95,7 +95,7 @@ pub(super) fn Library() -> Element {
                         if menu == Some(FrameMenu::Settings) { SettingsPanel {} }
                     }
                     IconButton {
-                        name: "Keyboard shortcuts (Ctrl+/)",
+                        name: "Help and keyboard shortcuts (Ctrl+/)",
                         open: false,
                         onclick: move |_| {
                             let mut current = state.write();
