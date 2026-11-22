@@ -31,7 +31,7 @@ Do each on Windows from the installer, and on Linux from the `.deb`. Write down 
 4. **Spelling.** A misspelled word is listed; a suggestion replaces it; **Add to project dictionary** works, and the word can be taken out again. (This panel once failed only in release builds.)
 5. **Compile.** Each built-in profile: Manuscript (Word), Ebook (with a cover), Web page, Plain text. Open each file in its own program. **Preview** shows the book.
 6. **Fonts.** The compile font list shows the computer's fonts.
-7. **Research.** Attach a file to a research note and open it: it opens in its own program.
+7. **Research.** Attach a file to a research note and open it: it opens in its own program. On Windows, do it again in a project whose folder is named like `Tom&Jerry 100%` (an `&` and a `%`, as Windows once misread them): the same file opens.
 8. **Sync.** With git installed, connect a project and sync it. Without git, the program says git is missing and everything else works.
 9. **About.** Help (or Ctrl+/) ends with About: the version is this release's, and the folder it names holds `THIRD-PARTY-NOTICES.html`.
 10. **Remove.** Windows: Settings → Apps removes it. Linux: `sudo apt remove writing-studio`. Projects stay where they were.

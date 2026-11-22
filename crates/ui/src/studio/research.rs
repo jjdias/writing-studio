@@ -174,10 +174,7 @@ pub(super) fn open_research_file(mut state: Signal<StudioState>, file_id: Id) {
 pub(super) fn open_with_default_app(path: &std::path::Path) -> std::io::Result<()> {
     #[cfg(target_os = "windows")]
     {
-        std::process::Command::new("cmd")
-            .args(["/C", "start", "", &path.display().to_string()])
-            .spawn()?;
-        return Ok(());
+        return windows_shell::open(path);
     }
     #[cfg(target_os = "macos")]
     {
@@ -191,4 +188,89 @@ pub(super) fn open_with_default_app(path: &std::path::Path) -> std::io::Result<(
     }
     #[allow(unreachable_code)]
     Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "cannot open files on this system"))
+}
+
+/// Opening a file as Explorer does, with `ShellExecuteW`. The path goes to
+/// Windows as one value, so `&`, `%`, `^` and the rest stay part of the name;
+/// through `cmd /C start` they were commands and variables, and a synced
+/// project could name an attachment that ran one.
+#[cfg(target_os = "windows")]
+mod windows_shell {
+    use std::ffi::{c_void, OsStr};
+    use std::io;
+    use std::os::windows::ffi::OsStrExt;
+    use std::path::Path;
+
+    const SW_SHOWNORMAL: i32 = 1;
+
+    #[link(name = "shell32")]
+    extern "system" {
+        fn ShellExecuteW(
+            hwnd: *mut c_void,
+            operation: *const u16,
+            file: *const u16,
+            parameters: *const u16,
+            directory: *const u16,
+            show: i32,
+        ) -> *mut c_void;
+    }
+
+    fn wide(text: &OsStr) -> Vec<u16> {
+        text.encode_wide().chain(std::iter::once(0)).collect()
+    }
+
+    pub(super) fn open(path: &Path) -> io::Result<()> {
+        let operation = wide(OsStr::new("open"));
+        let file = wide(path.as_os_str());
+        // SAFETY: both strings are NUL-terminated and live until the call
+        // returns; the null pointers are the documented "none" values.
+        let result = unsafe {
+            ShellExecuteW(
+                std::ptr::null_mut(),
+                operation.as_ptr(),
+                file.as_ptr(),
+                std::ptr::null(),
+                std::ptr::null(),
+                SW_SHOWNORMAL,
+            )
+        };
+        // Above 32 is success; anything else is one of the codes below.
+        match result as usize {
+            code if code > 32 => Ok(()),
+            code => Err(error(code)),
+        }
+    }
+
+    fn error(code: usize) -> io::Error {
+        match code {
+            2 | 3 => io::Error::new(io::ErrorKind::NotFound, "the file is not there"),
+            5 => io::Error::new(io::ErrorKind::PermissionDenied, "Windows refused access to the file"),
+            31 => io::Error::new(io::ErrorKind::Unsupported, "no program is set to open this kind of file"),
+            code => io::Error::other(format!("Windows could not open it (code {code})")),
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        /// `cmd /C start` reported success whatever happened, and cut a path
+        /// at `&`. A missing file under a folder named with `&` and `%` must
+        /// come back as not found, which shows Windows looked up the whole
+        /// path. Nothing opens, as the file does not exist.
+        #[test]
+        fn a_path_with_ampersand_and_percent_is_one_path() {
+            let folder = std::env::temp_dir().join("Tom&Jerry%USERNAME%^draft");
+            let missing = folder.join("missing&calc.pdf");
+            let err = open(&missing).expect_err("a missing file cannot open");
+            assert_eq!(err.kind(), io::ErrorKind::NotFound);
+        }
+
+        #[test]
+        fn codes_become_readable_errors() {
+            assert_eq!(error(2).kind(), io::ErrorKind::NotFound);
+            assert_eq!(error(31).kind(), io::ErrorKind::Unsupported);
+            assert!(error(8).to_string().contains("code 8"));
+        }
+    }
 }
