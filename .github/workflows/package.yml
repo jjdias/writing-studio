@@ -56,16 +56,22 @@ jobs:
       - name: Install the Dioxus CLI
         run: cargo binstall dioxus-cli@0.6.3 --no-confirm --disable-strategies compile
 
+      # The AppImage tools are AppImages themselves: on a runner without FUSE
+      # they unpack and run instead of mounting, and their own `strip` is too
+      # old for what this toolchain builds, so it is skipped.
       - name: Bundle
         working-directory: apps/desktop
-        run: dx bundle --platform desktop --package writing-studio-desktop ${{ matrix.types }} --out-dir ../../dist
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
+          NO_STRIP: true
+        run: dx bundle --verbose --platform desktop --package writing-studio-desktop ${{ matrix.types }} --out-dir ../../dist
 
       # The same program as the installer, to run from any folder.
       - name: Portable zip
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $exe = Get-ChildItem target -Recurse -Filter writing-studio-desktop.exe |
+          $exe = Get-ChildItem target -Recurse -Filter writing-studio.exe |
             Where-Object { $_.FullName -match '\\release\\' } |
             Sort-Object LastWriteTime -Descending | Select-Object -First 1
           $folder = New-Item -ItemType Directory -Force "dist/Writing Studio"

@@ -3,7 +3,14 @@ name = "writing-studio-desktop"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Desktop shell for Writing Studio"
+description = "A writing app for novels and series"
+homepage = "https://github.com/jjdias/writing-studio"
+
+# The installed program is `writing-studio`; the packages name it from this,
+# as "WritingStudio".
+[[bin]]
+name = "writing-studio"
+path = "src/main.rs"
 
 [dependencies]
 dioxus.workspace = true
