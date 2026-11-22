@@ -1,6 +1,6 @@
 # Phase 7 — Windows and Linux release
 
-In progress: stages 1 and 2 are done, and stage 3 is under way.
+In progress: stages 1 to 3 are done.
 
 Today Writing Studio runs by building it from source with `cargo run`. This phase makes it something a writer downloads and installs on Windows or Linux, built and checked by the project's own CI, with no cost to the project.
 
@@ -42,7 +42,7 @@ Today Writing Studio runs by building it from source with `cargo run`. This phas
 
 ### 3. Packages
 
-**In progress.** `.github/workflows/package.yml` builds the packages with `dx bundle`, installed as the binary Dioxus publishes (compiling it fails on the Windows runner). The Windows MSI and the portable zip build: 7.5 MB each. The executable is `writing-studio`, so the packages name the product WritingStudio; `apps/desktop/build.rs` puts the icon and the version into it with `winresource`, a build-only dependency used only on Windows. A release-only build error in the spelling panel (`rsx!` writes a button's text after making its handler) was fixed, and CI now checks the release build. Left: the `.deb` built in CI, and the start time measured.
+**Done.** `.github/workflows/package.yml` builds the packages with `dx bundle`, installed as the binary Dioxus publishes (compiling it fails on the Windows runner). The Windows MSI and the portable zip are 7.5 MB each, and the Linux `.deb` 9.1 MB. The executable is `writing-studio`, so the packages name the product WritingStudio; `apps/desktop/build.rs` puts the icon and the version into it with `winresource`, a build-only dependency used only on Windows. A release-only build error in the spelling panel (`rsx!` writes a button's text after making its handler) was fixed, and CI now checks the release build. The start time is measured in stage 6, from the installed program.
 
 - **Windows:** an installer (MSI) that adds the program to the Start menu and can be removed from Settings, and a portable `.zip` that runs from any folder.
 - **Linux:** a `.deb` for Debian and Ubuntu that requires WebKitGTK from the system. An AppImage, for other distributions, moved to the bonus list: its build failed on the Ubuntu runner without saying why.
