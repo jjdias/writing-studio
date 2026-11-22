@@ -1,6 +1,6 @@
 # Phase 7 — Windows and Linux release
 
-In progress: stages 1 to 4 are done; 5 is written and not yet tried, and 6 waits on the maintainer's check.
+In progress: stages 1 to 5 are done, and 6 waits on the maintainer's check.
 
 Today Writing Studio runs by building it from source with `cargo run`. This phase makes it something a writer downloads and installs on Windows or Linux, built and checked by the project's own CI, with no cost to the project.
 
@@ -58,7 +58,7 @@ Today Writing Studio runs by building it from source with `cargo run`. This phas
 
 ### 5. Releases
 
-**Written, not yet tried.** `.github/workflows/release.yml` runs on a `v*` tag: it checks the tag against `[workspace.package]`'s version, builds the packages with the Package workflow (now also a reusable workflow), writes `SHA256SUMS.txt`, and makes the release with `gh release create`, its notes from `.github/release-notes.md`. Only that last job may write to the repository. A tag with a suffix, such as `v0.1.0-rc.1`, makes a pre-release, to try the release before the real one. Signing waits on the maintainer; the notes say how to get past SmartScreen.
+**Done.** `.github/workflows/release.yml` runs on a `v*` tag: it checks the tag against `[workspace.package]`'s version, builds the packages with the Package workflow (now also a reusable workflow), writes `SHA256SUMS.txt`, and makes the release with `gh release create`, its notes from `.github/release-notes.md`. Only that last job may write to the repository. A tag with a suffix, such as `v0.1.0-rc.1`, makes a pre-release, to try the release before the real one. Signing waits on the maintainer; the notes say how to get past SmartScreen. Tried on 2026-11-22 with `v0.1.0-rc.1`: every job passed, the release was marked as a pre-release with the three packages and `SHA256SUMS.txt`, the downloaded files matched their checksums, and the notes had the version filled in. The pre-release and its tag were then deleted.
 
 - Pushing a version tag (`v0.1.0`) builds the packages in CI and attaches them, with their SHA-256 checksums, to a GitHub Release. Nothing is published by hand.
 - The version comes from the workspace's `Cargo.toml`; the tag must match it, or the release stops.
