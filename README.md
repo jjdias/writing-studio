@@ -38,6 +38,6 @@ On the welcome screen, create a project and choose where its folder goes, outsid
 
 ## License
 
-MIT OR Apache-2.0. Use, study, change, and share it.
+MIT OR Apache-2.0, at your choice: [LICENSE-MIT](LICENSE-MIT) and [LICENSE-APACHE](LICENSE-APACHE). Use, study, change, and share it. The packages carry these, the dictionary's license, and a notice of every library the program is built from, in a `licenses` folder beside the program.
 
 Spellcheck uses the `spellbook` crate (MPL-2.0) and bundles the Hunspell English (US) dictionary, which has its own permissive license: see [`crates/spellcheck/dictionaries/`](crates/spellcheck/dictionaries/README.md).

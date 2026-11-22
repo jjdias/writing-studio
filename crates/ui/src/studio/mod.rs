@@ -407,7 +407,8 @@ fn About() -> Element {
             p { "Source and releases: github.com/jjdias/writing-studio" }
             p {
                 "Spelling uses the spellbook library (MPL-2.0) and the Hunspell English (US) dictionary, "
-                "which keeps its own license. Both come with the program, with their notices."
+                "which keeps its own license. The licenses of every library the program is built from "
+                "are in the licenses folder beside the program, in THIRD-PARTY-NOTICES.html."
             }
         }
     }

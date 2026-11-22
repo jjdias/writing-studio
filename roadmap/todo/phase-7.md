@@ -51,6 +51,8 @@ Today Writing Studio runs by building it from source with `cargo run`. This phas
 
 ### 4. Licenses in every package
 
+**Done once CI builds it.** The repository now has `LICENSE-MIT` and `LICENSE-APACHE` (it had neither, though the README and every manifest named them). The Package workflow fills `apps/desktop/licenses/` (ignored by git) before bundling, and `Dioxus.toml` makes every package install it beside the program: the two licenses, the dictionary's as `dictionary-LICENSE.txt`, and `THIRD-PARTY-NOTICES.html`, which `cargo-about` writes from `about.toml` and `about.hbs` with each crate's license text. `about.toml` lists the licenses a crate may be under, so a new kind stops the build. Every crate is permissive but `spellbook` and `option-ext` (MPL-2.0, used unchanged); the notice says where their source is. Help's About points to the folder. Generated locally: 454 crates for Windows and Linux, 309 KB.
+
 - The program's own licenses (MIT and Apache-2.0), the dictionary's license (`crates/spellcheck/dictionaries/en_US.LICENSE.txt`), and a notice of every crate the program is built from with its license, generated at build time.
 - `spellbook` is MPL-2.0: the notice says where its source is.
 

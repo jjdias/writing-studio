@@ -10,3 +10,6 @@ Thumbs.db
 *.sqlite-shm
 /apps/desktop/dist
 .env
+# Made by the Package workflow before bundling: the licenses each package carries.
+/apps/desktop/licenses
+/dist

@@ -12,3 +12,6 @@ publisher = "Writing Studio contributors"
 # The Windows installer takes the first icon, so the .ico comes first.
 icon = ["icons/icon.ico", "icons/32.png", "icons/128.png", "icons/256.png"]
 short_description = "A writing app for novels and series"
+# The licenses, which the Package workflow puts in this folder before
+# bundling; each package installs them beside the program.
+resources = ["licenses/*"]
