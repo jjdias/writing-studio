@@ -15,7 +15,7 @@ A free, open-source writing app for novels and series. Plan the book, write it s
 
 ## Get started
 
-You need:
+To install it, download the Windows installer or the Debian and Ubuntu package from the [releases page](https://github.com/jjdias/writing-studio/releases); the notes there say how. To build it from source instead, you need:
 
 - [Rust](https://www.rust-lang.org/tools/install), stable, 1.80 or later
 - On Windows, the [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) and WebView2 (already installed on Windows 10 and 11)

@@ -1,0 +1,80 @@
+# Pushing a version tag makes a GitHub Release: the packages, built by the
+# Package workflow, with their SHA-256 checksums and the release notes.
+# Nothing is published by hand.
+#
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# The tag must be the workspace's version in Cargo.toml, with a "v" in front.
+# A tag with something after the version, such as v0.1.0-rc.1, makes a
+# pre-release, for trying the release itself before the real one.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    name: Check the version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      prerelease: ${{ steps.check.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: check
+        shell: bash
+        run: |
+          # The first version line in Cargo.toml is [workspace.package]'s.
+          version=$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)
+          tag="${GITHUB_REF_NAME#v}"
+          case "$tag" in
+            "$version") prerelease=false ;;
+            "$version"-*) prerelease=true ;;
+            *) echo "::error::The tag $GITHUB_REF_NAME is not v$version, the version in Cargo.toml."; exit 1 ;;
+          esac
+          echo "version=$tag" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+
+  package:
+    needs: version
+    uses: ./.github/workflows/package.yml
+
+  release:
+    name: Publish the release
+    needs: [version, package]
+    runs-on: ubuntu-latest
+    # The one job that writes: it makes the release and uploads to it.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: packages-*
+          merge-multiple: true
+          path: dist
+
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+          PRERELEASE: ${{ needs.version.outputs.prerelease }}
+        run: |
+          sed "s/{version}/$VERSION/g" .github/release-notes.md > notes.md
+          flags=()
+          if [ "$PRERELEASE" = true ]; then flags+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Writing Studio $VERSION" \
+            --notes-file notes.md \
+            "${flags[@]}"

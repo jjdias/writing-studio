@@ -1,11 +1,13 @@
 # Build the packages: a Windows installer and a portable zip, and a Linux
-# .deb. It runs when what goes into a package changes, and by hand from the
-# Actions tab; stage 5 of Phase 7 runs it on a version tag and attaches the
-# packages to a release. An AppImage is bonus work (roadmap/todo/bonus.md).
+# .deb. It runs when what goes into a package changes, by hand from the
+# Actions tab, and from the Release workflow, which attaches the packages to
+# a GitHub Release. An AppImage is bonus work (roadmap/todo/bonus.md).
 name: Package
 
 on:
   workflow_dispatch:
+  # The Release workflow builds its packages with this one.
+  workflow_call:
   push:
     paths:
       - .github/workflows/package.yml
@@ -65,7 +67,9 @@ jobs:
       - name: Licenses
         shell: bash
         run: |
-          cargo binstall cargo-about --no-confirm
+          # Compiled, as there is no published binary for every runner, and
+          # its command is behind the `cli` feature.
+          cargo install cargo-about --version 0.9.3 --locked --features cli
           mkdir -p apps/desktop/licenses
           cp LICENSE-MIT LICENSE-APACHE apps/desktop/licenses/
           cp crates/spellcheck/dictionaries/en_US.LICENSE.txt apps/desktop/licenses/dictionary-LICENSE.txt
