@@ -131,3 +131,10 @@ Moved here from Phase 7. It was there for phones, which were dropped. Today sync
 
 - A git engine built into the program, so sync needs nothing installed.
 - It needs a decision first on how the program keeps SSH keys or tokens, which it does not do today (`.claude/rules/security.md`).
+
+## Linux AppImage
+
+Moved here from Phase 7. Linux ships as a `.deb` for Debian and Ubuntu; a writer on another distribution builds from source.
+
+- An AppImage: one file that runs on most Linux distributions, carrying WebKitGTK with it.
+- `dx bundle --package-types appimage` failed on the GitHub Ubuntu runner (Ubuntu 26.04) and said only that `build_appimage.sh` failed, as `dx` does not pass on the script's output. What was tried: running the AppImage tools without FUSE (`APPIMAGE_EXTRACT_AND_RUN=1`) and skipping their `strip` (`NO_STRIP=true`). Not tried: adding `librsvg2-dev`, which the GTK plugin's image loaders need, and running the script again with `bash -x` to see where it stops.

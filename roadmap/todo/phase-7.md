@@ -1,6 +1,6 @@
 # Phase 7 — Windows and Linux release
 
-In progress: stages 1 and 2 are done.
+In progress: stages 1 and 2 are done, and stage 3 is under way.
 
 Today Writing Studio runs by building it from source with `cargo run`. This phase makes it something a writer downloads and installs on Windows or Linux, built and checked by the project's own CI, with no cost to the project.
 
@@ -42,8 +42,10 @@ Today Writing Studio runs by building it from source with `cargo run`. This phas
 
 ### 3. Packages
 
+**In progress.** `.github/workflows/package.yml` builds the packages with `dx bundle`, installed as the binary Dioxus publishes (compiling it fails on the Windows runner). The Windows MSI and the portable zip build: 7.5 MB each. The executable is `writing-studio`, so the packages name the product WritingStudio; `apps/desktop/build.rs` puts the icon and the version into it with `winresource`, a build-only dependency used only on Windows. A release-only build error in the spelling panel (`rsx!` writes a button's text after making its handler) was fixed, and CI now checks the release build. Left: the `.deb` built in CI, and the start time measured.
+
 - **Windows:** an installer (MSI) that adds the program to the Start menu and can be removed from Settings, and a portable `.zip` that runs from any folder.
-- **Linux:** an AppImage, which runs on most distributions as one file, and a `.deb` for Debian and Ubuntu that requires WebKitGTK from the system.
+- **Linux:** a `.deb` for Debian and Ubuntu that requires WebKitGTK from the system. An AppImage, for other distributions, moved to the bonus list: its build failed on the Ubuntu runner without saying why.
 - Built with `dx bundle` from the Dioxus CLI, matched to the Dioxus version in `Cargo.lock` (0.6.3), with its settings in `apps/desktop/Dioxus.toml`. It is a build tool, installed in CI, not a dependency of the program.
 - A release build profile: optimized, stripped, and built as one unit, so the download is small and the program starts fast. Its size and start time are written down here once, as the measure for later changes.
 

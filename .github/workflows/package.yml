@@ -1,7 +1,7 @@
 # Build the packages: a Windows installer and a portable zip, and a Linux
-# AppImage and .deb. It runs when what goes into a package changes, and by
-# hand from the Actions tab; stage 5 of Phase 7 runs it on a version tag
-# and attaches the packages to a release.
+# .deb. It runs when what goes into a package changes, and by hand from the
+# Actions tab; stage 5 of Phase 7 runs it on a version tag and attaches the
+# packages to a release. An AppImage is bonus work (roadmap/todo/bonus.md).
 name: Package
 
 on:
@@ -29,7 +29,7 @@ jobs:
           - os: windows-latest
             types: --package-types msi
           - os: ubuntu-latest
-            types: --package-types deb --package-types appimage
+            types: --package-types deb
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -39,7 +39,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            libwebkit2gtk-4.1-dev libgtk-3-dev libxdo-dev libayatana-appindicator3-dev file
+            libwebkit2gtk-4.1-dev libgtk-3-dev libxdo-dev libayatana-appindicator3-dev
 
       - name: Rust toolchain
         run: rustup show active-toolchain || rustup toolchain install
@@ -56,15 +56,9 @@ jobs:
       - name: Install the Dioxus CLI
         run: cargo binstall dioxus-cli@0.6.3 --no-confirm --disable-strategies compile
 
-      # The AppImage tools are AppImages themselves: on a runner without FUSE
-      # they unpack and run instead of mounting, and their own `strip` is too
-      # old for what this toolchain builds, so it is skipped.
       - name: Bundle
         working-directory: apps/desktop
-        env:
-          APPIMAGE_EXTRACT_AND_RUN: 1
-          NO_STRIP: true
-        run: dx bundle --verbose --platform desktop --package writing-studio-desktop ${{ matrix.types }} --out-dir ../../dist
+        run: dx bundle --platform desktop --package writing-studio-desktop ${{ matrix.types }} --out-dir ../../dist
 
       # The same program as the installer, to run from any folder.
       - name: Portable zip
