@@ -1,5 +1,7 @@
 <!-- The Windows installer template: tauri-bundler 2.0.4's main.wxs (MIT OR Apache-2.0),
      which dx bundle 0.6.3 uses, with the product name written out as "Writing Studio".
+     In this template a backslash before {{ is doubled to escape it; before
+     the written-out name it is single, or the registry keys are invalid.
      dx names the product after the binary, which allows no space. -->
 <?if $(sys.BUILDARCH)="x86"?>
     <?define Win64 = "no" ?>
@@ -75,7 +77,7 @@
 
         <!-- initialize with previous InstallDir -->
         <Property Id="INSTALLDIR">
-            <RegistrySearch Id="PrevInstallDirReg" Root="HKCU" Key="Software\\{{manufacturer}}\\Writing Studio" Name="InstallDir" Type="raw"/>
+            <RegistrySearch Id="PrevInstallDirReg" Root="HKCU" Key="Software\\{{manufacturer}}\Writing Studio" Name="InstallDir" Type="raw"/>
         </Property>
 
         <!-- launch app checkbox -->
@@ -111,7 +113,7 @@
                 <Component Id="ApplicationShortcutDesktop" Guid="*">
                     <Shortcut Id="ApplicationDesktopShortcut" Name="Writing Studio" Description="Runs Writing Studio" Target="[!Path]" WorkingDirectory="INSTALLDIR" />
                     <RemoveFolder Id="DesktopFolder" On="uninstall" />
-                    <RegistryValue Root="HKCU" Key="Software\\{{manufacturer}}\\Writing Studio" Name="Desktop Shortcut" Type="integer" Value="1" KeyPath="yes" />
+                    <RegistryValue Root="HKCU" Key="Software\\{{manufacturer}}\Writing Studio" Name="Desktop Shortcut" Type="integer" Value="1" KeyPath="yes" />
                 </Component>
             </Directory>
             <Directory Id="$(var.PlatformProgramFilesFolder)" Name="PFiles">
@@ -124,7 +126,7 @@
 
         <DirectoryRef Id="INSTALLDIR">
             <Component Id="RegistryEntries" Guid="*">
-                <RegistryKey Root="HKCU" Key="Software\\{{manufacturer}}\\Writing Studio">
+                <RegistryKey Root="HKCU" Key="Software\\{{manufacturer}}\Writing Studio">
                     <RegistryValue Name="InstallDir" Type="string" Value="[INSTALLDIR]" KeyPath="yes" />
                 </RegistryKey>
                 <!-- Change the Root to HKCU for perUser installations -->
@@ -182,7 +184,7 @@
 							  On="uninstall" />
 
 				<RegistryValue Root="HKCU"
-							   Key="Software\\{{manufacturer}}\\Writing Studio"
+							   Key="Software\\{{manufacturer}}\Writing Studio"
 							   Name="Uninstaller Shortcut"
 							   Type="integer"
 							   Value="1"
@@ -201,7 +203,7 @@
                     <ShortcutProperty Key="System.AppUserModel.ID" Value="{{bundle_id}}"/>
                 </Shortcut>
                 <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall"/>
-                <RegistryValue Root="HKCU" Key="Software\\{{manufacturer}}\\Writing Studio" Name="Start Menu Shortcut" Type="integer" Value="1" KeyPath="yes"/>
+                <RegistryValue Root="HKCU" Key="Software\\{{manufacturer}}\Writing Studio" Name="Start Menu Shortcut" Type="integer" Value="1" KeyPath="yes"/>
            </Component>
         </DirectoryRef>
 
