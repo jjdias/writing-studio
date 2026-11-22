@@ -77,11 +77,21 @@ jobs:
 
       - name: Bundle
         working-directory: apps/desktop
-        # dx shows only errors from the bundler, which drops what WiX and
-        # dpkg print about a failure; this keeps their output in the log.
-        env:
-          DIOXUS_LOG: error,dx=info,dioxus_cli=info,tauri_bundler=debug
         run: dx bundle --platform desktop --package writing-studio-desktop ${{ matrix.types }} --out-dir ../../dist
+
+      # dx drops what WiX prints, so a failed installer says only that
+      # light.exe failed. This runs it again, as the bundler does, to show why.
+      - name: Why the installer failed
+        if: failure() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $wix = "$env:LOCALAPPDATA\tauri\WixTools314"
+          $obj = Get-ChildItem target -Recurse -Filter main.wixobj | Select-Object -First 1
+          if (-not $obj) { Write-Output "No main.wixobj: the failure came before WiX."; exit 0 }
+          Set-Location $obj.DirectoryName
+          Get-ChildItem | Format-Table Name, Length
+          & "$wix\light.exe" -ext "$wix\WixUIExtension.dll" -ext "$wix\WixUtilExtension.dll" -o check.msi -cultures:en-us -loc locale.wxl *.wixobj
+          Write-Output "light.exe exited with $LASTEXITCODE"
 
       # The same program as the installer, to run from any folder.
       - name: Portable zip
