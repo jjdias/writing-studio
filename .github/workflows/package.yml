@@ -77,6 +77,10 @@ jobs:
 
       - name: Bundle
         working-directory: apps/desktop
+        # dx shows only errors from the bundler, which drops what WiX and
+        # dpkg print about a failure; this keeps their output in the log.
+        env:
+          DIOXUS_LOG: error,dx=info,dioxus_cli=info,tauri_bundler=debug
         run: dx bundle --platform desktop --package writing-studio-desktop ${{ matrix.types }} --out-dir ../../dist
 
       # The same program as the installer, to run from any folder.
