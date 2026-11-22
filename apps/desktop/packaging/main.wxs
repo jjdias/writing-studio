@@ -1,7 +1,7 @@
 <!-- The Windows installer template: tauri-bundler 2.0.4's main.wxs (MIT OR Apache-2.0),
      which dx bundle 0.6.3 uses, with the product name written out as "Writing Studio".
      In this template a doubled backslash writes one before a filled-in value;
-     the written-out name it is single, or the registry keys are invalid.
+     a single one goes before the written-out name, or the registry keys are invalid.
      dx names the product after the binary, which allows no space. -->
 <?if $(sys.BUILDARCH)="x86"?>
     <?define Win64 = "no" ?>
