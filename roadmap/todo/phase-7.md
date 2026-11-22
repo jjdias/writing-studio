@@ -1,6 +1,6 @@
 # Phase 7 — Windows and Linux release
 
-In progress: stages 1 to 3 are done; 4 waits on its CI run, and 5 is written.
+In progress: stages 1 to 4 are done; 5 is written and not yet tried, and 6 waits on the maintainer's check.
 
 Today Writing Studio runs by building it from source with `cargo run`. This phase makes it something a writer downloads and installs on Windows or Linux, built and checked by the project's own CI, with no cost to the project.
 
@@ -51,7 +51,7 @@ Today Writing Studio runs by building it from source with `cargo run`. This phas
 
 ### 4. Licenses in every package
 
-**Done once CI builds it.** The repository now has `LICENSE-MIT` and `LICENSE-APACHE` (it had neither, though the README and every manifest named them). The Package workflow fills `apps/desktop/licenses/` (ignored by git) before bundling, and `Dioxus.toml` makes every package install it beside the program: the two licenses, the dictionary's as `dictionary-LICENSE.txt`, and `THIRD-PARTY-NOTICES.html`, which `cargo-about` writes from `about.toml` and `about.hbs` with each crate's license text. `about.toml` lists the licenses a crate may be under, so a new kind stops the build. Every crate is permissive but `spellbook` and `option-ext` (MPL-2.0, used unchanged); the notice says where their source is. Help's About points to the folder. Generated locally: 454 crates for Windows and Linux, 309 KB.
+**Done.** The repository now has `LICENSE-MIT` and `LICENSE-APACHE` (it had neither, though the README and every manifest named them). The Package workflow fills `apps/desktop/package-files/licenses/` (ignored by git) before bundling, and `Dioxus.toml` makes every package install that `licenses` folder (beside the program on Windows, in `/usr/lib/WritingStudio/` from the `.deb`): the two licenses, the dictionary's as `dictionary-LICENSE.txt`, and `THIRD-PARTY-NOTICES.html`, which `cargo-about` writes from `about.toml` and `about.hbs` with each crate's license text. `about.toml` lists the licenses a crate may be under, so a new kind stops the build. Every crate is permissive but `spellbook` and `option-ext` (MPL-2.0, used unchanged); the notice says where their source is. Help's About points to the folder. Generated locally: 454 crates for Windows and Linux, 309 KB. Checked in the built packages on 2026-11-22, which found the `.deb` declaring no dependencies, the licenses loose rather than in their folder, and the name without its space; `Dioxus.toml` and the templates in `apps/desktop/packaging/` fix those.
 
 - The program's own licenses (MIT and Apache-2.0), the dictionary's license (`crates/spellcheck/dictionaries/en_US.LICENSE.txt`), and a notice of every crate the program is built from with its license, generated at build time.
 - `spellbook` is MPL-2.0: the notice says where its source is.
@@ -65,6 +65,8 @@ Today Writing Studio runs by building it from source with `cargo run`. This phas
 - **Signing the Windows installer** is a decision for the maintainer: without it, Windows SmartScreen warns on first run. SignPath Foundation signs open-source projects for free, after the project applies. Until then the release notes say how to get past the warning.
 
 ### 6. A pass over the packaged program
+
+**In progress.** `documentation/RELEASING.md` has the steps of a release and the check to make on Windows and Linux, from the packages. Measured on the maintainer's Windows computer, 2026-11-22, from `cargo build --release` (5.7 minutes): the program is 19.0 MB (7.5 MB packed), its window shows 129 ms after it starts the first time and about 50 ms after, and it holds about 26 MB, not counting WebView2's own processes. That is when the window appears, not when its page is drawn; the check notes how long until it is ready to use. Left: the check itself, by the maintainer, on Windows and on Linux in WSL2.
 
 - Start the installed program on Windows and on Linux, open and create a project, write, compile each format, and sync, from the package rather than from `cargo run`.
 - What differs between WebView2 and WebKitGTK (fonts, the editor, file dialogs, keyboard shortcuts) is fixed where it can be, or written down where it cannot.

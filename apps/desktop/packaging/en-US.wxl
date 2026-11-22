@@ -1,0 +1,8 @@
+<!-- The installer's English strings with the product name written out; the
+     bundler adds the language and code page. -->
+<WixLocalization Culture="en-us" xmlns="http://schemas.microsoft.com/wix/2006/localization">
+<String Id="LaunchApp">Launch Writing Studio</String>
+<String Id="DowngradeErrorMessage">A newer version of Writing Studio is already installed.</String>
+<String Id="PathEnvVarFeature">Add the install location of the Writing Studio executable to the PATH system environment variable. This allows the Writing Studio executable to be called from any location.</String>
+<String Id="InstallAppFeature">Installs Writing Studio.</String>
+</WixLocalization>

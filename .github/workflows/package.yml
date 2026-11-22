@@ -70,10 +70,10 @@ jobs:
           # Compiled, as there is no published binary for every runner, and
           # its command is behind the `cli` feature.
           cargo install cargo-about --version 0.9.3 --locked --features cli
-          mkdir -p apps/desktop/licenses
-          cp LICENSE-MIT LICENSE-APACHE apps/desktop/licenses/
-          cp crates/spellcheck/dictionaries/en_US.LICENSE.txt apps/desktop/licenses/dictionary-LICENSE.txt
-          cargo about generate --manifest-path apps/desktop/Cargo.toml about.hbs --output-file apps/desktop/licenses/THIRD-PARTY-NOTICES.html
+          mkdir -p apps/desktop/package-files/licenses
+          cp LICENSE-MIT LICENSE-APACHE apps/desktop/package-files/licenses/
+          cp crates/spellcheck/dictionaries/en_US.LICENSE.txt apps/desktop/package-files/licenses/dictionary-LICENSE.txt
+          cargo about generate --manifest-path apps/desktop/Cargo.toml about.hbs --output-file apps/desktop/package-files/licenses/THIRD-PARTY-NOTICES.html
 
       - name: Bundle
         working-directory: apps/desktop
@@ -89,7 +89,7 @@ jobs:
             Sort-Object LastWriteTime -Descending | Select-Object -First 1
           $folder = New-Item -ItemType Directory -Force "dist/Writing Studio"
           Copy-Item $exe.FullName "$folder/Writing Studio.exe"
-          Copy-Item -Recurse apps/desktop/licenses "$folder/licenses"
+          Copy-Item -Recurse apps/desktop/package-files/licenses "$folder/licenses"
           Compress-Archive -Path $folder -DestinationPath "dist/Writing-Studio-windows-x64-portable.zip"
           Remove-Item -Recurse $folder
 

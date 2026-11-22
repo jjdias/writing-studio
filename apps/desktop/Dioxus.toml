@@ -5,13 +5,48 @@ default_platform = "desktop"
 [web.app]
 title = "Writing Studio"
 
-# How the packages name the program (Phase 7, stage 3 builds them).
+# How the packages name and describe the program. dx names the product
+# after the binary (WritingStudio, no space), so the installer and the
+# Linux menu entry take their name from the templates in packaging/.
 [bundle]
 identifier = "io.github.jjdias.WritingStudio"
 publisher = "Writing Studio contributors"
 # The Windows installer takes the first icon, so the .ico comes first.
 icon = ["icons/icon.ico", "icons/32.png", "icons/128.png", "icons/256.png"]
+category = "Productivity"
 short_description = "A writing app for novels and series"
-# The licenses, which the Package workflow puts in this folder before
-# bundling; each package installs them beside the program.
-resources = ["licenses/*"]
+long_description = "Plan a novel or a series, write it scene by scene, and compile it as Word, EPUB, HTML, or Markdown. Projects are plain files on your own computer."
+# The Package workflow puts the licenses in package-files/licenses before
+# bundling. Naming the parent folder keeps the licenses folder in the
+# package: beside the program on Windows, in /usr/lib/WritingStudio on Linux.
+resources = ["package-files"]
+
+[bundle.deb]
+# What the program links (WebKitGTK, GTK 3, libxdo); apt installs the rest.
+depends = ["libwebkit2gtk-4.1-0", "libgtk-3-0", "libxdo3"]
+section = "editors"
+desktop_template = "packaging/writing-studio.desktop"
+files = {}
+
+# dx requires every field of these two sections once either is given.
+[bundle.windows]
+tsp = false
+allow_downgrades = true
+# Tauri's default: a small installer that fetches WebView2 only when missing.
+webview_install_mode = { DownloadBootstrapper = { silent = true } }
+
+[bundle.windows.wix]
+language = [["en-US", "packaging/en-US.wxl"]]
+template = "packaging/main.wxs"
+# The code Windows matches updates by; it must never change. It is the one
+# the bundler derived from the old product name, written out.
+upgrade_code = "9fd600cf-4d95-5a6d-a88f-fec0da6cbab8"
+fragment_paths = []
+component_group_refs = []
+component_refs = []
+feature_group_refs = []
+feature_refs = []
+merge_refs = []
+skip_webview_install = false
+enable_elevated_update_task = false
+fips_compliant = false

@@ -408,11 +408,19 @@ fn About() -> Element {
             p {
                 "Spelling uses the spellbook library (MPL-2.0) and the Hunspell English (US) dictionary, "
                 "which keeps its own license. The licenses of every library the program is built from "
-                "are in the licenses folder beside the program, in THIRD-PARTY-NOTICES.html."
+                "are in THIRD-PARTY-NOTICES.html, in {LICENSES_FOLDER}."
             }
         }
     }
 }
+
+/// Where the packages install the licenses: the Linux package puts the
+/// program in /usr/bin and its files in /usr/lib/WritingStudio.
+const LICENSES_FOLDER: &str = if cfg!(target_os = "linux") {
+    "/usr/lib/WritingStudio/licenses"
+} else {
+    "the licenses folder beside the program"
+};
 
 /// The version of this build, from the workspace's `Cargo.toml`.
 const VERSION: &str = env!("CARGO_PKG_VERSION");

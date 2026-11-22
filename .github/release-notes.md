@@ -4,7 +4,7 @@ Writing Studio {version}: a free, open-source writing app for novels and series.
 
 **Windows 10 and 11**
 
-- `WritingStudio_*_x64_en-US.msi` installs it, with a Start menu entry. Remove it from Settings → Apps.
+- `WritingStudio_*_x64_en-US.msi` installs it, with a Start menu entry and a desktop shortcut. Remove it from Settings → Apps.
 - `Writing-Studio-windows-x64-portable.zip` runs from any folder: unzip it and open `Writing Studio.exe`.
 - The installer is not signed yet, so Windows may say it "protected your PC". Choose **More info**, then **Run anyway**.
 
@@ -24,4 +24,4 @@ It needs WebKitGTK 4.1, which `apt` installs with it. On other Linux systems, bu
 
 ## Licenses
 
-MIT or Apache-2.0, at your choice. Each package has a `licenses` folder beside the program with these, the dictionary's license, and the licenses of every library it is built from.
+MIT or Apache-2.0, at your choice. Each package has a `licenses` folder with these, the dictionary's license, and the licenses of every library it is built from: beside the program on Windows, and in `/usr/lib/WritingStudio/licenses` on Linux.

@@ -34,10 +34,10 @@ On the welcome screen, create a project and choose where its folder goes, outsid
 - [Using Writing Studio](documentation/USAGE.md): every feature, step by step
 - [Sync between computers](documentation/SYNC.md)
 - [How a project is stored](documentation/PROJECT_FORMAT.md)
-- For contributors: [architecture](documentation/ARCHITECTURE.md) and the [roadmap](roadmap/README.md)
+- For contributors: [architecture](documentation/ARCHITECTURE.md), [releasing](documentation/RELEASING.md), and the [roadmap](roadmap/README.md)
 
 ## License
 
-MIT OR Apache-2.0, at your choice: [LICENSE-MIT](LICENSE-MIT) and [LICENSE-APACHE](LICENSE-APACHE). Use, study, change, and share it. The packages carry these, the dictionary's license, and a notice of every library the program is built from, in a `licenses` folder beside the program.
+MIT OR Apache-2.0, at your choice: [LICENSE-MIT](LICENSE-MIT) and [LICENSE-APACHE](LICENSE-APACHE). Use, study, change, and share it. The packages carry these, the dictionary's license, and a notice of every library the program is built from, in a `licenses` folder: beside the program on Windows, and in `/usr/lib/WritingStudio/licenses` on Linux.
 
 Spellcheck uses the `spellbook` crate (MPL-2.0) and bundles the Hunspell English (US) dictionary, which has its own permissive license: see [`crates/spellcheck/dictionaries/`](crates/spellcheck/dictionaries/README.md).
