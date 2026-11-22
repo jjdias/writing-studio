@@ -18,9 +18,6 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
-  # The Dioxus CLI's TLS library assembles its own code on Windows; these
-  # are the objects it ships for that, so NASM need not be installed.
-  AWS_LC_SYS_PREBUILT_NASM: 1
 
 jobs:
   package:
@@ -49,9 +46,15 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      # The CLI that builds the packages, at the Dioxus version in Cargo.lock.
+      # The CLI that builds the packages, at the Dioxus version in Cargo.lock,
+      # as the binary Dioxus publishes with each release. Compiling it fails
+      # on Windows: its TLS library does not build with the runner's compiler.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-binstall
+
       - name: Install the Dioxus CLI
-        run: cargo install dioxus-cli --version 0.6.3 --locked
+        run: cargo binstall dioxus-cli@0.6.3 --no-confirm --disable-strategies compile
 
       - name: Bundle
         working-directory: apps/desktop

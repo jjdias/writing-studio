@@ -351,9 +351,14 @@ pub(super) fn SpellPanel(unknown: Vec<UnknownWord>, project_words: Vec<String>) 
                             class: "spell-chip",
                             title: "Take “{word}” out of this project's dictionary",
                             onmousedown: keep_focus,
-                            onclick: move |_| {
+                            // The handler has its own copy: a release build
+                            // writes the text below after making it.
+                            onclick: {
                                 let word = word.clone();
-                                keep_caret(state, move |current| current.remove_project_word(&word));
+                                move |_| {
+                                    let word = word.clone();
+                                    keep_caret(state, move |current| current.remove_project_word(&word));
+                                }
                             },
                             "{word} ×"
                         }
@@ -400,7 +405,7 @@ pub(super) fn SpellFocus(word: String, suggestions: Vec<String>) -> Element {
                     title: "Replace every “{word}” in this document with “{suggestion}”",
                     onmousedown: keep_focus,
                     onclick: {
-                        let word = word.clone();
+                        let (word, suggestion) = (word.clone(), suggestion.clone());
                         move |_| {
                             let (word, suggestion) = (word.clone(), suggestion.clone());
                             keep_caret(state, move |current| current.replace_misspelling(&word, &suggestion));
