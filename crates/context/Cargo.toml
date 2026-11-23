@@ -1,0 +1,14 @@
+[package]
+name = "writing-studio-context"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "What a scene needs around it: its place in the book, its plot points, and the story's entries linked to it"
+
+[dependencies]
+writing-studio-characters.workspace = true
+writing-studio-core.workspace = true
+writing-studio-plotting.workspace = true
+writing-studio-project.workspace = true
+writing-studio-research.workspace = true
+writing-studio-worldbuilding.workspace = true

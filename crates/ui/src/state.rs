@@ -261,53 +261,9 @@ impl WorldSection {
     }
 }
 
-/// Which project-level bible record a scene link belongs to.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum BibleLink {
-    Character,
-    Location,
-    Culture,
-    Lore,
-    Timeline,
-    Research,
-}
-
-impl BibleLink {
-    /// What an entry of this kind is, in a chip or a list: "character".
-    pub fn noun(self) -> &'static str {
-        match self {
-            Self::Character => "character",
-            Self::Location => "place",
-            Self::Culture => "culture",
-            Self::Lore => "lore",
-            Self::Timeline => "event",
-            Self::Research => "research",
-        }
-    }
-
-    /// The heading over this kind's entries.
-    pub fn heading(self) -> &'static str {
-        match self {
-            Self::Character => "Characters",
-            Self::Location => "Places",
-            Self::Culture => "Cultures",
-            Self::Lore => "Lore",
-            Self::Timeline => "Events",
-            Self::Research => "Research",
-        }
-    }
-}
-
-/// A character, place, culture, lore entry, timeline event, or research
-/// note, with the binder items it is linked to: scenes, and chapters, parts,
-/// or books, whose link reaches every scene in them.
-#[derive(Clone, Debug, PartialEq)]
-pub struct StoryEntry {
-    pub kind: BibleLink,
-    pub id: Id,
-    pub name: String,
-    pub links: Vec<Id>,
-}
+/// Which project-level bible record a scene link belongs to, and the
+/// story's entries as the context crate reads them.
+pub use writing_studio_context::{EntryKind as BibleLink, StoryEntry};
 
 /// How an entry is offered when linking it: "Mara · character".
 pub fn story_choice(entry: &StoryEntry) -> String {
@@ -2619,30 +2575,7 @@ impl StudioState {
 
     /// Every entry of the story, kind by kind, each kind in its own order.
     pub fn story_entries(&self) -> Vec<StoryEntry> {
-        let mut entries = Vec::new();
-        let mut push = |kind: BibleLink, id: Id, name: &str, links: &[Id]| {
-            let name = if name.trim().is_empty() { format!("Unnamed {}", kind.noun()) } else { name.trim().to_string() };
-            entries.push(StoryEntry { kind, id, name, links: links.to_vec() });
-        };
-        for item in self.cast.characters_in_order() {
-            push(BibleLink::Character, item.id, &item.name, &item.scene_ids);
-        }
-        for item in self.world.locations_in_order() {
-            push(BibleLink::Location, item.id, &item.name, &item.scene_ids);
-        }
-        for item in self.world.cultures_in_order() {
-            push(BibleLink::Culture, item.id, &item.name, &item.scene_ids);
-        }
-        for item in self.world.lore_in_order() {
-            push(BibleLink::Lore, item.id, &item.title, &item.scene_ids);
-        }
-        for item in self.world.events_in_order() {
-            push(BibleLink::Timeline, item.id, &item.title, &item.scene_ids);
-        }
-        for item in self.library.items_in_order() {
-            push(BibleLink::Research, item.id, &item.title, &item.scene_ids);
-        }
-        entries
+        writing_studio_context::story_entries(&self.cast, &self.world, &self.library)
     }
 
     pub fn story_entry(&self, id: Id) -> Option<StoryEntry> {
@@ -2652,19 +2585,20 @@ impl StudioState {
     /// Whether an entry reaches a binder item: linked to it, or to the
     /// chapter, part, or book it is in.
     pub fn story_reaches(&self, entry: &StoryEntry, id: Id) -> bool {
-        let mut at = Some(id);
-        let mut guard = 0;
-        while let Some(node) = at.and_then(|id| self.binder.get(id)) {
-            if entry.links.contains(&node.id) {
-                return true;
-            }
-            at = node.parent_id;
-            guard += 1;
-            if guard > 10_000 {
-                break;
-            }
-        }
-        false
+        writing_studio_context::reaches(&self.binder, entry, id)
+    }
+
+    /// The open scene's context: the scene, where it sits, its plot points,
+    /// and the entries that reach it.
+    pub fn scene_context(&self, scene: Id) -> Option<writing_studio_context::SceneContext> {
+        let sources = writing_studio_context::Sources {
+            binder: &self.binder,
+            cast: &self.cast,
+            world: &self.world,
+            library: &self.library,
+            plot: &self.plot,
+        };
+        writing_studio_context::scene_context(&sources, scene)
     }
 
     /// The entries linked to an item itself, and those linked to what it is
@@ -5016,6 +4950,26 @@ mod tests {
         let chapter = state.binder.get(scene).unwrap().parent_id.unwrap();
         state.link_story(chapter, mara);
         assert!(state.named_here.is_empty());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// The open scene's context, from the context crate, holds what its
+    /// chapter's links bring; "Copy context" writes it as Markdown.
+    #[test]
+    fn the_scene_context_holds_what_reaches_the_scene() {
+        let (mut state, dir) = open_state("scene-context");
+        let scene = state.selected.unwrap();
+        let chapter = state.binder.get(scene).unwrap().parent_id.unwrap();
+        state.add_character();
+        let mara = state.selected_character.unwrap();
+        state.set_character_name(mara, "Mara".into());
+        state.link_story(chapter, mara);
+        let context = state.scene_context(scene).unwrap();
+        assert_eq!(context.entries.len(), 1);
+        assert_eq!(context.entries[0].through.as_deref(), Some("Chapter 1"));
+        let markdown = context.to_markdown(16_000);
+        assert!(markdown.contains("## Characters") && markdown.contains("### Mara"), "{markdown}");
+        assert!(state.scene_context(chapter).is_none());
         let _ = std::fs::remove_dir_all(dir);
     }
 

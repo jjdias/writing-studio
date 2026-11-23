@@ -6292,6 +6292,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "writing-studio-context"
+version = "0.1.0"
+dependencies = [
+ "writing-studio-characters",
+ "writing-studio-core",
+ "writing-studio-plotting",
+ "writing-studio-project",
+ "writing-studio-research",
+ "writing-studio-worldbuilding",
+]
+
+[[package]]
 name = "writing-studio-core"
 version = "0.1.0"
 dependencies = [
@@ -6468,6 +6480,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "writing-studio-characters",
+ "writing-studio-context",
  "writing-studio-core",
  "writing-studio-corkboard",
  "writing-studio-diagnostics",

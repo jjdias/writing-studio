@@ -48,6 +48,9 @@ pub(super) fn Inspector() -> Element {
             {
                 StoryLinks { id: node.id, kind: node.kind }
             }
+            if node.kind == NodeKind::Scene && state.read().binder.in_manuscript(node.id) {
+                SceneContextView { id: node.id }
+            }
             if !node.kind.is_root() && !state.read().binder.is_in_research(node.id) && !state.read().binder.is_in_trash(node.id) {
                 label { class: "check-label compile-check",
                     input {
@@ -557,6 +560,74 @@ fn StoryLinks(id: Id, kind: NodeKind) -> Element {
             }
         }
     }
+}
+
+/// The longest context "Copy context" writes, in characters: room for a
+/// scene's whole cast without crowding out what an assistant writes back.
+const CONTEXT_LIMIT: usize = 16_000;
+
+/// The entries that reach the scene, each opening a short summary of its
+/// text in place, and a button that copies the whole context as Markdown.
+#[component]
+fn SceneContextView(id: Id) -> Element {
+    let state = use_context::<Signal<StudioState>>();
+    let Some(context) = state.read().scene_context(id) else {
+        return rsx! {};
+    };
+    let markdown = context.to_markdown(CONTEXT_LIMIT);
+    rsx! {
+        details { class: "inspector-section context",
+            summary { "Context" }
+            if context.entries.is_empty() {
+                p { class: "hint", "No character, place, or note reaches this scene yet. Link them above, or to its chapter." }
+            }
+            for entry in context.entries.clone() {
+                details { class: "context-entry", key: "{entry.id}",
+                    summary {
+                        span { "{entry.name}" }
+                        span { class: "story-kind",
+                            if let Some(from) = &entry.through { "{entry.kind.noun()}, from {from}" } else { "{entry.kind.noun()}" }
+                        }
+                    }
+                    if entry.text.is_empty() {
+                        p { class: "hint", "Nothing written about it yet." }
+                    } else {
+                        p { class: "context-text", "{short_summary(&entry.text)}" }
+                    }
+                }
+            }
+            button {
+                title: "The scene, where it sits, its plot points, and everything linked to it, as Markdown",
+                onclick: move |_| copy_to_clipboard(state, markdown.clone(), "Context copied."),
+                "Copy context"
+            }
+        }
+    }
+}
+
+/// The start of an entry's text, up to a sentence or two.
+fn short_summary(text: &str) -> String {
+    const LONGEST: usize = 280;
+    let first = text.split("\n\n").next().unwrap_or(text).trim();
+    if first.chars().count() <= LONGEST {
+        return first.to_string();
+    }
+    let cut: String = first.chars().take(LONGEST).collect();
+    let at = cut.rfind(' ').unwrap_or(cut.len());
+    format!("{}…", cut[..at].trim_end())
+}
+
+/// Put text on the clipboard through the page, and say how it went.
+fn copy_to_clipboard(mut state: Signal<StudioState>, text: String, done: &'static str) {
+    spawn(async move {
+        let script = format!(
+            "navigator.clipboard.writeText({}).then(() => dioxus.send(true), () => dioxus.send(false));",
+            serde_json::to_string(&text).unwrap_or_else(|_| "\"\"".into())
+        );
+        let mut eval = document::eval(&script);
+        let copied = eval.recv::<bool>().await.unwrap_or(false);
+        state.write().status = if copied { done.into() } else { "Could not copy to the clipboard.".into() };
+    });
 }
 
 pub(super) fn split_at_caret(mut state: Signal<StudioState>) {

@@ -21,6 +21,7 @@ members = [
     "crates/spellcheck",
     "crates/diagnostics",
     "crates/format",
+    "crates/context",
 ]
 
 [workspace.package]
@@ -50,6 +51,7 @@ writing-studio-templates = { path = "crates/templates" }
 writing-studio-spellcheck = { path = "crates/spellcheck" }
 writing-studio-diagnostics = { path = "crates/diagnostics" }
 writing-studio-format = { path = "crates/format" }
+writing-studio-context = { path = "crates/context" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 uuid = { version = "1", features = ["v4", "serde"] }

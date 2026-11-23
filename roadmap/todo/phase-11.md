@@ -1,6 +1,6 @@
 # Phase 11 — Tags, story links, and a mind map
 
-In progress: stages 1 to 8 are done.
+In progress: stages 1 to 9 are done.
 
 Phase 9 gave binder items colored keywords and saved filters. This phase does four things with what is there:
 
@@ -129,6 +129,8 @@ In this order: the layout change first, because every later stage adds to the li
 - Nothing is linked without the writer's click.
 
 ### 9. The scene context
+
+**Done.** `crates/context` has `scene_context` (`SceneContext`: title, synopsis, status, keywords with the chapter's, place from the book down, the scene before and after in the book's order, plot points by plotline, and every entry that reaches the scene, characters first, each saying which chapter, part, or book brings it) and `SceneContext::to_markdown(limit)`. It also holds the story's entries (`StoryEntry`, `story_entries`, `reaches`, and `EntryKind`, which the ui uses as `BibleLink`), so the ui and the context read the same list. The inspector of a scene shows **Context**, folded: each entry's name opens the start of its text in place, and "Copy context" puts the Markdown, at most 16,000 characters, on the clipboard through the page (`navigator.clipboard`), saying whether it worked. `documentation/ARCHITECTURE.md` lists the crate. The `document` crate is not read: the context holds no scene text.
 
 - One function gathers everything a scene needs, in this order: the scene's title, synopsis, status, and keywords; where it is (book, part, chapter, and the synopsis of the scene before and after); its plot points; and every entry it is linked to, directly or through its chapter, part, or book, each with its kind, name, and text, characters first.
 - It lives in a crate of its own, `crates/context`, that reads the model crates (`project`, `characters`, `worldbuilding`, `research`, `plotting`, `document`) and not the UI or the storage, so anything added later (assistance, an export) can call it with a project's data.
