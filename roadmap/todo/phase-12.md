@@ -1,6 +1,6 @@
 # Phase 12 — A Markdown editor
 
-In progress: stages 1 to 5 are done.
+In progress: stages 1 to 6 are done.
 
 The page is a rich-text editor today: a `contenteditable` element that the program's own scripts (`crates/ui/assets/review.js`, `spell.js`, `place.js`) and `crates/ui/src/studio/editor.rs` keep in step with the document model. This phase makes the page a Markdown editor: the writer types and sees Markdown, shown as the best Markdown editors show it, while everything the page does now keeps working.
 
@@ -100,6 +100,8 @@ Each as CodeMirror decorations or panels, not changes to its DOM:
 - Tracked changes against the baseline, and accepting or rejecting them.
 - Keeping one's place: fixed scrolling, the line marker, fading all but the sentence or paragraph (`place.js`); focus mode.
 - Split at the caret, merge, word counts (without Markdown marks or notes), "Named here", and the Navigate list of headings.
+
+**Done.** In `crates/ui/codemirror/places.js`, as decorations and an element on the desk, never changes to the editor's own elements. Spelling: the unknown words the program sends are underlined where they are text (not in marks, addresses, or a note's text), except the word being typed; the spelling list's word is found on the page and selected. Keeping one's place: fixed scrolling moves the desk as before, the line marker is drawn under the caret's line, fading leaves the caret's sentence or paragraph at full strength, and the bars step back while one types, with the same choices in Settings. Split at the caret sends the text before the caret, which is read as Markdown to count the cut as `split_at` counts it, with the spaces right before the caret kept in the first part (`StudioState::split_at_markdown`, `shown_length_of`). Merge, word counts (from the document, so without marks or notes), "Named here", and tracked changes work on the document, as they did. Navigate's headings and the scene title's Enter reach the Markdown page. Tests: `a_split_on_the_markdown_page_cuts_where_the_caret_is_in_the_text`; spelling, finding, fading, and the marker were checked in a browser.
 
 ### 7. The rich-text editor goes
 

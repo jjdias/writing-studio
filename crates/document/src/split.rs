@@ -87,6 +87,12 @@ pub fn split_baseline(baseline: &Document, current: &Document, point: SplitPoint
     (baseline.blocks[..cut].to_vec(), baseline.blocks[cut..].to_vec())
 }
 
+/// How many characters these blocks show, counted as `split_point` counts
+/// them: the place of the end of `blocks` in a document that starts with them.
+pub fn shown_length_of(blocks: &[Block]) -> usize {
+    blocks.iter().map(shown_length).sum()
+}
+
 fn has_words(blocks: &[Block]) -> bool {
     blocks.iter().any(|block| !block.plain_text().trim().is_empty())
 }

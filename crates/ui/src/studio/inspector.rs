@@ -762,6 +762,16 @@ fn copy_to_clipboard(mut state: Signal<StudioState>, text: String, done: &'stati
 }
 
 pub(super) fn split_at_caret(mut state: Signal<StudioState>) {
+    if state.peek().markdown_page {
+        spawn(async move {
+            let mut eval = document::eval("dioxus.send(window.wsEditor ? wsEditor.textBeforeCaret() : null);");
+            match eval.recv::<Option<String>>().await {
+                Ok(Some(before)) => state.write().split_at_markdown(&before),
+                _ => state.write().status = "Click in the scene where the new scene should start, then Split.".into(),
+            }
+        });
+        return;
+    }
     spawn(async move {
         let mut eval = document::eval(
             r#"

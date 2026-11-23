@@ -16,7 +16,7 @@ import { EditorView, keymap, drawSelection } from "@codemirror/view";
 import { defaultKeymap, history, undo, redo } from "@codemirror/commands";
 import { sceneLanguage } from "./syntax.js";
 import { preview, sourceMode } from "./preview.js";
-import { selectReview, showBlock } from "./places.js";
+import { selectReview, showBlock, spelling, setSpelling, findWord, keepingPlace } from "./places.js";
 import { writingKeys, smartTypography, pairing, pasteHandler, insertPasted, runCommand, marksAt } from "./writing.js";
 
 let view = null;
@@ -27,6 +27,7 @@ const undoHistory = new Compartment();
 const showSource = new Compartment();
 const smart = new Compartment();
 const pairs = new Compartment();
+const keepPlace = new Compartment();
 // The selection a link or note is for while its field is open.
 let held = null;
 // Marks a change the program made, which is not sent back as the writer's.
@@ -42,8 +43,9 @@ function keepHandledKeys(element) {
   });
 }
 
-// `options`: `{ source, smart, pair }`: every Markdown mark shown as typed,
-// smart typography, and pairing of marks and brackets.
+// `options`: `{ source, smart, pair, keep }`: every Markdown mark shown as
+// typed, smart typography, pairing of marks and brackets, and keeping one's
+// place (`{ scroll, marker, fade, bars }`).
 function mount(parent, text, send, id, options = {}) {
   unmount();
   token = id;
@@ -56,6 +58,8 @@ function mount(parent, text, send, id, options = {}) {
     editable.of(EditorView.editable.of(true)),
     sceneLanguage,
     showSource.of(sourceMode.of(!!options.source)),
+    spelling,
+    keepPlace.of(keepingPlace(options.keep)),
     preview,
     writingKeys,
     smart.of(options.smart ? smartTypography : []),
@@ -228,6 +232,16 @@ window.wsEditor = {
   hold,
   release,
   pasted,
+  active: () => !!view,
+  // What the page holds before the caret, for splitting the scene there.
+  textBeforeCaret: () => (view ? view.state.doc.sliceString(0, view.state.selection.main.head) : null),
+  setSpelling: (words) => (view ? setSpelling(view, words) : false),
+  findWord: (word) => (view ? findWord(view, word) : false),
+  setKeepPlace: (options) => {
+    if (!view) return false;
+    view.dispatch({ effects: keepPlace.reconfigure(keepingPlace(options)) });
+    return true;
+  },
   selectReview: (type, index) => (view ? selectReview(view, type, index) : false),
   showBlock: (index) => (view ? showBlock(view, index) : false),
 };

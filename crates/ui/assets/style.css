@@ -1418,3 +1418,6 @@ button.keyword-dot:hover { box-shadow: 0 0 0 2px var(--line); }
 .markdown-page .ws-note-text { font-style: italic; }
 .markdown-page .ws-footnote-ref { font-size: 0.7em; vertical-align: super; color: var(--page-link); padding: 0 1px; }
 .markdown-page .ws-footnote-def { font-size: 0.9em; color: var(--muted); }
+/* Spelling and keeping one's place (places.js), as on the rich-text page. */
+.markdown-page .ws-spell { text-decoration: underline wavy #e5484d; text-decoration-skip-ink: none; }
+.markdown-page.fading .ws-current { color: var(--editor-text); }

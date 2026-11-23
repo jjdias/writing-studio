@@ -70,7 +70,7 @@ pub(super) fn EditorPane() -> Element {
                     }
                     if markdown {
                         if let Some(scene) = scene {
-                            MarkdownPage { key: "{scene}", scene, can_edit, marks }
+                            MarkdownPage { key: "{scene}", scene, can_edit, marks, spelling: unknown_json.clone(), keep: keep_json.clone(), fading: keep.fade != Fade::Off }
                         }
                     } else {
                     div {
@@ -103,12 +103,20 @@ pub(super) fn EditorPane() -> Element {
 /// `App`). One editor for each scene: its text comes from the session, and
 /// every change goes back through `crates/format` into the document.
 #[component]
-fn MarkdownPage(scene: Id, can_edit: bool, marks: Signal<Vec<String>>) -> Element {
+fn MarkdownPage(
+    scene: Id,
+    can_edit: bool,
+    marks: Signal<Vec<String>>,
+    spelling: String,
+    keep: String,
+    fading: bool,
+) -> Element {
     let mut state = use_context::<Signal<StudioState>>();
     let mut marks = marks;
     let epoch = state.read().editor_epoch;
     let token = serde_json::to_string(&scene.to_string()).unwrap_or_else(|_| "\"\"".into());
     let mount_token = token.clone();
+    let mount_keep = keep.clone();
     use_hook(move || {
         spawn(async move {
             // Wait for the element to be on the page.
@@ -123,7 +131,9 @@ fn MarkdownPage(scene: Id, can_edit: bool, marks: Signal<Vec<String>>) -> Elemen
                 "#
             ));
             let current = state.peek();
-            let _ = eval.send((current.editor_markdown(), page_options(&current.markdown_options())));
+            let mut options = page_options(&current.markdown_options());
+            options["keep"] = serde_json::from_str(&mount_keep).unwrap_or_default();
+            let _ = eval.send((current.editor_markdown(), options));
             drop(current);
             // What the page sends: see `crates/ui/codemirror/entry.js`.
             while let Ok(message) = eval.recv::<serde_json::Value>().await {
@@ -160,6 +170,14 @@ fn MarkdownPage(scene: Id, can_edit: bool, marks: Signal<Vec<String>>) -> Elemen
     use_effect(use_reactive((&options,), move |(options,)| {
         let _ = document::eval(&format!("window.wsEditor && wsEditor.setOptions({options});"));
     }));
+    // The unknown words to underline, and keeping one's place, as the
+    // rich-text page had them.
+    use_effect(use_reactive((&spelling,), move |(words,)| {
+        let _ = document::eval(&format!("window.wsEditor && wsEditor.setSpelling({words});"));
+    }));
+    use_effect(use_reactive((&keep,), move |(keep,)| {
+        let _ = document::eval(&format!("window.wsEditor && wsEditor.setKeepPlace({keep});"));
+    }));
     let editable = if can_edit { "true" } else { "false" };
     use_effect(use_reactive((&can_edit,), move |(can_edit,)| {
         let _ = document::eval(&format!("window.wsEditor && wsEditor.setEditable({can_edit});"));
@@ -168,7 +186,12 @@ fn MarkdownPage(scene: Id, can_edit: bool, marks: Signal<Vec<String>>) -> Elemen
         let _ = document::eval(&format!("window.wsEditor && wsEditor.unmount({token});"));
     });
     rsx! {
-        div { id: "markdown-page", class: "manuscript markdown-page", "data-editable": "{editable}", aria_label: "Manuscript" }
+        div {
+            id: "markdown-page",
+            class: if fading { "manuscript markdown-page fading" } else { "manuscript markdown-page" },
+            "data-editable": "{editable}",
+            aria_label: "Manuscript",
+        }
     }
 }
 
@@ -236,10 +259,14 @@ pub(super) fn find_spelling(word: &str) {
         tokio::time::sleep(std::time::Duration::from_millis(16)).await;
         let script = format!(
             r#"
-            {SPELL_JS}
-            const el = document.querySelector('[data-manuscript]');
-            if (el) {{ el.focus(); }}
-            dioxus.send(wsSpellFind(el, {word_json}));
+            if (window.wsEditor && wsEditor.active()) {{
+                dioxus.send(wsEditor.findWord({word_json}));
+            }} else {{
+                {SPELL_JS}
+                const el = document.querySelector('[data-manuscript]');
+                if (el) {{ el.focus(); }}
+                dioxus.send(wsSpellFind(el, {word_json}));
+            }}
             "#
         );
         let mut eval = document::eval(&script);
@@ -1163,7 +1190,7 @@ fn PageTitle(id: Id, title: String, editable: bool) -> Element {
                 Key::Enter => {
                     event.prevent_default();
                     state.write().rename_item(id, &draft());
-                    focus_dom_now("[data-manuscript]");
+                    focus_dom_now("[data-manuscript], .markdown-page .cm-content");
                 }
                 Key::Escape => {
                     event.stop_propagation();

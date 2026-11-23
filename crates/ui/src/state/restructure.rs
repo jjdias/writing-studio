@@ -504,6 +504,17 @@ impl StudioState {
     /// characters in to the end. The new scene takes the open one's status,
     /// keywords, and color, and its tracked changes for that text. The open
     /// scene is kept as a snapshot first.
+    /// Split where the caret is on the Markdown page, given the page's text
+    /// before the caret: read as Markdown, that is where the cut goes, in
+    /// characters as `split_at` counts them.
+    pub fn split_at_markdown(&mut self, before: &str) {
+        let read = writing_studio_document::shown_length_of(&writing_studio_format::markdown_to_blocks(before));
+        // Reading drops the spaces at the end, which are text in the scene:
+        // the cut goes after them, as on the rich-text page.
+        let spaces = before.chars().rev().take_while(|ch| *ch == ' ' || *ch == '\t').count();
+        self.split_at(read + spaces);
+    }
+
     pub fn split_at(&mut self, at: usize) {
         self.flush_editor();
         let Some(id) = self.open_scene() else {
@@ -754,6 +765,23 @@ mod tests {
         assert!(state.status.starts_with("Undid the split"), "{}", state.status);
         state.redo();
         assert_eq!(state.editor_text, "Before the cut.\nAfter the change.", "redo does not cut it again");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_split_on_the_markdown_page_cuts_where_the_caret_is_in_the_text() {
+        let (mut state, dir) = open_state("split-markdown");
+        let first = state.selected.unwrap();
+        let page = "# One\n\nShe opened the **red** door. A gull cried.\n\nNobody spoke.";
+        state.apply_editor_markdown(page);
+        // The caret just before "A gull": the marks before it are not text.
+        let before = &page[..page.find("A gull").unwrap()];
+        state.split_at_markdown(before);
+        let parent = state.binder.get(first).unwrap().parent_id;
+        let order: Vec<Id> = state.binder.children(parent).iter().map(|node| node.id).collect();
+        let second = order[order.iter().position(|id| *id == first).unwrap() + 1];
+        assert_eq!(text_of(&state, first), "One\nShe opened the red door. ");
+        assert_eq!(text_of(&state, second), "A gull cried.\nNobody spoke.");
         let _ = std::fs::remove_dir_all(dir);
     }
 
