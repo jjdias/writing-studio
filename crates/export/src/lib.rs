@@ -438,6 +438,41 @@ mod tests {
         assert!(html.find("<h2>Notes</h2>").unwrap() > html.find("Dust.").unwrap(), "notes at the end");
     }
 
+    /// A new chapter's own text is one empty paragraph. Compile wrote it as
+    /// an empty line under every such heading, in Word, EPUB, and HTML.
+    #[test]
+    fn a_heading_whose_text_is_empty_has_no_empty_paragraph_under_it() {
+        let draft = BinderNode::new(NodeKind::DraftRoot, "Manuscript", None, 0);
+        let book = BinderNode::new(NodeKind::Book, "Tide", Some(draft.id), 0);
+        let empty = BinderNode::new(NodeKind::Chapter, "Empty", Some(book.id), 0);
+        let written = BinderNode::new(NodeKind::Chapter, "Written", Some(book.id), 1);
+        let dawn = BinderNode::new(NodeKind::Scene, "Dawn", Some(empty.id), 0);
+        let docs = [
+            Document::new(empty.document_id.unwrap()),
+            Document::from_plain_text(written.document_id.unwrap(), "A chapter's own words."),
+            // An empty line the writer left inside a scene stays.
+            Document::from_plain_text(dawn.document_id.unwrap(), "One.\n\nTwo."),
+        ];
+        let book_id = book.id;
+        let tree = BinderTree::new(vec![draft, book, empty, written, dawn]);
+        let profile = writing_studio_project::built_in_profiles().remove(2);
+        let html = compile_html(&CompileInput {
+            title: "Tide",
+            book_id: Some(book_id),
+            author: "",
+            subtitle: "",
+            year: 2026,
+            tree: &tree,
+            documents: &docs,
+            profile: &profile,
+        });
+        let heading = html.find("Empty</h2>").unwrap();
+        let scene = html.find("<p>One.</p>").unwrap();
+        assert!(!html[heading..scene].contains("<p>"), "nothing between the heading and its scene: {html}");
+        assert!(html.contains("<p>One.</p><p><br></p><p>Two.</p>"), "{html}");
+        assert!(html.contains("<p>A chapter's own words.</p>"), "a chapter's own text stays: {html}");
+    }
+
     #[test]
     fn front_and_back_matter_go_around_the_text_in_order_and_empty_pages_are_left_out() {
         use std::io::Read;

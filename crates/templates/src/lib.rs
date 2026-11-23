@@ -25,9 +25,11 @@ pub fn blank_novel(title: &str) -> SeededProject {
     let note_doc_id = note.document_id.unwrap_or_else(Id::new);
     note.document_id = Some(note_doc_id);
 
+    // One line is one paragraph: an empty line here would be an empty
+    // paragraph in the scene and in every compiled book.
     let mut scene_doc = Document::from_plain_text(
         scene_doc_id,
-        "Start writing this scene.\n\nEvery scene is saved independently.",
+        "Start writing this scene.\nEvery scene is saved independently.",
     );
     scene_doc.id = scene_doc_id;
     let mut note_doc = Document::from_plain_text(

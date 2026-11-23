@@ -1076,7 +1076,7 @@ mod tests {
         moved.sort();
         assert_eq!(moved, ["Chapter 1", "Stray"]);
         assert_eq!(store.load_binder().unwrap().get(scene.id).unwrap().parent_id, Some(chapter));
-        assert_eq!(store.load_document(scene.id).unwrap().to_plain_text(), "Start writing this scene.\n\nEvery scene is saved independently.");
+        assert_eq!(store.load_document(scene.id).unwrap().to_plain_text(), "Start writing this scene.\nEvery scene is saved independently.");
         drop(store);
         assert!(ProjectStore::open(&dir).unwrap().problems().is_empty());
 

@@ -1,5 +1,5 @@
 use writing_studio_core::Id;
-use writing_studio_document::Document;
+use writing_studio_document::{BlockKind, Document};
 use writing_studio_project::{BinderTree, CompileProfile, NodeKind, SceneSeparator};
 
 pub struct CompileInput<'a> {
@@ -161,6 +161,13 @@ pub(crate) fn contents_of(body: &[CompiledSection<'_>]) -> Vec<ContentsEntry> {
         .collect()
 }
 
+/// Whether a document has words or a scene break to compile.
+fn has_content(doc: &Document) -> bool {
+    doc.blocks
+        .iter()
+        .any(|block| matches!(block.kind, BlockKind::SceneBreak) || !block.plain_text().trim().is_empty())
+}
+
 struct Walker<'a> {
     input: &'a CompileInput<'a>,
     sections: Vec<CompiledSection<'a>>,
@@ -202,7 +209,12 @@ impl<'a> Walker<'a> {
                 }
                 _ => (Some(node.title.clone()), None),
             };
-            let document = node.document_id.and_then(|id| self.input.documents.iter().find(|doc| doc.id == id));
+            // A new chapter or part has text that is one empty paragraph,
+            // which every format would write as an empty line.
+            let document = node
+                .document_id
+                .and_then(|id| self.input.documents.iter().find(|doc| doc.id == id))
+                .filter(|doc| has_content(doc));
             self.sections.push(CompiledSection {
                 heading_level: depth.clamp(1, 6),
                 title,
