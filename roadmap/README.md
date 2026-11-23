@@ -22,6 +22,7 @@ Writing Studio is **open source** (MIT OR Apache-2.0) and **free for the communi
 | 8 | UI and UX overhaul: a window built around writing | Done | [done/phase-8.md](done/phase-8.md) |
 | 9 | Writing comfort, from Ulysses: a brighter layout, page settings, deadlines, keywords | Done | [done/phase-9.md](done/phase-9.md) |
 | 11 | Tags, story links, and a mind map: nested keywords, entries linked from the scene, a scene context, views in the library; worldbuilding in the binder | Done (the look in the window waits for a later phase) | [done/phase-11.md](done/phase-11.md) |
+| 12 | A Markdown editor: live preview, Markdown shortcuts, notes and footnotes, what the page does now | Not started | [todo/phase-12.md](todo/phase-12.md) |
 | Bonus | Work with no phase yet | Not started | [todo/bonus.md](todo/bonus.md) |
 
 Phases 1 to 9 and 11 are on `master`.
@@ -42,7 +43,7 @@ The last three items were cleared at the end of Phase 5: a check used only by it
 
 ## What to do next
 
-The first release. The maintainer goes through the check in [documentation/RELEASING.md](../documentation/RELEASING.md) with the installer on Windows and the `.deb` in WSL2, then pushes the tag `v0.1.0`. Then [Phase 11](done/phase-11.md): Obsidian-style tags on the keywords, characters, places, and notes linked from the scene and gathered into its context, the corkboard turned into a mind map, and the views chosen from the library. It does not wait for the release. Phase 10 has no plan. macOS, iOS, Android, and the web were dropped: see [done/phase-7.md](done/phase-7.md).
+The first release. The maintainer goes through the check in [documentation/RELEASING.md](../documentation/RELEASING.md) with the installer on Windows and the `.deb` in WSL2, then pushes the tag `v0.1.0`. Then [Phase 12](todo/phase-12.md): the page becomes a Markdown editor, after the component and what is stored are decided. Phase 10 has no plan. macOS, iOS, Android, and the web were dropped: see [done/phase-7.md](done/phase-7.md).
 
 ## Product principles
 
