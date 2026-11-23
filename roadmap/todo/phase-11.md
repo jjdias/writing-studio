@@ -1,6 +1,6 @@
 # Phase 11 — Tags, story links, and a mind map
 
-In progress: stages 1 and 2 are done.
+In progress: stages 1 to 3 are done.
 
 Phase 9 gave binder items colored keywords and saved filters. This phase does four things with what is there:
 
@@ -79,6 +79,8 @@ In this order: the layout change first, because every later stage adds to the li
 - No file changes: a nested keyword is a name with `/` in it.
 
 ### 3. A keyword list in the library
+
+**Done.** `BinderTree::keyword_tree` gives the rows (`KeywordRow`: the whole name, the last part shown, depth, count, children), sorted by `KeywordSort`; a parent no item carries counts its children's items, and an item carrying `plot` and `plot/subplot` counts once. The library's **Keywords** section, after the saved filters, shows only once a keyword exists, with a "By name" / "By use" switch. A click sets `keyword_filter`, which the scene list (`scene_groups`) now honors as the corkboard and outliner already did; a second click or Escape clears it, and from Characters or another mode it opens the page beside the list. Folding is kept for the session (`folded_keywords`).
 
 - A **Keywords** section in the library, after the saved filters: every keyword as a tree, with its color and the number of items that carry it, not counting the trash. A parent that no item carries itself still shows, holding its children.
 - Sorted by name or by count; the tree folds like the binder.

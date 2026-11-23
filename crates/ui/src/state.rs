@@ -19,7 +19,7 @@ use writing_studio_manuscript::{book_outline_words, outline_rows};
 use writing_studio_plotting::PlotGrid;
 use writing_studio_research::ResearchLibrary;
 use writing_studio_project::{
-    binder_color_hex, format_elapsed, keyword_covers, normalize_binder_color, pace, tidy_keyword, BinderNode, BinderTree, NodeKind, Pace, PanelLayout,
+    binder_color_hex, format_elapsed, keyword_covers, normalize_binder_color, same_keyword, KeywordRow, KeywordSort, pace, tidy_keyword, BinderNode, BinderTree, NodeKind, Pace, PanelLayout,
     DropPlace, KeepPlace, PageStyle, ProjectMeta, ProseFont, SavedFilter, StoredSession, Theme,
 };
 use writing_studio_search::ManuscriptIndex;
@@ -340,8 +340,13 @@ pub struct StudioState {
     pub filter_selection: Option<Id>,
     /// The saved filter the filter form is changing, or `None` for a new one.
     pub editing_filter: Option<Id>,
-    /// The keyword the corkboard and the outliner are narrowed to.
+    /// The keyword the scene list, the corkboard, and the outliner are
+    /// narrowed to, chosen in the library or their keyword menu.
     pub keyword_filter: Option<String>,
+    /// How the library's keyword list is ordered.
+    pub keyword_sort: KeywordSort,
+    /// Keywords folded in the library's list, whose children are hidden.
+    pub folded_keywords: Vec<String>,
     pub confirm_character: Option<Id>,
     pub world: World,
     pub world_dirty: bool,
@@ -457,6 +462,8 @@ impl Default for StudioState {
             filter_selection: None,
             editing_filter: None,
             keyword_filter: None,
+            keyword_sort: KeywordSort::Name,
+            folded_keywords: Vec::new(),
             confirm_character: None,
             world: World::new(),
             world_dirty: false,
@@ -2178,7 +2185,7 @@ impl StudioState {
         };
         let index = self.manuscript_index.borrow();
         let mut groups: Vec<SceneGroup> = Vec::new();
-        for (holder, scene) in scenes {
+        for (holder, scene) in scenes.into_iter().filter(|(_, scene)| self.keyword_allows(*scene)) {
             let Some(node) = self.binder.get(scene) else {
                 continue;
             };
@@ -2334,6 +2341,45 @@ impl StudioState {
         if self.binder.cycle_keyword_color(name) {
             self.persist_binder();
         }
+    }
+
+    /// The library's keyword list, without the children of a folded one.
+    pub fn keyword_list(&self) -> Vec<KeywordRow> {
+        let folded = |row: &KeywordRow| {
+            self.folded_keywords
+                .iter()
+                .any(|parent| row.name.to_lowercase().starts_with(&format!("{}/", parent.to_lowercase())))
+        };
+        self.binder.keyword_tree(self.keyword_sort).into_iter().filter(|row| !folded(row)).collect()
+    }
+
+    /// Fold or unfold a keyword's children in the library's list.
+    pub fn toggle_keyword_fold(&mut self, name: &str) {
+        let before = self.folded_keywords.len();
+        self.folded_keywords.retain(|kept| !same_keyword(kept, name));
+        if self.folded_keywords.len() == before {
+            self.folded_keywords.push(name.to_string());
+        }
+    }
+
+    /// Narrow the scene list, the corkboard, and the outliner to a keyword
+    /// and what is nested under it, as a search narrows them; choosing it
+    /// again lets it go. Another mode gives way to the page.
+    pub fn choose_keyword(&mut self, name: &str) {
+        if self.keyword_filter.as_deref().is_some_and(|kept| same_keyword(kept, name)) {
+            self.keyword_filter = None;
+            return;
+        }
+        self.keyword_filter = Some(name.to_string());
+        self.open_menu = None;
+        if !matches!(self.mode, WorkspaceMode::Writing | WorkspaceMode::Corkboard | WorkspaceMode::Outliner) {
+            self.mode = WorkspaceMode::Writing;
+        }
+    }
+
+    /// Let go of the chosen keyword. Returns whether one was chosen.
+    pub fn clear_keyword_filter(&mut self) -> bool {
+        self.keyword_filter.take().is_some()
     }
 
     /// Whether a scene shows on the corkboard and in the outliner while
@@ -4356,6 +4402,42 @@ mod tests {
             assert_eq!(rows.iter().filter(|row| **row == mode).count(), 1, "{mode:?}");
         }
         assert_eq!(rows.len(), WorkspaceMode::ALL.len());
+    }
+
+    /// A keyword chosen in the library's list narrows the scene list to
+    /// what carries it or one nested under it; choosing it again, or
+    /// Escape's `clear_keyword_filter`, lets it go.
+    #[test]
+    fn a_keyword_from_the_library_narrows_the_scene_list_and_folds() {
+        let (mut state, dir) = open_state("keyword-list");
+        let tagged = state.selected.unwrap();
+        state.add_node(NodeKind::Scene);
+        let other = state.selected.unwrap();
+        state.add_keyword(tagged, "plot/subplot");
+        state.add_keyword(other, "flashback");
+        let shown = |state: &StudioState| -> Vec<Id> {
+            state.scene_groups().into_iter().flat_map(|group| group.scenes).map(|card| card.id).collect()
+        };
+        assert_eq!(shown(&state), [tagged, other]);
+
+        state.mode = WorkspaceMode::Characters;
+        state.choose_keyword("Plot");
+        assert_eq!(state.mode, WorkspaceMode::Writing, "the list is beside the page");
+        assert_eq!(shown(&state), [tagged], "plot brings plot/subplot");
+        state.choose_keyword("plot");
+        assert_eq!(shown(&state), [tagged, other], "the same keyword again lets it go");
+        state.choose_keyword("flashback");
+        assert!(state.clear_keyword_filter() && !state.clear_keyword_filter());
+
+        let names = |state: &StudioState| -> Vec<String> { state.keyword_list().into_iter().map(|row| row.name).collect() };
+        assert_eq!(names(&state), ["flashback", "plot", "plot/subplot"]);
+        state.toggle_keyword_fold("PLOT");
+        assert_eq!(names(&state), ["flashback", "plot"], "a folded keyword hides what is under it");
+        state.toggle_keyword_fold("plot");
+        state.add_keyword(other, "plot/twist");
+        state.keyword_sort = KeywordSort::Count;
+        assert_eq!(names(&state), ["plot", "plot/subplot", "plot/twist", "flashback"]);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     fn open_state(tag: &str) -> (StudioState, PathBuf) {

@@ -191,6 +191,9 @@ pub(super) fn clear_or_exit_focus(mut state: Signal<StudioState>) -> bool {
         state.write().search.clear();
         return true;
     }
+    if state.write().clear_keyword_filter() {
+        return true;
+    }
     false
 }
 

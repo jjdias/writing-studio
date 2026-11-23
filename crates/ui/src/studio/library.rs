@@ -144,6 +144,7 @@ pub(super) fn Library() -> Element {
                     ModeRow { key: "{candidate.label()}", candidate, active: mode == candidate }
                 }
                 FilterSection {}
+                KeywordSection {}
                 div { class: "library-heading", "Extras" }
                 for candidate in WorkspaceMode::LIBRARY_EXTRAS {
                     ModeRow { key: "{candidate.label()}", candidate, active: mode == candidate }
@@ -765,6 +766,76 @@ fn FilterSection() -> Element {
             }
             if open {
                 FilterForm { key: "{form_key}", editing: editing.clone() }
+            }
+        }
+    }
+}
+
+/// Every keyword as a tree with how many items carry it. A click narrows
+/// the scene list, the corkboard, and the outliner to it and what is nested
+/// under it; a second click, or Escape, lets it go.
+#[component]
+fn KeywordSection() -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let rows = state.read().keyword_list();
+    if rows.is_empty() {
+        return rsx! {};
+    }
+    let chosen = state.read().keyword_filter.clone();
+    let sort = state.read().keyword_sort;
+    let (sort_label, next_sort) = match sort {
+        KeywordSort::Name => ("By name", KeywordSort::Count),
+        KeywordSort::Count => ("By use", KeywordSort::Name),
+    };
+    rsx! {
+        div { class: "library-heading keyword-heading",
+            span { "Keywords" }
+            button {
+                class: "keyword-sort",
+                title: "Order the keywords by name or by how many items carry them",
+                onclick: move |_| state.write().keyword_sort = next_sort,
+                "{sort_label}"
+            }
+        }
+        for row in rows {
+            {
+                let name = row.name.clone();
+                let active = chosen.as_deref().is_some_and(|kept| same_keyword(kept, &name));
+                let folded = state.read().folded_keywords.iter().any(|kept| same_keyword(kept, &name));
+                let hex = binder_color_hex(state.read().binder.keyword_color(&name)).to_string();
+                let indent = row.depth * 14;
+                let fold_label = if folded { format!("Show what is under {name}") } else { format!("Fold {name}") };
+                let (fold_name, pick_name) = (name.clone(), name.clone());
+                rsx! {
+                    div { class: "library-item", key: "{name}", style: "padding-left: {indent}px",
+                        if row.has_children {
+                            button {
+                                class: if folded { "fold-btn folded" } else { "fold-btn" },
+                                title: "{fold_label}",
+                                aria_label: "{fold_label}",
+                                aria_expanded: "{!folded}",
+                                onclick: move |_| state.write().toggle_keyword_fold(&fold_name),
+                                svg { class: "fold-glyph", view_box: "0 0 16 16", "aria-hidden": "true",
+                                    path { d: "M5 6l3 3 3-3", fill: "none", stroke: "currentColor", stroke_width: "1.6", stroke_linecap: "round", stroke_linejoin: "round" }
+                                }
+                            }
+                        } else {
+                            span { class: "fold-spacer" }
+                        }
+                        button {
+                            class: if active { "library-row active" } else { "library-row" },
+                            aria_current: if active { "true" } else { "false" },
+                            title: if active { "Show every scene again (Escape)" } else { "Show only what carries “{name}” or a keyword under it" },
+                            onclick: move |_| state.write().choose_keyword(&pick_name),
+                            span {
+                                class: "keyword-dot small",
+                                style: if hex.is_empty() { "background: transparent; box-shadow: inset 0 0 0 1px var(--muted)".to_string() } else { format!("background: {hex}") },
+                            }
+                            span { class: "library-name", "{row.leaf}" }
+                            span { class: "library-count", "{row.count}" }
+                        }
+                    }
+                }
             }
         }
     }

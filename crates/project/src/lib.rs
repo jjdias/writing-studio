@@ -10,7 +10,7 @@ mod writing;
 
 pub use binder::{
     binder_color_hex, keyword_covers, normalize_binder_color, same_keyword, tidy_keyword, BinderColor, BinderNode,
-    BinderTree, DropPlace, Keyword, NodeKind, SavedFilter, BINDER_COLORS,
+    BinderTree, DropPlace, Keyword, KeywordRow, KeywordSort, NodeKind, SavedFilter, BINDER_COLORS,
 };
 pub use compile::{
     built_in_profile, built_in_profiles, BookProfile, CompileFormat, CompileProfile, HeadingStyle, LineSpacing, PageSetup, PageSize,

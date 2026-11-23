@@ -1317,6 +1317,68 @@ pub struct SavedFilter {
     pub text: String,
 }
 
+/// How the library's keyword list orders the keywords at each level.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum KeywordSort {
+    #[default]
+    Name,
+    /// Most used first, then by name.
+    Count,
+}
+
+/// One row of the library's keyword list.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct KeywordRow {
+    /// The whole keyword, `plot/subplot`.
+    pub name: String,
+    /// What the row shows, the last part: `subplot`.
+    pub leaf: String,
+    pub depth: usize,
+    /// Items outside the trash carrying it or one nested under it.
+    pub count: usize,
+    pub has_children: bool,
+}
+
+struct KeywordEntry {
+    name: String,
+    parent: Option<String>,
+    count: usize,
+}
+
+/// The keywords nested directly in `parent` (the top level for `None`),
+/// sorted, each followed by its own children.
+fn push_keyword_level(
+    entries: &[KeywordEntry],
+    parent: Option<&str>,
+    depth: usize,
+    sort: KeywordSort,
+    rows: &mut Vec<KeywordRow>,
+) {
+    let in_parent = |entry: &KeywordEntry, parent: Option<&str>| match (entry.parent.as_deref(), parent) {
+        (None, None) => true,
+        (Some(up), Some(parent)) => same_word(up, parent),
+        _ => false,
+    };
+    let mut here: Vec<&KeywordEntry> = entries.iter().filter(|entry| in_parent(entry, parent)).collect();
+    here.sort_by(|one, other| {
+        let by_name = one.name.to_lowercase().cmp(&other.name.to_lowercase());
+        match sort {
+            KeywordSort::Name => by_name,
+            KeywordSort::Count => other.count.cmp(&one.count).then(by_name),
+        }
+    });
+    for entry in here {
+        rows.push(KeywordRow {
+            name: entry.name.clone(),
+            leaf: entry.name.rsplit('/').next().unwrap_or(&entry.name).to_string(),
+            depth,
+            count: entry.count,
+            has_children: entries.iter().any(|other| in_parent(other, Some(&entry.name))),
+        });
+        push_keyword_level(entries, Some(&entry.name), depth + 1, sort, rows);
+    }
+}
+
 /// The longest keyword kept, in characters.
 const KEYWORD_MAX: usize = 40;
 
@@ -1478,6 +1540,29 @@ impl BinderTree {
             }
         }
         choices
+    }
+
+    /// Every keyword as a tree, for the library's list: each under the one
+    /// it is nested in, siblings sorted by `sort`, each counting the items
+    /// outside the trash that carry it or one nested under it.
+    pub fn keyword_tree(&self, sort: KeywordSort) -> Vec<KeywordRow> {
+        let kept: Vec<&BinderNode> = self
+            .nodes
+            .iter()
+            .filter(|node| !node.keywords.is_empty() && node.deleted_at.is_none() && !self.is_in_trash(node.id))
+            .collect();
+        let entries: Vec<KeywordEntry> = self
+            .keyword_choices()
+            .into_iter()
+            .map(|name| KeywordEntry {
+                parent: name.rfind('/').map(|at| name[..at].to_string()),
+                count: kept.iter().filter(|node| node.keywords.iter().any(|word| keyword_covers(&name, word))).count(),
+                name,
+            })
+            .collect();
+        let mut rows = Vec::new();
+        push_keyword_level(&entries, None, 0, sort, &mut rows);
+        rows
     }
 
     /// Give a keyword the next binder color, for every item that carries it.
@@ -1695,6 +1780,59 @@ mod keyword_tests {
         );
         tree.add_keyword(a, "plot");
         assert_eq!(tree.keyword_choices().iter().filter(|word| same_keyword(word, "plot")).count(), 1);
+    }
+
+    /// The library's keyword list: a tree, each keyword counting the items
+    /// that carry it or one nested under it, the trash left out.
+    #[test]
+    fn the_keyword_tree_nests_counts_and_sorts() {
+        let (mut tree, a, b) = tree();
+        let chapter = tree.get(a).unwrap().parent_id.unwrap();
+        tree.add_keyword(a, "plot/subplot");
+        tree.add_keyword(a, "plot");
+        tree.add_keyword(b, "plot/twist");
+        tree.add_keyword(chapter, "Flashback");
+        tree.add_keyword(b, "flashback");
+        let rows = |tree: &BinderTree, sort: KeywordSort| -> Vec<(String, String, usize, usize, bool)> {
+            tree.keyword_tree(sort)
+                .into_iter()
+                .map(|row| (row.name, row.leaf, row.depth, row.count, row.has_children))
+                .collect()
+        };
+        let row = |name: &str, leaf: &str, depth: usize, count: usize, children: bool| {
+            (name.to_string(), leaf.to_string(), depth, count, children)
+        };
+        assert_eq!(
+            rows(&tree, KeywordSort::Name),
+            [
+                row("Flashback", "Flashback", 0, 2, false),
+                row("plot", "plot", 0, 2, true),
+                row("plot/subplot", "subplot", 1, 1, false),
+                row("plot/twist", "twist", 1, 1, false),
+            ],
+            "a item carrying plot and plot/subplot counts once for plot",
+        );
+
+        // A scene in the trash is not counted, and a keyword only it carries
+        // still shows, at nothing.
+        let trash = BinderNode::new(NodeKind::TrashRoot, "Trash", None, 9);
+        let trash_id = trash.id;
+        tree.nodes.push(trash);
+        tree.get_mut(b).unwrap().parent_id = Some(trash_id);
+        tree.add_keyword(a, "act one");
+        tree.add_keyword(chapter, "act one");
+        let by_count = rows(&tree, KeywordSort::Count);
+        assert_eq!(
+            by_count,
+            [
+                row("act one", "act one", 0, 2, false),
+                row("Flashback", "Flashback", 0, 1, false),
+                row("plot", "plot", 0, 1, true),
+                row("plot/subplot", "subplot", 1, 1, false),
+                row("plot/twist", "twist", 1, 0, false),
+            ],
+            "most used first, then by name, each level apart",
+        );
     }
 }
 
