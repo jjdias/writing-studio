@@ -102,14 +102,16 @@ fn MarkdownPage(scene: Id, can_edit: bool) -> Element {
             tokio::time::sleep(std::time::Duration::from_millis(16)).await;
             let mut eval = document::eval(&format!(
                 r#"
-                const text = await dioxus.recv();
+                const [text, options] = await dioxus.recv();
                 const el = document.getElementById('markdown-page');
                 if (window.wsEditor && el) {{
-                    wsEditor.mount(el, text, (message) => dioxus.send(message), {mount_token});
+                    wsEditor.mount(el, text, (message) => dioxus.send(message), {mount_token}, options);
                 }}
                 "#
             ));
-            let _ = eval.send(state.peek().editor_markdown());
+            let current = state.peek();
+            let _ = eval.send((current.editor_markdown(), page_options(&current.markdown_options())));
+            drop(current);
             // `{ kind: "text", text }` after a change, `{ kind: "blur" }`.
             while let Ok(message) = eval.recv::<serde_json::Value>().await {
                 match message["kind"].as_str() {
@@ -126,6 +128,10 @@ fn MarkdownPage(scene: Id, can_edit: bool) -> Element {
         let text = serde_json::to_string(&state.peek().editor_markdown()).unwrap_or_else(|_| "\"\"".into());
         let _ = document::eval(&format!("window.wsEditor && wsEditor.setText({text});"));
     }));
+    let options = page_options(&state.read().markdown_options());
+    use_effect(use_reactive((&options,), move |(options,)| {
+        let _ = document::eval(&format!("window.wsEditor && wsEditor.setOptions({options});"));
+    }));
     let editable = if can_edit { "true" } else { "false" };
     use_effect(use_reactive((&can_edit,), move |(can_edit,)| {
         let _ = document::eval(&format!("window.wsEditor && wsEditor.setEditable({can_edit});"));
@@ -136,6 +142,15 @@ fn MarkdownPage(scene: Id, can_edit: bool) -> Element {
     rsx! {
         div { id: "markdown-page", class: "manuscript markdown-page", "data-editable": "{editable}", aria_label: "Manuscript" }
     }
+}
+
+/// The Markdown page's choices, as the editor takes them.
+fn page_options(options: &MarkdownOptions) -> serde_json::Value {
+    serde_json::json!({
+        "source": options.source_mode,
+        "smart": options.smart_typography,
+        "pair": options.pair_marks,
+    })
 }
 
 pub(super) fn read_manuscript_html(state: Signal<StudioState>) {

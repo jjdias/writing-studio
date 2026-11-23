@@ -83,6 +83,7 @@ pub(super) fn apply_shortcut(
             }
         }
         AppShortcut::Undo => state.write().undo(),
+        AppShortcut::SourceMode => state.write().toggle_source_mode(),
         AppShortcut::Redo => state.write().redo(),
         AppShortcut::Snapshot => {
             if !open {

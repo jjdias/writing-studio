@@ -27,6 +27,8 @@ pub enum AppShortcut {
     QuickOpen,
     SplitScene,
     MergeScene,
+    /// Every Markdown mark shown, or only where the caret is.
+    SourceMode,
 }
 
 /// One line of the shortcuts window: what it does and the chord for it.
@@ -75,7 +77,7 @@ impl Listed {
 /// Every app chord, in the order the shortcuts window lists them. A test
 /// checks each one against `app_shortcut`, so the window cannot list a
 /// chord that does nothing.
-pub const LISTED: [Listed; 25] = [
+pub const LISTED: [Listed; 26] = [
     Listed::ctrl("Save", "s"),
     Listed::ctrl_shift("Snapshot this document", "s"),
     Listed::ctrl("Undo", "z"),
@@ -97,6 +99,7 @@ pub const LISTED: [Listed; 25] = [
     Listed::ctrl("Go to a scene or chapter", "p"),
     Listed::ctrl_shift("Split the scene at the caret", "k"),
     Listed::ctrl_shift("Merge the scene with the next one", "m"),
+    Listed::ctrl("Show every Markdown mark (Source mode)", "e"),
     Listed::ctrl("Open a project", "o"),
     Listed::ctrl_alt("Show or hide the binder", "b"),
     Listed::ctrl_alt("Show or hide the inspector", "i"),
@@ -150,6 +153,7 @@ pub fn app_shortcut(key: &str, ctrl: bool, shift: bool, alt: bool) -> Option<App
         ("p", false) => AppShortcut::QuickOpen,
         ("k", true) => AppShortcut::SplitScene,
         ("m", true) => AppShortcut::MergeScene,
+        ("e", false) => AppShortcut::SourceMode,
         _ => return None,
     })
 }

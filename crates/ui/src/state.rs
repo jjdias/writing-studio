@@ -19,7 +19,7 @@ use writing_studio_plotting::PlotGrid;
 use writing_studio_research::ResearchLibrary;
 use writing_studio_project::{
     binder_color_hex, format_elapsed, keyword_covers, normalize_binder_color, MindMap, same_keyword, KeywordQuery, KeywordRow, KeywordSort, pace, tidy_keyword, BinderNode, BinderTree, NodeKind, Pace, PanelLayout,
-    DropPlace, KeepPlace, PageStyle, ProjectMeta, ProseFont, SavedFilter, StoredSession, Theme,
+    DropPlace, KeepPlace, MarkdownOptions, PageStyle, ProjectMeta, ProseFont, SavedFilter, StoredSession, Theme,
 };
 use writing_studio_search::ManuscriptIndex;
 use writing_studio_spellcheck::{
@@ -1022,6 +1022,41 @@ impl StudioState {
             .as_ref()
             .map(|meta| meta.settings.keep_place)
             .unwrap_or_default()
+    }
+
+    pub fn markdown_options(&self) -> MarkdownOptions {
+        self.meta
+            .as_ref()
+            .map(|meta| meta.settings.markdown)
+            .unwrap_or_default()
+    }
+
+    /// Source mode, smart typography, and pairing, saved in the project.
+    pub fn set_markdown_options(&mut self, options: MarkdownOptions) {
+        let changed = self.meta.as_mut().is_some_and(|meta| {
+            if meta.settings.markdown == options {
+                return false;
+            }
+            meta.settings.markdown = options;
+            meta.touch();
+            true
+        });
+        if changed {
+            self.settings_dirty = true;
+            self.note_edit();
+        }
+    }
+
+    /// Show every Markdown mark, or only those where the caret is.
+    pub fn toggle_source_mode(&mut self) {
+        let mut options = self.markdown_options();
+        options.source_mode = !options.source_mode;
+        self.set_markdown_options(options);
+        self.status = if options.source_mode {
+            "Source mode: every Markdown mark shows.".into()
+        } else {
+            "Live preview: marks show where the caret is.".into()
+        };
     }
 
     /// Fixed scrolling, the line marker, and fading: this computer's choice.

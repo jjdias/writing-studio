@@ -12,23 +12,17 @@
 import { EditorState, Compartment, Annotation, Transaction } from "@codemirror/state";
 import { EditorView, keymap, drawSelection } from "@codemirror/view";
 import { defaultKeymap, history, undo, redo } from "@codemirror/commands";
-import { LanguageSupport } from "@codemirror/language";
-import { markdownLanguage } from "@codemirror/lang-markdown";
+import { sceneLanguage } from "./syntax.js";
+import { preview, sourceMode } from "./preview.js";
 
 let view = null;
 let token = null;
 let extensions = [];
 const editable = new Compartment();
 const undoHistory = new Compartment();
+const showSource = new Compartment();
 // Marks a change the program made, which is not sent back as the writer's.
 const fromProgram = Annotation.define();
-
-// Ctrl+Z and Ctrl+Y go to the editor's own history while it has something
-// to undo. When it has nothing, as just after a scene was split or a note
-// resolved, the key goes on to the program, whose undo takes back those.
-function historyKey(command) {
-  return (target) => command(target);
-}
 
 // A key the editor acted on is not also a shortcut of the program's: the
 // program's own keys (Ctrl+S, Ctrl+1, Ctrl+F) pass through untouched.
@@ -40,7 +34,8 @@ function keepHandledKeys(element) {
   });
 }
 
-function mount(parent, text, send, id) {
+// `options`: `{ source }`, true to show every Markdown mark as typed.
+function mount(parent, text, send, id, options = {}) {
   unmount();
   token = id;
   extensions = [
@@ -49,13 +44,17 @@ function mount(parent, text, send, id) {
     EditorView.lineWrapping,
     EditorView.contentAttributes.of({ "aria-label": "Manuscript", spellcheck: "false" }),
     editable.of(EditorView.editable.of(true)),
-    // Markdown alone: an HTML tag such as <u> is one node, not parsed as HTML,
-    // which keeps the HTML, CSS, and JavaScript parsers out of the bundle.
-    new LanguageSupport(markdownLanguage),
+    sceneLanguage,
+    showSource.of(sourceMode.of(!!options.source)),
+    preview,
+    // Ctrl+Z and Ctrl+Y go to the editor's own history while it has
+    // something to undo. When it has nothing, as just after a scene was
+    // split or a note resolved, the key goes on to the program, whose undo
+    // takes back those.
     keymap.of([
-      { key: "Mod-z", run: historyKey(undo), preventDefault: false },
-      { key: "Mod-y", run: historyKey(redo), preventDefault: false },
-      { key: "Mod-Shift-z", run: historyKey(redo), preventDefault: false },
+      { key: "Mod-z", run: undo, preventDefault: false },
+      { key: "Mod-y", run: redo, preventDefault: false },
+      { key: "Mod-Shift-z", run: redo, preventDefault: false },
       ...defaultKeymap,
     ]),
     EditorView.updateListener.of((update) => {
@@ -122,4 +121,28 @@ function setEditable(on) {
   return true;
 }
 
-window.wsEditor = { mount, unmount, getText, setText, setEditable };
+// The selection, as offsets into the text.
+function getSelection() {
+  if (!view) return [];
+  const { from, to } = view.state.selection.main;
+  return [from, to];
+}
+
+// Select `from` to `to` (clamped to the text), and show it.
+function setSelection(from, to = from) {
+  if (!view) return false;
+  const length = view.state.doc.length;
+  const anchor = Math.max(0, Math.min(from, length));
+  const head = Math.max(0, Math.min(to, length));
+  view.dispatch({ selection: { anchor, head }, scrollIntoView: true });
+  view.focus();
+  return true;
+}
+
+function setOptions(options) {
+  if (!view) return false;
+  view.dispatch({ effects: showSource.reconfigure(sourceMode.of(!!options.source)) });
+  return true;
+}
+
+window.wsEditor = { mount, unmount, getText, setText, setEditable, setOptions, getSelection, setSelection };

@@ -290,6 +290,21 @@ pub enum Fade {
     Sentence,
 }
 
+/// How the Markdown page shows and takes text. Missing on older projects,
+/// which get live preview and nothing changed as it is typed.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MarkdownOptions {
+    /// Every Markdown mark shown as typed, not only where the caret is.
+    #[serde(default)]
+    pub source_mode: bool,
+    /// Curly quotes, dashes, and an ellipsis as they are typed.
+    #[serde(default)]
+    pub smart_typography: bool,
+    /// A typed `*`, `_`, `"`, or bracket gets its closing pair.
+    #[serde(default)]
+    pub pair_marks: bool,
+}
+
 /// Helps for keeping one's place on the page while writing. Fixed
 /// scrolling, the marker, and fading are off until chosen; the bars stepping
 /// back while one types is on until turned off. Missing on older projects.
@@ -465,6 +480,9 @@ pub struct ProjectSettings {
     /// projects, which have none of them on.
     #[serde(default)]
     pub keep_place: KeepPlace,
+    /// Source mode, smart typography, and pairing on the Markdown page.
+    #[serde(default)]
+    pub markdown: MarkdownOptions,
     /// Binder items folded shut in the library and the scene list. Missing
     /// on older projects, which open with everything showing.
     #[serde(default)]
@@ -535,6 +553,7 @@ impl Default for ProjectSettings {
             prose_font: ProseFont::Serif,
             page: PageStyle::default(),
             keep_place: KeepPlace::default(),
+            markdown: MarkdownOptions::default(),
             collapsed: Vec::new(),
             compile_book_id: None,
             book_word_goals: Vec::new(),
@@ -898,6 +917,24 @@ mod keep_place_tests {
         assert!(settings.keep_place.quiet_bars, "the bars step back unless turned off");
         assert_eq!(FixedScroll::from_id("bottom"), Some(FixedScroll::Bottom));
         assert_eq!(Fade::from_id("word"), None);
+    }
+}
+
+#[cfg(test)]
+mod markdown_options_tests {
+    use super::*;
+
+    #[test]
+    fn the_markdown_page_choices_are_off_until_chosen_and_read_back() {
+        let json = r#"{"daily_word_goal":1,"project_word_goal":2,"compile_title_page":true,"autosave_seconds":2}"#;
+        let settings: ProjectSettings = serde_json::from_str(json).unwrap();
+        assert_eq!(settings.markdown, MarkdownOptions::default());
+        let chosen = r#"{"daily_word_goal":1,"project_word_goal":2,"compile_title_page":true,"autosave_seconds":2,"markdown":{"source_mode":true,"pair_marks":true}}"#;
+        let settings: ProjectSettings = serde_json::from_str(chosen).unwrap();
+        assert!(settings.markdown.source_mode && settings.markdown.pair_marks);
+        assert!(!settings.markdown.smart_typography);
+        let back: ProjectSettings = serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
+        assert_eq!(back.markdown, settings.markdown);
     }
 }
 

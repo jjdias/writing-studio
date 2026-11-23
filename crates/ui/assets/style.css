@@ -1382,3 +1382,39 @@ button.keyword-dot:hover { box-shadow: 0 0 0 2px var(--line); }
 .markdown-page .cm-selectionBackground,
 .markdown-page .cm-focused .cm-selectionBackground { background: color-mix(in srgb, var(--gold) 28%, transparent); }
 .markdown-page[data-editable="false"] { opacity: 0.85; }
+/* What live preview draws (preview.js). Marks that show are quiet. */
+.markdown-page .cm-md-mark { color: var(--muted); }
+.markdown-page .cm-p { text-indent: var(--indent); }
+.markdown-page .cm-blank { line-height: calc(var(--para-space) * var(--line-height)); }
+.markdown-page .cm-h { font-weight: 600; }
+.markdown-page .cm-h1 { font-size: 1.6em; line-height: 1.25; }
+.markdown-page .cm-h2 { font-size: 1.3em; line-height: 1.3; }
+.markdown-page .cm-h3 { font-size: 1.1em; line-height: 1.35; }
+.markdown-page .cm-quote { border-left: 3px solid var(--gold); padding-left: 12px; }
+.markdown-page .cm-li { padding-left: 0.6em; }
+.markdown-page .cm-bullet { color: var(--muted); }
+.markdown-page .cm-list-mark { color: var(--muted); }
+.markdown-page .cm-scene-break { text-align: center; color: var(--muted); letter-spacing: 0.4em; }
+.markdown-page .cm-codeblock { font-family: var(--mono); font-size: 13px; line-height: 1.45; background: var(--code-bg); padding: 0 10px; }
+.markdown-page .cm-inline-code { font-family: var(--mono); font-size: 0.85em; background: var(--code-bg); border-radius: 2px; }
+.markdown-page .cm-em { font-style: italic; }
+.markdown-page .cm-strong { font-weight: 700; }
+.markdown-page .cm-strike { text-decoration: line-through; }
+.markdown-page .cm-underline { text-decoration: underline; }
+.markdown-page .cm-link { color: var(--page-link); }
+.markdown-page .cm-url { word-break: break-all; }
+.markdown-page .cm-br { color: var(--muted); font-size: 0.8em; padding: 0 2px; }
+.markdown-page .ws-hl-yellow { background: var(--hl-yellow); }
+.markdown-page .ws-hl-green { background: var(--hl-green); }
+.markdown-page .ws-hl-blue { background: var(--hl-blue); }
+.markdown-page .ws-hl-pink { background: var(--hl-pink); }
+.markdown-page .ws-note { background: var(--comment-bg); border-bottom: 1px dotted var(--comment-line); }
+.markdown-page .ws-note-question { border-bottom-style: dashed; }
+.markdown-page .ws-note-revise { border-bottom-style: solid; }
+.markdown-page .ws-note-check { border-bottom-style: double; border-bottom-width: 3px; }
+.markdown-page .ws-note.ws-note-resolved { background: transparent; border-bottom-color: var(--muted); }
+.markdown-page .ws-note-pin { font-size: 0.75em; color: var(--comment-line); padding: 0 2px; cursor: default; vertical-align: super; }
+.markdown-page .ws-note-pin.ws-note-resolved { color: var(--muted); opacity: 0.6; }
+.markdown-page .ws-note-text { font-style: italic; }
+.markdown-page .ws-footnote-ref { font-size: 0.7em; vertical-align: super; color: var(--page-link); padding: 0 1px; }
+.markdown-page .ws-footnote-def { font-size: 0.9em; color: var(--muted); }

@@ -12,7 +12,7 @@ use writing_studio_editor::EditorSession;
 use writing_studio_manuscript::{outline_rows, row_word_count};
 use writing_studio_project::{
     binder_color_hex, drag_width, format_elapsed, same_keyword, tidy_keyword, BinderNode, KeywordQuery, KeywordSort, DropPlace, NodeKind, PanelChrome, PanelLayout,
-    Fade, FixedScroll, KeepPlace, Pace, PageStyle, SavedFilter, PanelWidths, ProseFont, Theme, BINDER_COLORS, FIRST_LINE_INDENT_RANGE, LINE_HEIGHT_RANGE,
+    Fade, FixedScroll, KeepPlace, MarkdownOptions, Pace, PageStyle, SavedFilter, PanelWidths, ProseFont, Theme, BINDER_COLORS, FIRST_LINE_INDENT_RANGE, LINE_HEIGHT_RANGE,
     LINE_LENGTH_RANGE, PARAGRAPH_SPACING_RANGE, INSPECTOR_WIDTH_DEFAULT, INSPECTOR_WIDTH_MAX,
     INSPECTOR_WIDTH_MIN, SIDEBAR_WIDTH_DEFAULT, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN,
 };
@@ -515,6 +515,9 @@ fn SettingsPanel() -> Element {
                 }
                 "Markdown page (in progress)"
             }
+            if markdown_page {
+                MarkdownSettings {}
+            }
             PageSettings {}
             KeepPlaceSettings {}
             label { r#for: "setting-theme", "Theme" }
@@ -807,6 +810,28 @@ fn PageSettings() -> Element {
 }
 
 /// Fixed scrolling, the line marker, and fading, under the page settings.
+/// How the Markdown page shows and takes text, saved in the project.
+#[component]
+fn MarkdownSettings() -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let options = state.read().markdown_options();
+    let mut set = move |change: fn(&mut MarkdownOptions, bool), on: bool| {
+        let mut next = state.read().markdown_options();
+        change(&mut next, on);
+        state.write().set_markdown_options(next);
+    };
+    rsx! {
+        label { class: "check-label", title: "Ctrl+E. Off, the marks show only where the caret is.",
+            input {
+                r#type: "checkbox",
+                checked: options.source_mode,
+                onchange: move |event| set(|options, on| options.source_mode = on, event.checked()),
+            }
+            "Show every Markdown mark"
+        }
+    }
+}
+
 #[component]
 fn KeepPlaceSettings() -> Element {
     let mut state = use_context::<Signal<StudioState>>();

@@ -1,6 +1,6 @@
 # Phase 12 — A Markdown editor
 
-In progress: stages 1 and 2 are done.
+In progress: stages 1 to 3 are done.
 
 The page is a rich-text editor today: a `contenteditable` element that the program's own scripts (`crates/ui/assets/review.js`, `spell.js`, `place.js`) and `crates/ui/src/studio/editor.rs` keep in step with the document model. This phase makes the page a Markdown editor: the writer types and sees Markdown, shown as the best Markdown editors show it, while everything the page does now keeps working.
 
@@ -73,6 +73,8 @@ In this order: the component and the round trip first, then what the writer sees
 
 - Marks hidden except in the element the caret is in; headings, quotes, lists, links, emphasis, and `* * *` drawn as they read. A command and a setting switch to Source mode.
 - The page's type settings (Phase 9: font, size, line length, spacing, indent) apply as they do now.
+
+**Done.** `crates/ui/codemirror/syntax.js` is the language: CodeMirror's CommonMark with GitHub's additions (not its subscript, superscript, and emoji, which `crates/format` does not read), plus `<u>…</u>` as one node, `==text==` and `{==text==}` highlights with `{.color}` and `{>>note<<}` after them, `[^1]` footnote marks, and `[^1]: text` lines. It shares CodeMirror's Markdown language data, so its list and quote commands work on it. `preview.js` draws the page from the syntax tree: headings, emphasis, strikethrough, underline, links (the address as their title), inline code and code blocks, quotes with their rule, lists, the scene break centred, highlights in their color, notes with their kind's underline and a pin that shows the note, resolved notes faint, footnote marks raised with their text as a title, escapes and character references as the character, and an empty paragraph's `<br>` as nothing. Outside Source mode the marks are hidden except in the inline element the selection touches, or on the caret's line for a heading's `#`, a quote's `>`, and a list's marker; the caret steps over what is hidden. Source mode (**Show every Markdown mark** in Settings, or **Ctrl+E**) shows them all, quiet. It is `MarkdownOptions::source_mode` in the project's settings, with smart typography and pairing for stage 4; a project without them gets live preview. The font, size, line length, and indent come from the manuscript, and the space between paragraphs is the blank line's height. Checked in a browser: what each mark looks like away from the caret, in it, and in Source mode.
 
 ### 4. Writing in Markdown
 
