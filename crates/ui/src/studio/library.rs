@@ -80,37 +80,32 @@ pub(super) fn Library() -> Element {
                         }
                     }
                 }
-                div { class: "library-tools",
+                div { class: "library-tools", role: "menubar", aria_label: "Project, settings, and help",
                     div { class: "menu-anchor",
-                        IconButton {
-                            name: "Project: save, backup, import, and export",
-                            open: menu == Some(FrameMenu::Project),
-                            onclick: move |_| state.write().toggle_menu(FrameMenu::Project),
-                            path { d: "M3 9.5v3.5h10V9.5M8 2.5v7M5 5.5l3-3 3 3", fill: "none", stroke: "currentColor", stroke_width: "1.3", stroke_linecap: "round", stroke_linejoin: "round" }
-                        }
+                        MenuTrigger { name: "Project", menu: FrameMenu::Project, open: menu == Some(FrameMenu::Project) }
                         if menu == Some(FrameMenu::Project) { ProjectMenu {} }
                     }
                     div { class: "menu-anchor",
-                        IconButton {
-                            name: "Settings",
-                            open: menu == Some(FrameMenu::Settings),
-                            onclick: move |_| state.write().toggle_menu(FrameMenu::Settings),
-                            circle { cx: "4", cy: "8", r: "1.2", fill: "currentColor" }
-                            circle { cx: "8", cy: "8", r: "1.2", fill: "currentColor" }
-                            circle { cx: "12", cy: "8", r: "1.2", fill: "currentColor" }
-                        }
+                        MenuTrigger { name: "Settings", menu: FrameMenu::Settings, open: menu == Some(FrameMenu::Settings) }
                         if menu == Some(FrameMenu::Settings) { SettingsPanel {} }
                     }
-                    IconButton {
-                        name: "Help and keyboard shortcuts (Ctrl+/)",
-                        open: false,
-                        onclick: move |_| {
-                            let mut current = state.write();
-                            current.open_menu = None;
-                            current.show_shortcuts = true;
-                        },
-                        circle { cx: "8", cy: "8", r: "5.5", fill: "none", stroke: "currentColor", stroke_width: "1.2" }
-                        path { d: "M6.4 6.3a1.7 1.7 0 113 1.1c-.6.4-1.4.8-1.4 1.6M8 11v.2", fill: "none", stroke: "currentColor", stroke_width: "1.2", stroke_linecap: "round" }
+                    div { class: "menu-anchor",
+                        MenuTrigger { name: "Help", menu: FrameMenu::Help, open: menu == Some(FrameMenu::Help) }
+                        if menu == Some(FrameMenu::Help) {
+                            div { class: "menu", role: "menu", aria_label: "Help",
+                                button {
+                                    class: "menu-item",
+                                    role: "menuitem",
+                                    onclick: move |_| {
+                                        let mut current = state.write();
+                                        current.open_menu = None;
+                                        current.show_shortcuts = true;
+                                    },
+                                    span { "Keyboard shortcuts and about" }
+                                    span { class: "menu-hint", "Ctrl+/" }
+                                }
+                            }
+                        }
                     }
                     if connected {
                         button {
@@ -671,6 +666,25 @@ pub(super) fn Ring(fraction: f64) -> Element {
                 stroke_dasharray: "{filled} {rest}",
                 transform: "rotate(-90 8 8)",
                 stroke_linecap: "round",
+            }
+        }
+    }
+}
+
+/// A word that opens one of the binder's top menus, with a caret.
+#[component]
+fn MenuTrigger(name: String, menu: FrameMenu, open: bool) -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    rsx! {
+        button {
+            class: if open { "menu-trigger open" } else { "menu-trigger" },
+            role: "menuitem",
+            aria_haspopup: "true",
+            aria_expanded: "{open}",
+            onclick: move |_| state.write().toggle_menu(menu),
+            "{name}"
+            svg { class: "menu-caret", view_box: "0 0 10 10", "aria-hidden": "true",
+                path { d: "M2.5 4l2.5 2.5L7.5 4", fill: "none", stroke: "currentColor", stroke_width: "1.2", stroke_linecap: "round", stroke_linejoin: "round" }
             }
         }
     }

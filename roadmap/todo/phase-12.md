@@ -37,13 +37,15 @@ From their documentation (sources at the end):
 - **Comments as `<!-- -->` or `%%`.** Notes are CriticMarkup already; a second way to write them would split the review list.
 - **A Markdown math or diagram engine.** Fiction rarely needs one.
 
-## Decisions to make first
+## Decisions
 
-- **The editor component.** CodeMirror 6 is MIT-licensed, works offline, and is what Obsidian proves out; it is JavaScript, so it is vendored as one pinned, prebuilt file in `crates/ui/assets` (like the scripts there), not loaded from the network, and its license goes into the `licenses` folder beside `THIRD-PARTY-NOTICES.html`, which `cargo-about` does not cover. A plain `textarea` with the program's own highlighting is the smaller choice, but gives no live preview and makes spelling marks and notes hard to place. The recommendation is CodeMirror 6; the maintainer approves the dependency (`.claude/rules/architecture.md`).
+Decided by the maintainer: the component is CodeMirror 6, and scenes stay HTML files for now (stage 8 is decided at the end).
+
+- **The editor component.** CodeMirror 6 is MIT-licensed, works offline, and is what Obsidian proves out; it is JavaScript, so it is vendored as one pinned, prebuilt file in `crates/ui/assets` (like the scripts there), not loaded from the network, and its license goes into the `licenses` folder beside `THIRD-PARTY-NOTICES.html`, which `cargo-about` does not cover. A plain `textarea` with the program's own highlighting is the smaller choice, but gives no live preview and makes spelling marks and notes hard to place. **Decided: CodeMirror 6**, approved by the maintainer as the dependency `.claude/rules/architecture.md` asks.
 - **What is stored.** Two ways:
   - *Keep the HTML files* and the document model as they are: the page turns the scene into Markdown when it opens it and back into blocks when it saves (both already in `crates/format`). No format change.
   - *Store scenes as `.md` files* (format 3): the files are what the writer sees, and other Markdown editors open the project directly. Following "No compatibility with earlier versions" in [../README.md](../README.md), format 2 projects would be refused.
-  The recommendation is the first now, and the second as the phase's last, separate stage once the editor has proved itself.
+  **Decided: the HTML files stay for now.** `.md` storage is the phase's last, separate stage, decided once the editor has proved itself.
 - **Underline and colored highlights.** Markdown has neither. Underline stays `<u>`, as the export writes it; highlights keep their color as `{==text==}{.green}`. The toolbar keeps offering both.
 - **Shortcut keys.** Ctrl+1 to Ctrl+8 change views today, so heading levels take Ctrl+Alt+1 to Ctrl+Alt+6, or the paragraph style menu.
 

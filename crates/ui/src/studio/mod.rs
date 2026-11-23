@@ -413,7 +413,7 @@ fn ProjectMenu() -> Element {
     // Each item closes the menu before it acts, so a file dialog does not
     // open with the menu still showing behind it.
     rsx! {
-        div { class: "menu menu-end", role: "menu", aria_label: "Project",
+        div { class: "menu", role: "menu", aria_label: "Project",
             button {
                 class: "menu-item",
                 role: "menuitem",
@@ -484,7 +484,7 @@ fn SettingsPanel() -> Element {
     let spelling_value = state.read().spelling_language().unwrap_or_default();
     let spelling_choices = state.read().spelling_choices();
     rsx! {
-        div { class: "menu menu-end popover", role: "dialog", aria_label: "Settings",
+        div { class: "menu popover", role: "dialog", aria_label: "Settings",
             label { r#for: "setting-font", "Manuscript font" }
             select {
                 id: "setting-font",

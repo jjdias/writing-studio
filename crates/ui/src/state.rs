@@ -143,6 +143,8 @@ pub(crate) fn binder_matches(tree: &BinderTree, id: Id, query: &str, hits: &Hash
 pub enum FrameMenu {
     Project,
     Settings,
+    /// Shortcuts and the version, from the binder's Help menu.
+    Help,
     Goals,
     /// The paragraph style menu on the format toolbar.
     Heading,

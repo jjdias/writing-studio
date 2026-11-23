@@ -165,7 +165,7 @@ In a narrow window Context folds away first, then the binder, so the page keeps 
 
 ## Keyboard
 
-**Help** (the question mark), or **Ctrl+/**, lists every shortcut, and ends with **About Writing Studio**: the version, the license, and the libraries and dictionary the program carries. **Tab** moves through the window in the order it is laid out, and every control shows a ring when it has the focus. Text and controls meet WCAG AA contrast in every theme.
+**Help → Keyboard shortcuts and about**, or **Ctrl+/**, lists every shortcut, and ends with **About Writing Studio**: the version, the license, and the libraries and dictionary the program carries. **Tab** moves through the window in the order it is laid out, and every control shows a ring when it has the focus. Text and controls meet WCAG AA contrast in every theme.
 
 | Chord | Action |
 | --- | --- |
