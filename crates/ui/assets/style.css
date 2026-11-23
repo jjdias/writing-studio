@@ -1355,3 +1355,6 @@ button.keyword-dot:hover { box-shadow: 0 0 0 2px var(--line); }
 .connection-row { display: flex; align-items: baseline; gap: 6px; padding: 2px 0; }
 .connection-name { color: var(--muted); font-size: 12px; white-space: nowrap; }
 .connection-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; margin-top: 6px; }
+/* The worldbuilding map: its middle and kinds, and the kinds shown. */
+.map-node.kind-group rect { fill: var(--control); stroke-width: 1.5; }
+.map-kinds { display: inline-flex; flex-wrap: wrap; gap: 8px; font-size: 12px; }

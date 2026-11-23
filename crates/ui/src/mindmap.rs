@@ -39,6 +39,15 @@ pub enum MapKind {
     Idea,
     /// A character, place, or note from the story's entries.
     Entry,
+    /// What groups others on the worldbuilding map: its middle, and each
+    /// kind of entry.
+    Group,
+}
+
+/// A tree to lay out: what is directly under a node, and what each node is.
+pub struct Tree<'a> {
+    pub under: &'a dyn Fn(Id) -> Vec<Id>,
+    pub kind_of: &'a dyn Fn(Id) -> MapKind,
 }
 
 /// A node besides the binder's: an idea or a story entry, and the nodes it
@@ -103,18 +112,27 @@ pub fn branches(binder: &BinderTree, id: Id) -> Vec<Id> {
         .collect()
 }
 
-/// The map of everything under `root`, with the nodes in `folded` closed.
+/// The map of everything under `root` in the binder, with the nodes in
+/// `folded` closed.
 pub fn layout(binder: &BinderTree, root: Id, folded: &[Id]) -> MapLayout {
-    let mut map = MapLayout::default();
     if binder.get(root).is_none() {
-        return map;
+        return MapLayout::default();
     }
-    let top = branches(binder, root);
+    let under = |id: Id| branches(binder, id);
+    let kind_of = |_: Id| MapKind::Binder;
+    layout_tree(&Tree { under: &under, kind_of: &kind_of }, root, folded)
+}
+
+/// Any tree laid out as the book is: `root` in the middle, the first half
+/// of what is under it to the right, the rest to the left.
+pub fn layout_tree(tree: &Tree<'_>, root: Id, folded: &[Id]) -> MapLayout {
+    let mut map = MapLayout::default();
+    let top = (tree.under)(root);
     let right_count = top.len().div_ceil(2);
     let (right, left) = top.split_at(right_count);
     map.nodes.push(MapNode {
         id: root,
-        kind: MapKind::Binder,
+        kind: (tree.kind_of)(root),
         parent: None,
         depth: 0,
         side: Side::Middle,
@@ -124,16 +142,46 @@ pub fn layout(binder: &BinderTree, root: Id, folded: &[Id]) -> MapLayout {
         folded: false,
     });
     for (side, ids) in [(Side::Right, right), (Side::Left, left)] {
-        let total = stack_height(binder, ids, folded);
+        let total = stack_height(tree, ids, folded, 1);
         let mut top_edge = -total / 2.0;
         for id in ids {
-            let height = branch_height(binder, *id, folded);
-            place(binder, &mut map, *id, root, 1, side, top_edge, folded);
+            let height = branch_height(tree, *id, folded, 1);
+            place(tree, &mut map, *id, root, 1, side, top_edge, folded);
             top_edge += height + ROW_GAP;
         }
     }
     map.measure();
     map
+}
+
+/// Nodes the writer placed by hand go where they were put (`placed`, by
+/// id, as centers), each taking its branch along, unless a node in it was
+/// placed too.
+pub fn place_by_hand(map: &mut MapLayout, placed: &[(Id, f64, f64)]) {
+    let placed_ids: Vec<Id> = placed.iter().map(|(id, _, _)| *id).collect();
+    for (id, x, y) in placed {
+        let Some(node) = map.get(*id) else {
+            continue;
+        };
+        let (dx, dy) = (x - node.x, y - node.y);
+        let mut moving = vec![*id];
+        let mut at = 0;
+        while at < moving.len() && moving.len() < 100_000 {
+            let parent = moving[at];
+            moving.extend(
+                map.nodes
+                    .iter()
+                    .filter(|child| child.parent == Some(parent) && !placed_ids.contains(&child.id))
+                    .map(|child| child.id),
+            );
+            at += 1;
+        }
+        for node in map.nodes.iter_mut().filter(|node| moving.contains(&node.id)) {
+            node.x += dx;
+            node.y += dy;
+        }
+    }
+    map.measure();
 }
 
 /// The binder's map with ideas and entries added, and the nodes the writer
@@ -163,34 +211,7 @@ pub fn layout_all(binder: &BinderTree, root: Id, folded: &[Id], extras: &[Extra]
             });
         }
     }
-    // Hand-placed nodes; a binder node's branch goes with it, unless a node
-    // in it was placed too.
-    let placed_ids: Vec<Id> = placed.iter().map(|(id, _, _)| *id).collect();
-    for (id, x, y) in placed {
-        let Some(node) = map.get(*id) else {
-            continue;
-        };
-        let (dx, dy) = (x - node.x, y - node.y);
-        let mut moving = vec![*id];
-        if node.kind == MapKind::Binder {
-            let mut at = 0;
-            while at < moving.len() {
-                let parent = moving[at];
-                moving.extend(
-                    map.nodes
-                        .iter()
-                        .filter(|child| child.parent == Some(parent) && !placed_ids.contains(&child.id))
-                        .map(|child| child.id),
-                );
-                at += 1;
-            }
-        }
-        for node in map.nodes.iter_mut().filter(|node| moving.contains(&node.id)) {
-            node.x += dx;
-            node.y += dy;
-        }
-    }
-    map.measure();
+    place_by_hand(&mut map, placed);
     map
 }
 
@@ -210,37 +231,28 @@ fn is_folded(folded: &[Id], id: Id) -> bool {
 
 /// The height a branch takes: its node, or what it holds stacked, whichever
 /// is taller.
-fn branch_height(binder: &BinderTree, id: Id, folded: &[Id]) -> f64 {
-    let held = branches(binder, id);
-    if held.is_empty() || is_folded(folded, id) {
+fn branch_height(tree: &Tree<'_>, id: Id, folded: &[Id], depth: usize) -> f64 {
+    let held = (tree.under)(id);
+    if held.is_empty() || is_folded(folded, id) || depth > 64 {
         return NODE_HEIGHT;
     }
-    stack_height(binder, &held, folded).max(NODE_HEIGHT)
+    stack_height(tree, &held, folded, depth + 1).max(NODE_HEIGHT)
 }
 
-fn stack_height(binder: &BinderTree, ids: &[Id], folded: &[Id]) -> f64 {
-    let heights: f64 = ids.iter().map(|id| branch_height(binder, *id, folded)).sum();
+fn stack_height(tree: &Tree<'_>, ids: &[Id], folded: &[Id], depth: usize) -> f64 {
+    let heights: f64 = ids.iter().map(|id| branch_height(tree, *id, folded, depth)).sum();
     heights + ROW_GAP * ids.len().saturating_sub(1) as f64
 }
 
 #[allow(clippy::too_many_arguments)]
-fn place(
-    binder: &BinderTree,
-    map: &mut MapLayout,
-    id: Id,
-    parent: Id,
-    depth: usize,
-    side: Side,
-    top_edge: f64,
-    folded: &[Id],
-) {
-    let held = branches(binder, id);
+fn place(tree: &Tree<'_>, map: &mut MapLayout, id: Id, parent: Id, depth: usize, side: Side, top_edge: f64, folded: &[Id]) {
+    let held = (tree.under)(id);
     let closed = is_folded(folded, id);
-    let height = branch_height(binder, id, folded);
+    let height = branch_height(tree, id, folded, depth);
     let sign = if side == Side::Left { -1.0 } else { 1.0 };
     map.nodes.push(MapNode {
         id,
-        kind: MapKind::Binder,
+        kind: (tree.kind_of)(id),
         parent: Some(parent),
         depth,
         side,
@@ -252,10 +264,10 @@ fn place(
     if closed || depth > 64 {
         return;
     }
-    let mut child_top = top_edge + (height - stack_height(binder, &held, folded)) / 2.0;
+    let mut child_top = top_edge + (height - stack_height(tree, &held, folded, depth + 1)) / 2.0;
     for child in held {
-        let child_height = branch_height(binder, child, folded);
-        place(binder, map, child, id, depth + 1, side, child_top, folded);
+        let child_height = branch_height(tree, child, folded, depth + 1);
+        place(tree, map, child, id, depth + 1, side, child_top, folded);
         child_top += child_height + ROW_GAP;
     }
 }
@@ -385,6 +397,33 @@ mod tests {
         assert_eq!((moved.get(idea).unwrap().x, moved.get(idea).unwrap().y), (-5.0, 7.0));
         assert_eq!(moved.get(chapters[1]).unwrap().x, map.get(chapters[1]).unwrap().x, "the others stay");
         assert!(moved.max_x >= 900.0 + NODE_WIDTH / 2.0, "the bounds take it in");
+    }
+
+    /// Any tree lays out as the book does: the worldbuilding map's middle,
+    /// a kind under it, and its entries nested.
+    #[test]
+    fn any_tree_lays_out_as_the_book_does() {
+        let (middle, places, people, country, city) = (Id::new(), Id::new(), Id::new(), Id::new(), Id::new());
+        let under = move |id: Id| -> Vec<Id> {
+            if id == middle {
+                vec![places, people]
+            } else if id == places {
+                vec![country]
+            } else if id == country {
+                vec![city]
+            } else {
+                Vec::new()
+            }
+        };
+        let kind_of = move |id: Id| if id == middle || id == places || id == people { MapKind::Group } else { MapKind::Entry };
+        let map = layout_tree(&Tree { under: &under, kind_of: &kind_of }, middle, &[]);
+        let ids: Vec<Id> = map.nodes.iter().map(|node| node.id).collect();
+        assert_eq!(ids, [middle, places, country, city, people]);
+        assert_eq!((map.get(city).unwrap().depth, map.get(city).unwrap().kind), (3, MapKind::Entry));
+        assert_eq!(map.get(people).unwrap().side, Side::Left);
+        let mut moved = map.clone();
+        place_by_hand(&mut moved, &[(country, 0.0, 400.0)]);
+        assert_eq!(moved.get(city).unwrap().y - moved.get(country).unwrap().y, map.get(city).unwrap().y - map.get(country).unwrap().y, "its branch goes along");
     }
 
     #[test]

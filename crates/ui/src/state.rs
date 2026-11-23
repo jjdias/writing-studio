@@ -271,6 +271,25 @@ impl WorldSection {
 /// story's entries as the context crate reads them.
 pub use writing_studio_context::{EntryKind as BibleLink, StoryEntry};
 
+/// The kinds of entry, in the order they are listed.
+pub const STORY_KINDS: [BibleLink; 6] = [
+    BibleLink::Character,
+    BibleLink::Location,
+    BibleLink::Culture,
+    BibleLink::Lore,
+    BibleLink::Timeline,
+    BibleLink::Research,
+];
+
+/// Which connections the worldbuilding map draws.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TieFilter {
+    All,
+    Hidden,
+    /// Only those with this name ("lives in").
+    Named(String),
+}
+
 /// Which story entries the mind map shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MapStory {
@@ -372,6 +391,15 @@ pub struct StudioState {
     pub map_join: Option<Id>,
     /// Where on screen a drag on the map began, to tell it from a click.
     pub map_drag_start: Option<(f64, f64)>,
+    /// Whether the mind map shows the worldbuilding instead of the book.
+    pub map_world: bool,
+    /// On the worldbuilding map: the kinds shown, which connections are
+    /// drawn, and the entry it is centered on, if one.
+    pub world_kinds: Vec<BibleLink>,
+    pub world_ties: TieFilter,
+    pub map_center: Option<Id>,
+    /// The worldbuilding map's own nodes: its middle, and one for each kind.
+    world_ids: (Id, [Id; 6]),
     pub plot: PlotGrid,
     pub plot_dirty: bool,
     pub confirm_plotline: Option<Id>,
@@ -519,6 +547,11 @@ impl Default for StudioState {
             map_focus: None,
             map_join: None,
             map_drag_start: None,
+            map_world: false,
+            world_kinds: STORY_KINDS.to_vec(),
+            world_ties: TieFilter::All,
+            map_center: None,
+            world_ids: (Id::new(), [Id::new(), Id::new(), Id::new(), Id::new(), Id::new(), Id::new()]),
             plot: PlotGrid::new(),
             plot_dirty: false,
             confirm_plotline: None,
@@ -2721,7 +2754,16 @@ impl StudioState {
     /// line is being drawn, the node is where it ends.
     pub fn choose_on_map(&mut self, id: Id) {
         if let Some(from) = self.map_join.take() {
-            if from != id && self.edit_map(|map| map.add_line(from, id).is_some()) {
+            if self.map_world {
+                if from != id && self.story_entry(from).is_some() && self.story_entry(id).is_some() {
+                    let mut cast = self.cast.clone();
+                    if cast.connect(from, id, String::new()).is_some() {
+                        self.store_cast(cast, true);
+                        self.map_focus = Some(from);
+                        self.status = "Connected. Name the connection in Context.".into();
+                    }
+                }
+            } else if from != id && self.edit_map(|map| map.add_line(from, id).is_some()) {
                 self.status = "Joined. Write a word on the line under the map if it needs one.".into();
             }
             return;
@@ -2868,6 +2910,14 @@ impl StudioState {
         if self.mindmap.idea(dragged).is_some() {
             return true;
         }
+        if let Some(moving) = self.story_entry(dragged) {
+            if let Some(onto) = self.story_entry(target) {
+                return onto.kind == moving.kind;
+            }
+            if let Some(kind) = self.group_kind(target) {
+                return kind == moving.kind;
+            }
+        }
         self.story_entry(dragged).is_some()
             && self
                 .binder
@@ -2903,11 +2953,142 @@ impl StudioState {
             }) {
                 self.status = "The idea hangs from there now.".into();
             }
+        } else if let (Some(_), Some(_)) = (self.story_entry(dragged), self.story_entry(target)) {
+            self.nest_entry(dragged, Some(target), None);
+        } else if let (Some(_), Some(kind)) = (self.story_entry(dragged), self.group_kind(target)) {
+            let last = self.entry_children(kind, None).last().copied();
+            self.nest_entry(dragged, None, last);
         } else if let Some(entry) = self.story_entry(dragged) {
             self.link_story(target, dragged);
             let title = self.binder.get(target).map(|node| node.title.clone()).unwrap_or_default();
             self.status = format!("Linked {} to “{title}”.", entry.name);
         }
+    }
+
+    /// The worldbuilding map's middle, and the node of each kind.
+    pub fn world_root(&self) -> Id {
+        self.world_ids.0
+    }
+
+    pub fn world_group(&self, kind: BibleLink) -> Id {
+        let at = STORY_KINDS.iter().position(|one| *one == kind).unwrap_or(0);
+        self.world_ids.1[at]
+    }
+
+    /// The kind a worldbuilding map node stands for, when it is one.
+    pub fn group_kind(&self, id: Id) -> Option<BibleLink> {
+        STORY_KINDS.into_iter().find(|kind| self.world_group(*kind) == id)
+    }
+
+    /// The worldbuilding map: the shown kinds' trees under its middle, or,
+    /// centered on an entry, that entry with what it is inside, what it
+    /// holds, and what it is connected to around it.
+    pub fn world_layout(&self) -> crate::mindmap::MapLayout {
+        use crate::mindmap::{layout_tree, place_by_hand, MapKind, Tree};
+        let root = self.world_root();
+        let entries = self.story_entries();
+        let ties = self.story_connections();
+        let kinds = self.world_kinds.clone();
+        let center = self.map_center.filter(|id| entries.iter().any(|entry| entry.id == *id));
+        let kind_of_entry = |id: Id| entries.iter().find(|entry| entry.id == id).map(|entry| entry.kind);
+        let within = |id: Id, ancestor: Id| {
+            let mut at = Some(id);
+            let mut guard = 0;
+            while let Some(here) = at {
+                if here == ancestor {
+                    return true;
+                }
+                at = entries.iter().find(|entry| entry.id == here).and_then(|entry| entry.parent);
+                guard += 1;
+                if guard > 10_000 {
+                    break;
+                }
+            }
+            false
+        };
+        let under = |id: Id| -> Vec<Id> {
+            if let Some(center) = center {
+                let kind = kind_of_entry(center).unwrap_or(BibleLink::Character);
+                if id == center {
+                    let mut around: Vec<Id> = entries.iter().filter(|entry| entry.id == center).filter_map(|entry| entry.parent).collect();
+                    around.extend(self.entry_children(kind, Some(center)));
+                    for tie in ties.iter().filter(|tie| tie.from == center || tie.to == center) {
+                        let other = if tie.from == center { tie.to } else { tie.from };
+                        if !around.contains(&other) && other != center {
+                            around.push(other);
+                        }
+                    }
+                    return around.into_iter().filter(|other| kind_of_entry(*other).is_some_and(|kind| kinds.contains(&kind))).collect();
+                }
+                return match kind_of_entry(id) {
+                    Some(kind) if within(id, center) => self.entry_children(kind, Some(id)),
+                    _ => Vec::new(),
+                };
+            }
+            if id == root {
+                return kinds.iter().map(|kind| self.world_group(*kind)).collect();
+            }
+            if let Some(kind) = self.group_kind(id) {
+                return self.entry_children(kind, None);
+            }
+            kind_of_entry(id).map(|kind| self.entry_children(kind, Some(id))).unwrap_or_default()
+        };
+        let kind_of = |id: Id| if id == root || self.group_kind(id).is_some() { MapKind::Group } else { MapKind::Entry };
+        let mut map = layout_tree(&Tree { under: &under, kind_of: &kind_of }, center.unwrap_or(root), &self.folded_map);
+        let placed: Vec<(Id, f64, f64)> = self.mindmap.positions.iter().map(|kept| (kept.id, kept.x, kept.y)).collect();
+        place_by_hand(&mut map, &placed);
+        map
+    }
+
+    /// The connections the worldbuilding map draws as lines between the
+    /// nodes it shows: named ones and fields, as the filter allows. Being
+    /// inside another is a branch, not a line.
+    pub fn world_lines(&self, map: &crate::mindmap::MapLayout) -> Vec<writing_studio_context::Connection> {
+        self.story_connections()
+            .into_iter()
+            .filter(|tie| tie.tie != writing_studio_context::Tie::Inside)
+            .filter(|tie| match &self.world_ties {
+                TieFilter::All => true,
+                TieFilter::Hidden => false,
+                TieFilter::Named(name) => same_keyword(&tie.name, name),
+            })
+            .filter(|tie| map.get(tie.from).is_some() && map.get(tie.to).is_some())
+            .collect()
+    }
+
+    /// The mind map as drawn now, the book's or the worldbuilding's, with
+    /// its middle.
+    pub fn current_map(&self) -> Option<(Id, crate::mindmap::MapLayout)> {
+        if self.map_world {
+            let map = self.world_layout();
+            return Some((map.nodes.first()?.id, map));
+        }
+        let root = self.map_root()?;
+        Some((root, self.map_layout(root)))
+    }
+
+    /// On the worldbuilding map: Tab adds an entry inside the chosen one
+    /// (or at the top of the chosen kind), Enter one beside it. It stays on
+    /// the map, chosen, its name ready to type.
+    pub fn add_on_world_map(&mut self, from: Id, child: bool) -> Option<Id> {
+        let (kind, inside, after) = if let Some(kind) = self.group_kind(from) {
+            (kind, None, None)
+        } else {
+            let entry = self.story_entry(from)?;
+            if child {
+                (entry.kind, Some(from), None)
+            } else {
+                (entry.kind, entry.parent, Some(from))
+            }
+        };
+        let id = self.add_entry(kind, inside)?;
+        if after.is_some() {
+            self.nest_entry(id, inside, after);
+        }
+        self.mode = WorkspaceMode::MindMap;
+        self.map_focus = Some(id);
+        self.folded_map.retain(|folded| Some(*folded) != inside && *folded != from);
+        Some(id)
     }
 
     /// Let go of the chosen keyword and story entry. Returns whether one
@@ -3116,6 +3297,8 @@ impl StudioState {
             WorkspaceMode::Characters => self.selected_character,
             WorkspaceMode::World => self.selected_world,
             WorkspaceMode::Research => self.selected_research,
+            // An entry chosen on the mind map shows in Context too.
+            WorkspaceMode::MindMap => self.map_focus,
             _ => None,
         }?;
         self.story_entry(id)
@@ -5859,6 +6042,67 @@ mod tests {
         state.remove_entry(pub_);
         state.remove_entry(pub_);
         assert!(state.story_connections().iter().all(|tie| tie.to != pub_), "gone with the place");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// The worldbuilding map: each shown kind under its middle with its
+    /// trees, connections as named lines, a filter on kinds and names, one
+    /// entry to center on, and adding, joining, and nesting from the map.
+    #[test]
+    fn the_worldbuilding_map_shows_trees_connections_and_a_center() {
+        let (mut state, dir) = open_state("world-map");
+        state.mode = WorkspaceMode::MindMap;
+        state.map_world = true;
+        let places = state.world_group(BibleLink::Location);
+        let country = state.add_on_world_map(places, true).unwrap();
+        assert_eq!((state.mode, state.map_focus), (WorkspaceMode::MindMap, Some(country)), "it stays on the map");
+        state.rename_item(country, "Valdora");
+        let city = state.add_on_world_map(country, true).unwrap();
+        state.rename_item(city, "Port Ely");
+        let people = state.world_group(BibleLink::Character);
+        let ivo = state.add_on_world_map(people, true).unwrap();
+        state.rename_item(ivo, "Ivo");
+        assert_eq!(state.entry_shown().unwrap().id, ivo, "chosen on the map, it shows in Context");
+
+        let (root, map) = state.current_map().unwrap();
+        assert_eq!(root, state.world_root());
+        assert_eq!(map.get(city).unwrap().parent, Some(country), "nesting is a branch");
+        assert_eq!(map.get(country).unwrap().parent, Some(places));
+
+        // Joined on the map, two entries are connected; the line carries its name.
+        state.start_join(ivo);
+        state.choose_on_map(city);
+        let relation = state.cast.relationships[0].id;
+        state.set_relationship_kind(relation, "lives in".into());
+        let (_, map) = state.current_map().unwrap();
+        let lines = state.world_lines(&map);
+        assert_eq!((lines[0].from, lines[0].to, lines[0].name.as_str()), (ivo, city, "lives in"));
+        state.world_ties = TieFilter::Named("knows".into());
+        assert!(state.world_lines(&map).is_empty());
+        state.world_ties = TieFilter::All;
+
+        // Only places shown: Ivo and his line go.
+        state.world_kinds = vec![BibleLink::Location];
+        let (_, map) = state.current_map().unwrap();
+        assert!(map.get(ivo).is_none() && map.get(people).is_none() && state.world_lines(&map).is_empty());
+        state.world_kinds = STORY_KINDS.to_vec();
+
+        // Centered on Port Ely: what it is inside, and what it is connected to.
+        state.map_center = Some(city);
+        let (root, map) = state.current_map().unwrap();
+        assert_eq!(root, city);
+        assert!(map.get(country).is_some() && map.get(ivo).is_some());
+        assert!(map.get(places).is_none());
+        state.map_center = None;
+
+        // Dropped on the city, a second place nests in it.
+        let quay = state.add_on_world_map(places, true).unwrap();
+        state.begin_drag(quay);
+        state.set_binder_drop(city, DropPlace::Inside);
+        assert!(state.map_drop_allowed(quay, city));
+        assert!(!state.map_drop_allowed(quay, ivo), "not inside a character");
+        state.drop_on_map(city);
+        assert_eq!(state.entry_parent(quay), Some(city));
         let _ = std::fs::remove_dir_all(dir);
     }
 

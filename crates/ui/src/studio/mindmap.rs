@@ -1,6 +1,6 @@
 use super::*;
 use crate::mindmap::{step, MapKind, MapLayout, MapNode, Side, Step, NODE_HEIGHT, NODE_WIDTH};
-use crate::state::MapStory;
+use crate::state::{MapStory, TieFilter, STORY_KINDS};
 
 /// Room around the map, in map units.
 const MARGIN: f64 = 32.0;
@@ -20,32 +20,57 @@ const MARGIN: f64 = 32.0;
 #[component]
 pub(super) fn MindMapPane() -> Element {
     let mut state = use_context::<Signal<StudioState>>();
-    let Some(root) = state.read().map_root() else {
+    let Some((root, map)) = state.read().current_map() else {
         return rsx! {};
     };
-    let map = state.read().map_layout(root);
-    let has_scenes = !state.read().binder.scenes_under(root).is_empty();
+    let world = state.read().map_world;
+    let has_scenes = world || !state.read().binder.scenes_under(root).is_empty();
     let query = state.read().map_query.clone();
     let zoom = state.read().map_zoom;
     let chosen = state.read().map_chosen().filter(|id| map.get(*id).is_some());
     let story = state.read().map_story;
     let placed = !state.read().mindmap.positions.is_empty();
     let joining = state.read().map_join.is_some();
-    let lines: Vec<writing_studio_project::MapLine> = state
-        .read()
-        .mindmap
-        .lines
-        .iter()
-        .filter(|line| map.get(line.from).is_some() && map.get(line.to).is_some())
-        .cloned()
-        .collect();
-    let joins: Vec<(Id, Id, MapKind)> = state
-        .read()
-        .map_extras(&map.nodes.iter().map(|node| node.id).collect::<Vec<_>>())
-        .into_iter()
-        .flat_map(|extra| extra.joined.into_iter().map(move |to| (extra.id, to, extra.kind)))
-        .filter(|(from, to, _)| map.get(*from).is_some() && map.get(*to).is_some())
-        .collect();
+    // The book's own lines, or on the worldbuilding map its connections.
+    let lines: Vec<writing_studio_project::MapLine> = if world {
+        state
+            .read()
+            .world_lines(&map)
+            .into_iter()
+            .map(|tie| writing_studio_project::MapLine {
+                id: Id::new(),
+                from: tie.from,
+                to: tie.to,
+                label: tie.name,
+                other: Default::default(),
+            })
+            .collect()
+    } else {
+        state
+            .read()
+            .mindmap
+            .lines
+            .iter()
+            .filter(|line| map.get(line.from).is_some() && map.get(line.to).is_some())
+            .cloned()
+            .collect()
+    };
+    let joins: Vec<(Id, Id, MapKind)> = if world {
+        Vec::new()
+    } else {
+        state
+            .read()
+            .map_extras(&map.nodes.iter().map(|node| node.id).collect::<Vec<_>>())
+            .into_iter()
+            .flat_map(|extra| extra.joined.into_iter().map(move |to| (extra.id, to, extra.kind)))
+            .filter(|(from, to, _)| map.get(*from).is_some() && map.get(*to).is_some())
+            .collect()
+    };
+    let kinds = state.read().world_kinds.clone();
+    let ties = state.read().world_ties.clone();
+    let tie_names = state.read().connection_names();
+    let center = state.read().map_center;
+    let entries = state.read().story_entries();
     let lit = lit_nodes(&state.read(), &map, &query);
     let (left, top) = (map.min_x - MARGIN, map.min_y - MARGIN);
     let (width, height) = (map.width() + 2.0 * MARGIN, map.height() + 2.0 * MARGIN);
@@ -56,6 +81,64 @@ pub(super) fn MindMapPane() -> Element {
     rsx! {
         div { class: "map-pane",
             div { class: "view-tools",
+                select {
+                    aria_label: "The map's middle",
+                    title: "The book, or the story's worldbuilding",
+                    onchange: move |event| {
+                        let world = event.value() == "world";
+                        let mut current = state.write();
+                        current.map_world = world;
+                        current.map_focus = None;
+                    },
+                    option { value: "book", selected: !world, "The book" }
+                    option { value: "world", selected: world, "Worldbuilding" }
+                }
+                if world {
+                    div { class: "map-kinds", role: "group", aria_label: "Kinds shown",
+                        for kind in STORY_KINDS {
+                            label { class: "check-label",
+                                input {
+                                    r#type: "checkbox",
+                                    checked: kinds.contains(&kind),
+                                    onchange: move |event| {
+                                        let mut current = state.write();
+                                        current.world_kinds.retain(|kept| *kept != kind);
+                                        if event.checked() {
+                                            current.world_kinds.push(kind);
+                                            current.world_kinds.sort_by_key(|one| STORY_KINDS.iter().position(|kept| kept == one));
+                                        }
+                                    },
+                                }
+                                "{kind.heading()}"
+                            }
+                        }
+                    }
+                    select {
+                        aria_label: "Connections drawn",
+                        onchange: move |event| {
+                            let value = event.value();
+                            state.write().world_ties = match value.as_str() {
+                                "" => TieFilter::All,
+                                "-" => TieFilter::Hidden,
+                                name => TieFilter::Named(name.to_string()),
+                            };
+                        },
+                        option { value: "", selected: ties == TieFilter::All, "All connections" }
+                        option { value: "-", selected: ties == TieFilter::Hidden, "No connections" }
+                        for name in tie_names {
+                            option { value: "{name}", selected: ties == TieFilter::Named(name.clone()), "{name}" }
+                        }
+                    }
+                    select {
+                        aria_label: "Centered on",
+                        title: "One entry in the middle, with what it is inside, holds, and is connected to",
+                        onchange: move |event| state.write().map_center = parse_scene_id(&event.value()),
+                        option { value: "", selected: center.is_none(), "Every entry" }
+                        for entry in entries {
+                            option { value: "{entry.id}", selected: center == Some(entry.id), "{story_choice(&entry)}" }
+                        }
+                    }
+                } else {
                 SeriesScopeSelect {}
                 KeywordSelect {}
                 input {
@@ -74,6 +157,7 @@ pub(super) fn MindMapPane() -> Element {
                     },
                     "+ Idea"
                 }
+                }
                 if let Some(from) = chosen {
                     button {
                         class: if joining { "active" } else { "" },
@@ -82,6 +166,7 @@ pub(super) fn MindMapPane() -> Element {
                         "Join"
                     }
                 }
+                if !world {
                 select {
                     aria_label: "Story entries on the map",
                     title: "Show the characters, places, and notes linked to what is on the map",
@@ -99,6 +184,7 @@ pub(super) fn MindMapPane() -> Element {
                     for kind in STORY_KINDS {
                         option { value: "{kind.heading()}", selected: story == MapStory::Kind(kind), "{kind.heading()}" }
                     }
+                }
                 }
                 if placed {
                     button { title: "Put every node back where the map lays it out", onclick: move |_| state.write().tidy_map(), "Tidy" }
@@ -125,7 +211,7 @@ pub(super) fn MindMapPane() -> Element {
                     tabindex: "0",
                     role: "tree",
                     aria_label: "Mind map of the manuscript. Arrows move, Enter opens, Space folds.",
-                    onkeydown: move |event: KeyboardEvent| map_key(state, root, event),
+                    onkeydown: move |event: KeyboardEvent| map_key(state, event),
                     // A node let go on an empty part of the map stays there.
                     onmouseup: move |event: MouseEvent| {
                         let Some(dragged) = state.read().dragging else {
@@ -219,16 +305,6 @@ fn lit_nodes(state: &StudioState, map: &MapLayout, query: &str) -> Vec<Id> {
         .map(|node| node.id)
         .collect()
 }
-
-/// The kinds of story entry, in the Story menu's order.
-const STORY_KINDS: [BibleLink; 6] = [
-    BibleLink::Character,
-    BibleLink::Location,
-    BibleLink::Culture,
-    BibleLink::Lore,
-    BibleLink::Timeline,
-    BibleLink::Research,
-];
 
 /// A straight line between two nodes' centers.
 fn straight(map: &MapLayout, from: Id, to: Id) -> String {
@@ -429,18 +505,30 @@ fn end_map_drag(mut state: Signal<StudioState>, id: Id, event: MouseEvent) {
 fn ExtraNodeView(node: MapNode, chosen: bool, dim: bool) -> Element {
     let mut state = use_context::<Signal<StudioState>>();
     let id = node.id;
+    let group = node.kind == MapKind::Group;
     let (title, meta, entry) = if node.kind == MapKind::Idea {
         let Some(idea) = state.read().mindmap.idea(id).cloned() else {
             return rsx! {};
         };
         (idea.title, "idea".to_string(), false)
+    } else if group {
+        match state.read().group_kind(id) {
+            Some(kind) => (kind.heading().to_string(), "Tab adds one".to_string(), false),
+            None => ("Worldbuilding".to_string(), String::new(), false),
+        }
     } else {
         let Some(found) = state.read().story_entry(id) else {
             return rsx! {};
         };
-        (found.name, found.kind.noun().to_string(), true)
+        // What it is, in the writer's words, or its kind.
+        let meta = if found.label.is_empty() { found.kind.noun().to_string() } else { found.label.clone() };
+        (found.name, meta, true)
     };
-    let mut class = if entry { "map-node kind-entry".to_string() } else { "map-node kind-idea".to_string() };
+    let mut class = match (entry, group) {
+        (_, true) => "map-node kind-group".to_string(),
+        (true, _) => "map-node kind-entry".to_string(),
+        _ => "map-node kind-idea".to_string(),
+    };
     if chosen {
         class.push_str(" chosen");
     }
@@ -455,13 +543,14 @@ fn ExtraNodeView(node: MapNode, chosen: bool, dim: bool) -> Element {
         class.push_str(if state.read().map_drop_allowed(dragged, id) { " drop-inside" } else { " drop-invalid" });
     }
     let dragged_other = state.read().dragging.is_some_and(|dragged| dragged != id);
+    let fold_x = if node.side == Side::Left { 0.0 } else { NODE_WIDTH };
     rsx! {
         g {
             class: "{class}",
             transform: "translate({node.x - NODE_WIDTH / 2.0} {node.y - NODE_HEIGHT / 2.0})",
             role: "treeitem",
             "aria-label": "{title}, {meta}",
-            onmousedown: move |event: MouseEvent| start_map_drag(state, id, true, &event),
+            onmousedown: move |event: MouseEvent| start_map_drag(state, id, !group, &event),
             onmouseup: move |event| end_map_drag(state, id, event),
             onclick: move |_| {
                 let suppress = std::mem::take(&mut state.write().ignore_next_click);
@@ -477,6 +566,18 @@ fn ExtraNodeView(node: MapNode, chosen: bool, dim: bool) -> Element {
             rect { width: "{NODE_WIDTH}", height: "{NODE_HEIGHT}", rx: "18" }
             text { class: "map-title", x: "14", y: "19", "{shorten(&title, 24)}" }
             text { class: "map-meta", x: "14", y: "36", "{meta}" }
+            if node.has_children {
+                g {
+                    class: "map-fold",
+                    transform: "translate({fold_x} {NODE_HEIGHT / 2.0})",
+                    onclick: move |event| {
+                        event.stop_propagation();
+                        state.write().toggle_map_fold(id);
+                    },
+                    circle { r: "8" }
+                    text { x: "0", y: "4", "text-anchor": "middle", if node.folded { "+" } else { "−" } }
+                }
+            }
             if dragged_other {
                 rect {
                     class: "map-zone",
@@ -612,7 +713,7 @@ fn shorten(text: &str, longest: usize) -> String {
 /// The arrows move the chosen node and Space folds it. Tab adds a child
 /// and Enter the next one beside it, each named as it is added; Ctrl+Enter
 /// opens a scene; F2 renames; Delete moves to the trash, with Undo.
-fn map_key(mut state: Signal<StudioState>, root: Id, event: KeyboardEvent) {
+fn map_key(mut state: Signal<StudioState>, event: KeyboardEvent) {
     let key = match event.key() {
         Key::ArrowUp => Some(Step::Up),
         Key::ArrowDown => Some(Step::Down),
@@ -620,7 +721,10 @@ fn map_key(mut state: Signal<StudioState>, root: Id, event: KeyboardEvent) {
         Key::ArrowRight => Some(Step::Right),
         _ => None,
     };
-    let map = state.read().map_layout(root);
+    let Some((root, map)) = state.read().current_map() else {
+        return;
+    };
+    let world = state.read().map_world;
     let from = state.read().map_chosen().filter(|id| map.get(*id).is_some()).unwrap_or(root);
     if let Some(key) = key {
         event.prevent_default();
@@ -647,6 +751,22 @@ fn map_key(mut state: Signal<StudioState>, root: Id, event: KeyboardEvent) {
         Key::F2 if state.read().mindmap.idea(from).is_some() => {
             event.prevent_default();
             select_field(format!("idea-title-{from}"));
+        }
+        Key::Enter | Key::Tab if !shift && world && from != root => {
+            event.prevent_default();
+            let child = event.key() == Key::Tab;
+            if let Some(added) = state.write().add_on_world_map(from, child) {
+                select_field(format!("rename-{added}"));
+            }
+        }
+        Key::Delete if world && state.read().story_entry(from).is_some() => {
+            event.prevent_default();
+            state.write().remove_entry(from);
+        }
+        Key::F2 if world && state.read().story_entry(from).is_some() => {
+            event.prevent_default();
+            state.write().renaming = Some(from);
+            select_field(format!("rename-{from}"));
         }
         Key::Enter | Key::Tab if !shift && state.read().binder.get(from).is_some() => {
             event.prevent_default();

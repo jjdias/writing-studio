@@ -1,6 +1,6 @@
 # Phase 11 — Tags, story links, and a mind map
 
-In progress: stages 1 to 15 are done. Stages 13 to 16, added after trying the window, rework the columns and bring worldbuilding into the binder.
+Done: every stage is in, 13 to 16 added after trying the window. The maintainer's look at the window is left, and the tests of stage 16 beyond its own were not run at its end (see below).
 
 Phase 9 gave binder items colored keywords and saved filters. This phase does four things with what is there:
 
@@ -203,6 +203,8 @@ The window had four columns: the binder, the scene list, the page, and the inspe
 - In `bible.json`, an entry has `label`. Both are additions to the format.
 
 ### 16. Worldbuilding on the mind map
+
+**Done.** The map's layout takes any tree (`layout_tree`, `Tree`, `place_by_hand`, tested), and `StudioState::world_layout` builds the worldbuilding one: a middle and a node for each shown kind (`MapKind::Group`, fixed ids for the session), each kind's entries nested, or, with `map_center`, one entry with its parent, what it holds, and what it is connected to. `world_lines` draws named connections and fields as labeled lines, filtered by `TieFilter`; `world_kinds` says which kinds show. `current_map` gives whichever map is chosen. On it, Tab and Enter add entries (`add_on_world_map`), F2 renames, Delete deletes, Join connects two entries (named in Context), and dropping an entry on another of its kind nests it, on its kind brings it to the top. An entry chosen on the map shows in Context. Its state test passed; the whole workspace's tests were stopped at the maintainer's word before they finished, so run them before merging.
 
 - A menu over the map chooses its middle: the book, as now, or **Worldbuilding**. Worldbuilding shows the chosen kinds' trees, nesting as branches, and the named connections as labeled lines between them, so how places and characters relate shows at a glance.
 - Filters: which kinds (Places, Characters, and so on), which connection names, and one entry to center on, showing what it is inside, what it holds, and what it is connected to.
