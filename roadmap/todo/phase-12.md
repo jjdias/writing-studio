@@ -1,6 +1,6 @@
 # Phase 12 — A Markdown editor
 
-Not started.
+In progress: stage 1 is done.
 
 The page is a rich-text editor today: a `contenteditable` element that the program's own scripts (`crates/ui/assets/review.js`, `spell.js`, `place.js`) and `crates/ui/src/studio/editor.rs` keep in step with the document model. This phase makes the page a Markdown editor: the writer types and sees Markdown, shown as the best Markdown editors show it, while everything the page does now keeps working.
 
@@ -58,6 +58,8 @@ In this order: the component and the round trip first, then what the writer sees
 - CodeMirror 6 with its Markdown language, history, and search, built once into one file at a pinned version and vendored in `crates/ui/assets`, loaded by the page like `review.js`. Nothing from the network.
 - Its license in the packages' `licenses` folder; `about.hbs` or the Package workflow notes it.
 - Rust and the page talk through small messages (`document::eval`, as now): the page sends the text when it changes, the program sends a scene's text when one opens.
+
+**Done.** `crates/ui/codemirror` builds the bundle: `package.json` pins CodeMirror's packages and esbuild exactly, `package-lock.json` pins the rest, and `npm ci` then `npm run build` there writes `crates/ui/assets/codemirror.js` (330 KB, minified) and `LICENSES.txt`, from what esbuild read. The bundle is the Markdown language alone, so an HTML tag such as `<u>` is one node and the HTML, CSS, and JavaScript parsers stay out (520 KB with them). All its packages are MIT. The page loads it once when the window opens (`App`, `CODEMIRROR_JS`), as `window.wsEditor`: `mount(parent, text, onChange)`, `getText`, `setText` (a new scene, with a fresh history and no change reported), and `unmount`. The Package workflow copies `LICENSES.txt` into each package's `licenses` folder as `editor-LICENSES.txt`, and the notices and About name it. Checked in a browser: typing reports the text, `setText` replaces it without a change, and `unmount` leaves nothing. Nothing mounts it on the page yet: that is stage 2.
 
 ### 2. Markdown on the page, and back
 

@@ -64,6 +64,9 @@ const STYLES: &str = include_str!("../../assets/style.css");
 const REVIEW_JS: &str = include_str!("../../assets/review.js");
 const SPELL_JS: &str = include_str!("../../assets/spell.js");
 const PLACE_JS: &str = include_str!("../../assets/place.js");
+/// The Markdown editor, CodeMirror 6 bundled into one file
+/// (`crates/ui/codemirror` builds it). Loaded once, as `window.wsEditor`.
+const CODEMIRROR_JS: &str = include_str!("../../assets/codemirror.js");
 /// Unknown words shown as buttons before the rest are counted as "more".
 const SPELL_WORDS_SHOWN: usize = 60;
 
@@ -74,6 +77,10 @@ pub fn App() -> Element {
     use_context_provider(|| Signal::new(PanelWidths::default()));
     use_context_provider(|| Signal::new(None::<ResizeDrag>));
     use_context_provider(|| Signal::new(initial_window_width()));
+    // After the first render, so the page is there to run it.
+    use_effect(|| {
+        let _ = document::eval(&format!("if (!window.wsEditor) {{\n{CODEMIRROR_JS}\n}}"));
+    });
     rsx! {
         // The page's own title, which assistive tools read, is the window's.
         document::Title { "Writing Studio" }
@@ -388,7 +395,7 @@ fn About() -> Element {
             p { "Source and releases: github.com/jjdias/writing-studio" }
             p {
                 "Spelling uses the spellbook library (MPL-2.0) and the Hunspell English (US) dictionary, "
-                "which keeps its own license. The licenses of every library the program is built from "
+                "which keeps its own license. The Markdown editor is CodeMirror 6 (MIT). The licenses of every library the program is built from "
                 "are in THIRD-PARTY-NOTICES.html, in {LICENSES_FOLDER}."
             }
         }

@@ -22,7 +22,7 @@ Writing Studio is **open source** (MIT OR Apache-2.0) and **free for the communi
 | 8 | UI and UX overhaul: a window built around writing | Done | [done/phase-8.md](done/phase-8.md) |
 | 9 | Writing comfort, from Ulysses: a brighter layout, page settings, deadlines, keywords | Done | [done/phase-9.md](done/phase-9.md) |
 | 11 | Tags, story links, and a mind map: nested keywords, entries linked from the scene, a scene context, views in the library; worldbuilding in the binder | Done (the look in the window waits for a later phase) | [done/phase-11.md](done/phase-11.md) |
-| 12 | A Markdown editor: live preview, Markdown shortcuts, notes and footnotes, what the page does now | Not started | [todo/phase-12.md](todo/phase-12.md) |
+| 12 | A Markdown editor: live preview, Markdown shortcuts, notes and footnotes, what the page does now | In progress | [todo/phase-12.md](todo/phase-12.md) |
 | Bonus | Work with no phase yet | Not started | [todo/bonus.md](todo/bonus.md) |
 
 Phases 1 to 9 and 11 are on `master`.

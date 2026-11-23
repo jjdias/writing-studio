@@ -13,3 +13,5 @@ Thumbs.db
 # Made by the Package workflow before bundling: the licenses each package carries.
 /apps/desktop/package-files
 /dist
+# The CodeMirror build's packages; the bundle in crates/ui/assets is committed.
+/crates/ui/codemirror/node_modules

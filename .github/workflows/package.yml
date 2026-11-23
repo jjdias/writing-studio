@@ -64,7 +64,8 @@ jobs:
         run: cargo binstall dioxus-cli@0.6.3 --no-confirm --disable-strategies compile
 
       # The licenses every package carries: the program's own, the
-      # dictionary's, and a notice of every crate the program is built from
+      # dictionary's, the Markdown editor's (CodeMirror, a script the page
+      # carries, which cargo-about does not see), and a notice of every crate the program is built from
       # (about.toml lists the licenses it may be under).
       - name: Licenses
         shell: bash
@@ -75,6 +76,7 @@ jobs:
           mkdir -p apps/desktop/package-files/licenses
           cp LICENSE-MIT LICENSE-APACHE apps/desktop/package-files/licenses/
           cp crates/spellcheck/dictionaries/en_US.LICENSE.txt apps/desktop/package-files/licenses/dictionary-LICENSE.txt
+          cp crates/ui/codemirror/LICENSES.txt apps/desktop/package-files/licenses/editor-LICENSES.txt
           cargo about generate --manifest-path apps/desktop/Cargo.toml about.hbs --output-file apps/desktop/package-files/licenses/THIRD-PARTY-NOTICES.html
 
       - name: Bundle

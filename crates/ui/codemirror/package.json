@@ -1,0 +1,22 @@
+﻿{
+  "name": "writing-studio-codemirror",
+  "private": true,
+  "description": "Builds crates/ui/assets/codemirror.js, the page's Markdown editor, from pinned CodeMirror 6 packages.",
+  "license": "MIT OR Apache-2.0",
+  "scripts": {
+    "build": "esbuild entry.js --bundle --format=iife --minify --target=es2020 --outfile=../assets/codemirror.js --metafile=node_modules/.bundle-meta.json && node licenses.js"
+  },
+  "dependencies": {
+    "@codemirror/commands": "6.11.1",
+    "@codemirror/lang-markdown": "6.5.2",
+    "@codemirror/language": "6.13.1",
+    "@codemirror/search": "6.7.2",
+    "@codemirror/state": "6.7.6",
+    "@codemirror/view": "6.43.15",
+    "@lezer/highlight": "1.2.5",
+    "@lezer/markdown": "1.8.1"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}
