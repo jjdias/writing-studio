@@ -67,21 +67,6 @@ impl EditorSession {
         self.dirty = true;
     }
 
-    pub fn html(&self) -> String {
-        self.document.to_html()
-    }
-
-    pub fn apply_html(&mut self, html: &str) {
-        let mut next = self.document.clone();
-        next.replace_html(html);
-        if next.to_html() == self.document.to_html() {
-            return;
-        }
-        self.push_undo();
-        self.document = next;
-        self.dirty = true;
-    }
-
     /// Take blocks read from the Markdown page as the text, as one undo
     /// step, unless they say what the document already says.
     pub fn apply_blocks(&mut self, blocks: Vec<writing_studio_document::Block>) -> bool {
@@ -166,39 +151,36 @@ mod tests {
         assert_eq!(session.plain_text(), "Hello world");
     }
 
+    /// The scene with this HTML, as storage reads it.
+    fn with_html(html: &str) -> EditorSession {
+        let mut document = Document::new(Id::new());
+        document.replace_html(html);
+        EditorSession::new(document)
+    }
+
     #[test]
     fn resolving_a_note_is_one_undo_step() {
-        let mut session = EditorSession::empty(Id::new());
-        session.apply_html(r#"<p><span class="ws-comment" data-comment="tide">harbor</span></p>"#);
-        session.mark_clean();
+        let mut session = with_html(r#"<p><span class="ws-comment" data-comment="tide">harbor</span></p>"#);
         assert!(session.edit(|doc| doc.set_note_resolved(0, true)));
         assert!(session.is_dirty());
-        assert!(session.html().contains("data-resolved"));
+        assert!(session.document().to_html().contains("data-resolved"));
         assert!(!session.edit(|doc| doc.set_note_resolved(0, true)));
         assert!(session.undo());
-        assert!(!session.html().contains("data-resolved"));
+        assert!(!session.document().to_html().contains("data-resolved"));
     }
 
     #[test]
-    fn html_keeps_bold_mark() {
-        let mut session = EditorSession::empty(Id::new());
-        session.apply_html("<p>Hello <strong>there</strong></p>");
-        let html = session.html();
-        assert!(html.contains("<strong>there</strong>"));
-        assert_eq!(session.plain_text(), "Hello there");
-    }
-
-    #[test]
-    fn html_keeps_link_comment_and_scene_break() {
-        let mut session = EditorSession::empty(Id::new());
-        session.apply_html(
-            r#"<p><span class="ws-comment" data-comment="tide"><a href="https://example.com">harbor</a></span></p><hr><pre>code</pre>"#,
-        );
-        let html = session.html();
-        assert!(html.contains("https://example.com"));
-        assert!(html.contains("data-comment=\"tide\""));
-        assert!(html.contains("<hr>"));
-        assert!(html.contains("<pre>code</pre>"));
-        assert_eq!(session.document().comments().len(), 1);
+    fn blocks_from_the_page_keep_the_ids_and_are_one_undo_step() {
+        let mut session = with_html("<p>Hello <strong>there</strong></p><p>Second</p>");
+        let ids: Vec<Id> = session.document().blocks.iter().map(|block| block.id).collect();
+        let same = with_html("<p>Hello <strong>there</strong></p><p>Second</p>").document().blocks.clone();
+        assert!(!session.apply_blocks(same), "the same text is no change");
+        assert!(!session.is_dirty());
+        let changed = with_html("<p>Hello <em>there</em></p><p>Second line</p>").document().blocks.clone();
+        assert!(session.apply_blocks(changed));
+        assert_eq!(session.document().blocks.iter().map(|block| block.id).collect::<Vec<_>>(), ids);
+        assert_eq!(session.plain_text(), "Hello there\nSecond line");
+        assert!(session.undo());
+        assert!(session.document().to_html().contains("<strong>there</strong>"));
     }
 }

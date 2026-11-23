@@ -626,7 +626,6 @@ button.danger:hover, button.danger.armed { background: var(--danger-fill); borde
 .spell-count { color: var(--muted); }
 .spell-focus { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 2px 0 4px; }
 .spell-focus button { font-size: 11px; padding: 2px 7px; }
-::highlight(ws-spell) { text-decoration: underline wavy #e5484d; text-decoration-skip-ink: none; }
 .track-list { max-height: 12rem; }
 .track-item { align-items: flex-start; }
 .track-item .track-kind { flex: 0 0 6.5em; }
@@ -651,55 +650,10 @@ button.danger:hover, button.danger.armed { background: var(--danger-fill); borde
   outline: none;
 }
 .manuscript:focus-visible { box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22), 0 0 0 1px var(--gold); }
-.manuscript.rich > :first-child { margin-top: 0; }
 /* In a narrow window the margins give the room back to the text. */
 @media (max-width: 900px) {
   .desk { padding: 16px 12px 32px; }
   .manuscript { padding: 28px 24px 48px; }
-}
-.manuscript.rich h1 { font-size: 1.6em; line-height: 1.25; }
-.manuscript.rich h2 { font-size: 1.3em; line-height: 1.3; }
-.manuscript.rich h3 { font-size: 1.1em; line-height: 1.35; }
-.manuscript.rich h1, .manuscript.rich h2, .manuscript.rich h3 {
-  font-family: var(--prose);
-  font-weight: 600;
-  margin: 1.2em 0 0.6em;
-}
-.manuscript.rich p, .manuscript.rich blockquote, .manuscript.rich ul, .manuscript.rich ol {
-  margin: 0 0 12px;
-}
-.manuscript.rich blockquote {
-  border-left: 3px solid var(--gold);
-  padding-left: 12px;
-  color: var(--editor-text);
-}
-.manuscript.rich a { color: var(--page-link); }
-.manuscript.rich .ws-comment {
-  background: var(--comment-bg);
-  border-bottom: 1px dotted var(--comment-line);
-}
-.manuscript.rich .ws-comment[data-kind="question"] { border-bottom-style: dashed; }
-.manuscript.rich .ws-comment[data-kind="revise"] { border-bottom-style: solid; }
-.manuscript.rich .ws-comment[data-kind="check"] { border-bottom-style: double; border-bottom-width: 3px; }
-.manuscript.rich .ws-comment[data-resolved="true"] { background: transparent; border-bottom-color: var(--muted); }
-.manuscript.rich mark { color: inherit; background: var(--hl-yellow); }
-.manuscript.rich mark[data-highlight="green"] { background: var(--hl-green); }
-.manuscript.rich mark[data-highlight="blue"] { background: var(--hl-blue); }
-.manuscript.rich mark[data-highlight="pink"] { background: var(--hl-pink); }
-.manuscript.rich pre {
-  font-family: var(--mono);
-  font-size: 13px;
-  line-height: 1.45;
-  background: var(--code-bg);
-  color: var(--editor-text);
-  padding: 8px 10px;
-  white-space: pre-wrap;
-  margin: 0 0 12px;
-}
-.manuscript.rich hr {
-  border: 0;
-  border-top: 1px solid var(--line);
-  margin: 18px 0;
 }
 .synopsis { min-height: 96px; }
 
@@ -1198,10 +1152,6 @@ kbd {
 :root { --line-length: 70ch; --line-height: 1.65; --para-space: 0.4; --indent: 0em; }
 .manuscript, .page-head { max-width: calc(var(--line-length) + 112px); }
 .manuscript { line-height: var(--line-height); }
-.manuscript.rich p, .manuscript.rich blockquote, .manuscript.rich ul, .manuscript.rich ol {
-  margin: 0 0 calc(var(--para-space) * var(--line-height) * 1em);
-}
-.manuscript.rich p { text-indent: var(--indent); }
 
 /* Sliders in Settings, each with its value beside its name. */
 .range-label { display: flex; justify-content: space-between; gap: 8px; }
@@ -1209,7 +1159,7 @@ kbd {
 .popover input[type="range"] { padding: 0; border: 0; box-shadow: none; background: transparent; accent-color: var(--gold); }
 .range-reset { margin-top: 10px; font-size: 12px; }
 
-/* Keeping one's place (Phase 9 stage 3), set in place.js. */
+/* Keeping one's place (Phase 9 stage 3), set in the editor's places.js. */
 .desk { position: relative; }
 /* Room below the last line, so even the end of a scene can sit at the
    chosen height. */
@@ -1222,16 +1172,15 @@ kbd {
   opacity: 0.08;
   pointer-events: none;
 }
-/* The rest of the page fades; the current sentence or paragraph is a
-   highlight drawn at full strength. */
+/* The rest of the page fades; the current sentence or paragraph is drawn
+   at full strength (places.js). */
 .manuscript.fading { color: color-mix(in srgb, var(--editor-text) 38%, transparent); }
-::highlight(ws-current) { color: var(--editor-text); }
 .check-label { display: flex !important; align-items: center; gap: 8px; color: var(--text) !important; }
 .check-label input { width: auto; }
 
 /* While one types, the bars and the side columns step back (they keep
    their room, so the page does not move); moving the pointer,
-   a chord, or leaving the page brings them back (place.js). */
+   a chord, or leaving the page brings them back (places.js). */
 .format-toolbar, .work-bar, .status, .library, .secondary.dashboard, .sash { transition: opacity 0.35s ease; }
 body[data-typing] .format-toolbar,
 body[data-typing] .work-bar,

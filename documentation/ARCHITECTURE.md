@@ -10,7 +10,7 @@ Dioxus UI
         → project folder (*.writingstudio): HTML and JSON files, with a SQLite cache in .local/
 ```
 
-Compile (Markdown / DOCX) reads the binder and `documents` table. It does not go through the rich-text widget.
+Compile (Markdown / DOCX) reads the binder and `documents` table. It does not go through the page's editor.
 
 ```text
 Binder + stored documents → writing-studio-export → .md / .docx on disk
@@ -22,7 +22,7 @@ Binder + stored documents → writing-studio-export → .md / .docx on disk
 | --- | --- |
 | `writing-studio-core` | IDs, timestamps, errors, events, autosave debounce, format version |
 | `writing-studio-document` | Block document model, JSON, restricted HTML interchange, text comparison between two versions, tracked changes |
-| `writing-studio-editor` | Session, undo/redo, HTML/plain apply, counts |
+| `writing-studio-editor` | Session, undo/redo, the page's text applied as blocks, counts |
 | `writing-studio-project` | Binder tree, settings, drag-and-drop, trash/restore |
 | `writing-studio-manuscript` | Book/chapter/scene outline |
 | `writing-studio-templates` | Blank novel seed |
@@ -48,7 +48,7 @@ Inline comments, links, code blocks, and scene breaks are fields on the document
 ## Data flow
 
 1. The UI holds a `StudioState` with an optional `ProjectStore`. The files in the project folder are the project. The store also holds a SQLite cache in `.local/`, filled from the files when the project opens. Every save writes the file first and the cache second.
-2. Opening a scene loads JSON into an `EditorSession` wrapping a `Document`. Saved JSON is the block model, including links, code blocks, scene breaks, and inline comments. The desktop view is restricted HTML mapped back onto that JSON.
+2. Opening a scene loads JSON into an `EditorSession` wrapping a `Document`. Saved JSON is the block model, including links, code blocks, scene breaks, and inline comments. The page is a Markdown editor: CodeMirror 6, built from `crates/ui/codemirror` into one file the program carries (`crates/ui/assets/codemirror.js`), with nothing loaded from the network. It shows the scene as the format crate writes it in Markdown, and every change is read back through the format crate's Markdown reader onto that JSON, keeping the blocks' ids.
 3. Typing updates the session; idle autosave, blur, scene change, and Ctrl+S write JSON back through `ProjectStore`. A save also updates the in-memory search index.
 4. Binder moves and trash update `binder_nodes` (parent, `sort_index`, `label`, `color`, `deleted_at`, `restore_parent_id`). Plot, characters, world notes, research, and scene links use the tables in [PROJECT_FORMAT.md](PROJECT_FORMAT.md). Opening a project copies leftover binder research notes into the research library and removes them from the binder. Emptying trash clears scene links to deleted scenes and drops a deleted book's word target.
 5. History restore either replaces one document from `snapshots` or copies a `.local/backups/*.sqlite` into the cache and writes the files again from it. That SQLite copy does not include `attachments/`.

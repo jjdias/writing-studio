@@ -107,10 +107,16 @@ pub const LISTED: [Listed; 26] = [
 ];
 
 /// Chords the manuscript handles itself, listed for the writer.
-pub const IN_THE_MANUSCRIPT: [(&str, &str); 3] = [
+pub const IN_THE_MANUSCRIPT: [(&str, &str); 9] = [
     ("Bold", "Ctrl+B"),
     ("Italic", "Ctrl+I"),
     ("Underline", "Ctrl+U"),
+    ("Strikethrough", "Ctrl+Shift+X"),
+    ("Link", "Ctrl+K"),
+    ("Heading 1 to 6", "Ctrl+Alt+1 to 6"),
+    ("Body text", "Ctrl+Alt+0"),
+    ("New paragraph", "Enter"),
+    ("Line break in a paragraph", "Shift+Enter"),
 ];
 
 pub fn app_shortcut(key: &str, ctrl: bool, shift: bool, alt: bool) -> Option<AppShortcut> {

@@ -61,9 +61,6 @@ use library::*;
 use compile::*;
 
 const STYLES: &str = include_str!("../../assets/style.css");
-const REVIEW_JS: &str = include_str!("../../assets/review.js");
-const SPELL_JS: &str = include_str!("../../assets/spell.js");
-const PLACE_JS: &str = include_str!("../../assets/place.js");
 /// The Markdown editor, CodeMirror 6 bundled into one file
 /// (`crates/ui/codemirror` builds it). Loaded once, as `window.wsEditor`.
 const CODEMIRROR_JS: &str = include_str!("../../assets/codemirror.js");
@@ -490,7 +487,6 @@ fn SettingsPanel() -> Element {
     let font = state.read().prose_font();
     let spelling_value = state.read().spelling_language().unwrap_or_default();
     let spelling_choices = state.read().spelling_choices();
-    let markdown_page = state.read().markdown_page;
     rsx! {
         div { class: "menu popover", role: "dialog", aria_label: "Settings",
             label { r#for: "setting-font", "Manuscript font" }
@@ -507,17 +503,7 @@ fn SettingsPanel() -> Element {
                     option { value: "{item.as_str()}", selected: item == font, "{item.label()}" }
                 }
             }
-            label { class: "compare-toggle",
-                input {
-                    r#type: "checkbox",
-                    checked: markdown_page,
-                    onchange: move |event| state.write().markdown_page = event.checked(),
-                }
-                "Markdown page (in progress)"
-            }
-            if markdown_page {
-                MarkdownSettings {}
-            }
+            MarkdownSettings {}
             PageSettings {}
             KeepPlaceSettings {}
             label { r#for: "setting-theme", "Theme" }

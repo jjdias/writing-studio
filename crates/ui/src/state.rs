@@ -423,7 +423,6 @@ pub struct StudioState {
     pub selected: Option<Id>,
     pub session: Option<EditorSession>,
     pub editor_text: String,
-    pub editor_html: String,
     pub editor_epoch: u64,
     pub search: String,
     pub manuscript_index: Rc<RefCell<ManuscriptIndex>>,
@@ -509,9 +508,6 @@ pub struct StudioState {
     pub renaming: Option<Id>,
     /// The window that lists every shortcut.
     pub show_shortcuts: bool,
-    /// The page is the Markdown editor, not the rich-text one. A choice
-    /// while Phase 12 brings the Markdown page level with the old one.
-    pub markdown_page: bool,
     /// The Go to box (Ctrl+P) is open.
     pub quick_open: bool,
     /// The Compile dialog is open.
@@ -591,7 +587,6 @@ impl Default for StudioState {
             selected: None,
             session: None,
             editor_text: String::new(),
-            editor_html: String::new(),
             editor_epoch: 0,
             search: String::new(),
             manuscript_index: Rc::new(RefCell::new(ManuscriptIndex::new())),
@@ -643,7 +638,6 @@ impl Default for StudioState {
             item_menu: None,
             renaming: None,
             show_shortcuts: false,
-            markdown_page: false,
             quick_open: false,
             compile_open: false,
             compile_check: None,
@@ -1355,7 +1349,6 @@ impl StudioState {
         } else {
             self.session = None;
             self.editor_text.clear();
-            self.editor_html.clear();
             self.editor_epoch += 1;
         }
         self.load_tracking();
@@ -1807,7 +1800,6 @@ impl StudioState {
 
     fn sync_editor_from_session(&mut self, session: &EditorSession) {
         self.editor_text = session.plain_text();
-        self.editor_html = session.html();
         self.editor_epoch = self.editor_epoch.saturating_add(1);
     }
 
@@ -1890,29 +1882,6 @@ impl StudioState {
         if changed {
             self.note_edit();
             self.status = status.into();
-        }
-    }
-
-    pub fn same_editor_html(&self, html: &str) -> bool {
-        let Some(session) = &self.session else {
-            return true;
-        };
-        let mut next = session.document().clone();
-        next.replace_html(html);
-        next.to_html() == session.html()
-    }
-
-    pub fn apply_editor_html(&mut self, html: String) {
-        if self.same_editor_html(&html) {
-            return;
-        }
-        if let Some(session) = &mut self.session {
-            session.apply_html(&html);
-            self.editor_text = session.plain_text();
-            if session.is_dirty() {
-                self.note_edit();
-                self.note_session_for_search();
-            }
         }
     }
 
@@ -4144,8 +4113,7 @@ impl StudioState {
                 let moved = self.absorb_binder_research();
                 self.session = None;
                 self.editor_text.clear();
-                self.editor_html.clear();
-                self.editor_epoch += 1;
+                    self.editor_epoch += 1;
                 if moved {
                     self.status = status.into();
                 }
@@ -4175,10 +4143,7 @@ impl StudioState {
         let structure = self.undo_is_structure_step();
         if let Some(session) = &mut self.session {
             if session.undo() {
-                let html = session.html();
-                let text = session.plain_text();
-                self.editor_html = html;
-                self.editor_text = text;
+                self.editor_text = session.plain_text();
                 self.editor_epoch = self.editor_epoch.saturating_add(1);
                 self.note_edit();
                 self.note_session_for_search();
@@ -4192,10 +4157,7 @@ impl StudioState {
     pub fn redo(&mut self) {
         if let Some(session) = &mut self.session {
             if session.redo() {
-                let html = session.html();
-                let text = session.plain_text();
-                self.editor_html = html;
-                self.editor_text = text;
+                self.editor_text = session.plain_text();
                 self.editor_epoch = self.editor_epoch.saturating_add(1);
                 self.note_edit();
                 self.note_session_for_search();
@@ -5125,7 +5087,6 @@ impl StudioState {
             self.selected = None;
             self.session = None;
             self.editor_text.clear();
-            self.editor_html.clear();
         }
         self.persist_binder()
     }
@@ -6283,14 +6244,7 @@ mod tests {
     #[test]
     fn review_edits_redraw_the_editor_and_save_with_the_scene() {
         let (mut state, dir) = open_state("review");
-        state.apply_editor_html(
-            concat!(
-                r#"<p>The <span class="ws-comment" data-comment="which one?">harbor</span> was "#,
-                r#"<mark data-highlight="yellow">quiet</mark>.</p>"#,
-                r#"<p><span class="ws-comment" data-comment="cut">Too long.</span></p>"#,
-            )
-            .into(),
-        );
+        state.apply_editor_markdown("The {==harbor==}{>>which one?<<} was {==quiet==}.\n\n{==Too long.==}{>>cut<<}");
         assert_eq!(state.review_items().len(), 3);
         let epoch = state.editor_epoch;
 
@@ -6298,11 +6252,14 @@ mod tests {
         state.resolve_note(0, true);
         state.set_note_text(1, "cut this");
         assert!(state.editor_epoch > epoch);
-        assert!(state.editor_html.contains(r#"data-resolved="true""#));
-        assert!(state.editor_html.contains(r#"data-kind="question""#));
+        let page = state.editor_markdown();
+        assert!(page.contains("{>>(resolved) Question: which one?<<}"), "{page}");
 
-        // What the webview sends back after the redraw is not a new edit.
-        assert!(state.same_editor_html(&state.editor_html.clone()));
+        // What the page sends back after the redraw is not a new edit.
+        let undo_to = |state: &StudioState| state.session.as_ref().unwrap().undo_target().map(|doc| doc.to_html());
+        let before = undo_to(&state);
+        state.apply_editor_markdown(&page);
+        assert_eq!(undo_to(&state), before);
 
         state.flush_editor();
         let doc_id = state.session.as_ref().unwrap().document_id();
@@ -6350,7 +6307,7 @@ A *gull* cried.");
         let (mut state, dir) = open_state("markdown-page");
         state.apply_editor_markdown("");
         assert_eq!(state.editor_markdown(), "", "an empty scene is an empty page");
-        state.apply_editor_html("<p>She opened the <strong>red</strong> door.</p><p>Nobody spoke.</p>".into());
+        state.apply_editor_markdown("She opened the **red** door.\n\nNobody spoke.");
         assert_eq!(state.editor_markdown(), "She opened the **red** door.
 
 Nobody spoke.");
@@ -6383,7 +6340,7 @@ Nobody spoke.");
     #[test]
     fn tracked_changes_are_accepted_rejected_and_kept_across_reopen() {
         let (mut state, dir) = open_state("track");
-        state.apply_editor_html("<p>She opened the door.</p><p>Nobody spoke.</p>".into());
+        state.apply_editor_markdown("She opened the door.\n\nNobody spoke.");
         assert!(!state.is_tracking());
         assert!(state.tracked_changes().is_empty());
 
@@ -6391,10 +6348,7 @@ Nobody spoke.");
         assert!(state.is_tracking());
         assert!(state.tracked_changes().is_empty());
 
-        state.apply_editor_html(
-            "<p>She opened the red door.</p><p>A gull cried.</p><p>Nobody spoke.</p><p>The end.</p>"
-                .into(),
-        );
+        state.apply_editor_markdown("She opened the red door.\n\nA gull cried.\n\nNobody spoke.\n\nThe end.");
         assert_eq!(state.tracked_changes().len(), 3);
 
         // Accepting keeps the text and drops the change.
@@ -6437,7 +6391,7 @@ Nobody spoke.");
     fn spelling_uses_the_dictionary_project_words_and_bible_names() {
         let (mut state, dir) = open_state("spell");
         assert_eq!(state.spelling_language().as_deref(), Some("en_US"));
-        state.apply_editor_html("<p>Maravance did not recieve teh letter. Teh end, said Zhul.</p>".into());
+        state.apply_editor_markdown("Maravance did not recieve teh letter. Teh end, said Zhul.");
         let words: Vec<String> = state.unknown_words().into_iter().map(|item| item.word).collect();
         assert_eq!(words, ["Maravance", "recieve", "teh", "Teh", "Zhul"]);
         assert!(state.spelling_suggestions("recieve").contains(&"receive".to_string()));
@@ -6496,7 +6450,7 @@ Nobody spoke.");
         state.add_character();
         let id = state.cast.characters.last().unwrap().id;
         state.set_character_name(id, "Mara Vance".into());
-        state.apply_editor_html("<p>Mara ran for the harbor. “Wait,” said the pilot.</p>".into());
+        state.apply_editor_markdown("Mara ran for the harbor. “Wait,” said the pilot.");
         state.set_scene_beat(scene, Beat::Goal, "Reach the harbor".into());
         state.set_scene_beat(scene, Beat::Outcome, "The boat has gone".into());
         assert!(state.has_unsaved());

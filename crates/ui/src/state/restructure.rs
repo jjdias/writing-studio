@@ -732,9 +732,7 @@ mod tests {
     fn a_split_makes_the_next_scene_and_undo_joins_them_again() {
         let (mut state, dir) = open_state("split");
         let first = state.selected.unwrap();
-        state.apply_editor_html(
-            r#"<p>Before the cut.</p><p>After <span class="ws-comment" data-comment="check">the cut</span>.</p>"#.into(),
-        );
+        state.apply_editor_markdown("Before the cut.\n\nAfter {==the cut==}{>>check<<}.");
         state.binder.add_keyword(first, "Mara");
         state.start_tracking();
         state.apply_editor_text("Before the cut.\nAfter the change.".into());
@@ -792,7 +790,7 @@ mod tests {
         state.apply_editor_text("First part.".into());
         state.add_node(NodeKind::Scene);
         let second = state.selected.unwrap();
-        state.apply_editor_html(r#"<p><mark data-highlight="yellow">Second</mark> part.</p>"#.into());
+        state.apply_editor_markdown("{==Second==} part.");
         state.binder.add_keyword(second, "Flashback");
         state.start_tracking();
         state.apply_editor_text("Second part, changed.".into());

@@ -762,44 +762,11 @@ fn copy_to_clipboard(mut state: Signal<StudioState>, text: String, done: &'stati
 }
 
 pub(super) fn split_at_caret(mut state: Signal<StudioState>) {
-    if state.peek().markdown_page {
-        spawn(async move {
-            let mut eval = document::eval("dioxus.send(window.wsEditor ? wsEditor.textBeforeCaret() : null);");
-            match eval.recv::<Option<String>>().await {
-                Ok(Some(before)) => state.write().split_at_markdown(&before),
-                _ => state.write().status = "Click in the scene where the new scene should start, then Split.".into(),
-            }
-        });
-        return;
-    }
     spawn(async move {
-        let mut eval = document::eval(
-            r#"
-            const el = document.querySelector('[data-manuscript]');
-            const sel = window.getSelection();
-            let at = -1;
-            if (el && sel && sel.rangeCount && el.contains(sel.getRangeAt(0).startContainer)) {
-                const range = sel.getRangeAt(0);
-                const before = document.createRange();
-                before.selectNodeContents(el);
-                before.setEnd(range.startContainer, range.startOffset);
-                at = Array.from(before.toString()).length;
-            }
-            dioxus.send({ at, html: el ? el.innerHTML : '' });
-            "#,
-        );
-        let Ok(place) = eval.recv::<serde_json::Value>().await else {
-            return;
-        };
-        let at = place["at"].as_i64().unwrap_or(-1);
-        let html = place["html"].as_str().unwrap_or_default().to_string();
-        if at < 0 {
-            state.write().status = "Click in the scene where the new scene should start, then Split.".into();
-            return;
+        let mut eval = document::eval("dioxus.send(window.wsEditor ? wsEditor.textBeforeCaret() : null);");
+        match eval.recv::<Option<String>>().await {
+            Ok(Some(before)) => state.write().split_at_markdown(&before),
+            _ => state.write().status = "Click in the scene where the new scene should start, then Split.".into(),
         }
-        if !html.is_empty() {
-            commit_editor_html(state, html);
-        }
-        state.write().split_at(at as usize);
     });
 }

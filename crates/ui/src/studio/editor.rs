@@ -2,16 +2,13 @@ use super::*;
 
 #[component]
 pub(super) fn EditorPane() -> Element {
-    let mut state = use_context::<Signal<StudioState>>();
+    let state = use_context::<Signal<StudioState>>();
     let snapshot = state.read().clone();
     let node = snapshot.selected_node().cloned();
     let words = snapshot.word_count();
-    let html = snapshot.editor_html.clone();
-    let epoch = snapshot.editor_epoch;
     let focus = snapshot.focus_mode;
     let can_edit = snapshot.session.is_some() && !snapshot.syncing;
     let side = snapshot.review_at_side && !snapshot.review_folded;
-    let markdown = snapshot.markdown_page;
     let scene = snapshot.session.as_ref().map(|session| session.document_id());
     let marks = use_signal(Vec::<String>::new);
     let prompt = use_signal(|| None::<InlinePrompt>);
@@ -22,16 +19,6 @@ pub(super) fn EditorPane() -> Element {
         &unknown.iter().map(|item| item.word.as_str()).collect::<Vec<_>>(),
     )
     .unwrap_or_else(|_| "[]".into());
-    use_effect(use_reactive((&epoch, &unknown_json, &markdown), |(_, words, markdown)| {
-        if !markdown {
-            paint_spelling(words)
-        }
-    }));
-    use_effect(use_reactive((&epoch, &markdown), move |(_, markdown)| {
-        if !markdown {
-            watch_marks(marks)
-        }
-    }));
     let keep = snapshot.keep_place();
     let keep_json = format!(
         r#"{{"scroll":"{}","marker":{},"fade":"{}","bars":{}}}"#,
@@ -40,16 +27,6 @@ pub(super) fn EditorPane() -> Element {
         keep.fade.as_str(),
         keep.quiet_bars
     );
-    use_effect(use_reactive((&epoch, &keep_json, &markdown), |(_, options, markdown)| {
-        if !markdown {
-            keep_place(options)
-        }
-    }));
-    let initial_html = if html.trim().is_empty() {
-        "<p><br></p>".into()
-    } else {
-        html
-    };
 
     rsx! {
         div { class: "editor-pane",
@@ -68,24 +45,10 @@ pub(super) fn EditorPane() -> Element {
                         }
                         span { class: "page-words", "{words} words" }
                     }
-                    if markdown {
-                        if let Some(scene) = scene {
-                            MarkdownPage { key: "{scene}", scene, can_edit, marks, spelling: unknown_json.clone(), keep: keep_json.clone(), fading: keep.fade != Fade::Off }
-                        }
+                    if let Some(scene) = scene {
+                        MarkdownPage { key: "{scene}", scene, can_edit, marks, spelling: unknown_json.clone(), keep: keep_json.clone(), fading: keep.fade != Fade::Off }
                     } else {
-                    div {
-                        key: "{epoch}",
-                        class: if keep.fade == Fade::Off { "manuscript rich" } else { "manuscript rich fading" },
-                        contenteditable: can_edit,
-                        "data-manuscript": "true",
-                        aria_label: "Manuscript",
-                        dangerous_inner_html: "{initial_html}",
-                        oninput: move |_| read_manuscript_html(state),
-                        onblur: move |_| {
-                            read_manuscript_html(state);
-                            state.write().flush_editor();
-                        },
-                    }
+                        div { class: "manuscript markdown-page", aria_label: "Manuscript" }
                     }
                 }
                 if !focus {
@@ -204,108 +167,21 @@ fn page_options(options: &MarkdownOptions) -> serde_json::Value {
     })
 }
 
-pub(super) fn read_manuscript_html(state: Signal<StudioState>) {
-    spawn(async move {
-        // Leave the webview event before running script. Evaluating script
-        // inside the input callback deadlocks WebView2 and the window stops.
-        tokio::time::sleep(std::time::Duration::from_millis(16)).await;
-        let mut eval = document::eval(
-            r#"
-            const el = document.querySelector('[data-manuscript]');
-            dioxus.send(el ? el.innerHTML : '');
-            "#,
-        );
-        if let Ok(html) = eval.recv::<String>().await {
-            commit_editor_html(state, html);
-        }
-    });
+/// Run a call on the Markdown page's editor, when there is one.
+pub(super) fn page_call(call: impl AsRef<str>) {
+    let _ = document::eval(&format!("window.wsEditor && {};", call.as_ref()));
 }
 
-/// Send the unknown words to the manuscript, which underlines them. Nothing
-/// comes back into the document.
-pub(super) fn paint_spelling(words_json: String) {
-    spawn(async move {
-        // Wait for the manuscript to be on screen after a redraw.
-        tokio::time::sleep(std::time::Duration::from_millis(40)).await;
-        let script = format!(
-            r#"
-            {SPELL_JS}
-            dioxus.send(wsSpellApply(document.querySelector('[data-manuscript]'), {words_json}));
-            "#
-        );
-        let mut eval = document::eval(&script);
-        let _ = eval.recv::<bool>().await;
-    });
-}
-
-/// Keep `marks` to the marks at the caret, for the toolbar to show. Runs
-/// for as long as the manuscript it was started for is on screen.
-pub(super) fn watch_marks(mut marks: Signal<Vec<String>>) {
-    spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_millis(40)).await;
-        let mut eval = document::eval(&format!("{REVIEW_JS}\nwsWatchMarks();"));
-        while let Ok(next) = eval.recv::<Vec<String>>().await {
-            if *marks.peek() != next {
-                marks.set(next);
-            }
-        }
-    });
+/// One of the format toolbar's commands, on the selection.
+pub(super) fn format_command(command: &str, argument: &str) {
+    let argument = serde_json::to_string(argument).unwrap_or_else(|_| "\"\"".into());
+    page_call(format!("wsEditor.command('{command}', {argument})"));
 }
 
 /// Select the next place a word appears in the manuscript.
 pub(super) fn find_spelling(word: &str) {
     let word_json = serde_json::to_string(word).unwrap_or_else(|_| "\"\"".into());
-    spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_millis(16)).await;
-        let script = format!(
-            r#"
-            if (window.wsEditor && wsEditor.active()) {{
-                dioxus.send(wsEditor.findWord({word_json}));
-            }} else {{
-                {SPELL_JS}
-                const el = document.querySelector('[data-manuscript]');
-                if (el) {{ el.focus(); }}
-                dioxus.send(wsSpellFind(el, {word_json}));
-            }}
-            "#
-        );
-        let mut eval = document::eval(&script);
-        let _ = eval.recv::<bool>().await;
-    });
-}
-
-pub(super) fn commit_editor_html(mut state: Signal<StudioState>, html: String) {
-    if state.read().same_editor_html(&html) {
-        return;
-    }
-    state.write().apply_editor_html(html);
-}
-
-/// Act on the document from the review panel, then put the caret back where
-/// it was once the manuscript is drawn again. The panel's buttons keep focus
-/// off themselves, so the caret is still in the manuscript when this runs.
-pub(super) fn keep_caret(mut state: Signal<StudioState>, action: impl FnOnce(&mut StudioState) + 'static) {
-    // The Markdown page keeps its caret itself: only what changed is put in.
-    if state.peek().markdown_page {
-        action(&mut state.write());
-        return;
-    }
-    spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_millis(16)).await;
-        let mut eval = document::eval(&format!(
-            "{REVIEW_JS}\ndioxus.send(wsCaretGet(document.querySelector('[data-manuscript]')));"
-        ));
-        let caret = eval.recv::<Vec<u32>>().await.unwrap_or_default();
-        action(&mut state.write());
-        let [start, end] = caret[..] else {
-            return;
-        };
-        tokio::time::sleep(std::time::Duration::from_millis(40)).await;
-        let mut eval = document::eval(&format!(
-            "{REVIEW_JS}\ndioxus.send(wsCaretSet(document.querySelector('[data-manuscript]'), {start}, {end}));"
-        ));
-        let _ = eval.recv::<bool>().await;
-    });
+    page_call(format!("wsEditor.findWord({word_json})"));
 }
 
 fn keep_focus(event: MouseEvent) {
@@ -491,7 +367,7 @@ pub(super) fn SpellPanel(unknown: Vec<UnknownWord>, project_words: Vec<String>) 
                                 let word = word.clone();
                                 move |_| {
                                     let word = word.clone();
-                                    keep_caret(state, move |current| current.remove_project_word(&word));
+                                    state.write().remove_project_word(&word);
                                 }
                             },
                             "{word} ×"
@@ -542,7 +418,7 @@ pub(super) fn SpellFocus(word: String, suggestions: Vec<String>) -> Element {
                         let (word, suggestion) = (word.clone(), suggestion.clone());
                         move |_| {
                             let (word, suggestion) = (word.clone(), suggestion.clone());
-                            keep_caret(state, move |current| current.replace_misspelling(&word, &suggestion));
+                            state.write().replace_misspelling(&word, &suggestion);
                         }
                     },
                     "{suggestion}"
@@ -558,7 +434,7 @@ pub(super) fn SpellFocus(word: String, suggestions: Vec<String>) -> Element {
                 onmousedown: keep_focus,
                 onclick: move |_| {
                     let word = add_word.clone();
-                    keep_caret(state, move |current| current.add_project_word(&word));
+                    state.write().add_project_word(&word);
                 },
                 "Add to project dictionary"
             }
@@ -574,7 +450,7 @@ pub(super) fn SpellFocus(word: String, suggestions: Vec<String>) -> Element {
 /// Paragraphs changed since tracking was turned on, with accept and reject.
 #[component]
 pub(super) fn TrackPanel(started: String, changes: Vec<TrackedChange>) -> Element {
-    let state = use_context::<Signal<StudioState>>();
+    let mut state = use_context::<Signal<StudioState>>();
     let count = changes.len();
     rsx! {
         div { class: "review track",
@@ -586,13 +462,13 @@ pub(super) fn TrackPanel(started: String, changes: Vec<TrackedChange>) -> Elemen
                     button {
                         title: "Keep every change. Tracking goes on from the text as it is now.",
                         onmousedown: keep_focus,
-                        onclick: move |_| keep_caret(state, |current| current.accept_all_tracked_changes()),
+                        onclick: move |_| state.write().accept_all_tracked_changes(),
                         "Accept all"
                     }
                     button {
                         title: "Put the text back as it was when tracking began. Undo brings the changes back.",
                         onmousedown: keep_focus,
-                        onclick: move |_| keep_caret(state, |current| current.reject_all_tracked_changes()),
+                        onclick: move |_| state.write().reject_all_tracked_changes(),
                         "Reject all"
                     }
                 }
@@ -608,7 +484,7 @@ pub(super) fn TrackPanel(started: String, changes: Vec<TrackedChange>) -> Elemen
 
 #[component]
 pub(super) fn TrackRow(index: usize, change: TrackedChange) -> Element {
-    let state = use_context::<Signal<StudioState>>();
+    let mut state = use_context::<Signal<StudioState>>();
     let (label, row_class) = match change.change {
         ParagraphChange::Added => ("Added", "review-item track-item added"),
         ParagraphChange::Removed => ("Removed", "review-item track-item removed"),
@@ -621,7 +497,7 @@ pub(super) fn TrackRow(index: usize, change: TrackedChange) -> Element {
             button {
                 class: "review-anchor track-kind",
                 title: "Show where this is in the manuscript",
-                onclick: move |_| run_editor_script(state, format!("wsShowBlock(el, {block});")),
+                onclick: move |_| page_call(format!("wsEditor.showBlock({block})")),
                 "{label}"
             }
             p { class: "track-text",
@@ -639,13 +515,13 @@ pub(super) fn TrackRow(index: usize, change: TrackedChange) -> Element {
             button {
                 title: "Keep this change",
                 onmousedown: keep_focus,
-                onclick: move |_| keep_caret(state, move |current| current.accept_tracked_change(index)),
+                onclick: move |_| state.write().accept_tracked_change(index),
                 "Accept"
             }
             button {
                 title: "Put this paragraph back as it was. Undo brings the change back.",
                 onmousedown: keep_focus,
-                onclick: move |_| keep_caret(state, move |current| current.reject_tracked_change(index)),
+                onclick: move |_| state.write().reject_tracked_change(index),
                 "Reject"
             }
         }
@@ -684,7 +560,7 @@ pub(super) fn ReviewList(items: Vec<ReviewItem>) -> Element {
                     button {
                         title: "Take every resolved note off this document. The text stays.",
                         onmousedown: keep_focus,
-                        onclick: move |_| keep_caret(state, |current| current.remove_resolved_notes()),
+                        onclick: move |_| state.write().remove_resolved_notes(),
                         "Remove resolved"
                     }
                 }
@@ -709,15 +585,15 @@ pub(super) fn ReviewRow(item: ReviewItem) -> Element {
         "review-item"
     };
     let jump = match target {
-        ReviewTarget::Note(index) => format!("wsSelectReview(el, 'note', {index});"),
-        ReviewTarget::Highlight(index) => format!("wsSelectReview(el, 'highlight', {index});"),
+        ReviewTarget::Note(index) => format!("wsEditor.selectReview('note', {index})"),
+        ReviewTarget::Highlight(index) => format!("wsEditor.selectReview('highlight', {index})"),
     };
     rsx! {
         li { class: row_class,
             button {
                 class: "review-anchor",
                 title: "Show this text in the manuscript",
-                onclick: move |_| run_editor_script(state, jump.clone()),
+                onclick: move |_| page_call(&jump),
                 "{anchor}"
             }
             match item.kind {
@@ -745,7 +621,7 @@ pub(super) fn ReviewRow(item: ReviewItem) -> Element {
                         }
                         button {
                             onmousedown: keep_focus,
-                            onclick: move |_| keep_caret(state, move |current| current.resolve_note(index, !resolved)),
+                            onclick: move |_| state.write().resolve_note(index, !resolved),
                             if resolved { "Reopen" } else { "Resolve" }
                         }
                     }
@@ -757,80 +633,12 @@ pub(super) fn ReviewRow(item: ReviewItem) -> Element {
             button {
                 title: "Remove it. The text stays.",
                 onmousedown: keep_focus,
-                onclick: move |_| keep_caret(state, move |current| current.remove_review(target)),
+                onclick: move |_| state.write().remove_review(target),
                 "Remove"
             }
         }
     }
 }
-
-pub(super) fn run_format_command(state: Signal<StudioState>, command: &'static str, argument: &'static str) {
-    if state.peek().markdown_page {
-        let argument = serde_json::to_string(argument).unwrap_or_else(|_| "\"\"".into());
-        let _ = document::eval(&format!("window.wsEditor && wsEditor.command('{command}', {argument});"));
-        return;
-    }
-    spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_millis(16)).await;
-        let script = format!(
-            r#"
-            const el = document.querySelector('[data-manuscript]');
-            if (el) {{ el.focus(); }}
-            document.execCommand('{command}', false, {arg});
-            dioxus.send(el ? el.innerHTML : '');
-            "#,
-            command = command,
-            arg = if argument.is_empty() {
-                "null".into()
-            } else {
-                format!("'{argument}'")
-            }
-        );
-        let mut eval = document::eval(&script);
-        if let Ok(html) = eval.recv::<String>().await {
-            commit_editor_html(state, html);
-        }
-    });
-}
-
-pub(super) fn run_editor_script(state: Signal<StudioState>, body: impl Into<String>) {
-    let body = body.into();
-    if state.peek().markdown_page {
-        // The same calls, made on the Markdown page; its changes come back
-        // through the page's own messages.
-        let _ = document::eval(&format!("if (window.wsEditor) {{\n{MARKDOWN_PAGE_CALLS}\nconst el = null;\n{body}\n}}"));
-        return;
-    }
-    spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_millis(16)).await;
-        let script = format!(
-            r#"
-            {REVIEW_JS}
-            const el = document.querySelector('[data-manuscript]');
-            if (el) {{ el.focus(); }}
-            {body}
-            dioxus.send(el ? el.innerHTML : '');
-            "#
-        );
-        let mut eval = document::eval(&script);
-        if let Ok(html) = eval.recv::<String>().await {
-            commit_editor_html(state, html);
-        }
-    });
-}
-
-/// The review panel's and the toolbar's calls, as the Markdown page makes
-/// them: the rich-text page's names, so the callers are the same for both.
-const MARKDOWN_PAGE_CALLS: &str = r#"
-const wsHighlight = (el, color) => wsEditor.command('highlight', color);
-const wsClearHighlight = (el) => wsEditor.command('clearHighlight');
-const wsUncomment = (el) => wsEditor.command('uncomment');
-const wsLink = (el, raw) => wsEditor.command('link', raw);
-const wsComment = (el, kind, raw) => wsEditor.command('note', { kind, text: raw || '' });
-const wsReleaseSelection = (el) => wsEditor.release();
-const wsSelectReview = (el, type, index) => wsEditor.selectReview(type, index);
-const wsShowBlock = (el, index) => wsEditor.showBlock(index);
-"#;
 
 /// The paragraph styles, as `formatBlock` takes them, and the name the
 /// mark watcher reports for each.
@@ -870,12 +678,12 @@ pub(super) fn FormatToolbar(
         div { class: "format-toolbar", role: "toolbar", aria_label: "Format",
             ToolButton {
                 name: "Bold", title: "Bold (Ctrl+B)", on: on("bold"), enabled,
-                onclick: move |_| run_format_command(state, "bold", ""),
+                onclick: move |_| format_command("bold", ""),
                 span { class: "tool-letter bold", "B" }
             }
             ToolButton {
                 name: "Italic", title: "Italic (Ctrl+I)", on: on("italic"), enabled,
-                onclick: move |_| run_format_command(state, "italic", ""),
+                onclick: move |_| format_command("italic", ""),
                 span { class: "tool-letter italic", "I" }
             }
             span { class: "tool-rule" }
@@ -900,7 +708,7 @@ pub(super) fn FormatToolbar(
                                 onmousedown: keep_focus,
                                 onclick: move |_| {
                                     state.write().open_menu = None;
-                                    run_format_command(state, "formatBlock", command);
+                                    format_command("formatBlock", command);
                                 },
                                 "{label}"
                             }
@@ -912,7 +720,7 @@ pub(super) fn FormatToolbar(
                 name: "Quote", title: "Quote", on: on("quote"), enabled,
                 onclick: move |_| {
                     let target = if on("quote") { "P" } else { "BLOCKQUOTE" };
-                    run_format_command(state, "formatBlock", target);
+                    format_command("formatBlock", target);
                 },
                 svg { class: "glyph", view_box: "0 0 16 16",
                     path { d: "M3 4.5h4v4H5.2L4.2 12H3zM9 4.5h4v4h-1.8l-1 3.5H9z", fill: "currentColor" }
@@ -920,7 +728,7 @@ pub(super) fn FormatToolbar(
             }
             ToolButton {
                 name: "List", title: "Bulleted list", on: on("list"), enabled,
-                onclick: move |_| run_format_command(state, "insertUnorderedList", ""),
+                onclick: move |_| format_command("insertUnorderedList", ""),
                 svg { class: "glyph", view_box: "0 0 16 16",
                     circle { cx: "3", cy: "4", r: "1.1", fill: "currentColor" }
                     circle { cx: "3", cy: "8", r: "1.1", fill: "currentColor" }
@@ -1001,13 +809,13 @@ fn MoreMenu(marks: Signal<Vec<String>>, tracking: bool) -> Element {
     let command = move |name: &'static str, argument: &'static str| {
         move |_| {
             state.write().open_menu = None;
-            run_format_command(state, name, argument);
+            format_command(name, argument);
         }
     };
-    let script = move |body: String| {
+    let script = move |call: String| {
         move |_| {
             state.write().open_menu = None;
-            run_editor_script(state, body.clone());
+            page_call(&call);
         }
     };
     rsx! {
@@ -1027,15 +835,15 @@ fn MoreMenu(marks: Signal<Vec<String>>, tracking: bool) -> Element {
                         role: "menuitem",
                         title: "Highlight the selected text in {color.as_str()}",
                         onmousedown: keep_focus,
-                        onclick: script(format!("wsHighlight(el, '{}');", color.as_str())),
+                        onclick: script(format!("wsEditor.command('highlight', '{}')", color.as_str())),
                         "{color.label()}"
                     }
                 }
             }
-            button { class: "menu-item", role: "menuitem", onmousedown: keep_focus, onclick: script("wsClearHighlight(el);".into()), "Remove highlight" }
+            button { class: "menu-item", role: "menuitem", onmousedown: keep_focus, onclick: script("wsEditor.command('clearHighlight')".into()), "Remove highlight" }
             div { class: "menu-rule" }
             button { class: "menu-item", role: "menuitem", disabled: !on("link"), onmousedown: keep_focus, onclick: command("unlink", ""), "Remove link" }
-            button { class: "menu-item", role: "menuitem", disabled: !on("note"), onmousedown: keep_focus, onclick: script("wsUncomment(el);".into()), "Remove note" }
+            button { class: "menu-item", role: "menuitem", disabled: !on("note"), onmousedown: keep_focus, onclick: script("wsEditor.command('uncomment')".into()), "Remove note" }
             div { class: "menu-rule" }
             button {
                 class: "menu-item",
@@ -1080,12 +888,7 @@ pub(super) struct InlinePrompt {
 fn open_prompt(mut state: Signal<StudioState>, mut prompt: Signal<Option<InlinePrompt>>, kind: PromptKind) {
     spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(16)).await;
-        let script = if state.peek().markdown_page {
-            "dioxus.send(window.wsEditor ? wsEditor.hold('.editor-body') : []);".to_string()
-        } else {
-            format!("{REVIEW_JS}\ndioxus.send(wsHoldSelection(document.querySelector('[data-manuscript]'), document.querySelector('.editor-body')));")
-        };
-        let mut eval = document::eval(&script);
+        let mut eval = document::eval("dioxus.send(window.wsEditor ? wsEditor.hold('.editor-body') : []);");
         match eval.recv::<Vec<f64>>().await.unwrap_or_default()[..] {
             [x, y] => prompt.set(Some(InlinePrompt { kind, x, y })),
             _ => {
@@ -1100,21 +903,20 @@ fn open_prompt(mut state: Signal<StudioState>, mut prompt: Signal<Option<InlineP
 
 #[component]
 fn PromptField(at: InlinePrompt, prompt: Signal<Option<InlinePrompt>>) -> Element {
-    let state = use_context::<Signal<StudioState>>();
     let mut text = use_signal(String::new);
     let mut note_kind = use_signal(|| NoteKind::Comment);
     let mut apply = move || {
         let value = serde_json::to_string(&text()).unwrap_or_else(|_| "\"\"".into());
-        let body = match at.kind {
-            PromptKind::Link => format!("wsLink(el, {value});"),
-            PromptKind::Note => format!("wsComment(el, '{}', {value});", note_kind().as_str()),
+        let call = match at.kind {
+            PromptKind::Link => format!("wsEditor.command('link', {value})"),
+            PromptKind::Note => format!("wsEditor.command('note', {{ kind: '{}', text: {value} }})", note_kind().as_str()),
         };
         prompt.set(None);
-        run_editor_script(state, body);
+        page_call(call);
     };
     let mut cancel = move || {
         prompt.set(None);
-        run_editor_script(state, "wsReleaseSelection(el);");
+        page_call("wsEditor.release()");
     };
     let (label, placeholder, action) = match at.kind {
         PromptKind::Link => ("Link address", "example.com", "Link"),
@@ -1190,7 +992,7 @@ fn PageTitle(id: Id, title: String, editable: bool) -> Element {
                 Key::Enter => {
                     event.prevent_default();
                     state.write().rename_item(id, &draft());
-                    focus_dom_now("[data-manuscript], .markdown-page .cm-content");
+                    focus_dom_now(".markdown-page .cm-content");
                 }
                 Key::Escape => {
                     event.stop_propagation();
@@ -1219,23 +1021,10 @@ fn focus_dom_now(selector: &'static str) {
     });
 }
 
-/// Install fixed scrolling, the line marker, and fading on the page, from
-/// the choices in Settings. Runs again when the page is drawn again or a
-/// choice changes.
-pub(super) fn keep_place(options_json: String) {
-    spawn(async move {
-        // Wait for the manuscript to be on screen after a redraw.
-        tokio::time::sleep(std::time::Duration::from_millis(40)).await;
-        let mut eval = document::eval(&format!("{PLACE_JS}\ndioxus.send(wsKeepPlace({options_json}));"));
-        let _ = eval.recv::<bool>().await;
-    });
-}
-
 /// The scene's headings, links, and notes in order. Choosing one selects
 /// it on the page, the way the Notes tab does.
 #[component]
 pub(super) fn NavList(items: Vec<NavItem>) -> Element {
-    let state = use_context::<Signal<StudioState>>();
     rsx! {
         ul { class: "review-list nav-list",
             for item in items {
@@ -1246,8 +1035,8 @@ pub(super) fn NavList(items: Vec<NavItem>) -> Element {
                         NavKind::Note(_) => ("Note".to_string(), "nav-item nav-note".to_string()),
                     };
                     let jump = match &item.kind {
-                        NavKind::Note(index) => format!("wsSelectReview(el, 'note', {index});"),
-                        _ => format!("wsShowBlock(el, {});", item.block),
+                        NavKind::Note(index) => format!("wsEditor.selectReview('note', {index})"),
+                        _ => format!("wsEditor.showBlock({})", item.block),
                     };
                     let detail = match &item.kind {
                         NavKind::Link(url) => url.clone(),
@@ -1259,7 +1048,7 @@ pub(super) fn NavList(items: Vec<NavItem>) -> Element {
                             button {
                                 class: "review-anchor",
                                 title: if detail.is_empty() { "Show this in the manuscript".to_string() } else { detail.clone() },
-                                onclick: move |_| run_editor_script(state, jump.clone()),
+                                onclick: move |_| page_call(&jump),
                                 span { class: "nav-kind", "{kind}" }
                                 span { class: "nav-text", "{text}" }
                             }

@@ -24,7 +24,12 @@ A `.writingstudio` folder is the whole project, kept as plain files you can open
 
 ## Write
 
-- Choose a scene in the binder. Type in the manuscript. It is set on a page in a reading font, about seventy characters to the line. **Settings** → **Manuscript font** chooses serif or sans serif for this computer; code blocks stay in a fixed-width font. Below it, sliders set the line length (45 to 100 characters), line height, space between paragraphs, and first-line indent, and **Reset the page** puts them back. These are this computer's settings and change how the page looks while writing, not the exported file.
+- Choose a scene in the binder. Type in the manuscript. It is set on a page in a reading font, about seventy characters to the line.
+- The page is Markdown, shown as it reads: **bold** is bold and a heading is large, and the Markdown marks (`**`, `#`, `>`, `[text](address)`) show only where the caret is, so you can see and change them there. **Ctrl+E**, or **Settings** → **Show every Markdown mark**, shows them all (Source mode). Type the marks or use the keys: **Ctrl+B** bold, **Ctrl+I** italic, **Ctrl+U** underline, **Ctrl+Shift+X** strikethrough, **Ctrl+K** a link, **Ctrl+Alt+1** to **6** a heading, **Ctrl+Alt+0** body text. With text selected a key wraps it; inside a mark it takes it off.
+- **Enter** starts a new paragraph. **Shift+Enter** breaks the line inside the paragraph. In a list or a quote, Enter starts the next item or quoted line, and Enter on an empty one ends the list or quote.
+- **Settings** → **Smart quotes and dashes** turns `"` and `'` into curly quotes as you type, `--` into an em dash, and `...` into an ellipsis. **Close brackets and marks** types the closing `)`, `]`, `"`, `*`, or `_` for you. Both are off until chosen, and saved in the project.
+- Text pasted from a web page or a word processor comes in as Markdown, with its bold, italic, links, headings, and lists. A web address pasted over selected text makes it a link.
+- A note is written `{==text==}{>>the note<<}` and a highlight `{==text==}` (yellow) or `{==text==}{.green}`; `==text==` is a yellow highlight too. On the page a note is underlined with a mark after it that shows the note. A footnote, `word[^1]` with a line `[^1]: its text` at the end of the scene, becomes a note on the word before it. **Settings** → **Manuscript font** chooses serif or sans serif for this computer; code blocks stay in a fixed-width font. Below it, sliders set the line length (45 to 100 characters), line height, space between paragraphs, and first-line indent, and **Reset the page** puts them back. These are this computer's settings and change how the page looks while writing, not the exported file.
 - Three more choices there help keep your place, and work in focus mode too. **Keep the line I type** holds the line with the caret near the top, in the middle, or near the bottom of the page while the page scrolls under it. **Fade the rest of the page** keeps the current paragraph or sentence at full strength and fades the rest. **Mark the line I am on** lays a faint band under the caret's line. All three are off until chosen, and none of them changes the text.
 - While you type, the format toolbar, the bar over the page, the status bar, and the binder and Context fade out (they keep their room, so the page does not move), and they come back when you move the pointer, press a key with **Ctrl** or **Alt**, or leave the page. **Fade the bars while I type** in Settings turns this off.
 - The format toolbar is one row: **Bold**, **Italic**, the paragraph style (Body, Heading 1 to 3, Code), **Quote**, **List**, **Link**, **Note**, and **More**. A button is lit when its mark is on at the caret. Clicking one leaves the caret and the selection where they were.
@@ -157,7 +162,6 @@ In a narrow window Context folds away first, then the binder, so the page keeps 
 - Words in character, place, and culture names are accepted without adding them. Numbers, single letters, and words in capitals are not checked.
 - **Settings** → **Spelling**, at the top of the library, chooses the dictionary or turns spellcheck off. English (US) is built in. For another language, put its Hunspell files (`name.aff` and `name.dic`) in a `dictionaries` folder inside the project folder and reopen the project. Dictionaries installed on the computer in the usual Hunspell folders are listed too.
 - Spellcheck runs on this computer. No text leaves it.
-- Underlines need a recent webview. Where they do not show, the list still works.
 
 ## Themes
 
@@ -174,6 +178,7 @@ In a narrow window Context folds away first, then the binder, so the page keeps 
 | **Ctrl+Z** | Undo |
 | **Ctrl+Y**, **Ctrl+Shift+Z** | Redo |
 | **Ctrl+B** | Bold the selection in the manuscript |
+| **Ctrl+E** | Show every Markdown mark (Source mode), or only where the caret is |
 | **Ctrl+F** | Search. On the mind map, focuses the map's filter |
 | **Ctrl+Shift+F**, **Ctrl+\\** | Focus mode |
 | **Escape** | Close a menu or a panel over the page, or cancel a waiting delete, or let go of picked scenes, or leave focus mode, or clear the mind map's filter, or clear binder search, or let go of a keyword or story entry |

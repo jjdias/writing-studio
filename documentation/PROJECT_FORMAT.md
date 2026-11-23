@@ -212,7 +212,9 @@ Nobody waited.
 - A list with no items.
 - A note that crosses formatting or a highlight is written once for each piece.
 
-**Import.** The reader takes the export back, and reads Markdown written elsewhere: wrapped paragraphs, `***` or `---` as a scene break, `*` list items, `<b>` and `<i>`. It does not read `_italic_`, lists inside lists, or quotes inside quotes; those come in as text.
+**Import.** The reader takes the export back, and reads Markdown written elsewhere: wrapped paragraphs, `***` or `---` as a scene break, `*` list items, `<b>` and `<i>`. It reads `_italic_` and `__bold__` (not inside a word, as in `snake_case`), `==text==` as a yellow highlight, and footnotes: `word[^1]` with a line `[^1]: text` becomes a note on the word before the mark, and that line goes. It does not read lists inside lists, quotes inside quotes, inline code, or images; those come in as text.
+
+**The page.** The manuscript page edits a scene in this Markdown: it shows the scene as the export writes it, and reads each change back with this reader. The scene file stays HTML.
 
 **Checked against another reader.** The export is read with an independent Markdown reader (`pulldown-cmark`):
 

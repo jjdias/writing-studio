@@ -1,6 +1,6 @@
 # Phase 12 — A Markdown editor
 
-In progress: stages 1 to 6 are done.
+In progress: stages 1 to 7 are done. Stage 8, scenes as `.md` files, waits for the maintainer's decision; the scenes stay HTML files.
 
 The page is a rich-text editor today: a `contenteditable` element that the program's own scripts (`crates/ui/assets/review.js`, `spell.js`, `place.js`) and `crates/ui/src/studio/editor.rs` keep in step with the document model. This phase makes the page a Markdown editor: the writer types and sees Markdown, shown as the best Markdown editors show it, while everything the page does now keeps working.
 
@@ -106,6 +106,8 @@ Each as CodeMirror decorations or panels, not changes to its DOM:
 ### 7. The rich-text editor goes
 
 - The `contenteditable` page, its HTML handling in `editor.rs`, and the scripts or parts of them that only it used are removed, as the roadmap's rules ask.
+
+**Done.** The Markdown page is the page, with no switch. Gone: the `contenteditable` page and its readers in `studio/editor.rs`, `review.js`, `spell.js`, and `place.js` with their CSS, `StudioState::editor_html`, `same_editor_html`, and `apply_editor_html`, and `EditorSession::html` and `apply_html`. The toolbar, the link and note field, the review panel, Navigate, finding a word, and split call the editor directly (`page_call`, `format_command`); review actions act on the document, and the page keeps its caret. The shortcuts window lists the Markdown keys, and `USAGE.md`, `ARCHITECTURE.md`, and `PROJECT_FORMAT.md` describe the page and what the reader now takes. The state's tests set their scenes up in Markdown, as the page sends them.
 
 ### 8. Scenes as Markdown files (decided at the end)
 
