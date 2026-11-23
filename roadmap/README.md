@@ -21,6 +21,7 @@ Writing Studio is **open source** (MIT OR Apache-2.0) and **free for the communi
 | 7 | Windows and Linux release: CI, packages, licenses, releases | Done (the installed-package check waits on the maintainer) | [done/phase-7.md](done/phase-7.md) |
 | 8 | UI and UX overhaul: a window built around writing | Done | [done/phase-8.md](done/phase-8.md) |
 | 9 | Writing comfort, from Ulysses: a brighter layout, page settings, deadlines, keywords | Done | [done/phase-9.md](done/phase-9.md) |
+| 11 | Tags, story links, and a mind map: nested keywords, entries linked from the scene, a scene context, views in the library | Not started | [todo/phase-11.md](todo/phase-11.md) |
 | Bonus | Work with no phase yet | Not started | [todo/bonus.md](todo/bonus.md) |
 
 Phases 1 to 9 are on `master`.
@@ -41,7 +42,7 @@ None listed. The last three items were cleared at the end of Phase 5: a check us
 
 ## What to do next
 
-The first release. The maintainer goes through the check in [documentation/RELEASING.md](../documentation/RELEASING.md) with the installer on Windows and the `.deb` in WSL2, then pushes the tag `v0.1.0`. After that, nothing has a phase: the [bonus list](todo/bonus.md) is where the next one comes from. macOS, iOS, Android, and the web were dropped: see [done/phase-7.md](done/phase-7.md).
+The first release. The maintainer goes through the check in [documentation/RELEASING.md](../documentation/RELEASING.md) with the installer on Windows and the `.deb` in WSL2, then pushes the tag `v0.1.0`. Then [Phase 11](todo/phase-11.md): Obsidian-style tags on the keywords, characters, places, and notes linked from the scene and gathered into its context, the corkboard turned into a mind map, and the views chosen from the library. It does not wait for the release. Phase 10 has no plan. macOS, iOS, Android, and the web were dropped: see [done/phase-7.md](done/phase-7.md).
 
 ## Product principles
 

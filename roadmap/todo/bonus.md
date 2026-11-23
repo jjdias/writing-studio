@@ -16,6 +16,7 @@ Not current work. This was the last item of Phase 4 and moved here so that Phase
 - Assistance runs on the writer's device only. No text is sent to a server.
 - It is optional and off unless the writer turns it on. Writing, saving, compiling, and every Phase 4 tool work without it.
 - It never becomes required to open a project or to keep working in one.
+- What it reads about a scene is Phase 11's scene context (`crates/context`): the scene, where it sits, its plot points, and the entries linked to it, capped to a given length.
 
 ## Review a whole book at once
 
@@ -98,20 +99,12 @@ Not current work. **Backup** copies the SQLite file and leaves `attachments/` be
 - Restore the database and those files together.
 - After restore, every research file row has its file on disk, and files that belonged only to the replaced library are not left behind as the current library.
 
-## Tags
+## Keywords on the story's entries
 
-Not current work. The binder label stays one short label for the corkboard. Tags are a separate list of keywords on an item, stored in the project database. They are not typed into the scene, so compile does not write them into the draft.
+What is left of the "Tags" entry, which moved to [Phase 11](phase-11.md). There, binder items get Obsidian-style keywords, and characters, places, and notes are linked to scenes and chapters, not tagged.
 
-The model is the same idea as a note app’s tags: many tags on one item, nested with `/`, and a click that filters to the items that carry that tag.
-
-- Add and remove tags from the inspector. Suggestions come from tags already used in the project.
-- A tag allows letters, numbers, `_`, `-`, `/`, and common Unicode. Spaces are not allowed. A tag that is only digits is not allowed. `/` nests a tag, as in `plot/subplot`.
-- Matching ignores case. The list shows the spelling from the first time that tag was used.
-- Choosing a parent tag also shows items tagged with its children. `plot` includes `plot/subplot`.
-- A tag list in the binder column shows each tag, nested, with a count of items that are not in the trash. Choosing one filters the binder.
-- Compile, word counts, and the outliner ignore tags.
-- Emptying trash drops tags on the deleted items. A tag that nothing uses anymore leaves the list.
-- Start with binder items. Research notes can use the same list. Characters and world records can follow later.
+- A character, place, or note carries keywords from the same list (`antagonist`, `setting/coast`), and the keyword list counts them.
+- It changes `bible.json`, so it is a format change of its own.
 
 ## PDF compile
 
