@@ -1,6 +1,6 @@
 # Phase 11 — Tags, story links, and a mind map
 
-In progress: stages 1 to 6 are done.
+In progress: stages 1 to 7 are done.
 
 Phase 9 gave binder items colored keywords and saved filters. This phase does four things with what is there:
 
@@ -112,6 +112,8 @@ In this order: the layout change first, because every later stage adds to the li
 
 ### 7. Story links from the scene
 
+**Done.** No model changed: an entry's `scene_ids` already held binder ids, and now holds a chapter's, part's, or book's too. `bible.json` writes a link's target as `item` and refuses one with `scene`, saying what to change. In the ui, `StoryEntry` and `story_entries` give every entry of every kind with its links; `story_reaches` follows a scene up to what it is in; `story_links_of` splits an item's own entries from those that reach it through its chapter, part, or book. The inspector of a scene, chapter, part, or book in the manuscript has **In this scene** (or chapter, part, book): chips that open their entry, × to unlink, the inherited ones apart and dashed as "from Chapter 1", and a field suggesting every entry as "Mara · character" (`link_story_named`, which also takes a name only one entry has, and says when none or several match). An entry's page now lists and links chapters, parts, and books as well as scenes (`link_choices`, `item_caption`). The library's **Story** group, under Keywords, lists by kind the entries with links outside the trash and how many scenes each reaches; a click narrows the scene list, corkboard, and outliner as a keyword does (`story_filter`, checked with the keyword by `chosen_allows`, which replaces `keyword_allows`), and Escape clears both. A saved filter has `entries` too, picked in the form under "With", and is named for them ("with Mara"). Links to an item in the trash hide, in the Story group and on the entry's page, and go when the trash is emptied, as scene links did.
+
 - The inspector of a scene, chapter, part, or book has **In this scene** (or chapter, part, book): the characters, places, cultures, lore entries, timeline events, and research notes it is linked to, as chips with the entry's kind, like keywords. Typing suggests entries by name, of every kind; a chip opens its entry.
 - A link from a chapter, part, or book covers every scene in it, as a keyword does; the scene shows those chips apart, as "from Chapter 3", and does not repeat them.
 - The entry's page lists everything it is linked to, chapters as well as scenes, as it lists scenes now, and links from there as now. It is one record: a link made on either side shows on both.
@@ -179,6 +181,8 @@ What came up while this phase was planned and built, and while the Phase 7 packa
 - **The start screen says "Organize a manuscript the way Scrivener does"**, naming another product in the program's own words. A question for the maintainer, not a bug.
 - **Keywords longer than 40 characters are cut when a project is read** (sync or a hand edit), so two long keywords that differ after the 40th character become one. Renames that would cross the limit are refused (stage 4); reading has no such check.
 - **The Package workflow does not run on code changes.** It runs when `apps/desktop/**`, licenses, or the workflow change, not `crates/**`, so the packages on the last Package run can be older than the code (the Phase 7 packages missed the ShellExecuteW and compile fixes). The Release workflow builds fresh, so a release is not affected.
+- **`scene_ids` holds chapters now.** Each entry kind's field, and the cache's `bible_scene_links.scene_id`, keep the name from when only scenes were linked (stage 7). Renaming them is a change across five crates with no change in behavior.
+- **"That scene is no longer in the binder"** is what an entry page's Open says for a missing chapter too (`open_linked_scene`).
 - **Keyword folding and the list's order last until the program closes.** The plan did not ask for more; the binder's folding is kept with the project.
 - **Not yet checked by hand:** opening a real research file through `ShellExecuteW`, the MSI install and removal, and everything on Linux (stage 6 of Phase 7, the maintainer's).
 

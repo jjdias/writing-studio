@@ -162,23 +162,6 @@ pub enum UndoOffer {
     Keywords,
 }
 
-/// What a saved filter looks for, a phrase each: "plot or Mara", "not
-/// draft", "Revise", "“harbor”". Its default name and its row's tooltip.
-pub fn filter_parts(filter: &SavedFilter) -> Vec<String> {
-    let mut parts = Vec::new();
-    if !filter.keywords.is_empty() {
-        parts.push(filter.keywords.join(if filter.any { " or " } else { " and " }));
-    }
-    parts.extend(filter.without.iter().map(|word| format!("not {word}")));
-    if !filter.status.trim().is_empty() {
-        parts.push(filter.status.trim().to_string());
-    }
-    if !filter.text.trim().is_empty() {
-        parts.push(format!("“{}”", filter.text.trim()));
-    }
-    parts
-}
-
 /// The binder's keywords before a rename, to put back with Undo.
 #[derive(Clone, Debug)]
 pub struct KeywordSnapshot {
@@ -289,6 +272,48 @@ pub enum BibleLink {
     Research,
 }
 
+impl BibleLink {
+    /// What an entry of this kind is, in a chip or a list: "character".
+    pub fn noun(self) -> &'static str {
+        match self {
+            Self::Character => "character",
+            Self::Location => "place",
+            Self::Culture => "culture",
+            Self::Lore => "lore",
+            Self::Timeline => "event",
+            Self::Research => "research",
+        }
+    }
+
+    /// The heading over this kind's entries.
+    pub fn heading(self) -> &'static str {
+        match self {
+            Self::Character => "Characters",
+            Self::Location => "Places",
+            Self::Culture => "Cultures",
+            Self::Lore => "Lore",
+            Self::Timeline => "Events",
+            Self::Research => "Research",
+        }
+    }
+}
+
+/// A character, place, culture, lore entry, timeline event, or research
+/// note, with the binder items it is linked to: scenes, and chapters, parts,
+/// or books, whose link reaches every scene in them.
+#[derive(Clone, Debug, PartialEq)]
+pub struct StoryEntry {
+    pub kind: BibleLink,
+    pub id: Id,
+    pub name: String,
+    pub links: Vec<Id>,
+}
+
+/// How an entry is offered when linking it: "Mara · character".
+pub fn story_choice(entry: &StoryEntry) -> String {
+    format!("{} · {}", entry.name, entry.kind.noun())
+}
+
 /// An earlier version of the selected scene that is not a snapshot: the
 /// scene at a sync, by its commit, or a version changed outside the program
 /// and kept beside the scene's file, by that file.
@@ -371,6 +396,9 @@ pub struct StudioState {
     /// The keyword the scene list, the corkboard, and the outliner are
     /// narrowed to, chosen in the library or their keyword menu.
     pub keyword_filter: Option<String>,
+    /// The story entry the same views are narrowed to, from the library's
+    /// Story group.
+    pub story_filter: Option<Id>,
     /// How the library's keyword list is ordered.
     pub keyword_sort: KeywordSort,
     /// Keywords folded in the library's list, whose children are hidden.
@@ -496,6 +524,7 @@ impl Default for StudioState {
             filter_selection: None,
             editing_filter: None,
             keyword_filter: None,
+            story_filter: None,
             keyword_sort: KeywordSort::Name,
             folded_keywords: Vec::new(),
             renaming_keyword: None,
@@ -2222,7 +2251,7 @@ impl StudioState {
         };
         let index = self.manuscript_index.borrow();
         let mut groups: Vec<SceneGroup> = Vec::new();
-        for (holder, scene) in scenes.into_iter().filter(|(_, scene)| self.keyword_allows(*scene)) {
+        for (holder, scene) in scenes.into_iter().filter(|(_, scene)| self.chosen_allows(*scene)) {
             let Some(node) = self.binder.get(scene) else {
                 continue;
             };
@@ -2280,9 +2309,15 @@ impl StudioState {
     fn filter_matches(&self, filter: &SavedFilter) -> Vec<(Id, Id)> {
         let with_text = (!filter.text.trim().is_empty())
             .then(|| self.manuscript_index.borrow().search(&filter.text));
+        // An entry no longer in the bible matches nothing, so the filter
+        // shows that rather than everything.
+        let entries: Vec<Option<StoryEntry>> = filter.entries.iter().map(|id| self.story_entry(*id)).collect();
         self.binder
             .scenes_matching(filter)
             .into_iter()
+            .filter(|scene| {
+                entries.iter().all(|entry| entry.as_ref().is_some_and(|entry| self.story_reaches(entry, *scene)))
+            })
             .filter(|scene| {
                 with_text.as_ref().is_none_or(|hits| {
                     self.binder
@@ -2293,6 +2328,27 @@ impl StudioState {
             })
             .filter_map(|scene| Some((self.binder.get(scene)?.parent_id?, scene)))
             .collect()
+    }
+
+    /// What a saved filter looks for, a phrase each: "plot or harbor",
+    /// "not draft", "with Mara", "Revise", "“dawn”". Its default name and
+    /// its row's tooltip.
+    pub fn filter_parts(&self, filter: &SavedFilter) -> Vec<String> {
+        let mut parts = Vec::new();
+        if !filter.keywords.is_empty() {
+            parts.push(filter.keywords.join(if filter.any { " or " } else { " and " }));
+        }
+        parts.extend(filter.without.iter().map(|word| format!("not {word}")));
+        parts.extend(
+            filter.entries.iter().filter_map(|id| self.story_entry(*id)).map(|entry| format!("with {}", entry.name)),
+        );
+        if !filter.status.trim().is_empty() {
+            parts.push(filter.status.trim().to_string());
+        }
+        if !filter.text.trim().is_empty() {
+            parts.push(format!("“{}”", filter.text.trim()));
+        }
+        parts
     }
 
     /// Show a saved filter's matches in the scene list.
@@ -2309,7 +2365,7 @@ impl StudioState {
     /// for what it looks for.
     pub fn add_filter(&mut self, mut filter: SavedFilter) {
         if filter.name.trim().is_empty() {
-            let parts = filter_parts(&filter);
+            let parts = self.filter_parts(&filter);
             filter.name = if parts.is_empty() { "All scenes".into() } else { parts.join(", ") };
         }
         let id = filter.id;
@@ -2465,24 +2521,72 @@ impl StudioState {
         }
     }
 
-    /// Let go of the chosen keyword. Returns whether one was chosen.
+    /// Let go of the chosen keyword and story entry. Returns whether one
+    /// was chosen.
     pub fn clear_keyword_filter(&mut self) -> bool {
-        self.keyword_filter.take().is_some()
+        self.keyword_filter.take().is_some() | self.story_filter.take().is_some()
     }
 
-    /// Whether a scene shows on the corkboard and in the outliner while
-    /// they are narrowed to a keyword.
-    pub fn keyword_allows(&self, id: Id) -> bool {
-        let Some(wanted) = self.keyword_filter.as_deref() else {
-            return true;
+    /// Whether the scene list, the corkboard, and the outliner are narrowed
+    /// to a keyword or a story entry chosen in the library.
+    pub fn narrowed(&self) -> bool {
+        self.keyword_filter.is_some() || self.story_filter.is_some()
+    }
+
+    /// Whether a scene shows while they are narrowed: it carries the chosen
+    /// keyword, or one nested under it, itself or through the chapter, part,
+    /// or book it is in, as a saved filter matches; and the chosen story
+    /// entry reaches it.
+    pub fn chosen_allows(&self, id: Id) -> bool {
+        let keyword = self
+            .keyword_filter
+            .as_deref()
+            .is_none_or(|wanted| self.binder.keywords_through(id).iter().any(|word| keyword_covers(wanted, word)));
+        let story = self
+            .story_filter
+            .is_none_or(|entry| self.story_entry(entry).is_some_and(|entry| self.story_reaches(&entry, id)));
+        keyword && story
+    }
+
+    /// Every entry of the story, kind by kind, each kind in its own order.
+    pub fn story_entries(&self) -> Vec<StoryEntry> {
+        let mut entries = Vec::new();
+        let mut push = |kind: BibleLink, id: Id, name: &str, links: &[Id]| {
+            let name = if name.trim().is_empty() { format!("Unnamed {}", kind.noun()) } else { name.trim().to_string() };
+            entries.push(StoryEntry { kind, id, name, links: links.to_vec() });
         };
-        // The scene's own keywords, or those of the chapter, part, or book
-        // it is in, as a saved filter matches; a keyword nested under the
-        // one chosen counts.
+        for item in self.cast.characters_in_order() {
+            push(BibleLink::Character, item.id, &item.name, &item.scene_ids);
+        }
+        for item in self.world.locations_in_order() {
+            push(BibleLink::Location, item.id, &item.name, &item.scene_ids);
+        }
+        for item in self.world.cultures_in_order() {
+            push(BibleLink::Culture, item.id, &item.name, &item.scene_ids);
+        }
+        for item in self.world.lore_in_order() {
+            push(BibleLink::Lore, item.id, &item.title, &item.scene_ids);
+        }
+        for item in self.world.events_in_order() {
+            push(BibleLink::Timeline, item.id, &item.title, &item.scene_ids);
+        }
+        for item in self.library.items_in_order() {
+            push(BibleLink::Research, item.id, &item.title, &item.scene_ids);
+        }
+        entries
+    }
+
+    pub fn story_entry(&self, id: Id) -> Option<StoryEntry> {
+        self.story_entries().into_iter().find(|entry| entry.id == id)
+    }
+
+    /// Whether an entry reaches a binder item: linked to it, or to the
+    /// chapter, part, or book it is in.
+    pub fn story_reaches(&self, entry: &StoryEntry, id: Id) -> bool {
         let mut at = Some(id);
         let mut guard = 0;
         while let Some(node) = at.and_then(|id| self.binder.get(id)) {
-            if node.keywords.iter().any(|word| keyword_covers(wanted, word)) {
+            if entry.links.contains(&node.id) {
                 return true;
             }
             at = node.parent_id;
@@ -2492,6 +2596,128 @@ impl StudioState {
             }
         }
         false
+    }
+
+    /// The entries linked to an item itself, and those linked to what it is
+    /// in, each with the title of the chapter, part, or book that brings it.
+    /// An entry linked both ways is listed once, as the item's own.
+    pub fn story_links_of(&self, id: Id) -> (Vec<StoryEntry>, Vec<(StoryEntry, String)>) {
+        let entries = self.story_entries();
+        let own: Vec<StoryEntry> = entries.iter().filter(|entry| entry.links.contains(&id)).cloned().collect();
+        let mut through: Vec<(StoryEntry, String)> = Vec::new();
+        let mut at = self.binder.get(id).and_then(|node| node.parent_id);
+        let mut guard = 0;
+        while let Some(node) = at.and_then(|up| self.binder.get(up)) {
+            if node.kind.is_root() || guard > 10_000 {
+                break;
+            }
+            for entry in entries.iter().filter(|entry| entry.links.contains(&node.id)) {
+                let listed = own.iter().any(|kept| kept.id == entry.id) || through.iter().any(|(kept, _)| kept.id == entry.id);
+                if !listed {
+                    through.push((entry.clone(), node.title.clone()));
+                }
+            }
+            at = node.parent_id;
+            guard += 1;
+        }
+        (own, through)
+    }
+
+    /// Link a binder item (a scene, or a chapter, part, or book for all its
+    /// scenes) to a story entry. The entry's page shows the same link.
+    pub fn link_story(&mut self, item: Id, entry: Id) {
+        if let Some(found) = self.story_entry(entry) {
+            self.link_bible_scene(found.kind, entry, item);
+        }
+    }
+
+    /// Link an item to the entry typed in its inspector: as offered,
+    /// "Mara · character", or a name only one entry has. Says so when none
+    /// or several match.
+    pub fn link_story_named(&mut self, item: Id, typed: &str) {
+        let typed = typed.trim();
+        if typed.is_empty() {
+            return;
+        }
+        let entries = self.story_entries();
+        let offered: Vec<&StoryEntry> =
+            entries.iter().filter(|entry| same_keyword(&story_choice(entry), typed)).collect();
+        let named: Vec<&StoryEntry> = entries.iter().filter(|entry| same_keyword(&entry.name, typed)).collect();
+        match (offered.as_slice(), named.as_slice()) {
+            ([entry], _) | ([], [entry]) => {
+                let id = entry.id;
+                self.link_story(item, id);
+            }
+            ([], []) => self.status = format!("No character, place, or note is called “{typed}”."),
+            _ => self.status = format!("More than one entry is called “{typed}”: choose one from the list."),
+        }
+    }
+
+    pub fn unlink_story(&mut self, item: Id, entry: Id) {
+        if let Some(found) = self.story_entry(entry) {
+            self.unlink_bible_scene(found.kind, entry, item);
+        }
+    }
+
+    /// Show a story entry on its own page.
+    pub fn open_story_entry(&mut self, entry: Id) {
+        let Some(found) = self.story_entry(entry) else {
+            return;
+        };
+        let section = match found.kind {
+            BibleLink::Character => {
+                self.select_character(entry);
+                self.mode = WorkspaceMode::Characters;
+                return;
+            }
+            BibleLink::Research => {
+                self.select_research_item(entry);
+                self.mode = WorkspaceMode::Research;
+                return;
+            }
+            BibleLink::Location => WorldSection::Locations,
+            BibleLink::Culture => WorldSection::Cultures,
+            BibleLink::Lore => WorldSection::Lore,
+            BibleLink::Timeline => WorldSection::Timeline,
+        };
+        self.set_world_section(section);
+        self.select_world_item(entry);
+        self.mode = WorkspaceMode::World;
+    }
+
+    /// The entries that have links, for the library's Story group, each with
+    /// how many manuscript scenes outside the trash it reaches. A link to an
+    /// item in the trash does not count; it goes when the trash is emptied.
+    pub fn story_list(&self) -> Vec<(StoryEntry, usize)> {
+        let scenes: Vec<Id> = self
+            .binder
+            .draft_root()
+            .map(|draft| self.binder.scenes_under(draft.id).into_iter().map(|(_, scene)| scene).collect())
+            .unwrap_or_default();
+        self.story_entries()
+            .into_iter()
+            .filter(|entry| {
+                entry.links.iter().any(|id| self.binder.get(*id).is_some() && !self.binder.is_in_trash(*id))
+            })
+            .map(|entry| {
+                let count = scenes.iter().filter(|scene| self.story_reaches(&entry, **scene)).count();
+                (entry, count)
+            })
+            .collect()
+    }
+
+    /// Narrow the scene list, the corkboard, and the outliner to the scenes
+    /// a story entry reaches; choosing it again lets it go.
+    pub fn choose_story(&mut self, entry: Id) {
+        if self.story_filter == Some(entry) {
+            self.story_filter = None;
+            return;
+        }
+        self.story_filter = Some(entry);
+        self.open_menu = None;
+        if !matches!(self.mode, WorkspaceMode::Writing | WorkspaceMode::Corkboard | WorkspaceMode::Outliner) {
+            self.mode = WorkspaceMode::Writing;
+        }
     }
 
     /// Open a menu, or close it when it is the one already open.
@@ -4599,6 +4825,86 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
+    /// A character linked to a chapter reaches every scene in it: the
+    /// scene's inspector shows it as from the chapter, the character's page
+    /// lists the chapter, the library's Story group counts the scenes and
+    /// narrows to them, and a saved filter can ask for it.
+    #[test]
+    fn a_story_entry_linked_to_a_chapter_reaches_its_scenes() {
+        let (mut state, dir) = open_state("story-links");
+        let first = state.selected.unwrap();
+        let chapter = state.binder.get(first).unwrap().parent_id.unwrap();
+        state.add_node(NodeKind::Scene);
+        let second = state.selected.unwrap();
+        state.add_node(NodeKind::Chapter);
+        state.add_node(NodeKind::Scene);
+        let elsewhere = state.selected.unwrap();
+        state.add_character();
+        let mara = state.selected_character.unwrap();
+        state.set_character_name(mara, "Mara".into());
+
+        state.link_story_named(chapter, "mara");
+        assert_eq!(state.bible_scene_ids(BibleLink::Character, mara), [chapter], "the page lists the chapter");
+        let (own, through) = state.story_links_of(first);
+        assert!(own.is_empty());
+        assert_eq!(through.len(), 1);
+        assert_eq!((through[0].0.name.as_str(), through[0].1.as_str()), ("Mara", "Chapter 1"));
+        assert_eq!(state.story_links_of(chapter).0[0].id, mara);
+        assert!(state.story_links_of(elsewhere).1.is_empty(), "another chapter's scene is not reached");
+
+        // Linked to the scene as well, it is the scene's own, listed once.
+        state.link_story_named(first, "Mara · character");
+        let (own, through) = state.story_links_of(first);
+        assert_eq!((own.len(), through.len()), (1, 0));
+        state.unlink_story(first, mara);
+
+        let listed = state.story_list();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].1, 2, "the chapter's two scenes");
+        let shown = |state: &StudioState| -> Vec<Id> {
+            state.scene_groups().into_iter().flat_map(|group| group.scenes).map(|card| card.id).collect()
+        };
+        state.choose_library(state.binder.book_of(first).unwrap());
+        state.choose_story(mara);
+        assert_eq!(shown(&state), [first, second]);
+        assert!(state.clear_keyword_filter(), "Escape lets it go");
+        assert_eq!(shown(&state).len(), 3);
+
+        state.add_filter(SavedFilter {
+            id: Id::new(),
+            name: String::new(),
+            keywords: Vec::new(),
+            any: false,
+            without: Vec::new(),
+            entries: vec![mara],
+            status: String::new(),
+            text: String::new(),
+        });
+        assert_eq!(state.binder.filters[0].name, "with Mara");
+        assert_eq!(shown(&state), [first, second]);
+        state.remove_filter(state.binder.filters[0].id);
+
+        state.link_story_named(first, "Nobody");
+        assert!(state.status.contains("No character"), "{}", state.status);
+        state.add_character();
+        let other = state.selected_character.unwrap();
+        state.set_character_name(other, "Mara".into());
+        state.link_story_named(first, "Mara");
+        assert!(state.status.contains("More than one"), "{}", state.status);
+
+        state.open_story_entry(mara);
+        assert_eq!((state.mode, state.selected_character), (WorkspaceMode::Characters, Some(mara)));
+
+        // In the trash the chapter's link stops counting; emptied, it goes.
+        state.select_node(chapter);
+        state.trash_selected();
+        assert!(state.story_list().is_empty(), "a link to the trash hides");
+        state.empty_trash();
+        state.empty_trash();
+        assert!(state.bible_scene_ids(BibleLink::Character, mara).is_empty());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     fn open_state(tag: &str) -> (StudioState, PathBuf) {
         let dir = std::env::temp_dir().join(format!("ws-ui-{tag}-{}", Id::new()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -4958,6 +5264,7 @@ mod tests {
             keywords: vec!["flashback".into()],
             any: false,
             without: vec!["draft".into()],
+            entries: Vec::new(),
             status: String::new(),
             text: String::new(),
         });
@@ -4973,11 +5280,11 @@ mod tests {
         state.search.clear();
 
         state.keyword_filter = Some("Flashback".into());
-        assert!(state.keyword_allows(tagged) && !state.keyword_allows(other));
+        assert!(state.chosen_allows(tagged) && !state.chosen_allows(other));
         // A keyword nested under the one chosen counts, in any alphabet's case.
         state.add_keyword(other, "AÇÃO/fuga");
         state.keyword_filter = Some("ação".into());
-        assert!(state.keyword_allows(other) && !state.keyword_allows(tagged));
+        assert!(state.chosen_allows(other) && !state.chosen_allows(tagged));
         state.remove_keyword(other, "AÇÃO/fuga");
         state.keyword_filter = None;
         // A keyword with an empty part is refused, and says why.

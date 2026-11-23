@@ -145,6 +145,7 @@ pub(super) fn Library() -> Element {
                 }
                 FilterSection {}
                 KeywordSection {}
+                StorySection {}
                 div { class: "library-heading", "Extras" }
                 for candidate in WorkspaceMode::LIBRARY_EXTRAS {
                     ModeRow { key: "{candidate.label()}", candidate, active: mode == candidate }
@@ -725,7 +726,7 @@ fn FilterSection() -> Element {
                 button {
                     class: if chosen == Some(filter.id) { "library-row active" } else { "library-row" },
                     aria_current: if chosen == Some(filter.id) { "true" } else { "false" },
-                    title: "{filter_summary(&filter)}",
+                    title: "{filter_summary(&state.read(), &filter)}",
                     onclick: move |_| state.write().choose_filter(filter.id),
                     svg { class: "glyph", view_box: "0 0 16 16", "aria-hidden": "true",
                         path { d: "M2.5 3.5h11l-4.2 5v4l-2.6 1.2V8.5z", fill: "none", stroke: "currentColor", stroke_width: "1.2", stroke_linejoin: "round" }
@@ -868,6 +869,50 @@ fn KeywordSection() -> Element {
     }
 }
 
+/// The characters, places, and notes linked into the manuscript, by kind,
+/// each with how many scenes it reaches. A click narrows the scene list,
+/// the corkboard, and the outliner to those scenes; a second click, or
+/// Escape, lets it go.
+#[component]
+fn StorySection() -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let rows = state.read().story_list();
+    if rows.is_empty() {
+        return rsx! {};
+    }
+    let chosen = state.read().story_filter;
+    let mut kinds: Vec<BibleLink> = Vec::new();
+    for (entry, _) in &rows {
+        if !kinds.contains(&entry.kind) {
+            kinds.push(entry.kind);
+        }
+    }
+    rsx! {
+        div { class: "library-heading", "Story" }
+        for kind in kinds {
+            div { class: "library-subheading", key: "{kind.heading()}", "{kind.heading()}" }
+            for (entry, count) in rows.iter().filter(|(entry, _)| entry.kind == kind).cloned() {
+                {
+                    let active = chosen == Some(entry.id);
+                    rsx! {
+                        div { class: "library-item", key: "{entry.id}",
+                            span { class: "fold-spacer" }
+                            button {
+                                class: if active { "library-row active" } else { "library-row" },
+                                aria_current: if active { "true" } else { "false" },
+                                title: if active { "Show every scene again (Escape)" } else { "Show only the scenes “{entry.name}” is linked to, directly or through their chapter" },
+                                onclick: move |_| state.write().choose_story(entry.id),
+                                span { class: "library-name", "{entry.name}" }
+                                span { class: "library-count", "{count}" }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// The field that renames a keyword in place. Enter renames it (a second
 /// Enter when it would merge into another), Escape leaves it as it was.
 #[component]
@@ -900,8 +945,8 @@ fn KeywordRenameField(name: String) -> Element {
 }
 
 /// What a filter looks for, in a line: "Keyword Flashback · status Revise".
-fn filter_summary(filter: &SavedFilter) -> String {
-    let parts = filter_parts(filter);
+fn filter_summary(state: &StudioState, filter: &SavedFilter) -> String {
+    let parts = state.filter_parts(filter);
     if parts.is_empty() {
         "Every scene".to_string()
     } else {
@@ -921,6 +966,7 @@ fn FilterForm(editing: Option<SavedFilter>) -> Element {
         keywords: Vec::new(),
         any: false,
         without: Vec::new(),
+        entries: Vec::new(),
         status: String::new(),
         text: String::new(),
     });
@@ -929,6 +975,7 @@ fn FilterForm(editing: Option<SavedFilter>) -> Element {
     let keywords = use_signal(|| start.keywords.clone());
     let mut any = use_signal(|| start.any);
     let without = use_signal(|| start.without.clone());
+    let entries = use_signal(|| start.entries.clone());
     let mut status = use_signal(|| start.status.clone());
     let mut text = use_signal(|| start.text.clone());
     let title = if editing.is_some() { "Change filter" } else { "New filter" };
@@ -944,6 +991,7 @@ fn FilterForm(editing: Option<SavedFilter>) -> Element {
                 }
             }
             KeywordPicks { id: "filter-without", label: "Leave out", empty: "Nothing", known, picked: without }
+            EntryPicks { picked: entries }
             label { r#for: "filter-status", "Status" }
             StatusSelect { id: "filter-status", current: status(), any: true, onchange: move |value: String| status.set(value) }
             label { r#for: "filter-text", "Words in the text" }
@@ -957,12 +1005,59 @@ fn FilterForm(editing: Option<SavedFilter>) -> Element {
                         keywords: keywords(),
                         any: any() && keywords().len() > 1,
                         without: without(),
+                        entries: entries(),
                         status: status().trim().to_string(),
                         text: text().trim().to_string(),
                     };
                     state.write().add_filter(filter);
                 },
                 "Save filter"
+            }
+        }
+    }
+}
+
+/// Characters, places, and notes a filter's scenes must be linked to,
+/// directly or through their chapter, as chips and a menu that adds one.
+#[component]
+fn EntryPicks(picked: Signal<Vec<Id>>) -> Element {
+    let state = use_context::<Signal<StudioState>>();
+    let mut picked = picked;
+    let entries = state.read().story_entries();
+    let chosen: Vec<_> = picked().iter().filter_map(|id| entries.iter().find(|entry| entry.id == *id).cloned()).collect();
+    let offered: Vec<_> = entries.iter().filter(|entry| !picked().contains(&entry.id)).cloned().collect();
+    if entries.is_empty() {
+        return rsx! {};
+    }
+    rsx! {
+        label { r#for: "filter-entries", "With" }
+        if !chosen.is_empty() {
+            div { class: "keyword-chips",
+                for entry in chosen {
+                    span { class: "keyword-chip story-chip", key: "{entry.id}",
+                        span { "{entry.name}" }
+                        span { class: "story-kind", "{entry.kind.noun()}" }
+                        button {
+                            class: "keyword-remove",
+                            title: "Take “{entry.name}” out of the filter",
+                            aria_label: "Remove {entry.name}",
+                            onclick: move |_| picked.write().retain(|kept| *kept != entry.id),
+                            "×"
+                        }
+                    }
+                }
+            }
+        }
+        select {
+            id: "filter-entries",
+            onchange: move |event| {
+                if let Some(id) = parse_scene_id(&event.value()) {
+                    picked.write().push(id);
+                }
+            },
+            option { value: "", selected: true, if picked().is_empty() { "Anyone, anywhere" } else { "Add one…" } }
+            for entry in offered {
+                option { value: "{entry.id}", "{story_choice(&entry)}" }
             }
         }
     }

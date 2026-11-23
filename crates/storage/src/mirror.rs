@@ -832,6 +832,7 @@ mod tests {
             keywords: vec!["Flashback".into()],
             any: false,
             without: Vec::new(),
+            entries: Vec::new(),
             status: String::new(),
             text: String::new(),
         });
@@ -1234,7 +1235,7 @@ mod tests {
         edit(&dir.join("project.json"), "\"settings\": {", "\"settings\": {\n    \"house_style\": \"plain\",");
         let bond_id = format!("\"id\":\"{bond}\"");
         edit(&dir.join("bible.json"), &bond_id, &format!("{bond_id},\"since\":\"spring\""));
-        let link = format!("\"scene\":\"{}\"", scene.id);
+        let link = format!("\"item\":\"{}\"", scene.id);
         edit(&dir.join("bible.json"), &link, &format!("{link},\"weight\":\"main\""));
 
         // Every save that touches those items keeps what was added.

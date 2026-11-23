@@ -43,6 +43,11 @@ pub(super) fn Inspector() -> Element {
             if !node.kind.is_root() {
                 Keywords { id: node.id }
             }
+            if matches!(node.kind, NodeKind::Scene | NodeKind::Chapter | NodeKind::Part | NodeKind::Book)
+                && state.read().binder.in_manuscript(node.id)
+            {
+                StoryLinks { id: node.id, kind: node.kind }
+            }
             if !node.kind.is_root() && !state.read().binder.is_in_research(node.id) && !state.read().binder.is_in_trash(node.id) {
                 label { class: "check-label compile-check",
                     input {
@@ -445,6 +450,87 @@ fn Keywords(id: Id) -> Element {
 /// same read, so the split cuts exactly what is on the page. The place is
 /// counted in characters, as the document counts them, not in the page's
 /// UTF-16 units.
+/// The characters, places, and notes an item is linked to, as chips that
+/// open their entry, and those that reach it through the chapter, part, or
+/// book it is in, apart. A typed name, with suggestions of every kind, links
+/// another.
+#[component]
+fn StoryLinks(id: Id, kind: NodeKind) -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let (own, through) = state.read().story_links_of(id);
+    let offered: Vec<String> = state
+        .read()
+        .story_entries()
+        .iter()
+        .filter(|entry| !own.iter().any(|kept| kept.id == entry.id))
+        .map(story_choice)
+        .collect();
+    let mut draft = use_signal(String::new);
+    let heading = format!("In this {}", kind.icon_label().to_lowercase());
+    rsx! {
+        div { class: "dash-heading", "{heading}" }
+        if !own.is_empty() {
+            div { class: "keyword-chips",
+                for entry in own {
+                    span { class: "keyword-chip story-chip", key: "{entry.id}",
+                        button {
+                            class: "story-open",
+                            title: "Open the {entry.kind.noun()} “{entry.name}”",
+                            onclick: move |_| state.write().open_story_entry(entry.id),
+                            "{entry.name}"
+                        }
+                        span { class: "story-kind", "{entry.kind.noun()}" }
+                        button {
+                            class: "keyword-remove",
+                            title: "Unlink “{entry.name}” from here",
+                            aria_label: "Unlink {entry.name}",
+                            onclick: move |_| state.write().unlink_story(id, entry.id),
+                            "×"
+                        }
+                    }
+                }
+            }
+        }
+        if !through.is_empty() {
+            div { class: "keyword-chips",
+                for (entry, from) in through {
+                    span { class: "keyword-chip story-chip from", key: "{entry.id}", title: "Linked to {from}, which holds this",
+                        button {
+                            class: "story-open",
+                            title: "Open the {entry.kind.noun()} “{entry.name}”",
+                            onclick: move |_| state.write().open_story_entry(entry.id),
+                            "{entry.name}"
+                        }
+                        span { class: "story-kind", "from {from}" }
+                    }
+                }
+            }
+        }
+        // Enter submits; a suggestion picked from the list is not a key press.
+        form {
+            class: "keyword-form",
+            onsubmit: move |event| {
+                event.prevent_default();
+                state.write().link_story_named(id, &draft());
+                draft.set(String::new());
+            },
+            input {
+                class: "keyword-field",
+                list: "story-entries-{id}",
+                placeholder: "Link a character, place, or note",
+                aria_label: "Link a character, place, or note",
+                value: "{draft}",
+                oninput: move |event| draft.set(event.value()),
+            }
+        }
+        datalist { id: "story-entries-{id}",
+            for choice in offered {
+                option { value: "{choice}" }
+            }
+        }
+    }
+}
+
 pub(super) fn split_at_caret(mut state: Signal<StudioState>) {
     spawn(async move {
         let mut eval = document::eval(

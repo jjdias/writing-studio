@@ -118,7 +118,8 @@ pub struct Extras {
     /// For the project, the keys of `project.json`, and its unknown settings
     /// under `settings`.
     pub json: Map<String, Value>,
-    /// Keys of the entry's lines in `scene_links` of `bible.json`, by scene.
+    /// Keys of the entry's lines in `scene_links` of `bible.json`, by the
+    /// binder item each links to.
     pub links: HashMap<Id, Map<String, Value>>,
 }
 
@@ -140,7 +141,7 @@ const RESEARCH_FILE_KEYS: [&str; 4] = ["id", "note", "name", "stored"];
 const PLOTLINE_KEYS: [&str; 4] = ["id", "title", "color", "points"];
 const POINT_KEYS: [&str; 4] = ["id", "title", "summary", "scene"];
 const RELATIONSHIP_KEYS: [&str; 4] = ["id", "from", "to", "kind"];
-const LINK_KEYS: [&str; 2] = ["from", "scene"];
+const LINK_KEYS: [&str; 2] = ["from", "item"];
 const PROJECT_KEYS: [&str; 5] = ["format", "id", "title", "created", "settings"];
 /// Names in a scene's head that the program writes. `title` is the `<title>`;
 /// a `<meta name="title">` beside it is not kept.
@@ -578,7 +579,7 @@ pub(crate) fn bible_files(
         links.extend(scenes.iter().map(|scene| {
             let mut link = Map::new();
             link.insert("from".into(), json!(id.to_string()));
-            link.insert("scene".into(), json!(scene.to_string()));
+            link.insert("item".into(), json!(scene.to_string()));
             let found = extras.get(&id).and_then(|found| found.links.get(scene));
             for (key, value) in found.into_iter().flatten() {
                 if !LINK_KEYS.contains(&key.as_str()) {
@@ -1090,8 +1091,16 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
     let mut scene_links: HashMap<Id, Vec<Id>> = HashMap::new();
     let mut link_extras: HashMap<Id, HashMap<Id, Map<String, Value>>> = HashMap::new();
     let mut line_extras: Vec<(Id, Map<String, Value>)> = Vec::new();
+    // A link points at any binder item, a chapter as well as a scene, as
+    // `item`. One written before that, with `scene`, is not converted.
+    if bible.list("scene_links").iter().any(|link| link.get("scene").is_some()) {
+        return Err(bad(
+            "bible.json",
+            "a link in \"scene_links\" was written by an earlier version: it has \"scene\" where this version reads \"item\".              Change \"scene\" to \"item\" in each link (the value stays the same), then open the project again.",
+        ));
+    }
     for link in bible.list("scene_links") {
-        let (from, scene) = (bible.id(link, "from")?, bible.id(link, "scene")?);
+        let (from, scene) = (bible.id(link, "from")?, bible.id(link, "item")?);
         scene_links.entry(from).or_default().push(scene);
         let unknown = unknown_keys(link, &LINK_KEYS);
         if !unknown.is_empty() {
@@ -1766,6 +1775,20 @@ mod tests {
         assert_eq!(elsewhere.meta.settings.theme, ProjectSettings::default().theme);
         assert_eq!(elsewhere.meta.settings.daily_word_goal, 750);
 
+        // A link points at any binder item, a chapter as well as a scene.
+        let chapter = read.binder.nodes.iter().find(|node| node.kind == NodeKind::Chapter).unwrap().id;
+        let bible = first.join("bible.json");
+        let to_harbor = format!(r#""item":"{}""#, harbor.id);
+        assert!(fs::read_to_string(&bible).unwrap().contains(&to_harbor));
+        let to_chapter = fs::read_to_string(&bible).unwrap().replace(&to_harbor, &format!(r#""item":"{chapter}""#));
+        fs::write(&bible, &to_chapter).unwrap();
+        assert_eq!(read_project_files(&first).unwrap().cast.characters[0].scene_ids, vec![chapter]);
+        // A link written with `scene`, before links could point at a chapter,
+        // is refused and not converted.
+        fs::write(&bible, to_chapter.replace(r#""item":"#, r#""scene":"#)).unwrap();
+        let refused = read_project_files(&first).unwrap_err().to_string();
+        assert!(refused.contains("bible.json") && refused.contains("\"item\""), "{refused}");
+
         for dir in [source, first, second] {
             let _ = fs::remove_dir_all(dir);
         }
@@ -1793,6 +1816,7 @@ mod tests {
             keywords: vec!["Flashback".into(), "Draft two".into()],
             any: true,
             without: vec!["Mara".into()],
+            entries: vec![Id::new()],
             status: String::new(),
             text: "harbor".into(),
         });

@@ -1315,6 +1315,10 @@ pub struct SavedFilter {
     pub any: bool,
     #[serde(default)]
     pub without: Vec<String>,
+    /// Story entries (characters, places, notes) that must reach the scene,
+    /// by id. Matched by the caller, which has the bible.
+    #[serde(default)]
+    pub entries: Vec<Id>,
     #[serde(default)]
     pub status: String,
     #[serde(default)]
@@ -1828,6 +1832,7 @@ mod keyword_tests {
             keywords: if keyword.is_empty() { Vec::new() } else { vec![keyword.into()] },
             any: false,
             without: Vec::new(),
+            entries: Vec::new(),
             status: String::new(),
             text: String::new(),
         }

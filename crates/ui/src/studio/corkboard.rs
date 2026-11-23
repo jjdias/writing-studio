@@ -18,7 +18,7 @@ pub(super) fn CorkboardPane() -> Element {
     let has_scenes = !cards.is_empty();
     let cards: Vec<_> = cards
         .into_iter()
-        .filter(|card| card_matches(card, &query) && snapshot.keyword_allows(card.node_id))
+        .filter(|card| card_matches(card, &query) && snapshot.chosen_allows(card.node_id))
         .collect();
     let sections = group_cards(&cards, group);
     rsx! {

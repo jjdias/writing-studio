@@ -57,21 +57,27 @@ pub(super) struct NamedId {
 pub(super) fn SceneLinks(owner: Id, kind: BibleLink) -> Element {
     let mut state = use_context::<Signal<StudioState>>();
     let snapshot = state.read().clone();
-    let linked = snapshot.bible_scene_ids(kind, owner);
-    let choices = scene_choices(&snapshot.binder)
+    // A link to an item in the trash hides until it comes back, or goes
+    // when the trash is emptied.
+    let linked: Vec<Id> = snapshot
+        .bible_scene_ids(kind, owner)
+        .into_iter()
+        .filter(|id| !snapshot.binder.is_in_trash(*id))
+        .collect();
+    let choices = link_choices(&snapshot.binder)
         .into_iter()
         .filter(|(id, _)| !linked.contains(id))
         .collect::<Vec<_>>();
     rsx! {
         section { class: "cast-block",
-            h3 { "Scenes" }
-            p { class: "hint", "Links point at scenes in this project. The scene text stays in the manuscript." }
+            h3 { "In the manuscript" }
+            p { class: "hint", "Scenes, or chapters, parts, and books for every scene in them. The text stays in the manuscript; each scene's inspector shows the same links." }
             if linked.is_empty() {
-                p { class: "hint", "No scenes linked." }
+                p { class: "hint", "Not linked yet." }
             }
             for scene_id in linked {
                 {
-                    let label = scene_caption(&snapshot.binder, scene_id);
+                    let label = item_caption(&snapshot.binder, scene_id);
                     rsx! {
                         div { class: "cast-row", key: "{scene_id}",
                             span { "{label}" }
@@ -89,14 +95,14 @@ pub(super) fn SceneLinks(owner: Id, kind: BibleLink) -> Element {
             }
             if !choices.is_empty() {
                 select {
-                    title: "Link a manuscript scene",
+                    title: "Link a scene, or a chapter, part, or book for all its scenes",
                     value: "",
                     onchange: move |event| {
                         if let Some(scene_id) = parse_scene_id(&event.value()) {
                             state.write().link_bible_scene(kind, owner, scene_id);
                         }
                     },
-                    option { value: "", selected: true, "Link a scene…" }
+                    option { value: "", selected: true, "Link a scene or chapter…" }
                     for (scene_id, label) in choices {
                         option { value: "{scene_id}", "{label}" }
                     }
@@ -119,6 +125,42 @@ pub(super) fn scene_choices(binder: &writing_studio_project::BinderTree) -> Vec<
 
 pub(super) fn scene_caption(binder: &writing_studio_project::BinderTree, id: Id) -> String {
     binder.scene_caption(id)
+}
+
+/// What a story entry can be linked to: the manuscript's scenes, and its
+/// books, parts, and chapters, outside the trash, by caption.
+pub(super) fn link_choices(binder: &writing_studio_project::BinderTree) -> Vec<(Id, String)> {
+    let mut items: Vec<(Id, String)> = binder
+        .nodes
+        .iter()
+        .filter(|node| matches!(node.kind, NodeKind::Scene | NodeKind::Chapter | NodeKind::Part | NodeKind::Book))
+        .filter(|node| binder.in_manuscript(node.id) && !binder.is_in_trash(node.id))
+        .map(|node| (node.id, item_caption(binder, node.id)))
+        .collect();
+    items.sort_by(|left, right| left.1.to_lowercase().cmp(&right.1.to_lowercase()));
+    items
+}
+
+/// A scene as `scene_caption` gives it; a book, part, or chapter as the
+/// path to it, with what it is: "Tide / Chapter 3 (chapter)".
+pub(super) fn item_caption(binder: &writing_studio_project::BinderTree, id: Id) -> String {
+    let Some(node) = binder.get(id) else {
+        return "Missing item".into();
+    };
+    if node.kind == NodeKind::Scene {
+        return binder.scene_caption(id);
+    }
+    let mut path = vec![node.title.clone()];
+    let mut at = node.parent_id;
+    while let Some(up) = at.and_then(|up| binder.get(up)) {
+        if up.kind.is_root() || path.len() > 64 {
+            break;
+        }
+        path.push(up.title.clone());
+        at = up.parent_id;
+    }
+    path.reverse();
+    format!("{} ({})", path.join(" / "), node.kind.icon_label().to_lowercase())
 }
 
 pub(super) fn parse_scene_id(value: &str) -> Option<Id> {

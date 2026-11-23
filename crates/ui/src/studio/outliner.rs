@@ -14,8 +14,9 @@ pub(super) fn OutlinerPane() -> Element {
             continue;
         };
         let scene = line.scene_id.and_then(|id| snapshot.binder.get(id));
-        // Narrowed to a keyword, a chapter shows only the scenes that carry it.
-        if snapshot.keyword_filter.is_some() && !line.scene_id.is_some_and(|id| snapshot.keyword_allows(id)) {
+        // Narrowed to a keyword or a story entry, a chapter shows only its
+        // scenes that match.
+        if snapshot.narrowed() && !line.scene_id.is_some_and(|id| snapshot.chosen_allows(id)) {
             continue;
         }
         let meta = scene.unwrap_or(chapter);

@@ -23,7 +23,7 @@ use writing_studio_search::matches_query;
 use writing_studio_spellcheck::UnknownWord;
 
 use crate::shortcuts::{app_shortcut, AppShortcut, IN_THE_MANUSCRIPT, LISTED};
-use crate::state::{filter_parts, 
+use crate::state::{story_choice, 
     Beat, BibleLink, CheckFinding, CompileCheck, Earlier, FoldedPanel, FrameMenu, QuickMatch, ReviewTab, SceneCard, SceneGroup,
     StudioState, WorkspaceMode,
     WorldSection,
@@ -359,7 +359,7 @@ fn ShortcutsDialog() -> Element {
                         }
                     }
                     tr {
-                        td { "Close a menu or a panel, cancel a waiting delete, leave focus mode, clear a search, or let go of a keyword" }
+                        td { "Close a menu or a panel, cancel a waiting delete, leave focus mode, clear a search, or let go of a keyword or story entry" }
                         td { kbd { "Escape" } }
                     }
                 }

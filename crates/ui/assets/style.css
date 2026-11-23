@@ -1334,6 +1334,11 @@ body[data-typing] .sash { opacity: 0; }
 /* Keywords (Phase 9 stage 7): chips in the dashboard, dots on cards. */
 .keyword-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
 .keyword-chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 4px 2px 6px; border-radius: 999px; background: var(--control); border: 1px solid var(--line); font-size: 12px; color: var(--text); }
+.story-chip .story-open { background: transparent; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+.story-chip .story-open:hover { text-decoration: underline; background: transparent; }
+.story-chip .story-kind { font-size: 11px; color: var(--muted); }
+.story-chip.from { opacity: 0.85; border-style: dashed; }
+.library-subheading { margin: 6px 10px 2px 30px; font-size: 11px; color: var(--muted); }
 .keyword-heading { display: flex; align-items: center; justify-content: space-between; }
 .keyword-sort { background: transparent; border: 0; padding: 0 2px; font-size: 11px; font-weight: 400; color: var(--muted); }
 .keyword-sort:hover { color: var(--text); background: transparent; }
