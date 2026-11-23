@@ -23,7 +23,7 @@ use writing_studio_document::{Block, BlockKind, Document, Inline};
 use writing_studio_format::{file_name, Header, SceneFile, SceneHeader, Value as HeaderValue};
 use writing_studio_plotting::{PlotGrid, PlotPoint, Plotline};
 use writing_studio_project::{
-    normalize_binder_color, BinderNode, BinderTree, Keyword, NodeKind, ProjectMeta, ProjectSettings, SavedFilter,
+    normalize_binder_color, BinderNode, BinderTree, Keyword, MindMap, NodeKind, ProjectMeta, ProjectSettings, SavedFilter,
 };
 use writing_studio_research::{ResearchFile, ResearchItem, ResearchLibrary};
 use writing_studio_worldbuilding::{Culture, Location, LoreEntry, TimelineEvent, World};
@@ -59,6 +59,8 @@ pub struct ProjectContent {
     pub documents: Vec<Document>,
     pub beats: HashMap<Id, SceneBeats>,
     pub plot: PlotGrid,
+    /// Ideas, lines, and hand-placed nodes of the mind map (`mindmap.json`).
+    pub mindmap: MindMap,
     pub cast: Cast,
     pub world: World,
     pub library: ResearchLibrary,
@@ -214,6 +216,7 @@ impl ProjectContent {
             documents,
             beats: store.load_scene_beats()?,
             plot: store.load_plot()?,
+            mindmap: store.load_mindmap()?,
             cast: store.load_cast()?,
             world: store.load_world()?,
             library: store.load_library()?,
@@ -371,6 +374,39 @@ fn lined(sections: &[(&str, Vec<Value>)]) -> String {
     out.push_str("}\n");
     out
 }
+
+/// `mindmap.json`: its ideas, lines, and positions one to a line, then any
+/// keys the program does not know.
+pub(crate) fn mindmap_json(map: &MindMap) -> Result<String> {
+    let list = |items: Result<Value>| -> Result<Vec<Value>> {
+        Ok(items?.as_array().cloned().unwrap_or_default())
+    };
+    let value = |item: serde_json::Result<Value>| item.map_err(|err| Error::message(err.to_string()));
+    let mut text = lined(&[
+        ("ideas", list(value(serde_json::to_value(&map.ideas)))?),
+        ("lines", list(value(serde_json::to_value(&map.lines)))?),
+        ("positions", list(value(serde_json::to_value(&map.positions)))?),
+    ]);
+    if !map.other.is_empty() {
+        text.truncate(text.len() - "\n}\n".len());
+        for (key, item) in &map.other {
+            text.push_str(&format!(",\n  {}: {}", Value::from(key.as_str()), item));
+        }
+        text.push_str("\n}\n");
+    }
+    Ok(text)
+}
+
+/// Read `mindmap.json`, or an empty map when the project has none.
+pub(crate) fn read_mindmap(root: &Path, seen: &RefCell<HashMap<String, u64>>) -> Result<MindMap> {
+    if !root.join(MINDMAP_FILE).exists() {
+        return Ok(MindMap::default());
+    }
+    let text = read_noted(&root.join(MINDMAP_FILE), MINDMAP_FILE, seen)?;
+    serde_json::from_str(&text).map_err(|err| bad(MINDMAP_FILE, err))
+}
+
+pub(crate) const MINDMAP_FILE: &str = "mindmap.json";
 
 fn pretty(value: &Value) -> Result<String> {
     let mut text = serde_json::to_string_pretty(value).map_err(|err| Error::message(err.to_string()))?;
@@ -794,6 +830,11 @@ fn render(content: &ProjectContent) -> Result<Rendered> {
     }
     contents.push(("bible.json".into(), bible));
     contents.push(("plot.json".into(), plot_json(&content.plot, &content.extras)?));
+    // Only once the map has something of its own: a project without the
+    // file has no ideas or lines.
+    if !content.mindmap.is_empty() {
+        contents.push((MINDMAP_FILE.into(), mindmap_json(&content.mindmap)?));
+    }
     let (project, local) = settings_json(&content.meta, content.extras.get(&content.meta.id))?;
     contents.push(("project.json".into(), project));
     contents.push((LOCAL_SETTINGS.into(), local));
@@ -1290,6 +1331,8 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
         });
     }
 
+    let mindmap = read_mindmap(root, &seen)?;
+
     // The plot grid.
     let plot_file = JsonFile::read(root, "plot.json", &seen)?;
     let mut plot = PlotGrid::default();
@@ -1365,6 +1408,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
         documents,
         beats,
         plot,
+        mindmap,
         cast,
         world,
         library,

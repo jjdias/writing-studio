@@ -35,8 +35,9 @@ MyNovel.writingstudio/
     the-harbor-3f9a.html
   characters/             one HTML file for each character
   places/  cultures/  lore/  timeline/  research/
-  bible.json              the order of those entries, which scenes they point at, who is related to whom
+  bible.json              the order of those entries, which scenes and chapters they point at, who is related to whom
   plot.json               plotlines and plot points
+  mindmap.json            the mind map's ideas, lines, and hand-placed nodes, once it has any
   attachments/            research files, as now
     covers/               each book's ebook cover, `<book id>.png` or `.jpg`
   dictionaries/           optional Hunspell dictionaries, as now
@@ -243,7 +244,9 @@ JSON is for structure that is not read as prose. Where a file is a list, each it
 - **`bible.json`** — a list for each kind of entry (`characters`, `places`, `cultures`, `lore`, `timeline`, `research`), each item an `id` and its `file`; then `research_files`, `relationships` (each with its own `id`, and `from`, `to`, and `kind`), and `scene_links` (`from` an entry, to an `item`: a scene, or a chapter, part, or book, whose link reaches every scene in it). A link with `scene` in place of `item`, as written before links could point at a chapter, is refused: the project does not open, and the message says to change `scene` to `item`.
 - **`plot.json`** — `plotlines` in order, each with its `points` in order; a point has `title`, `summary`, and an optional `scene`.
 
-**Keys the program does not know** are kept and written back: on any line of `binder.json`, `bible.json`, or `plot.json`, and in `project.json` and its `settings`. A `relationships` line written before relationships had ids gets one the next time the bible is saved.
+- **`mindmap.json`** — `ideas`, `lines`, and `positions`, one to a line. An idea has `id`, `title`, `note`, and `attached` when it hangs from a node (a binder item, another idea); it is never compiled or counted. A line has `id`, `from`, `to`, and `label` when it has a word; its ends are binder items, ideas, or bible entries, and it is neither a binder move nor a story link. A position has `id` (a binder item, an idea, or an entry) and `x` and `y`, the node's center in map units. The file is written once the map has something of its own; a project without it has no ideas, lines, or positions. It has no table in the cache: the program reads the file. Emptying the trash takes away the lines and positions of what it deleted, and loosens ideas that hung from it. Sync merges each list by `id`.
+
+**Keys the program does not know** are kept and written back: on any line of `binder.json`, `bible.json`, or `plot.json`, on any idea, line, or position of `mindmap.json` and at its top, and in `project.json` and its `settings`. A `relationships` line written before relationships had ids gets one the next time the bible is saved.
 
 **Order is the order of the lines.** Nothing is numbered. In `binder.json` a parent comes before its children, and children are in reading order, so the file reads from the top as the book does. Moving a scene moves one line and changes nothing else. An earlier draft of this format gave each item an order key; line order does the same job with nothing to keep in step.
 

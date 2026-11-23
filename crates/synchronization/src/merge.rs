@@ -292,6 +292,11 @@ pub fn merge(base: &ProjectContent, ours: &ProjectContent, theirs: &ProjectConte
     content.library.files = records(&base.library.files, &ours.library.files, &theirs.library.files, |x| x.id, "research file", c);
     content.plot.lines = records(&base.plot.lines, &ours.plot.lines, &theirs.plot.lines, |x| x.id, "plotline", c);
     content.plot.points = records(&base.plot.points, &ours.plot.points, &theirs.plot.points, |x| x.id, "plot point", c);
+    // The mind map's ideas, lines, and hand-placed nodes, each by its id.
+    let (bm, om, tm) = (&base.mindmap, &ours.mindmap, &theirs.mindmap);
+    content.mindmap.ideas = merge_by_key(&bm.ideas, &om.ideas, &tm.ideas, |idea| idea.id);
+    content.mindmap.lines = merge_by_key(&bm.lines, &om.lines, &tm.lines, |line| line.id);
+    content.mindmap.positions = merge_by_key(&bm.positions, &om.positions, &tm.positions, |kept| kept.id);
     renumber(&mut content);
 
     // The title and the settings that go with the book.
@@ -573,6 +578,26 @@ mod tests {
 
     fn node(content: &mut ProjectContent, id: Id) -> &mut BinderNode {
         content.binder.nodes.iter_mut().find(|n| n.id == id).unwrap()
+    }
+
+    /// Each machine's ideas, lines, and placed nodes are kept, by id; one
+    /// taken away on one machine is gone.
+    #[test]
+    fn the_mind_maps_of_two_machines_are_merged_by_id() {
+        let mut base = base();
+        let id = scene(&base);
+        let kept = base.mindmap.add_idea(Some(id));
+        let gone = base.mindmap.add_idea(None);
+        let (mut ours, mut theirs) = (base.clone(), base.clone());
+        let mine = ours.mindmap.add_idea(None);
+        ours.mindmap.place(id, 10.0, 20.0);
+        let line = theirs.mindmap.add_line(kept, id).unwrap();
+        theirs.mindmap.remove_idea(gone);
+        let merged = merge(&base, &ours, &theirs).unwrap().content.mindmap;
+        let ideas: Vec<Id> = merged.ideas.iter().map(|idea| idea.id).collect();
+        assert_eq!(ideas, [kept, mine]);
+        assert_eq!(merged.lines.iter().map(|line| line.id).collect::<Vec<_>>(), [line]);
+        assert_eq!(merged.position(id), Some((10.0, 20.0)));
     }
 
     #[test]

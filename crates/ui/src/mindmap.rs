@@ -4,6 +4,11 @@
 //! bottom, the rest to the left. Each branch takes the height of what it
 //! holds, so no two nodes overlap. A folded node's branch is not laid out.
 //!
+//! Ideas sit in a row under the book, and the story's entries, when shown,
+//! in a row over it. A node the writer dragged somewhere keeps that place,
+//! and a binder node takes its branch along; everything else stays laid out
+//! around it.
+//!
 //! Plain arithmetic on the binder, so it is tested here; the map pane only
 //! draws what this returns.
 
@@ -25,9 +30,30 @@ pub enum Side {
     Left,
 }
 
+/// What a node of the map is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MapKind {
+    /// A book, part, chapter, folder, or scene.
+    Binder,
+    /// An idea, which is not in the book.
+    Idea,
+    /// A character, place, or note from the story's entries.
+    Entry,
+}
+
+/// A node besides the binder's: an idea or a story entry, and the nodes it
+/// is drawn joined to (what an idea hangs from, what an entry is linked to).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Extra {
+    pub id: Id,
+    pub kind: MapKind,
+    pub joined: Vec<Id>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct MapNode {
     pub id: Id,
+    pub kind: MapKind,
     pub parent: Option<Id>,
     pub depth: usize,
     pub side: Side,
@@ -88,6 +114,7 @@ pub fn layout(binder: &BinderTree, root: Id, folded: &[Id]) -> MapLayout {
     let (right, left) = top.split_at(right_count);
     map.nodes.push(MapNode {
         id: root,
+        kind: MapKind::Binder,
         parent: None,
         depth: 0,
         side: Side::Middle,
@@ -105,12 +132,76 @@ pub fn layout(binder: &BinderTree, root: Id, folded: &[Id]) -> MapLayout {
             top_edge += height + ROW_GAP;
         }
     }
-    let half = (NODE_WIDTH / 2.0, NODE_HEIGHT / 2.0);
-    map.min_x = map.nodes.iter().map(|node| node.x - half.0).fold(f64::INFINITY, f64::min);
-    map.max_x = map.nodes.iter().map(|node| node.x + half.0).fold(f64::NEG_INFINITY, f64::max);
-    map.min_y = map.nodes.iter().map(|node| node.y - half.1).fold(f64::INFINITY, f64::min);
-    map.max_y = map.nodes.iter().map(|node| node.y + half.1).fold(f64::NEG_INFINITY, f64::max);
+    map.measure();
     map
+}
+
+/// The binder's map with ideas and entries added, and the nodes the writer
+/// placed by hand where they were put (`placed`, by id, as centers).
+pub fn layout_all(binder: &BinderTree, root: Id, folded: &[Id], extras: &[Extra], placed: &[(Id, f64, f64)]) -> MapLayout {
+    let mut map = layout(binder, root, folded);
+    if map.nodes.is_empty() {
+        return map;
+    }
+    // Ideas in a row under the tree, entries in a row over it, centered.
+    for (kind, below) in [(MapKind::Idea, true), (MapKind::Entry, false)] {
+        let row: Vec<&Extra> = extras.iter().filter(|extra| extra.kind == kind).collect();
+        let step = NODE_WIDTH + ROW_GAP * 2.0;
+        let first = -(row.len().saturating_sub(1) as f64) * step / 2.0;
+        let y = if below { map.max_y + NODE_HEIGHT * 1.5 } else { map.min_y - NODE_HEIGHT * 1.5 };
+        for (at, extra) in row.into_iter().enumerate() {
+            map.nodes.push(MapNode {
+                id: extra.id,
+                kind,
+                parent: None,
+                depth: 0,
+                side: Side::Middle,
+                x: first + at as f64 * step,
+                y,
+                has_children: false,
+                folded: false,
+            });
+        }
+    }
+    // Hand-placed nodes; a binder node's branch goes with it, unless a node
+    // in it was placed too.
+    let placed_ids: Vec<Id> = placed.iter().map(|(id, _, _)| *id).collect();
+    for (id, x, y) in placed {
+        let Some(node) = map.get(*id) else {
+            continue;
+        };
+        let (dx, dy) = (x - node.x, y - node.y);
+        let mut moving = vec![*id];
+        if node.kind == MapKind::Binder {
+            let mut at = 0;
+            while at < moving.len() {
+                let parent = moving[at];
+                moving.extend(
+                    map.nodes
+                        .iter()
+                        .filter(|child| child.parent == Some(parent) && !placed_ids.contains(&child.id))
+                        .map(|child| child.id),
+                );
+                at += 1;
+            }
+        }
+        for node in map.nodes.iter_mut().filter(|node| moving.contains(&node.id)) {
+            node.x += dx;
+            node.y += dy;
+        }
+    }
+    map.measure();
+    map
+}
+
+impl MapLayout {
+    fn measure(&mut self) {
+        let half = (NODE_WIDTH / 2.0, NODE_HEIGHT / 2.0);
+        self.min_x = self.nodes.iter().map(|node| node.x - half.0).fold(f64::INFINITY, f64::min);
+        self.max_x = self.nodes.iter().map(|node| node.x + half.0).fold(f64::NEG_INFINITY, f64::max);
+        self.min_y = self.nodes.iter().map(|node| node.y - half.1).fold(f64::INFINITY, f64::min);
+        self.max_y = self.nodes.iter().map(|node| node.y + half.1).fold(f64::NEG_INFINITY, f64::max);
+    }
 }
 
 fn is_folded(folded: &[Id], id: Id) -> bool {
@@ -149,6 +240,7 @@ fn place(
     let sign = if side == Side::Left { -1.0 } else { 1.0 };
     map.nodes.push(MapNode {
         id,
+        kind: MapKind::Binder,
         parent: Some(parent),
         depth,
         side,
@@ -265,6 +357,34 @@ mod tests {
         assert!(map.get(scenes[0]).is_none() && map.get(scenes[2]).is_some());
         assert!(!map.get(chapters[2]).unwrap().has_children);
         assert!(layout(&tree, Id::new(), &[]).nodes.is_empty());
+    }
+
+    #[test]
+    fn ideas_go_under_the_tree_entries_over_it_and_placed_nodes_where_put() {
+        let (tree, book, chapters, scenes) = book();
+        let (idea, entry) = (Id::new(), Id::new());
+        let extras = [
+            Extra { id: idea, kind: MapKind::Idea, joined: vec![scenes[0]] },
+            Extra { id: entry, kind: MapKind::Entry, joined: vec![scenes[1], scenes[2]] },
+        ];
+        let plain = layout(&tree, book, &[]);
+        let map = layout_all(&tree, book, &[], &extras, &[]);
+        assert!(map.get(idea).unwrap().y > plain.max_y, "an idea under the tree");
+        assert!(map.get(entry).unwrap().y < plain.min_y, "an entry over it");
+        assert_eq!(map.get(entry).unwrap().kind, MapKind::Entry);
+
+        // Chapter One placed by hand takes its scenes along; its scene B,
+        // placed too, stays where it was put.
+        let one = map.get(chapters[0]).unwrap().clone();
+        let a = map.get(scenes[0]).unwrap().clone();
+        let placed = [(chapters[0], one.x + 100.0, one.y - 50.0), (scenes[1], 900.0, 900.0), (idea, -5.0, 7.0)];
+        let moved = layout_all(&tree, book, &[], &extras, &placed);
+        assert_eq!((moved.get(chapters[0]).unwrap().x, moved.get(chapters[0]).unwrap().y), (one.x + 100.0, one.y - 50.0));
+        assert_eq!((moved.get(scenes[0]).unwrap().x, moved.get(scenes[0]).unwrap().y), (a.x + 100.0, a.y - 50.0));
+        assert_eq!((moved.get(scenes[1]).unwrap().x, moved.get(scenes[1]).unwrap().y), (900.0, 900.0));
+        assert_eq!((moved.get(idea).unwrap().x, moved.get(idea).unwrap().y), (-5.0, 7.0));
+        assert_eq!(moved.get(chapters[1]).unwrap().x, map.get(chapters[1]).unwrap().x, "the others stay");
+        assert!(moved.max_x >= 900.0 + NODE_WIDTH / 2.0, "the bounds take it in");
     }
 
     #[test]

@@ -18,7 +18,7 @@ use writing_studio_manuscript::{book_outline_words, outline_rows};
 use writing_studio_plotting::PlotGrid;
 use writing_studio_research::ResearchLibrary;
 use writing_studio_project::{
-    binder_color_hex, format_elapsed, keyword_covers, normalize_binder_color, same_keyword, KeywordQuery, KeywordRow, KeywordSort, pace, tidy_keyword, BinderNode, BinderTree, NodeKind, Pace, PanelLayout,
+    binder_color_hex, format_elapsed, keyword_covers, normalize_binder_color, MindMap, same_keyword, KeywordQuery, KeywordRow, KeywordSort, pace, tidy_keyword, BinderNode, BinderTree, NodeKind, Pace, PanelLayout,
     DropPlace, KeepPlace, PageStyle, ProjectMeta, ProseFont, SavedFilter, StoredSession, Theme,
 };
 use writing_studio_search::ManuscriptIndex;
@@ -254,6 +254,14 @@ impl WorldSection {
 /// story's entries as the context crate reads them.
 pub use writing_studio_context::{EntryKind as BibleLink, StoryEntry};
 
+/// Which story entries the mind map shows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MapStory {
+    Hidden,
+    All,
+    Kind(BibleLink),
+}
+
 /// How an entry is offered when linking it: "Mara · character".
 pub fn story_choice(entry: &StoryEntry) -> String {
     format!("{} · {}", entry.name, entry.kind.noun())
@@ -326,6 +334,17 @@ pub struct StudioState {
     pub folded_map: Vec<Id>,
     /// The mind map's zoom: `None` fits the window, a number scales it.
     pub map_zoom: Option<f64>,
+    /// The mind map's ideas, lines, and hand-placed nodes (`mindmap.json`).
+    pub mindmap: MindMap,
+    /// Which story entries the mind map shows: none, every kind, or one.
+    pub map_story: MapStory,
+    /// The idea or story entry chosen on the mind map; a binder node chosen
+    /// there is `selected`, as anywhere.
+    pub map_focus: Option<Id>,
+    /// The node a line is being drawn from, until the next node clicked.
+    pub map_join: Option<Id>,
+    /// Where on screen a drag on the map began, to tell it from a click.
+    pub map_drag_start: Option<(f64, f64)>,
     pub plot: PlotGrid,
     pub plot_dirty: bool,
     pub confirm_plotline: Option<Id>,
@@ -468,6 +487,11 @@ impl Default for StudioState {
             map_query: String::new(),
             folded_map: Vec::new(),
             map_zoom: None,
+            mindmap: MindMap::default(),
+            map_story: MapStory::Hidden,
+            map_focus: None,
+            map_join: None,
+            map_drag_start: None,
             plot: PlotGrid::new(),
             plot_dirty: false,
             confirm_plotline: None,
@@ -1123,6 +1147,15 @@ impl StudioState {
                 self.library_dirty = false;
                 self.selected_research = None;
                 self.confirm_research = None;
+                self.mindmap = match store.load_mindmap() {
+                    Ok(map) => map,
+                    Err(err) => {
+                        self.status = format!("Could not read the mind map: {err}");
+                        MindMap::default()
+                    }
+                };
+                self.map_focus = None;
+                self.map_join = None;
                 self.store = Some(Rc::new(RefCell::new(store)));
                 if self.absorb_binder_research() {
                     self.status = status.into();
@@ -2567,6 +2600,254 @@ impl StudioState {
         self.map_zoom = by.map(|by| (self.map_zoom.unwrap_or(1.0) * by).clamp(0.25, 3.0));
     }
 
+    /// The ideas and story entries the mind map shows besides the binder,
+    /// each with the nodes it is drawn joined to. An entry shows when it
+    /// reaches something on the map, joined to what it is linked to.
+    pub fn map_extras(&self, shown: &[Id]) -> Vec<crate::mindmap::Extra> {
+        use crate::mindmap::{Extra, MapKind};
+        let mut extras: Vec<Extra> = self
+            .mindmap
+            .ideas
+            .iter()
+            .map(|idea| Extra { id: idea.id, kind: MapKind::Idea, joined: idea.attached.into_iter().collect() })
+            .collect();
+        let wanted = |kind: BibleLink| match self.map_story {
+            MapStory::Hidden => false,
+            MapStory::All => true,
+            MapStory::Kind(one) => one == kind,
+        };
+        for entry in self.story_entries().into_iter().filter(|entry| wanted(entry.kind)) {
+            let joined: Vec<Id> = entry.links.iter().copied().filter(|id| shown.contains(id)).collect();
+            if !joined.is_empty() {
+                extras.push(Extra { id: entry.id, kind: MapKind::Entry, joined });
+            }
+        }
+        extras
+    }
+
+    /// The whole mind map as it is drawn: the binder from `root`, ideas,
+    /// story entries, and the nodes placed by hand.
+    pub fn map_layout(&self, root: Id) -> crate::mindmap::MapLayout {
+        let tree = crate::mindmap::layout(&self.binder, root, &self.folded_map);
+        let shown: Vec<Id> = tree.nodes.iter().map(|node| node.id).collect();
+        let extras = self.map_extras(&shown);
+        let placed: Vec<(Id, f64, f64)> = self.mindmap.positions.iter().map(|kept| (kept.id, kept.x, kept.y)).collect();
+        crate::mindmap::layout_all(&self.binder, root, &self.folded_map, &extras, &placed)
+    }
+
+    fn persist_mindmap(&mut self) -> bool {
+        let Some(store) = &self.store else {
+            return false;
+        };
+        match store.borrow().persist_mindmap(&self.mindmap) {
+            Ok(()) => true,
+            Err(err) => {
+                self.status = format!("Could not save the mind map: {err}");
+                false
+            }
+        }
+    }
+
+    /// Change the mind map's own things and save them.
+    fn edit_map(&mut self, change: impl FnOnce(&mut MindMap) -> bool) -> bool {
+        let changed = change(&mut self.mindmap);
+        changed && self.persist_mindmap()
+    }
+
+    /// Choose a node on the map: a binder node is opened in the inspector
+    /// as anywhere; an idea or story entry is the map's own choice. While a
+    /// line is being drawn, the node is where it ends.
+    pub fn choose_on_map(&mut self, id: Id) {
+        if let Some(from) = self.map_join.take() {
+            if from != id && self.edit_map(|map| map.add_line(from, id).is_some()) {
+                self.status = "Joined. Write a word on the line under the map if it needs one.".into();
+            }
+            return;
+        }
+        if self.binder.get(id).is_some() {
+            self.map_focus = None;
+            self.select_node(id);
+        } else {
+            self.map_focus = Some(id);
+        }
+    }
+
+    /// The node chosen on the map, idea or entry first.
+    pub fn map_chosen(&self) -> Option<Id> {
+        self.map_focus.or(self.selected)
+    }
+
+    /// Start drawing a line from a node; the next node clicked ends it.
+    pub fn start_join(&mut self, from: Id) {
+        self.map_join = Some(from);
+        self.status = "Click the node to join it to. Escape lets it go.".into();
+    }
+
+    /// A new idea, hanging from the chosen node (or loose), chosen and
+    /// named next.
+    pub fn add_idea(&mut self, attached: Option<Id>) -> Id {
+        let id = self.mindmap.add_idea(attached);
+        self.persist_mindmap();
+        self.map_focus = Some(id);
+        self.status = "Added an idea. Name it under the map.".into();
+        id
+    }
+
+    pub fn set_idea_title(&mut self, id: Id, title: String) {
+        self.edit_map(|map| match map.ideas.iter_mut().find(|idea| idea.id == id) {
+            Some(idea) if idea.title != title => {
+                idea.title = title;
+                true
+            }
+            _ => false,
+        });
+    }
+
+    pub fn set_idea_note(&mut self, id: Id, note: String) {
+        self.edit_map(|map| match map.ideas.iter_mut().find(|idea| idea.id == id) {
+            Some(idea) if idea.note != note => {
+                idea.note = note;
+                true
+            }
+            _ => false,
+        });
+    }
+
+    pub fn remove_idea(&mut self, id: Id) {
+        if self.edit_map(|map| map.remove_idea(id)) {
+            self.map_focus = None;
+            self.status = "Idea removed.".into();
+        }
+    }
+
+    pub fn set_line_label(&mut self, id: Id, label: String) {
+        self.edit_map(|map| match map.lines.iter_mut().find(|line| line.id == id) {
+            Some(line) if line.label != label => {
+                line.label = label;
+                true
+            }
+            _ => false,
+        });
+    }
+
+    pub fn remove_line(&mut self, id: Id) {
+        self.edit_map(|map| {
+            let before = map.lines.len();
+            map.lines.retain(|line| line.id != id);
+            map.lines.len() != before
+        });
+    }
+
+    /// Keep a node where the writer dropped it, in map units.
+    pub fn place_on_map(&mut self, id: Id, x: f64, y: f64) {
+        self.edit_map(|map| {
+            map.place(id, x, y);
+            true
+        });
+    }
+
+    /// Put every node back where the map lays it out.
+    pub fn tidy_map(&mut self) {
+        if self.edit_map(|map| {
+            let had = !map.positions.is_empty();
+            map.positions.clear();
+            had
+        }) {
+            self.status = "The map is laid out again.".into();
+        }
+    }
+
+    /// Make an idea a scene: in the chapter or folder it hangs from (or the
+    /// one it is dropped on), after the scene it hangs from, or where a new
+    /// scene would go. Its title is the scene's, its note the synopsis, and
+    /// its lines go with it.
+    pub fn idea_to_scene(&mut self, idea: Id, into: Option<Id>) -> Option<Id> {
+        let found = self.mindmap.idea(idea)?.clone();
+        let anchor = into.or(found.attached).and_then(|id| self.binder.get(id)).cloned();
+        let (parent, after) = match anchor {
+            Some(node) if self.binder.accepts(node.id, NodeKind::Scene) => {
+                (Some(node.id), self.binder.children(Some(node.id)).last().map(|last| last.id))
+            }
+            Some(node) if node.kind == NodeKind::Scene => (node.parent_id, Some(node.id)),
+            _ => (self.infer_parent(NodeKind::Scene), None),
+        };
+        self.flush_editor();
+        let id = self.create_node(NodeKind::Scene, parent)?;
+        if let Some(parent) = parent {
+            let _ = self.binder.put_after(id, parent, after);
+        }
+        if let Some(node) = self.binder.get_mut(id) {
+            if !found.title.trim().is_empty() {
+                node.title = found.title.trim().to_string();
+            }
+            node.synopsis = found.note.trim().to_string();
+        }
+        self.persist_binder();
+        self.mindmap.idea_became(idea, id);
+        self.persist_mindmap();
+        self.map_focus = None;
+        self.select_node(id);
+        self.status = format!("“{}” is a scene now.", found.title.trim());
+        self.offer_undo(UndoOffer::Added { id });
+        Some(id)
+    }
+
+    /// Whether what is dragged on the map can be let go on `target`: a
+    /// binder node where the binder allows it, an idea on any node (onto a
+    /// chapter or folder it becomes a scene there), a story entry on a book,
+    /// part, chapter, or scene.
+    pub fn map_drop_allowed(&self, dragged: Id, target: Id) -> bool {
+        if dragged == target {
+            return false;
+        }
+        if self.binder.get(dragged).is_some() {
+            return self.binder.drop_allowed_at(dragged, target, self.drop_place);
+        }
+        if self.mindmap.idea(dragged).is_some() {
+            return true;
+        }
+        self.story_entry(dragged).is_some()
+            && self
+                .binder
+                .get(target)
+                .is_some_and(|node| matches!(node.kind, NodeKind::Book | NodeKind::Part | NodeKind::Chapter | NodeKind::Scene))
+    }
+
+    /// Let go of what is dragged on the map over `target`: a binder node
+    /// moves there; an idea becomes a scene in a chapter or folder, or hangs
+    /// from anything else; a story entry is linked there.
+    pub fn drop_on_map(&mut self, target: Id) {
+        let Some(dragged) = self.dragging else {
+            return;
+        };
+        if !self.map_drop_allowed(dragged, target) {
+            self.end_drag();
+            return;
+        }
+        if self.binder.get(dragged).is_some() {
+            self.drop_in_binder(target);
+            return;
+        }
+        self.end_drag();
+        if self.mindmap.idea(dragged).is_some() {
+            if self.binder.accepts(target, NodeKind::Scene) {
+                self.idea_to_scene(dragged, Some(target));
+            } else if self.edit_map(|map| match map.ideas.iter_mut().find(|idea| idea.id == dragged) {
+                Some(idea) => {
+                    idea.attached = Some(target);
+                    true
+                }
+                None => false,
+            }) {
+                self.status = "The idea hangs from there now.".into();
+            }
+        } else if let Some(entry) = self.story_entry(dragged) {
+            self.link_story(target, dragged);
+            let title = self.binder.get(target).map(|node| node.title.clone()).unwrap_or_default();
+            self.status = format!("Linked {} to “{title}”.", entry.name);
+        }
+    }
+
     /// Let go of the chosen keyword and story entry. Returns whether one
     /// was chosen.
     pub fn clear_keyword_filter(&mut self) -> bool {
@@ -2779,7 +3060,8 @@ impl StudioState {
             | self.confirm_backup.take().is_some()
             | self.confirm_kept.take().is_some()
             | std::mem::take(&mut self.confirm_empty_trash)
-            | self.confirm_keyword_merge.take().is_some();
+            | self.confirm_keyword_merge.take().is_some()
+            | self.map_join.take().is_some();
         if waiting {
             self.status = "Cancelled.".into();
         }
@@ -4615,6 +4897,9 @@ impl StudioState {
             self.note_edit();
             return;
         }
+        if self.mindmap.forget(&nodes) {
+            self.persist_mindmap();
+        }
         if self.library.detach_scenes(&nodes) && !self.persist_library_now() {
             self.library_dirty = true;
             self.note_edit();
@@ -5093,6 +5378,71 @@ mod tests {
         assert!(state.status.starts_with("Moved"), "{}", state.status);
         state.take_undo_offer();
         assert_eq!(state.binder.get(first).unwrap().parent_id, Some(chapter));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Ideas, lines, story entries, and hand-placed nodes on the mind map,
+    /// saved in `mindmap.json`: an idea becomes a scene with its lines, an
+    /// entry dropped on a chapter is linked there, and emptying the trash
+    /// takes away the lines of what it deleted.
+    #[test]
+    fn ideas_lines_entries_and_places_on_the_mind_map() {
+        let (mut state, dir) = open_state("map-ideas");
+        let scene = state.selected.unwrap();
+        let chapter = state.binder.get(scene).unwrap().parent_id.unwrap();
+        let book = state.map_root().unwrap();
+
+        let idea = state.add_idea(Some(chapter));
+        state.set_idea_title(idea, "Storm at sea".into());
+        state.set_idea_note(idea, "The ship nearly goes down.".into());
+        assert_eq!(state.map_chosen(), Some(idea));
+        state.start_join(idea);
+        state.choose_on_map(scene);
+        assert_eq!(state.mindmap.lines.len(), 1, "a line from the idea to the scene");
+        let line = state.mindmap.lines[0].id;
+        state.set_line_label(line, "foreshadows".into());
+        let map_file = state.project_root().unwrap().join("mindmap.json");
+        assert!(std::fs::read_to_string(&map_file).unwrap().contains("foreshadows"));
+        let map = state.map_layout(book);
+        assert_eq!(map.get(idea).unwrap().kind, crate::mindmap::MapKind::Idea);
+
+        // Placed by hand, then laid out again.
+        state.place_on_map(idea, 500.0, 600.0);
+        assert_eq!((state.map_layout(book).get(idea).unwrap().x, state.map_layout(book).get(idea).unwrap().y), (500.0, 600.0));
+        state.tidy_map();
+        assert!(state.mindmap.positions.is_empty());
+
+        // Dropped on the chapter, the idea becomes a scene there; its line goes with it.
+        state.begin_drag(idea);
+        state.set_binder_drop(chapter, DropPlace::Inside);
+        state.drop_on_map(chapter);
+        let made = state.selected.unwrap();
+        let node = state.binder.get(made).unwrap().clone();
+        assert_eq!((node.title.as_str(), node.synopsis.as_str()), ("Storm at sea", "The ship nearly goes down."));
+        assert_eq!(node.parent_id, Some(chapter));
+        assert!(state.mindmap.ideas.is_empty());
+        assert_eq!((state.mindmap.lines[0].from, state.mindmap.lines[0].to), (made, scene));
+
+        // A character shown on the map, dropped on the chapter, is linked there.
+        state.add_character();
+        let mara = state.selected_character.unwrap();
+        state.set_character_name(mara, "Mara".into());
+        state.begin_drag(mara);
+        state.set_binder_drop(chapter, DropPlace::Inside);
+        assert!(state.map_drop_allowed(mara, chapter));
+        state.drop_on_map(chapter);
+        assert_eq!(state.bible_scene_ids(BibleLink::Character, mara), [chapter]);
+        state.map_story = MapStory::Kind(BibleLink::Character);
+        assert!(state.map_layout(book).get(mara).is_some(), "shown, linked to what is on the map");
+        state.map_story = MapStory::Hidden;
+        assert!(state.map_layout(book).get(mara).is_none());
+
+        // Emptied from the trash, the scene's line goes.
+        state.select_node(made);
+        state.trash_selected();
+        state.empty_trash();
+        state.empty_trash();
+        assert!(state.mindmap.lines.is_empty());
         let _ = std::fs::remove_dir_all(dir);
     }
 

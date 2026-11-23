@@ -21,7 +21,7 @@ Writing Studio is **open source** (MIT OR Apache-2.0) and **free for the communi
 | 7 | Windows and Linux release: CI, packages, licenses, releases | Done (the installed-package check waits on the maintainer) | [done/phase-7.md](done/phase-7.md) |
 | 8 | UI and UX overhaul: a window built around writing | Done | [done/phase-8.md](done/phase-8.md) |
 | 9 | Writing comfort, from Ulysses: a brighter layout, page settings, deadlines, keywords | Done | [done/phase-9.md](done/phase-9.md) |
-| 11 | Tags, story links, and a mind map: nested keywords, entries linked from the scene, a scene context, views in the library | In progress | [todo/phase-11.md](todo/phase-11.md) |
+| 11 | Tags, story links, and a mind map: nested keywords, entries linked from the scene, a scene context, views in the library | Done (the maintainer's look at the window is left) | [todo/phase-11.md](todo/phase-11.md) |
 | Bonus | Work with no phase yet | Not started | [todo/bonus.md](todo/bonus.md) |
 
 Phases 1 to 9 are on `master`.

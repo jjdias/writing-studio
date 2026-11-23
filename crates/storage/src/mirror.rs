@@ -25,14 +25,15 @@ use writing_studio_diagnostics::SceneBeats;
 use writing_studio_document::Document;
 use writing_studio_format::SceneFile;
 use writing_studio_plotting::PlotGrid;
-use writing_studio_project::{BinderNode, BinderTree, ProjectMeta};
+use writing_studio_project::{BinderNode, BinderTree, MindMap, ProjectMeta};
 use writing_studio_research::ResearchLibrary;
 use writing_studio_templates::blank_novel;
 use writing_studio_worldbuilding::World;
 
 use crate::files::{
     text_fingerprint, unknown_head, with_a_run_in_every_block, write_project_files_noted,
-    bible_files, Extras, Problem, binder_json, inside, place, plot_json, read_project_files, scene_text, settings_json,
+    bible_files, Extras, Problem, binder_json, inside, mindmap_json, place, plot_json, read_mindmap, read_project_files,
+    scene_text, settings_json, MINDMAP_FILE,
     write_atomic, write_format_2_marker, ProjectContent,
     LOCAL_SETTINGS,
 };
@@ -688,6 +689,21 @@ impl ProjectStore {
         self.persist_meta_cached(meta)
     }
 
+    /// The mind map's ideas, lines, and positions, from `mindmap.json`. It
+    /// has no table in the cache: the file is small and read when needed.
+    pub fn load_mindmap(&self) -> Result<MindMap> {
+        read_mindmap(&self.root, &RefCell::new(HashMap::new()))
+    }
+
+    /// Write `mindmap.json`. A project that never had one does not get an
+    /// empty one.
+    pub fn persist_mindmap(&self, map: &MindMap) -> Result<()> {
+        if map.is_empty() && !self.root.join(MINDMAP_FILE).exists() {
+            return Ok(());
+        }
+        self.write_small(MINDMAP_FILE, &mindmap_json(map)?)
+    }
+
     pub fn persist_plot(&self, grid: &PlotGrid) -> Result<()> {
         if self.mirroring() {
             self.write_small("plot.json", &plot_json(grid, &self.mirror.extras.borrow())?)?;
@@ -788,6 +804,41 @@ mod tests {
         assert_eq!(scene.document_id, Some(scene.id));
         assert!(fs::read_to_string(file_of(&store, scene.id)).unwrap().contains("Start writing this scene."));
         assert!(ProjectStore::create(&dir, "Again").is_err());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// `mindmap.json` comes only once the map has something of its own,
+    /// reads back, keeps keys the program does not know, and is written
+    /// with the rest of the files.
+    #[test]
+    fn the_mind_map_file_reads_back_and_keeps_unknown_keys() {
+        let dir = temp("mindmap");
+        let store = ProjectStore::create(&dir, "Map").unwrap();
+        assert!(!dir.join(MINDMAP_FILE).exists(), "a project without ideas has no file");
+        assert!(store.load_mindmap().unwrap().is_empty());
+        store.persist_mindmap(&MindMap::default()).unwrap();
+        assert!(!dir.join(MINDMAP_FILE).exists());
+
+        let scene = scene_of(&store).id;
+        let mut map = MindMap::default();
+        let idea = map.add_idea(Some(scene));
+        map.add_line(idea, scene).unwrap();
+        map.place(scene, 12.5, -40.0);
+        store.persist_mindmap(&map).unwrap();
+        assert_eq!(store.load_mindmap().unwrap(), map);
+
+        let text = fs::read_to_string(dir.join(MINDMAP_FILE)).unwrap();
+        let edited = text.replace("\"title\":\"New idea\"", "\"title\":\"New idea\",\"mood\":\"dark\"");
+        fs::write(dir.join(MINDMAP_FILE), format!("{}  ,\"made_by\": \"hand\"\n}}\n", edited.trim_end().trim_end_matches('}')))
+            .unwrap();
+        let read = read_project_files(&dir).unwrap();
+        assert_eq!(read.mindmap.ideas[0].other["mood"], "dark");
+        assert_eq!(read.mindmap.other["made_by"], "hand");
+        drop(store);
+        let reopened = ProjectStore::open(&dir).unwrap();
+        reopened.write_files_from_cache().unwrap();
+        let written = fs::read_to_string(dir.join(MINDMAP_FILE)).unwrap();
+        assert!(written.contains("\"mood\":\"dark\"") && written.contains("\"made_by\": \"hand\""), "{written}");
         let _ = fs::remove_dir_all(dir);
     }
 

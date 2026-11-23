@@ -5,6 +5,7 @@
 
 mod binder;
 mod compile;
+mod mindmap;
 mod settings;
 mod writing;
 
@@ -12,6 +13,7 @@ pub use binder::{
     binder_color_hex, keyword_covers, normalize_binder_color, same_keyword, tidy_keyword, BinderColor, BinderNode,
     BinderTree, DropPlace, Keyword, KeywordQuery, KeywordRow, KeywordSort, NodeKind, SavedFilter, BINDER_COLORS,
 };
+pub use mindmap::{Idea, MapLine, MapPosition, MindMap};
 pub use compile::{
     built_in_profile, built_in_profiles, BookProfile, CompileFormat, CompileProfile, HeadingStyle, LineSpacing, PageSetup, PageSize,
     BookLanguage, Matter, SceneSeparator,

@@ -7,7 +7,6 @@ description = "Project metadata, binder hierarchy, and settings"
 
 [dependencies]
 serde.workspace = true
-writing-studio-core.workspace = true
-
-[dev-dependencies]
+# Keeps the keys of mindmap.json this program does not know.
 serde_json.workspace = true
+writing-studio-core.workspace = true

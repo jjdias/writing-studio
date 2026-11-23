@@ -1,6 +1,6 @@
 # Phase 11 — Tags, story links, and a mind map
 
-In progress: stages 1 to 11 are done.
+Done: every stage is in. The maintainer's look at the window is left, as in Phases 8 and 9.
 
 Phase 9 gave binder items colored keywords and saved filters. This phase does four things with what is there:
 
@@ -161,6 +161,8 @@ The corkboard becomes a mind map of the manuscript.
 
 ### 12. Ideas, the story's entries, and lines
 
+**Done.** `MindMap` in `crates/project/src/mindmap.rs` (ideas, lines, positions, each keeping unknown keys with `#[serde(flatten)]`, for which the crate now uses `serde_json`) is read and written by storage as `mindmap.json` (`read_mindmap`, `mindmap_json`, `ProjectStore::load_mindmap` and `persist_mindmap`; no cache table), carried in `ProjectContent`, and merged by sync by id. `layout_all` puts ideas in a row under the tree and shown entries in a row over it (`Extra`, `MapKind`), and moves hand-placed nodes, a binder node with its branch; tested. On the map: **+ Idea**, an idea's title and note under the map with **Make it a scene** and **Remove idea**; the **Story** menu (`MapStory`); **Join**, then the lines' words under the map; **Tidy**. Dragging decides by what moves (`drop_on_map`, `map_drop_allowed`): a binder node moves in the binder, an idea becomes a scene in a chapter or folder or hangs from anything else, an entry is linked to a book, part, chapter, or scene; let go on an empty part of the map, a node stays there, its place found by the page from the pointer (`place_at_pointer`, `getScreenCTM`). An idea or entry is chosen on the map without the inspector (`map_focus`). Emptying the trash forgets the deleted items' lines and positions (`MindMap::forget`).
+
 - **Ideas** are nodes that are not in the book: a title and a short note, attached to the book or to any node, or loose. They are never compiled and never counted.
 - **The story's entries** show on the map beside what they are linked to, from stage 7's links, one kind at a time or all, from a menu on the map: a character linked to three scenes is one node with three lines. Dragging an entry onto a scene or chapter links it there; the lines are the links, so the map, the inspector, and the entry's page always agree.
 - **Lines** join any two nodes, scenes and ideas alike, with an optional word on the line ("echoes", "pays off"). A line is not a binder move and not a story link.
@@ -193,6 +195,8 @@ What came up while this phase was planned and built, and while the Phase 7 packa
 - **"That scene is no longer in the binder"** is what an entry page's Open says for a missing chapter too (`open_linked_scene`).
 - **A character is found by any capitalized part of the name**, as diagnostics always did, so a character called "The Pilot" is suggested wherever a sentence starts with "The" (stage 8 reuses the rule; places, cultures, and lore need the whole name).
 - **A hidden "Named here" suggestion comes back when the program reopens**: hiding is kept for the session only.
+- **Mind map positions come from the page.** Where a node is let go is turned into map units by the page (`getScreenCTM`), as Rust cannot measure the drawing; nothing tests that step but the maintainer's look.
+- **A backup holds no `mindmap.json`.** A backup copies the cache, and the map has no table there; restoring keeps the map as it is (as with research files, in [bonus.md](bonus.md)).
 - **Keyword folding and the list's order last until the program closes.** The plan did not ask for more; the binder's folding is kept with the project.
 - **Not yet checked by hand:** opening a real research file through `ShellExecuteW`, the MSI install and removal, and everything on Linux (stage 6 of Phase 7, the maintainer's).
 
