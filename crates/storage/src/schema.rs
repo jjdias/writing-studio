@@ -194,5 +194,9 @@ pub fn install(conn: &Connection) -> rusqlite::Result<()> {
         [],
     );
     conn.execute_batch("CREATE TABLE IF NOT EXISTS binder_lists (name TEXT PRIMARY KEY, json TEXT NOT NULL);")?;
+    // Which entry of the bible each entry is inside (Phase 11).
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS bible_parents (owner_kind TEXT NOT NULL, id TEXT PRIMARY KEY, parent_id TEXT NOT NULL);",
+    )?;
     Ok(())
 }

@@ -60,18 +60,13 @@ impl WorkspaceMode {
         WorkspaceMode::History,
     ];
 
-    /// The other ways to show the manuscript, listed in the library under
-    /// its books. The page opens from a scene.
-    pub const LIBRARY_VIEWS: [WorkspaceMode; 2] = [WorkspaceMode::MindMap, WorkspaceMode::Outliner];
+    /// The views listed in the binder under "Views". The page opens from a
+    /// scene, and an entry's page from Worldbuilding.
+    pub const LIBRARY_VIEWS: [WorkspaceMode; 4] =
+        [WorkspaceMode::MindMap, WorkspaceMode::Outliner, WorkspaceMode::Plot, WorkspaceMode::History];
 
-    /// What the library lists under "Extras".
-    pub const LIBRARY_EXTRAS: [WorkspaceMode; 5] = [
-        WorkspaceMode::Characters,
-        WorkspaceMode::World,
-        WorkspaceMode::Plot,
-        WorkspaceMode::Research,
-        WorkspaceMode::History,
-    ];
+    /// The modes that are an entry's page, opened from Worldbuilding.
+    pub const ENTRY_PAGES: [WorkspaceMode; 3] = [WorkspaceMode::Characters, WorkspaceMode::World, WorkspaceMode::Research];
 
     /// The scene list is beside the page in Writing, and in History, which
     /// is about the scene chosen there. The mind map and the outliner show the
@@ -83,7 +78,7 @@ impl WorkspaceMode {
     /// Context shows the item being written, or the node chosen on the
     /// mind map or in the outline.
     pub fn shows_inspector(self) -> bool {
-        matches!(self, Self::Writing | Self::MindMap | Self::Outliner)
+        matches!(self, Self::Writing | Self::MindMap | Self::Outliner | Self::Characters | Self::World | Self::Research)
     }
 
     pub fn label(self) -> &'static str {
@@ -282,6 +277,16 @@ pub enum MapStory {
     Hidden,
     All,
     Kind(BibleLink),
+}
+
+/// The World section a kind of entry is edited in.
+pub fn world_section_of(kind: BibleLink) -> WorldSection {
+    match kind {
+        BibleLink::Culture => WorldSection::Cultures,
+        BibleLink::Lore => WorldSection::Lore,
+        BibleLink::Timeline => WorldSection::Timeline,
+        _ => WorldSection::Locations,
+    }
 }
 
 /// How an entry is offered when linking it: "Mara · character".
@@ -3023,6 +3028,202 @@ impl StudioState {
         }
     }
 
+    /// The entry whose page is open, if one is.
+    pub fn entry_shown(&self) -> Option<StoryEntry> {
+        let id = match self.mode {
+            WorkspaceMode::Characters => self.selected_character,
+            WorkspaceMode::World => self.selected_world,
+            WorkspaceMode::Research => self.selected_research,
+            _ => None,
+        }?;
+        self.story_entry(id)
+    }
+
+    /// One kind's entries as rows of the binder's Worldbuilding trees: each
+    /// with its depth and whether it holds others, leaving out what is
+    /// inside a folded one.
+    pub fn entry_rows(&self, kind: BibleLink) -> Vec<(Id, u32, bool)> {
+        use writing_studio_context::tree_rows;
+        let folded: Vec<Id> = self.meta.as_ref().map(|meta| meta.settings.collapsed.clone()).unwrap_or_default();
+        match kind {
+            BibleLink::Character => tree_rows(&self.cast.characters, &folded),
+            BibleLink::Location => tree_rows(&self.world.locations, &folded),
+            BibleLink::Culture => tree_rows(&self.world.cultures, &folded),
+            BibleLink::Lore => tree_rows(&self.world.lore, &folded),
+            BibleLink::Timeline => tree_rows(&self.world.events, &folded),
+            BibleLink::Research => tree_rows(&self.library.items, &folded),
+        }
+    }
+
+    /// A new entry of a kind, inside `inside` (an entry of that kind) or at
+    /// the top, last among what is there. It is opened on its page and its
+    /// name in the binder is ready to type.
+    pub fn add_entry(&mut self, kind: BibleLink, inside: Option<Id>) -> Option<Id> {
+        let before: Vec<Id> = self.story_entries().iter().map(|entry| entry.id).collect();
+        match kind {
+            BibleLink::Character => self.add_character(),
+            BibleLink::Research => self.add_research_item(),
+            _ => {
+                self.world_section = world_section_of(kind);
+                self.add_world_item();
+            }
+        }
+        let id = self.story_entries().into_iter().find(|entry| !before.contains(&entry.id))?.id;
+        if inside.is_some() {
+            self.nest_entry(id, inside, None);
+        }
+        self.open_story_entry(id);
+        self.renaming = Some(id);
+        Some(id)
+    }
+
+    /// Rename an entry, whatever its kind.
+    pub fn rename_entry(&mut self, id: Id, name: &str) {
+        let name = name.trim().to_string();
+        let Some(entry) = self.story_entry(id) else {
+            return;
+        };
+        if name.is_empty() {
+            self.status = "A name cannot be empty.".into();
+            return;
+        }
+        match entry.kind {
+            BibleLink::Character => self.set_character_name(id, name),
+            BibleLink::Location => self.set_location_name(id, name),
+            BibleLink::Culture => self.set_culture_name(id, name),
+            BibleLink::Lore => self.set_lore_title(id, name),
+            BibleLink::Timeline => self.set_event_title(id, name),
+            BibleLink::Research => self.set_research_title(id, name),
+        }
+        self.save_all();
+    }
+
+    /// Put an entry inside `parent` (of its kind, or the top), after
+    /// `after` among what it holds. Saved at once. Returns whether it moved.
+    pub fn nest_entry(&mut self, id: Id, parent: Option<Id>, after: Option<Id>) -> bool {
+        use writing_studio_context::move_entry;
+        let Some(entry) = self.story_entry(id) else {
+            return false;
+        };
+        if parent.is_some_and(|parent| self.story_entry(parent).is_none_or(|up| up.kind != entry.kind)) {
+            self.status = "An entry goes inside another of its own kind.".into();
+            return false;
+        }
+        let moved = match entry.kind {
+            BibleLink::Character => {
+                let mut cast = self.cast.clone();
+                let moved = move_entry(&mut cast.characters, id, parent, after);
+                if moved {
+                    self.store_cast(cast, true);
+                }
+                moved
+            }
+            BibleLink::Research => {
+                let mut library = self.library.clone();
+                let moved = move_entry(&mut library.items, id, parent, after);
+                if moved {
+                    self.store_library(library, true);
+                }
+                moved
+            }
+            kind => {
+                let mut world = self.world.clone();
+                let moved = match kind {
+                    BibleLink::Location => move_entry(&mut world.locations, id, parent, after),
+                    BibleLink::Culture => move_entry(&mut world.cultures, id, parent, after),
+                    BibleLink::Lore => move_entry(&mut world.lore, id, parent, after),
+                    _ => move_entry(&mut world.events, id, parent, after),
+                };
+                if moved {
+                    self.store_world(world, true);
+                }
+                moved
+            }
+        };
+        if !moved {
+            self.status = "An entry cannot go inside itself or what it holds.".into();
+        }
+        moved
+    }
+
+    /// Drop a dragged entry on another of its kind in the binder: before or
+    /// after it, or inside it.
+    pub fn drop_entry(&mut self, target: Id) {
+        let place = self.drop_place;
+        let Some(dragged) = self.dragging.take() else {
+            return;
+        };
+        self.drop_target = None;
+        let (Some(moving), Some(onto)) = (self.story_entry(dragged), self.story_entry(target)) else {
+            return;
+        };
+        if moving.kind != onto.kind {
+            self.status = "An entry goes inside another of its own kind.".into();
+            return;
+        }
+        let parent = self.entry_parent(target);
+        let siblings = self.entry_children(moving.kind, parent);
+        let (parent, after) = match place {
+            DropPlace::Inside => (Some(target), self.entry_children(moving.kind, Some(target)).last().copied()),
+            DropPlace::After => (parent, Some(target)),
+            DropPlace::Before => {
+                let at = siblings.iter().position(|id| *id == target).unwrap_or(0);
+                let before = siblings[..at].iter().rev().find(|id| **id != dragged).copied();
+                (parent, before)
+            }
+        };
+        if self.nest_entry(dragged, parent, after) {
+            self.status = format!("Moved “{}”.", moving.name);
+        }
+    }
+
+    /// The entry of its kind an entry is inside.
+    pub fn entry_parent(&self, id: Id) -> Option<Id> {
+        self.story_entry(id).and_then(|entry| entry.parent)
+    }
+
+    /// What one entry of a kind holds directly (the top with `None`), in order.
+    pub fn entry_children(&self, kind: BibleLink, parent: Option<Id>) -> Vec<Id> {
+        use writing_studio_context::children_of;
+        match kind {
+            BibleLink::Character => children_of(&self.cast.characters, parent),
+            BibleLink::Location => children_of(&self.world.locations, parent),
+            BibleLink::Culture => children_of(&self.world.cultures, parent),
+            BibleLink::Lore => children_of(&self.world.lore, parent),
+            BibleLink::Timeline => children_of(&self.world.events, parent),
+            BibleLink::Research => children_of(&self.library.items, parent),
+        }
+    }
+
+    /// Delete an entry, after a second click, as each kind did. What it
+    /// held moves up to where it was.
+    pub fn remove_entry(&mut self, id: Id) {
+        let Some(entry) = self.story_entry(id) else {
+            return;
+        };
+        let confirmed = match entry.kind {
+            BibleLink::Character => self.confirm_character == Some(id),
+            BibleLink::Research => self.confirm_research == Some(id),
+            _ => self.confirm_world == Some(id),
+        };
+        if confirmed {
+            let up = self.entry_parent(id);
+            let mut after = Some(id);
+            for child in self.entry_children(entry.kind, Some(id)) {
+                self.nest_entry(child, up, after);
+                after = Some(child);
+            }
+        }
+        match entry.kind {
+            BibleLink::Character => self.remove_character(id),
+            BibleLink::Research => self.remove_research_item(id),
+            kind => {
+                self.world_section = world_section_of(kind);
+                self.remove_world_item(id);
+            }
+        }
+    }
+
     /// Show a story entry on its own page.
     pub fn open_story_entry(&mut self, entry: Id) {
         let Some(found) = self.story_entry(entry) else {
@@ -4865,6 +5066,11 @@ impl StudioState {
     /// Rename a binder item from the library. An empty name is refused, so
     /// a row never goes blank.
     pub fn rename_item(&mut self, id: Id, title: &str) {
+        // An entry of the binder's Worldbuilding is renamed as its kind is.
+        if self.binder.get(id).is_none() {
+            self.rename_entry(id, title);
+            return;
+        }
         let title = title.trim();
         if title.is_empty() {
             self.status = "A name cannot be empty.".into();
@@ -5134,12 +5340,12 @@ mod tests {
     use writing_studio_document::ParagraphChange;
 
     /// The middle of the window has no view switch: the page opens from a
-    /// scene and every other mode from one library row, so none is
-    /// unreachable or listed twice.
+    /// scene, an entry's page from Worldbuilding, and every other mode from
+    /// one row under Views, so none is unreachable or listed twice.
     #[test]
     fn every_mode_but_the_page_has_one_library_row() {
         let mut rows: Vec<WorkspaceMode> =
-            WorkspaceMode::LIBRARY_VIEWS.into_iter().chain(WorkspaceMode::LIBRARY_EXTRAS).collect();
+            WorkspaceMode::LIBRARY_VIEWS.into_iter().chain(WorkspaceMode::ENTRY_PAGES).collect();
         rows.push(WorkspaceMode::Writing);
         for mode in WorkspaceMode::ALL {
             assert_eq!(rows.iter().filter(|row| **row == mode).count(), 1, "{mode:?}");
@@ -5500,6 +5706,60 @@ mod tests {
         state.empty_trash();
         state.empty_trash();
         assert!(state.mindmap.lines.is_empty());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Worldbuilding in the binder: entries nest within their kind, are
+    /// renamed from the binder, moved by dropping before, after, or inside
+    /// another, and deleted with what they held moving up.
+    #[test]
+    fn worldbuilding_entries_nest_move_and_go_in_the_binder() {
+        let (mut state, dir) = open_state("worldbuilding");
+        let country = state.add_entry(BibleLink::Location, None).unwrap();
+        assert_eq!((state.mode, state.renaming), (WorkspaceMode::World, Some(country)), "its page, its name to type");
+        state.rename_item(country, "Valdora");
+        let city = state.add_entry(BibleLink::Location, Some(country)).unwrap();
+        state.rename_item(city, "Port Ely");
+        let pub_ = state.add_entry(BibleLink::Location, Some(city)).unwrap();
+        state.rename_item(pub_, "The Anchor");
+        let rows = state.entry_rows(BibleLink::Location);
+        assert_eq!(rows, [(country, 0, true), (city, 1, true), (pub_, 2, false)]);
+        assert_eq!(state.story_entry(pub_).unwrap().name, "The Anchor");
+        assert_eq!(state.entry_shown().unwrap().id, pub_);
+
+        // A character cannot go inside a place.
+        let father = state.add_entry(BibleLink::Character, None).unwrap();
+        assert!(!state.nest_entry(father, Some(city), None));
+        let son = state.add_entry(BibleLink::Character, Some(father)).unwrap();
+        assert_eq!(state.entry_rows(BibleLink::Character), [(father, 0, true), (son, 1, false)]);
+
+        // Dropped after the country, the pub is at the top; inside the city again.
+        state.begin_drag(pub_);
+        state.set_binder_drop(country, DropPlace::After);
+        state.drop_entry(country);
+        assert_eq!(state.entry_children(BibleLink::Location, None), [country, pub_]);
+        state.begin_drag(pub_);
+        state.set_binder_drop(city, DropPlace::Inside);
+        state.drop_entry(city);
+        assert_eq!(state.entry_parent(pub_), Some(city));
+        state.begin_drag(country);
+        state.set_binder_drop(pub_, DropPlace::Inside);
+        state.drop_entry(pub_);
+        assert_eq!(state.entry_parent(country), None, "never inside what it holds");
+
+        // Folded, the tree hides what the city holds.
+        state.toggle_collapsed(city);
+        assert_eq!(state.entry_rows(BibleLink::Location).len(), 2);
+        state.toggle_collapsed(city);
+
+        // Deleted after a second click, the city leaves the pub in the country.
+        state.remove_entry(city);
+        assert!(state.story_entry(city).is_some(), "the first click asks");
+        state.remove_entry(city);
+        assert!(state.story_entry(city).is_none());
+        assert_eq!(state.entry_parent(pub_), Some(country));
+        let bible = std::fs::read_to_string(state.project_root().unwrap().join("bible.json")).unwrap();
+        assert!(bible.contains(&format!("\"parent\":\"{country}\"")), "{bible}");
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -6015,8 +6275,19 @@ mod tests {
             [WorkspaceMode::Writing, WorkspaceMode::History]
         );
         let with_inspector: Vec<_> = WorkspaceMode::ALL.into_iter().filter(|mode| mode.shows_inspector()).collect();
-        // Context shows the node chosen on the mind map and in the outline too.
-        assert_eq!(with_inspector, [WorkspaceMode::Writing, WorkspaceMode::MindMap, WorkspaceMode::Outliner]);
+        // Context shows the node chosen on the mind map and in the outline,
+        // and what is said about an entry beside its page.
+        assert_eq!(
+            with_inspector,
+            [
+                WorkspaceMode::Writing,
+                WorkspaceMode::MindMap,
+                WorkspaceMode::Outliner,
+                WorkspaceMode::Characters,
+                WorkspaceMode::World,
+                WorkspaceMode::Research,
+            ]
+        );
     }
 
     #[test]

@@ -46,35 +46,6 @@ pub(super) fn WorldPane() -> Element {
     let add_label = section.add_label();
     rsx! {
         div { class: "cast-pane",
-            aside { class: "cast-list",
-                for candidate in WorldSection::ALL {
-                    button {
-                        class: if section == candidate { "mode active" } else { "mode" },
-                        onclick: move |_| state.write().set_world_section(candidate),
-                        "{candidate.label()}"
-                    }
-                }
-                button {
-                    class: "primary",
-                    onclick: move |_| state.write().add_world_item(),
-                    "{add_label}"
-                }
-                for item in items {
-                    {
-                        let id = item.id;
-                        let active = shown == Some(id);
-                        let class = if active { "cast-name active" } else { "cast-name" };
-                        rsx! {
-                            button {
-                                class: "{class}",
-                                key: "{id}",
-                                onclick: move |_| state.write().select_world_item(id),
-                                "{item.name}"
-                            }
-                        }
-                    }
-                }
-            }
             div { class: "cast-profile",
                 if let Some(form) = form {
                     WorldEditor { form, places, cultures, confirm }
@@ -208,12 +179,6 @@ pub(super) fn WorldEditor(form: WorldForm, places: Vec<NamedId>, cultures: Vec<N
         WorldForm::Lore { title, .. } | WorldForm::Event { title, .. } => title,
     };
     let delete_label = confirm_label(confirm == Some(id), "Delete", name);
-    let link = match &form {
-        WorldForm::Location { .. } => BibleLink::Location,
-        WorldForm::Culture { .. } => BibleLink::Culture,
-        WorldForm::Lore { .. } => BibleLink::Lore,
-        WorldForm::Event { .. } => BibleLink::Timeline,
-    };
     rsx! {
         match form {
             WorldForm::Location { id, name, summary, culture_id } => rsx! {
@@ -317,7 +282,6 @@ pub(super) fn WorldEditor(form: WorldForm, places: Vec<NamedId>, cultures: Vec<N
                 }
             },
         }
-        SceneLinks { owner: id, kind: link }
         div { class: "cast-actions",
             button {
                 class: danger(confirm == Some(id)),

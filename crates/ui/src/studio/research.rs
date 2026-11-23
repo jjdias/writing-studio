@@ -35,28 +35,6 @@ pub(super) fn ResearchPane() -> Element {
     let confirm = snapshot.confirm_research;
     rsx! {
         div { class: "cast-pane",
-            aside { class: "cast-list",
-                button {
-                    class: "primary",
-                    onclick: move |_| state.write().add_research_item(),
-                    "Add note"
-                }
-                for note in notes {
-                    {
-                        let id = note.id;
-                        let active = shown == Some(id);
-                        let class = if active { "cast-name active" } else { "cast-name" };
-                        rsx! {
-                            button {
-                                class: "{class}",
-                                key: "{id}",
-                                onclick: move |_| state.write().select_research_item(id),
-                                "{note.name}"
-                            }
-                        }
-                    }
-                }
-            }
             div { class: "cast-profile",
                 if let Some(note) = note {
                     ResearchNote { note, confirm }
@@ -110,7 +88,6 @@ pub(super) fn ResearchNote(note: ResearchNoteView, confirm: Option<Id>) -> Eleme
             value: "{notes}",
             oninput: move |event| state.write().set_research_notes(id, event.value()),
         }
-        SceneLinks { owner: id, kind: BibleLink::Research }
         section { class: "cast-block",
             h3 { "Files" }
             p { class: "hint", "A copy is stored in this project's attachments folder." }

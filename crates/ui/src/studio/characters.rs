@@ -53,28 +53,6 @@ pub(super) fn CharactersPane() -> Element {
     let confirm = snapshot.confirm_character;
     rsx! {
         div { class: "cast-pane",
-            aside { class: "cast-list",
-                button {
-                    class: "primary",
-                    onclick: move |_| state.write().add_character(),
-                    "Add character"
-                }
-                for person in people {
-                    {
-                        let id = person.id;
-                        let active = shown == Some(id);
-                        let class = if active { "cast-name active" } else { "cast-name" };
-                        rsx! {
-                            button {
-                                class: "{class}",
-                                key: "{id}",
-                                onclick: move |_| state.write().select_character(id),
-                                "{person.name}"
-                            }
-                        }
-                    }
-                }
-            }
             div { class: "cast-profile",
                 if let Some(profile) = profile {
                     CharacterProfile { profile, others, confirm }
@@ -234,7 +212,6 @@ pub(super) fn CharacterProfile(profile: ProfileView, others: Vec<CastListItem>, 
                 }
             }
         }
-        SceneLinks { owner: id, kind: BibleLink::Character }
         div { class: "cast-actions",
             button {
                 class: danger(confirm == Some(id)),

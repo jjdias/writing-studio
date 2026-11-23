@@ -1,6 +1,6 @@
 # Phase 11 — Tags, story links, and a mind map
 
-In progress: stages 1 to 13 are done. Stages 13 to 16, added after trying the window, rework the columns and bring worldbuilding into the binder.
+In progress: stages 1 to 14 are done. Stages 13 to 16, added after trying the window, rework the columns and bring worldbuilding into the binder.
 
 Phase 9 gave binder items colored keywords and saved filters. This phase does four things with what is there:
 
@@ -184,6 +184,8 @@ The window had four columns: the binder, the scene list, the page, and the inspe
 - On the mind map and the outline, Context shows the chosen node. Characters, World, and Research keep the main area until stage 14.
 
 ### 14. Worldbuilding in the binder
+
+**Done.** Every kind of entry has `parent_id`, read and written as `parent` in `bible.json` and kept in the cache's new `bible_parents` table. `crates/context` has the trees (`Nested`, `children_of`, `tree_rows`, `is_within`, `move_entry`, tested), and `StoryEntry` its `parent`. The binder's **Worldbuilding** lists each kind with + and its tree (`WorldbuildingSection`, `EntryRow`): a row opens the entry's page, folds with the binder's folding (kept with the project), renames in place (`rename_entry`, through the binder's rename field), drags before, after, or inside another of its kind (`drop_entry`, `nest_entry`), adds inside (`add_entry`), and deletes after a second click, what it held moving up (`remove_entry`). The Characters, World, and Research views lost their lists and the World section tabs, and are each the open entry's page (`ENTRY_PAGES`); Context beside them shows the entry's links into the manuscript (`EntryContext`). Plot and History moved under Views; `LIBRARY_EXTRAS` is gone.
 
 - "Extras" becomes **Worldbuilding**: Characters, Places, Cultures, Lore, Events, and Research, each a tree in the binder that nests freely within its kind: Country › City › Neighbourhood › Pub; Father › Son › Grandson. Plot and History move under Views.
 - Entries are added (+ on a kind's heading, or inside a chosen entry), renamed in place (F2, double-click), dragged to nest or reorder within their kind, folded like binder rows, and deleted as now, with a second click.

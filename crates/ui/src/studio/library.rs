@@ -164,10 +164,7 @@ pub(super) fn Library() -> Element {
                 FilterSection {}
                 KeywordSection {}
                 StorySection {}
-                div { class: "library-heading", "Extras" }
-                for candidate in WorkspaceMode::LIBRARY_EXTRAS {
-                    ModeRow { key: "{candidate.label()}", candidate, active: mode == candidate }
-                }
+                WorldbuildingSection {}
                 if let Some(row) = trash_row {
                     LibraryRow { active: selected == Some(row.id), row: row.clone() }
                     if !row.collapsed {
@@ -377,6 +374,175 @@ fn choose_row(mut state: Signal<StudioState>, id: Id, kind: NodeKind, event: &Mo
     } else {
         current.choose_library(id);
         current.select_node(id);
+    }
+}
+
+/// The story's characters, places, cultures, lore, events, and research,
+/// each kind a tree of its own that nests freely: Country › City ›
+/// Neighbourhood › Pub. A row opens the entry's page; + on a kind adds one
+/// at its top, + on a row adds one inside it.
+#[component]
+fn WorldbuildingSection() -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let kinds = [
+        BibleLink::Character,
+        BibleLink::Location,
+        BibleLink::Culture,
+        BibleLink::Lore,
+        BibleLink::Timeline,
+        BibleLink::Research,
+    ];
+    rsx! {
+        div { class: "library-heading", "Worldbuilding" }
+        for kind in kinds {
+            div { class: "library-kind", key: "{kind.heading()}",
+                span { class: "library-kind-name", "{kind.heading()}" }
+                button {
+                    class: "library-kind-add",
+                    title: "Add a {kind.noun()}",
+                    aria_label: "Add a {kind.noun()}",
+                    onclick: move |_| {
+                        if let Some(id) = state.write().add_entry(kind, None) {
+                            select_field(format!("rename-{id}"));
+                        }
+                    },
+                    "+"
+                }
+            }
+            for (id, depth, held) in state.read().entry_rows(kind) {
+                EntryRow { key: "{id}", id, depth, held }
+            }
+        }
+    }
+}
+
+/// An entry in its kind's tree: opens its page, folds what it holds, is
+/// renamed with a double click or F2, dragged before, after, or inside
+/// another of its kind, given an entry inside it with +, or deleted with ×
+/// and a second click.
+#[component]
+fn EntryRow(id: Id, depth: u32, held: bool) -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let Some(entry) = state.read().story_entry(id) else {
+        return rsx! {};
+    };
+    let kind = entry.kind;
+    let indent = 8 + depth * 14;
+    let collapsed = held && state.read().is_collapsed(id);
+    let active = state.read().entry_shown().is_some_and(|shown| shown.id == id);
+    let mut class = String::from("library-row entry-row");
+    if active {
+        class.push_str(" active");
+    }
+    if state.read().dragging == Some(id) {
+        class.push_str(" dragging");
+    }
+    if state.read().drop_target == Some(id) {
+        let same = state.read().dragging.and_then(|dragged| state.read().story_entry(dragged)).is_some_and(|moving| moving.kind == kind);
+        class.push_str(match (same, state.read().drop_place) {
+            (false, _) => " drop-invalid",
+            (true, DropPlace::Before) => " drop-before",
+            (true, DropPlace::After) => " drop-after",
+            (true, DropPlace::Inside) => " drop-target",
+        });
+    }
+    if state.read().renaming == Some(id) {
+        return rsx! {
+            div { class: "library-item", style: "padding-left: {indent}px",
+                span { class: "fold-spacer" }
+                RenameField { id, name: entry.name.clone() }
+            }
+        };
+    }
+    let fold_label = if collapsed { format!("Show what is in {}", entry.name) } else { format!("Fold {}", entry.name) };
+    let rename = move || {
+        state.write().renaming = Some(id);
+        select_field(format!("rename-{id}"));
+    };
+    rsx! {
+        div { class: "library-item", style: "padding-left: {indent}px",
+            if held {
+                button {
+                    class: if collapsed { "fold-btn folded" } else { "fold-btn" },
+                    title: "{fold_label}",
+                    aria_label: "{fold_label}",
+                    aria_expanded: "{!collapsed}",
+                    onclick: move |_| state.write().toggle_collapsed(id),
+                    svg { class: "fold-glyph", view_box: "0 0 16 16", "aria-hidden": "true",
+                        path { d: "M5 6l3 3 3-3", fill: "none", stroke: "currentColor", stroke_width: "1.6", stroke_linecap: "round", stroke_linejoin: "round" }
+                    }
+                }
+            } else {
+                span { class: "fold-spacer" }
+            }
+            button {
+                class: "{class}",
+                aria_current: if active { "page" } else { "false" },
+                draggable: true,
+                title: "Double-click or press F2 to rename",
+                onclick: move |_| state.write().open_story_entry(id),
+                ondoubleclick: move |_| {
+                    let mut start = rename;
+                    start();
+                },
+                onkeydown: move |event: KeyboardEvent| {
+                    if event.key() == Key::F2 {
+                        event.prevent_default();
+                        let mut start = rename;
+                        start();
+                    } else if let Some(step) = arrow_step(&event) {
+                        event.prevent_default();
+                        step_focus(".library button.library-row", step);
+                    }
+                },
+                ondragstart: move |event| {
+                    event.stop_propagation();
+                    state.write().begin_drag(id);
+                },
+                ondragover: move |event| {
+                    event.prevent_default();
+                    event.stop_propagation();
+                    let place = DropPlace::at(event.element_coordinates().y, LIBRARY_ROW_HEIGHT, true);
+                    let current = state.peek();
+                    let changed = current.drop_target != Some(id) || current.drop_place != place;
+                    drop(current);
+                    if changed {
+                        state.write().set_binder_drop(id, place);
+                    }
+                },
+                ondrop: move |event| {
+                    event.prevent_default();
+                    event.stop_propagation();
+                    state.write().drop_entry(id);
+                },
+                ondragend: move |_| state.write().end_drag(),
+                span { class: "library-name", "{entry.name}" }
+            }
+            button {
+                class: "item-delete item-edit",
+                title: "Add a {kind.noun()} inside “{entry.name}”",
+                aria_label: "Add inside {entry.name}",
+                onclick: move |event| {
+                    event.stop_propagation();
+                    if let Some(added) = state.write().add_entry(kind, Some(id)) {
+                        select_field(format!("rename-{added}"));
+                    }
+                },
+                "+"
+            }
+            button {
+                class: "item-delete",
+                title: "Delete “{entry.name}”. Asks for a second click; what it holds moves up.",
+                aria_label: "Delete {entry.name}",
+                onclick: move |event| {
+                    event.stop_propagation();
+                    state.write().remove_entry(id);
+                },
+                svg { class: "glyph", view_box: "0 0 16 16", "aria-hidden": "true",
+                    path { d: "M4.5 4.5l7 7M11.5 4.5l-7 7", fill: "none", stroke: "currentColor", stroke_width: "1.5", stroke_linecap: "round" }
+                }
+            }
+        }
     }
 }
 

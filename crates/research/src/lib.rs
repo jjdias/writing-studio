@@ -15,6 +15,10 @@ pub struct ResearchItem {
     /// Manuscript scenes this note belongs to. The scenes are not copied.
     #[serde(default)]
     pub linked_ids: Vec<Id>,
+    /// The entry of its kind it is inside (a city in a country, a son
+    /// under his father), or `None` at the top.
+    #[serde(default)]
+    pub parent_id: Option<Id>,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
 }
@@ -28,6 +32,7 @@ impl ResearchItem {
             notes: String::new(),
             sort_index,
             linked_ids: Vec::new(),
+            parent_id: None,
             created_at: now,
             updated_at: now,
         }

@@ -823,6 +823,28 @@ mod tests {
         let _ = fs::remove_dir_all(dir);
     }
 
+    /// An entry inside another of its kind keeps its place through the
+    /// cache, `bible.json`, and a reopening.
+    #[test]
+    fn an_entry_inside_another_keeps_its_parent() {
+        let dir = temp("parents");
+        let store = ProjectStore::create(&dir, "Nested").unwrap();
+        let mut world = store.load_world().unwrap();
+        let country = world.add_location();
+        let city = world.add_location();
+        world.locations.iter_mut().find(|place| place.id == city).unwrap().parent_id = Some(country);
+        store.persist_world(&world).unwrap();
+        assert_eq!(store.load_world().unwrap().locations.iter().find(|place| place.id == city).unwrap().parent_id, Some(country));
+        let bible = fs::read_to_string(dir.join("bible.json")).unwrap();
+        assert!(bible.contains(&format!("\"parent\":\"{country}\"")), "{bible}");
+        drop(store);
+        let reopened = ProjectStore::open(&dir).unwrap();
+        let read = reopened.load_world().unwrap();
+        assert_eq!(read.locations.iter().find(|place| place.id == city).unwrap().parent_id, Some(country));
+        assert_eq!(read.locations.iter().find(|place| place.id == country).unwrap().parent_id, None);
+        let _ = fs::remove_dir_all(dir);
+    }
+
     /// `mindmap.json` comes only once the map has something of its own,
     /// reads back, keeps keys the program does not know, and is written
     /// with the rest of the files.

@@ -1345,3 +1345,8 @@ button.keyword-dot:hover { box-shadow: 0 0 0 2px var(--line); }
 .row-progress { display: inline-grid; place-items: center; margin-left: auto; padding-left: 6px; color: var(--gold); flex: 0 0 auto; }
 .row-progress .ring { width: 14px; height: 14px; }
 .secondary.dashboard.context { border-left: 0; border-right: 1px solid var(--line); }
+/* Worldbuilding in the binder: a heading for each kind, with its tree. */
+.library-kind { display: flex; align-items: center; justify-content: space-between; margin: 8px 10px 2px 30px; font-size: 12px; color: var(--muted); }
+.library-kind-add { background: transparent; border: 0; padding: 0 6px; font-size: 14px; line-height: 1; color: var(--muted); }
+.library-kind-add:hover { color: var(--text); background: transparent; }
+.library-row.entry-row .library-name { font-weight: 400; }

@@ -18,6 +18,8 @@ pub(super) fn ContextPane() -> Element {
                 div { class: "dash-heading", "Trash" }
                 p { class: "hint", "What was moved here, under Trash in the binder. Choose an item to restore it." }
                 TrashActions {}
+            } else if let Some(entry) = state.read().entry_shown() {
+                EntryContext { entry }
             } else {
                 Inspector {}
             }
@@ -570,6 +572,17 @@ fn StoryLinks(id: Id, kind: NodeKind) -> Element {
                 option { value: "{choice}" }
             }
         }
+    }
+}
+
+/// What is said about an entry beside its page: where it is in the
+/// manuscript (scenes, and chapters, parts, and books for all their scenes).
+#[component]
+fn EntryContext(entry: StoryEntry) -> Element {
+    rsx! {
+        div { class: "dash-heading", "{entry.name}" }
+        p { class: "hint", "A {entry.kind.noun()}." }
+        SceneLinks { owner: entry.id, kind: entry.kind }
     }
 }
 

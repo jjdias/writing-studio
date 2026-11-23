@@ -65,34 +65,36 @@ pub struct StoryEntry {
     /// research note's notes.
     pub text: String,
     pub links: Vec<Id>,
+    /// The entry of its kind it is inside, if any.
+    pub parent: Option<Id>,
 }
 
 /// Every entry of the story, characters first, each kind in its own order.
 /// An entry with no name is called by its kind: "Unnamed character".
 pub fn story_entries(cast: &Cast, world: &World, library: &ResearchLibrary) -> Vec<StoryEntry> {
     let mut entries = Vec::new();
-    let mut push = |kind: EntryKind, id: Id, name: &str, parts: &[&str], links: &[Id]| {
+    let mut push = |kind: EntryKind, id: Id, name: &str, parts: &[&str], links: &[Id], parent: Option<Id>| {
         let name = if name.trim().is_empty() { format!("Unnamed {}", kind.noun()) } else { name.trim().to_string() };
         let text = parts.iter().map(|part| part.trim()).filter(|part| !part.is_empty()).collect::<Vec<_>>().join("\n\n");
-        entries.push(StoryEntry { kind, id, name, text, links: links.to_vec() });
+        entries.push(StoryEntry { kind, id, name, text, links: links.to_vec(), parent });
     };
     for item in cast.characters_in_order() {
-        push(EntryKind::Character, item.id, &item.name, &[&item.role, &item.summary], &item.linked_ids);
+        push(EntryKind::Character, item.id, &item.name, &[&item.role, &item.summary], &item.linked_ids, item.parent_id);
     }
     for item in world.locations_in_order() {
-        push(EntryKind::Location, item.id, &item.name, &[&item.summary], &item.linked_ids);
+        push(EntryKind::Location, item.id, &item.name, &[&item.summary], &item.linked_ids, item.parent_id);
     }
     for item in world.cultures_in_order() {
-        push(EntryKind::Culture, item.id, &item.name, &[&item.summary], &item.linked_ids);
+        push(EntryKind::Culture, item.id, &item.name, &[&item.summary], &item.linked_ids, item.parent_id);
     }
     for item in world.lore_in_order() {
-        push(EntryKind::Lore, item.id, &item.title, &[&item.body], &item.linked_ids);
+        push(EntryKind::Lore, item.id, &item.title, &[&item.body], &item.linked_ids, item.parent_id);
     }
     for item in world.events_in_order() {
-        push(EntryKind::Timeline, item.id, &item.title, &[&item.when_label, &item.summary], &item.linked_ids);
+        push(EntryKind::Timeline, item.id, &item.title, &[&item.when_label, &item.summary], &item.linked_ids, item.parent_id);
     }
     for item in library.items_in_order() {
-        push(EntryKind::Research, item.id, &item.title, &[&item.notes], &item.linked_ids);
+        push(EntryKind::Research, item.id, &item.title, &[&item.notes], &item.linked_ids, item.parent_id);
     }
     entries
 }
@@ -118,6 +120,107 @@ pub fn reached_through(binder: &BinderTree, entry: &StoryEntry, id: Id) -> Optio
 /// Whether an entry reaches a binder item, directly or through what it is in.
 pub fn reaches(binder: &BinderTree, entry: &StoryEntry, id: Id) -> bool {
     reached_through(binder, entry, id).is_some()
+}
+
+/// An entry that nests within its kind: a city inside a country, a son
+/// under his father. What every kind of entry shares for its tree.
+pub trait Nested {
+    fn id(&self) -> Id;
+    fn parent(&self) -> Option<Id>;
+    fn set_parent(&mut self, parent: Option<Id>);
+    fn sort_index(&self) -> i64;
+    fn set_sort_index(&mut self, index: i64);
+}
+
+macro_rules! nested {
+    ($($kind:ty),*) => {$(
+        impl Nested for $kind {
+            fn id(&self) -> Id { self.id }
+            fn parent(&self) -> Option<Id> { self.parent_id }
+            fn set_parent(&mut self, parent: Option<Id>) { self.parent_id = parent; }
+            fn sort_index(&self) -> i64 { self.sort_index }
+            fn set_sort_index(&mut self, index: i64) { self.sort_index = index; }
+        }
+    )*};
+}
+
+nested!(
+    writing_studio_characters::Character,
+    writing_studio_worldbuilding::Location,
+    writing_studio_worldbuilding::Culture,
+    writing_studio_worldbuilding::LoreEntry,
+    writing_studio_worldbuilding::TimelineEvent,
+    writing_studio_research::ResearchItem
+);
+
+/// The entries directly inside `parent` (the top for `None`), in order. An
+/// entry whose parent is gone is at the top.
+pub fn children_of<T: Nested>(items: &[T], parent: Option<Id>) -> Vec<Id> {
+    let known = |id: Id| items.iter().any(|item| item.id() == id);
+    let mut found: Vec<&T> = items
+        .iter()
+        .filter(|item| match item.parent() {
+            Some(up) if known(up) => Some(up) == parent,
+            _ => parent.is_none(),
+        })
+        .collect();
+    found.sort_by_key(|item| item.sort_index());
+    found.into_iter().map(|item| item.id()).collect()
+}
+
+/// A kind's entries as tree rows, each with its depth and whether it holds
+/// others, leaving out what is inside one in `folded`.
+pub fn tree_rows<T: Nested>(items: &[T], folded: &[Id]) -> Vec<(Id, u32, bool)> {
+    fn walk<T: Nested>(items: &[T], parent: Option<Id>, depth: u32, folded: &[Id], rows: &mut Vec<(Id, u32, bool)>) {
+        for id in children_of(items, parent) {
+            let held = !children_of(items, Some(id)).is_empty();
+            rows.push((id, depth, held));
+            if held && !folded.contains(&id) && depth < 64 {
+                walk(items, Some(id), depth + 1, folded, rows);
+            }
+        }
+    }
+    let mut rows = Vec::new();
+    walk(items, None, 0, folded, &mut rows);
+    rows
+}
+
+/// Whether `id` is `ancestor` or inside it.
+pub fn is_within<T: Nested>(items: &[T], id: Id, ancestor: Id) -> bool {
+    let mut at = Some(id);
+    let mut guard = 0;
+    while let Some(here) = at {
+        if here == ancestor {
+            return true;
+        }
+        at = items.iter().find(|item| item.id() == here).and_then(|item| item.parent());
+        guard += 1;
+        if guard > 10_000 {
+            break;
+        }
+    }
+    false
+}
+
+/// Put an entry inside `parent`, after `after` among what it holds (first
+/// with `None`). An entry cannot go inside itself or what it holds.
+/// Returns whether anything moved.
+pub fn move_entry<T: Nested>(items: &mut [T], id: Id, parent: Option<Id>, after: Option<Id>) -> bool {
+    if parent.is_some_and(|parent| is_within(items, parent, id)) || after == Some(id) {
+        return false;
+    }
+    let mut order: Vec<Id> = children_of(items, parent).into_iter().filter(|other| *other != id).collect();
+    let at = after.and_then(|after| order.iter().position(|other| *other == after)).map(|at| at + 1).unwrap_or(0);
+    order.insert(at.min(order.len()), id);
+    for item in items.iter_mut() {
+        if item.id() == id {
+            item.set_parent(parent);
+        }
+        if let Some(index) = order.iter().position(|other| *other == item.id()) {
+            item.set_sort_index(index as i64);
+        }
+    }
+    true
 }
 
 /// What a scene's context is read from: the project's models.
@@ -463,4 +566,28 @@ mod tests {
         let tiny = context.to_markdown(120);
         assert!(tiny.chars().count() <= 120 && tiny.contains("Cut here"), "{tiny}");
     }
+
+    #[test]
+    fn entries_nest_within_their_kind_and_never_inside_themselves() {
+        let mut world = World::new();
+        let ids: Vec<Id> = (0..4).map(|_| world.add_location()).collect();
+        let (country, city, quarter, pub_) = (ids[0], ids[1], ids[2], ids[3]);
+        assert!(move_entry(&mut world.locations, city, Some(country), None));
+        assert!(move_entry(&mut world.locations, quarter, Some(city), None));
+        assert!(move_entry(&mut world.locations, pub_, Some(quarter), None));
+        let rows = tree_rows(&world.locations, &[]);
+        let depths: Vec<(Id, u32, bool)> = rows;
+        assert_eq!(depths, [(country, 0, true), (city, 1, true), (quarter, 2, true), (pub_, 3, false)]);
+        assert!(!move_entry(&mut world.locations, country, Some(pub_), None), "not inside what it holds");
+        assert!(tree_rows(&world.locations, &[city]).len() == 2, "folded");
+
+        // A second city goes after the first; the pub moves up a level.
+        let other = world.add_location();
+        assert!(move_entry(&mut world.locations, other, Some(country), Some(city)));
+        assert_eq!(children_of(&world.locations, Some(country)), [city, other]);
+        assert!(move_entry(&mut world.locations, pub_, Some(country), None));
+        assert_eq!(children_of(&world.locations, Some(country)), [pub_, city, other]);
+        assert!(is_within(&world.locations, quarter, country) && !is_within(&world.locations, country, quarter));
+    }
+
 }

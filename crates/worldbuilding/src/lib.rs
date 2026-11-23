@@ -17,6 +17,10 @@ pub struct Location {
     /// Manuscript scenes where this place appears. The scenes are not copied.
     #[serde(default)]
     pub linked_ids: Vec<Id>,
+    /// The entry of its kind it is inside (a city in a country, a son
+    /// under his father), or `None` at the top.
+    #[serde(default)]
+    pub parent_id: Option<Id>,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
 }
@@ -31,6 +35,7 @@ impl Location {
             culture_id: None,
             sort_index,
             linked_ids: Vec::new(),
+            parent_id: None,
             created_at: now,
             updated_at: now,
         }
@@ -50,6 +55,10 @@ pub struct Culture {
     /// Manuscript scenes where this culture appears. The scenes are not copied.
     #[serde(default)]
     pub linked_ids: Vec<Id>,
+    /// The entry of its kind it is inside (a city in a country, a son
+    /// under his father), or `None` at the top.
+    #[serde(default)]
+    pub parent_id: Option<Id>,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
 }
@@ -63,6 +72,7 @@ impl Culture {
             summary: String::new(),
             sort_index,
             linked_ids: Vec::new(),
+            parent_id: None,
             created_at: now,
             updated_at: now,
         }
@@ -84,6 +94,10 @@ pub struct LoreEntry {
     /// Manuscript scenes this lore belongs to. The scenes are not copied.
     #[serde(default)]
     pub linked_ids: Vec<Id>,
+    /// The entry of its kind it is inside (a city in a country, a son
+    /// under his father), or `None` at the top.
+    #[serde(default)]
+    pub parent_id: Option<Id>,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
 }
@@ -99,6 +113,7 @@ impl LoreEntry {
             culture_id: None,
             sort_index,
             linked_ids: Vec::new(),
+            parent_id: None,
             created_at: now,
             updated_at: now,
         }
@@ -120,6 +135,10 @@ pub struct TimelineEvent {
     /// Manuscript scenes this event belongs to. The scenes are not copied.
     #[serde(default)]
     pub linked_ids: Vec<Id>,
+    /// The entry of its kind it is inside (a city in a country, a son
+    /// under his father), or `None` at the top.
+    #[serde(default)]
+    pub parent_id: Option<Id>,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
 }
@@ -135,6 +154,7 @@ impl TimelineEvent {
             location_id: None,
             sort_index,
             linked_ids: Vec::new(),
+            parent_id: None,
             created_at: now,
             updated_at: now,
         }
