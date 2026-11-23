@@ -1,6 +1,6 @@
 # Phase 11 — Tags, story links, and a mind map
 
-In progress: stages 1 to 5 are done.
+In progress: stages 1 to 6 are done.
 
 Phase 9 gave binder items colored keywords and saved filters. This phase does four things with what is there:
 
@@ -104,6 +104,8 @@ In this order: the layout change first, because every later stage adds to the li
 
 ### 6. Keywords in Markdown front matter
 
+**Done.** The Markdown folder export writes an item's keywords as `tags:` (`tags_header` in `crates/storage/src/markdown.rs`), a space as `-`; an item without keywords has no `tags:`. `import_markdown_scene` reads `tags:` and `keywords:`, as a list or one line, through `tidy_keyword`, so `#` goes; the import then adds them with `add_keyword`, which gives a new keyword its color, and saves the binder. Only an item's own keywords are written: Obsidian has no chapters for a scene to take them from. A keyword that is only digits (`1984`) is written as it is, though Obsidian does not take it as a tag.
+
 - The Markdown folder export writes each scene's keywords as `tags:`, a list in its front matter, as Obsidian reads it. A space in a keyword becomes `-`, as a tag cannot hold one.
 - Markdown import reads `tags:` (and `keywords:`) into the new scene's keywords, after a leading `#`; `label:` is still read as now.
 - A book exported this way opens in Obsidian with its tags, and its Tags view lists them.
@@ -167,10 +169,9 @@ What came up while this phase was planned and built, and while the Phase 7 packa
 - Renaming `plot` to `Story` while `story` was in use spelled the children `Story/subplot`; they now take the kept spelling (stage 4, caught by its test).
 - A saved filter's status matched through the chapter, part, or book, which are "draft" when made, so a "Draft" filter took every scene in a draft chapter whatever its own status. Status is the scene's own now (stage 5).
 - `SavedFilter::label`, left over from before keywords, is gone with the filter format change (stage 5).
-
+- The Markdown folder export lost every keyword: it wrote a scene's `label`, which Phase 9 emptied by folding labels into keywords, and never `keywords`. It writes them as `tags:` now (stage 6).
 **Open**
 
-- **The Markdown folder export loses every keyword.** It writes a scene's `label` (`crates/storage/src/markdown.rs`), which Phase 9 emptied by folding labels into keywords, and never `keywords`. Stage 6 fixes it by writing `tags:`.
 - **`WorkspaceMode::view_title` is never called** (`crates/ui/src/state.rs`). Dead code from before Phase 8's layout.
 - **Two kinds of undo.** Ctrl+Z undoes text (and a merge or split through it). Trash, keyword renames, and merges are undone only from the status line's Undo button, which goes as soon as another message replaces it. Other binder changes (a move, a new keyword, a status) have no undo at all.
 - **The status bar's "Scene 21"** is the open scene's word count, but reads like a scene number. "21 words in this scene", or the scene's title, would say it.

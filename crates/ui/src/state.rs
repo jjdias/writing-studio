@@ -3088,7 +3088,7 @@ impl StudioState {
             return;
         };
         let parent = self.infer_parent(NodeKind::Scene);
-        let (mut last, mut failed) = (None, Vec::new());
+        let (mut last, mut failed, mut tagged) = (None, Vec::new(), false);
         for path in &paths {
             let name = path
                 .file_stem()
@@ -3104,19 +3104,26 @@ impl StudioState {
                         .map_err(|err| err.to_string())
                 });
             match imported {
-                Ok((node, beats, document)) => {
+                Ok((mut node, beats, document)) => {
                     let _ = self.manuscript_index.borrow_mut().upsert(node.id, &document.to_plain_text());
                     if !beats.is_empty() {
                         self.beats.insert(node.id, beats);
                     }
-                    last = Some(node.id);
+                    let id = node.id;
+                    last = Some(id);
+                    // Its `tags:` join the project's keywords, a new one
+                    // with the next color, one in use as it is spelled.
+                    let keywords = std::mem::take(&mut node.keywords);
                     self.binder.nodes.push(node);
+                    for word in &keywords {
+                        tagged |= self.binder.add_keyword(id, word);
+                    }
                 }
                 Err(err) => failed.push(format!("{name}: {err}")),
             }
         }
-        // A label in a file's front matter comes in as a keyword.
-        if self.binder.fold_labels_into_keywords() {
+        // A label in a file's front matter comes in as a keyword too.
+        if self.binder.fold_labels_into_keywords() || tagged {
             self.persist_binder();
         }
         if let Some(id) = last {
@@ -5242,7 +5249,7 @@ mod tests {
         let files = dir.join("incoming");
         std::fs::create_dir_all(&files).unwrap();
         let good = files.join("arrival.md");
-        std::fs::write(&good, "---\ngoal: Land\n---\n\nThe ship came in.\n").unwrap();
+        std::fs::write(&good, "---\ngoal: Land\ntags:\n- \"#harbor/night\"\n- Flashback\n---\n\nThe ship came in.\n").unwrap();
         let broken = files.join("broken.md");
         std::fs::write(&broken, "---\ntitle: never closed\n").unwrap();
 
@@ -5251,6 +5258,11 @@ mod tests {
         assert_eq!((scene.title.as_str(), scene.parent_id), ("arrival", chapter));
         assert_eq!(state.editor_text, "The ship came in.");
         assert_eq!(state.scene_beats(scene.id).goal, "Land");
+        // Its tags are keywords, each with a color, and saved.
+        assert_eq!(scene.keywords, ["harbor/night", "Flashback"]);
+        assert!(!state.binder.keyword_color("flashback").is_empty());
+        let saved = std::fs::read_to_string(state.project_root().unwrap().join("binder.json")).unwrap();
+        assert!(saved.contains("harbor/night"), "{saved}");
         assert!(state.status.starts_with("Imported 1 scenes. Not imported: broken:"), "{}", state.status);
 
         let parent = dir.join("exports");

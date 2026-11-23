@@ -183,6 +183,9 @@ synopsis: |-
   The boat is leaving.
 status: draft
 goal: Reach the boat before the tide
+tags:
+  - plot/harbor
+  - act-two
 ---
 
 Mara ran for the **north** quay. *Not again*, she thought.
@@ -194,6 +197,7 @@ Nobody waited.
 ```
 
 - The header is the `---` front matter that other writing tools read: `key: value` lines, quoted only where a YAML reader could misread the value, with text of several lines under `|-`.
+- An item's keywords are `tags:`, a list, as Obsidian reads them, nested with `/` as they are; a space in a keyword is written `-`, since a tag cannot hold one. Import reads `tags:` or `keywords:`, a list or one line of words apart by spaces or commas, each without a leading `#`, and gives each a keyword: one in use keeps its spelling, a new one takes the next color. A chapter's keywords are on the chapter's own file, when it has one, not repeated on its scenes.
 - Notes and highlights are CriticMarkup: `{==text==}` is a highlight, `{==text==}{.green}` a colored one, `{==text==}{>>the note<<}` a note, with `Question: `, `Revise: `, `Check: `, and `(resolved) ` in front of the note where they apply.
 - Underline is `<u>`. A scene break is `* * *`. An empty paragraph is `<br>` on a line.
 - What the writer typed is never read as formatting: characters that mean something to Markdown are written with a backslash.

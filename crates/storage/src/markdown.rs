@@ -12,8 +12,8 @@ use std::path::Path;
 use writing_studio_core::{Error, Id, Result};
 use writing_studio_diagnostics::SceneBeats;
 use writing_studio_document::Document;
-use writing_studio_format::{slug, SceneFile, SceneHeader};
-use writing_studio_project::{BinderNode, BinderTree, NodeKind};
+use writing_studio_format::{slug, Header, SceneFile, SceneHeader};
+use writing_studio_project::{same_keyword, tidy_keyword, BinderNode, BinderTree, NodeKind};
 
 use crate::files::{bible_files, with_a_run_in_every_block, write_atomic, ProjectContent};
 use crate::ProjectStore;
@@ -27,6 +27,35 @@ const BIBLE_SECTIONS: [(&str, &str); 6] = [
     ("timeline", "Timeline"),
     ("research", "Research"),
 ];
+
+/// An item's keywords as Obsidian's `tags:`, nested with `/` as they are.
+/// A tag cannot hold a space, so one becomes `-`.
+fn tags_header(keywords: &[String]) -> Header {
+    let tags: Vec<String> = keywords.iter().map(|word| word.split_whitespace().collect::<Vec<_>>().join("-")).collect();
+    let mut header = Header::default();
+    header.set_list("tags", &tags);
+    header
+}
+
+/// Keywords from a file's `tags:` or `keywords:`, a list or one line of
+/// words apart by spaces or commas, each without its `#`, tidied as a typed
+/// keyword is, and each once.
+fn keywords_from(header: &Header) -> Vec<String> {
+    let mut words: Vec<String> = Vec::new();
+    for key in ["tags", "keywords"] {
+        let found: Vec<&str> = match (header.list(key), header.text(key)) {
+            (Some(items), _) => items.iter().map(String::as_str).collect(),
+            (None, Some(line)) => line.split(|ch: char| ch == ',' || ch.is_whitespace()).collect(),
+            (None, None) => Vec::new(),
+        };
+        for word in found.into_iter().filter_map(tidy_keyword) {
+            if !words.iter().any(|kept| same_keyword(kept, &word)) {
+                words.push(word);
+            }
+        }
+    }
+    words
+}
 
 /// `01-`, `02-`… wide enough for every sibling, so the files sort in the
 /// order of the book.
@@ -106,7 +135,8 @@ impl ProjectStore {
 
     /// Bring one Markdown file in as a new scene under `parent`. A header
     /// (`---` front matter) gives the scene its title, synopsis, status,
-    /// label, color, goal, conflict, and outcome; with no title there, the
+    /// label, keywords (`tags:` or `keywords:`), color, goal, conflict, and
+    /// outcome; with no title there, the
     /// scene is called `fallback_title`. The scene always gets a new id, so
     /// that bringing a file in twice cannot replace a scene.
     pub fn import_markdown_scene(
@@ -126,12 +156,15 @@ impl ProjectStore {
             goal,
             conflict,
             outcome,
+            other,
             ..
         } = file.header;
         let title = if title.trim().is_empty() { fallback_title.to_string() } else { title };
         let mut node = BinderNode::new(NodeKind::Scene, title, parent, sort_index);
         node.synopsis = synopsis;
         node.label = label;
+        // Taken in as keywords by the caller, which gives each new one a color.
+        node.keywords = keywords_from(&other);
         node.color = color;
         if !status.is_empty() {
             node.status = status;
@@ -196,7 +229,7 @@ fn export_children(
                         goal: beats.goal,
                         conflict: beats.conflict,
                         outcome: beats.outcome,
-                        other: Default::default(),
+                        other: tags_header(&node.keywords),
                     },
                     blocks: document.blocks.clone(),
                 };
@@ -323,6 +356,37 @@ mod tests {
         assert_eq!(plain.title, "loose-notes");
         let error = store.import_markdown_scene("---\ntitle: x\n", "broken", None, 11).unwrap_err();
         assert!(error.to_string().contains("line"), "{error}");
+        for folder in [dir, target] {
+            let _ = fs::remove_dir_all(folder);
+        }
+    }
+
+    /// A scene's keywords leave as Obsidian's `tags:` (a space, which a tag
+    /// cannot hold, as `-`) and come back from `tags:` or `keywords:`.
+    #[test]
+    fn keywords_go_out_and_come_back_as_tags() {
+        let (dir, target) = (temp("tags"), temp("tags-out"));
+        let store = sample(&dir);
+        let mut tree = store.load_binder().unwrap();
+        let scene = tree.nodes.iter().find(|node| node.title == "Scene 1").unwrap().id;
+        tree.add_keyword(scene, "plot/subplot");
+        tree.add_keyword(scene, "act two");
+        store.persist_binder(&tree).unwrap();
+        store.export_markdown(&target).unwrap();
+
+        let text = fs::read_to_string(target.join("manuscript/01-tide/01-chapter-1/01-scene-1.md")).unwrap();
+        assert!(text.contains("tags:\n  - plot/subplot\n  - act-two\n"), "{text}");
+        let quay = fs::read_to_string(target.join("manuscript/01-tide/01-chapter-1/02-the-quay.md")).unwrap();
+        assert!(!quay.contains("tags:"), "a scene with no keywords has none");
+        let (node, _, _) = store.import_markdown_scene(&text, "fallback", None, 9).unwrap();
+        assert_eq!(node.keywords, ["plot/subplot", "act-two"]);
+
+        // As Obsidian writes them: a list, `#` in front, or one line.
+        let obsidian = "---\ntitle: Notes\ntags:\n- \"#Mara\"\n- harbor/night\nkeywords: draft, revise later\n---\nText.\n";
+        let (node, _, _) = store.import_markdown_scene(obsidian, "fallback", None, 10).unwrap();
+        assert_eq!(node.keywords, ["Mara", "harbor/night", "draft", "revise", "later"]);
+        let (node, _, _) = store.import_markdown_scene("---\ntags: \"#one #two\"\n---\nText.\n", "x", None, 11).unwrap();
+        assert_eq!(node.keywords, ["one", "two"]);
         for folder in [dir, target] {
             let _ = fs::remove_dir_all(folder);
         }
