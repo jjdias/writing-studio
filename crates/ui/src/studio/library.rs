@@ -6,7 +6,9 @@ const LIBRARY_ROW_HEIGHT: f64 = 30.0;
 const SCENE_CARD_HEIGHT: f64 = 92.0;
 
 /// The left column: the project and its goal, the manuscript's books,
-/// parts, chapters, and folders, then the other modes under "Extras".
+/// parts, chapters, and folders, the views of the manuscript, then the
+/// other modes under "Extras". The middle of the window has no switch of
+/// its own: the page opens from a scene, the rest from here.
 #[component]
 pub(super) fn Library() -> Element {
     let mut state = use_context::<Signal<StudioState>>();
@@ -137,24 +139,37 @@ pub(super) fn Library() -> Element {
                         }
                     }
                 }
+                div { class: "library-heading", "Views" }
+                for candidate in WorkspaceMode::LIBRARY_VIEWS {
+                    ModeRow { key: "{candidate.label()}", candidate, active: mode == candidate }
+                }
                 FilterSection {}
                 div { class: "library-heading", "Extras" }
-                for candidate in [WorkspaceMode::Characters, WorkspaceMode::World, WorkspaceMode::Plot, WorkspaceMode::Research, WorkspaceMode::History] {
-                    button {
-                        class: if mode == candidate { "library-row active" } else { "library-row" },
-                        title: "{candidate.label()} ({mode_shortcut(candidate)})",
-                        aria_current: if mode == candidate { "page" } else { "false" },
-                        onclick: move |_| {
-                            state.write().choose_mode(candidate);
-                        },
-                        ModeGlyph { mode: candidate }
-                        span { class: "library-name", "{candidate.label()}" }
-                    }
+                for candidate in WorkspaceMode::LIBRARY_EXTRAS {
+                    ModeRow { key: "{candidate.label()}", candidate, active: mode == candidate }
                 }
                 if let Some(trash) = trash {
                     LibraryRow { id: trash, depth: 0, kind: NodeKind::TrashRoot, name: "Trash".to_string(), active: shown == Some(trash), has_children: false, collapsed: false }
                 }
             }
+        }
+    }
+}
+
+/// A library row that switches what the middle of the window shows.
+#[component]
+fn ModeRow(candidate: WorkspaceMode, active: bool) -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    rsx! {
+        button {
+            class: if active { "library-row active" } else { "library-row" },
+            title: "{candidate.label()} ({mode_shortcut(candidate)})",
+            aria_current: if active { "page" } else { "false" },
+            onclick: move |_| {
+                state.write().choose_mode(candidate);
+            },
+            ModeGlyph { mode: candidate }
+            span { class: "library-name", "{candidate.label()}" }
         }
     }
 }

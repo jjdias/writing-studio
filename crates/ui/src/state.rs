@@ -61,6 +61,19 @@ impl WorkspaceMode {
         WorkspaceMode::History,
     ];
 
+    /// The other ways to show the manuscript, listed in the library under
+    /// its books. The page opens from a scene.
+    pub const LIBRARY_VIEWS: [WorkspaceMode; 2] = [WorkspaceMode::Corkboard, WorkspaceMode::Outliner];
+
+    /// What the library lists under "Extras".
+    pub const LIBRARY_EXTRAS: [WorkspaceMode; 5] = [
+        WorkspaceMode::Characters,
+        WorkspaceMode::World,
+        WorkspaceMode::Plot,
+        WorkspaceMode::Research,
+        WorkspaceMode::History,
+    ];
+
     /// The scene list is beside the page in Writing, and in History, which
     /// is about the scene chosen there. Corkboard and Outliner show the
     /// scenes themselves; the library is in every mode.
@@ -76,8 +89,9 @@ impl WorkspaceMode {
     pub fn label(self) -> &'static str {
         match self {
             Self::Writing => "Writing",
-            Self::Corkboard => "Corkboard",
-            Self::Outliner => "Outliner",
+            // The corkboard until it becomes the mind map (Phase 11).
+            Self::Corkboard => "Mind map",
+            Self::Outliner => "Outline",
             Self::Plot => "Plot",
             Self::Characters => "Characters",
             Self::World => "World",
@@ -4324,6 +4338,20 @@ fn sanitize(title: &str) -> String {
 mod tests {
     use super::*;
     use writing_studio_document::ParagraphChange;
+
+    /// The middle of the window has no view switch: the page opens from a
+    /// scene and every other mode from one library row, so none is
+    /// unreachable or listed twice.
+    #[test]
+    fn every_mode_but_the_page_has_one_library_row() {
+        let mut rows: Vec<WorkspaceMode> =
+            WorkspaceMode::LIBRARY_VIEWS.into_iter().chain(WorkspaceMode::LIBRARY_EXTRAS).collect();
+        rows.push(WorkspaceMode::Writing);
+        for mode in WorkspaceMode::ALL {
+            assert_eq!(rows.iter().filter(|row| **row == mode).count(), 1, "{mode:?}");
+        }
+        assert_eq!(rows.len(), WorkspaceMode::ALL.len());
+    }
 
     fn open_state(tag: &str) -> (StudioState, PathBuf) {
         let dir = std::env::temp_dir().join(format!("ws-ui-{tag}-{}", Id::new()));

@@ -1,6 +1,6 @@
 # Phase 11 — Tags, story links, and a mind map
 
-Not started.
+In progress: stage 1 is done.
 
 Phase 9 gave binder items colored keywords and saved filters. This phase does four things with what is there:
 
@@ -61,6 +61,8 @@ So a writer gets what was asked for: chips in the scene's inspector, with sugges
 In this order: the layout change first, because every later stage adds to the library. Then keywords, which change one field of the format. Then story links and the scene context, which the mind map draws. The mind map last, as its third stage adds a project file. The stages stand on their own, so the phase can be split at the mind map if it runs long.
 
 ### 1. Views in the library
+
+**Done.** The work bar has no view switch. The library has a **Views** heading after the books, with Mind map and Outline (`WorkspaceMode::LIBRARY_VIEWS`), before the saved filters and Extras (`LIBRARY_EXTRAS`); both lists are drawn by one `ModeRow`. A test checks that every mode but the page has exactly one library row. The modes are named "Mind map" and "Outline" in the library, their tooltips, and the shortcut list; the corkboard keeps its code and its "filter the corkboard" wording until stage 10.
 
 - The Page / Cards / Outline switch leaves the top of the editor. The library lists **Mind map** and **Outline** above "Extras", under the books they show. Choosing a scene in the library, the scene list, or the outline opens it on the page, as now.
 - The middle of the window shows only the page, the mind map, or the outline. Characters, World, Plot, Research, and History keep their own places, as now.

@@ -252,7 +252,6 @@ fn Workspace() -> Element {
         !focus && fold.inspector && inspector_mode && overlay == Some(FoldedPanel::Inspector);
     let library_on = if fold.binder { overlay_library } else { arrangement.sidebar_visible };
     let inspector_on = inspector_mode && if fold.inspector { overlay_inspector } else { arrangement.inspector_visible };
-    let manuscript_view = matches!(mode, WorkspaceMode::Writing | WorkspaceMode::Corkboard | WorkspaceMode::Outliner);
     rsx! {
         if menu_open {
             div { class: "menu-backdrop", onclick: move |_| state.write().open_menu = None }
@@ -280,21 +279,6 @@ fn Workspace() -> Element {
                             open: library_on,
                             onclick: move |_| toggle_binder(state, chrome, fold),
                             path { d: "M1.5 2.5h13v11h-13zM6 2.5v11", fill: "none", stroke: "currentColor", stroke_width: "1.2" }
-                        }
-                        if manuscript_view {
-                            div { class: "view-switch", role: "group", aria_label: "Show the scenes as",
-                                for (view, label) in [(WorkspaceMode::Writing, "Page"), (WorkspaceMode::Corkboard, "Cards"), (WorkspaceMode::Outliner, "Outline")] {
-                                    button {
-                                        class: if mode == view { "view-option active" } else { "view-option" },
-                                        aria_pressed: "{mode == view}",
-                                        title: "{view.label()} ({mode_shortcut(view)})",
-                                        onclick: move |_| {
-                                            state.write().choose_mode(view);
-                                        },
-                                        "{label}"
-                                    }
-                                }
-                            }
                         }
                         div { class: "work-spacer" }
                         IconButton {

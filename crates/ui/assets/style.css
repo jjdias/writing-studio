@@ -1145,10 +1145,6 @@ kbd {
 }
 .work-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--muted); }
 .work-spacer { flex: 1; }
-.view-switch { display: inline-flex; padding: 2px; gap: 2px; border-radius: 8px; background: var(--hover); flex: 0 0 auto; }
-.view-option { background: transparent; border: 0; border-radius: 6px; padding: 3px 10px; font-size: 12px; color: var(--muted); }
-.view-option:hover { background: transparent; color: var(--text); }
-.view-option.active { background: var(--panel); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12); }
 .status-book { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 18rem; color: var(--text); }
 
 /* Folding: a chevron beside a library row that holds others, and on each
