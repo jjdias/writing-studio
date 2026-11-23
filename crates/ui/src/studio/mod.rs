@@ -5,7 +5,6 @@ use std::collections::HashSet;
 
 use dioxus::prelude::*;
 use writing_studio_core::Id;
-use writing_studio_corkboard::{card_matches, cards_from_binder, group_cards, CorkGroup};
 use writing_studio_document::{
     DiffOp, Highlight, NavItem, NavKind, NoteKind, ParagraphChange, ReviewItem, ReviewKind, ReviewTarget,
     TrackedChange,
@@ -41,7 +40,7 @@ mod world;
 mod research;
 mod characters;
 mod plot;
-mod corkboard;
+mod mindmap;
 mod outliner;
 mod library;
 mod compile;
@@ -58,7 +57,7 @@ use world::*;
 use research::*;
 use characters::*;
 use plot::*;
-use corkboard::*;
+use mindmap::*;
 use outliner::*;
 use library::*;
 use compile::*;
@@ -303,7 +302,7 @@ fn Workspace() -> Element {
                 main { class: "center",
                     {match mode {
                         WorkspaceMode::Writing => rsx! { EditorPane {} },
-                        WorkspaceMode::Corkboard => rsx! { CorkboardPane {} },
+                        WorkspaceMode::MindMap => rsx! { MindMapPane {} },
                         WorkspaceMode::Outliner => rsx! { OutlinerPane {} },
                         WorkspaceMode::Plot => rsx! { PlotPane {} },
                         WorkspaceMode::Characters => rsx! { CharactersPane {} },

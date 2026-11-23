@@ -207,7 +207,7 @@ pub(super) fn EmptyState(
     }
 }
 
-/// Narrow the corkboard or the outliner to scenes with one keyword. It
+/// Narrow the mind map or the outliner to scenes with one keyword. It
 /// shows only once the project has keywords.
 #[component]
 pub(super) fn KeywordSelect() -> Element {

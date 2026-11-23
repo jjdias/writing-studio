@@ -1,6 +1,6 @@
 # Phase 11 — Tags, story links, and a mind map
 
-In progress: stages 1 to 9 are done.
+In progress: stages 1 to 10 are done.
 
 Phase 9 gave binder items colored keywords and saved filters. This phase does four things with what is there:
 
@@ -139,6 +139,8 @@ In this order: the layout change first, because every later stage adds to the li
 
 ### 10. The mind map
 
+**Done.** `crates/ui/src/mindmap.rs` lays the map out (`layout`, tested: every node placed in binder order, none overlapping, folded branches closed) and moves between nodes (`step`, tested); `studio/mindmap.rs` draws it as SVG. The middle is the book the series menu chose, the only book, or the manuscript when there are several (`map_root`). Nodes show title, status or how many scenes they hold, and up to five keyword dots; a click chooses a node and the inspector, now in the mind map too, shows it, while a chosen scene's synopsis and word count show under the map; a double click or Enter opens a scene. Branches fold from their edge or with Space, for the session (`folded_map`). Zoom: "Fit" draws the map to the window, − and + or Ctrl+wheel set a size the pane scrolls around (`map_zoom`), which is how it pans. The filter (with `#keyword` as in the binder search), the keyword menu, and a chosen keyword or story entry dim what does not match. `WorkspaceMode::Corkboard` is `MindMap`; the corkboard pane, its card styles, and the `writing-studio-corkboard` crate are gone, card grouping with them, and the outline's toolbar class is `view-tools`.
+
 The corkboard becomes a mind map of the manuscript.
 
 - The book in the middle; its parts, chapters, and scenes as branches around it, read from the binder in binder order. With a series, the map shows the book chosen in the series menu, as the corkboard does.
@@ -175,10 +177,10 @@ What came up while this phase was planned and built, and while the Phase 7 packa
 - Renaming `plot` to `Story` while `story` was in use spelled the children `Story/subplot`; they now take the kept spelling (stage 4, caught by its test).
 - A saved filter's status matched through the chapter, part, or book, which are "draft" when made, so a "Draft" filter took every scene in a draft chapter whatever its own status. Status is the scene's own now (stage 5).
 - `SavedFilter::label`, left over from before keywords, is gone with the filter format change (stage 5).
+- `WorkspaceMode::view_title`, never called since Phase 8, is gone (stage 10).
 - The Markdown folder export lost every keyword: it wrote a scene's `label`, which Phase 9 emptied by folding labels into keywords, and never `keywords`. It writes them as `tags:` now (stage 6).
 **Open**
 
-- **`WorkspaceMode::view_title` is never called** (`crates/ui/src/state.rs`). Dead code from before Phase 8's layout.
 - **Two kinds of undo.** Ctrl+Z undoes text (and a merge or split through it). Trash, keyword renames, and merges are undone only from the status line's Undo button, which goes as soon as another message replaces it. Other binder changes (a move, a new keyword, a status) have no undo at all.
 - **The status bar's "Scene 21"** is the open scene's word count, but reads like a scene number. "21 words in this scene", or the scene's title, would say it.
 - **The web page inside the window is titled "Dioxus app"** (`document.title`); the window itself is "Writing Studio". Only assistive tools and the developer tools see it.

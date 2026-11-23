@@ -4,7 +4,7 @@ A free, open-source writing app for novels and series. Plan the book, write it s
 
 ## What you can do
 
-- **Organize the book.** Books, parts, chapters, and scenes in a library you rearrange by dragging. See the scenes as a list, as cards on a corkboard, or as an outline.
+- **Organize the book.** Books, parts, chapters, and scenes in a library you rearrange by dragging. See the scenes as a list, as a mind map with the characters, places, and notes linked to them, or as an outline.
 - **Write.** A quiet page with your choice of font, line length, and spacing, focus mode, and the bars fading while you type.
 - **Keep track.** Daily and book word targets, a deadline with the pace that meets it, keywords and saved filters, and a status for each scene.
 - **Develop the story.** Characters, world notes, a plot grid, and research, shared by every book in a series.

@@ -475,7 +475,7 @@ pub struct ProjectSettings {
     /// Per-book word targets. A book with no entry uses `project_word_goal` when it is the first book.
     #[serde(default)]
     pub book_word_goals: Vec<BookWordGoal>,
-    /// Binder, corkboard, outliner, and search show every book. Compile still uses `compile_book_id`.
+    /// Binder, mind map, outliner, and search show every book. Compile still uses `compile_book_id`.
     /// Missing on older projects, which open on the whole series.
     #[serde(default = "default_show_whole_series")]
     pub show_whole_series: bool,

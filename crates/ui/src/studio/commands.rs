@@ -9,9 +9,10 @@ pub(super) fn ModeGlyph(mode: WorkspaceMode) -> Element {
                 path { d: "M8.5 1.8V6H13.2", fill: "none", stroke: "currentColor", stroke_width: "1.2" }
             }
         },
-        WorkspaceMode::Corkboard => rsx! {
+        WorkspaceMode::MindMap => rsx! {
             svg { class: "glyph", view_box: "0 0 16 16",
-                path { d: "M2 2h5v5H2zM9 2h5v5H9zM2 9h5v5H2zM9 9h5v5H9z", fill: "none", stroke: "currentColor", stroke_width: "1.2" }
+                circle { cx: "8", cy: "8", r: "2.2", fill: "none", stroke: "currentColor", stroke_width: "1.2" }
+                path { d: "M10 7l3-3M10 9l3 3M6 7L3 4M6 9l-3 3", fill: "none", stroke: "currentColor", stroke_width: "1.2", stroke_linecap: "round" }
             }
         },
         WorkspaceMode::Outliner => rsx! {
@@ -57,7 +58,7 @@ pub(super) fn ModeGlyph(mode: WorkspaceMode) -> Element {
 pub(super) fn mode_shortcut(mode: WorkspaceMode) -> &'static str {
     match mode {
         WorkspaceMode::Writing => "Ctrl+1",
-        WorkspaceMode::Corkboard => "Ctrl+2",
+        WorkspaceMode::MindMap => "Ctrl+2",
         WorkspaceMode::Outliner => "Ctrl+3",
         WorkspaceMode::Plot => "Ctrl+4",
         WorkspaceMode::Characters => "Ctrl+5",
@@ -98,7 +99,7 @@ pub(super) fn apply_shortcut(
             state.write().focus_mode = next;
         }
         AppShortcut::Writing => return set_mode(state, WorkspaceMode::Writing),
-        AppShortcut::Corkboard => return set_mode(state, WorkspaceMode::Corkboard),
+        AppShortcut::MindMap => return set_mode(state, WorkspaceMode::MindMap),
         AppShortcut::Outliner => return set_mode(state, WorkspaceMode::Outliner),
         AppShortcut::Plot => return set_mode(state, WorkspaceMode::Plot),
         AppShortcut::Characters => return set_mode(state, WorkspaceMode::Characters),
@@ -183,8 +184,8 @@ pub(super) fn clear_or_exit_focus(mut state: Signal<StudioState>) -> bool {
         state.write().focus_mode = false;
         return true;
     }
-    if state.read().mode == WorkspaceMode::Corkboard && !state.read().cork_query.is_empty() {
-        state.write().cork_query.clear();
+    if state.read().mode == WorkspaceMode::MindMap && !state.read().map_query.is_empty() {
+        state.write().map_query.clear();
         return true;
     }
     if !state.read().search.is_empty() {
@@ -201,8 +202,8 @@ pub(super) fn focus_find(mut state: Signal<StudioState>, chrome: Signal<PanelChr
     if !state.read().is_open() {
         return;
     }
-    if state.read().mode == WorkspaceMode::Corkboard {
-        focus_dom("cork-filter", false);
+    if state.read().mode == WorkspaceMode::MindMap {
+        focus_dom("map-filter", false);
         return;
     }
     // Search is in the binder, and modes without one have nothing to search.

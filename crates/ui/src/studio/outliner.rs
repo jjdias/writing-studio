@@ -54,7 +54,7 @@ pub(super) fn OutlinerPane() -> Element {
     let diagnostics = snapshot.outliner_diagnostics;
     rsx! {
         div { class: "outliner",
-            div { class: "cork-tools",
+            div { class: "view-tools",
                 SeriesScopeSelect {}
                 KeywordSelect {}
                 button {

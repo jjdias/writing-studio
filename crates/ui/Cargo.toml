@@ -14,7 +14,6 @@ tokio.workspace = true
 writing-studio-characters.workspace = true
 writing-studio-context.workspace = true
 writing-studio-core.workspace = true
-writing-studio-corkboard.workspace = true
 writing-studio-diagnostics.workspace = true
 writing-studio-document.workspace = true
 writing-studio-editor.workspace = true

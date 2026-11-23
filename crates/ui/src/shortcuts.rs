@@ -10,7 +10,7 @@ pub enum AppShortcut {
     Find,
     ToggleFocus,
     Writing,
-    Corkboard,
+    MindMap,
     Outliner,
     Plot,
     Characters,
@@ -81,7 +81,7 @@ pub const LISTED: [Listed; 25] = [
     Listed::ctrl("Undo", "z"),
     Listed::ctrl("Redo", "y"),
     Listed::ctrl_shift("Redo", "z"),
-    Listed::ctrl("Search the binder, or filter the corkboard", "f"),
+    Listed::ctrl("Search the binder, or filter the mind map", "f"),
     Listed::ctrl_shift("Focus mode", "f"),
     Listed::ctrl("Focus mode", "\\"),
     Listed::ctrl("Writing", "1"),
@@ -136,7 +136,7 @@ pub fn app_shortcut(key: &str, ctrl: bool, shift: bool, alt: bool) -> Option<App
         ("f", false) => AppShortcut::Find,
         ("f", true) | ("\\", false) => AppShortcut::ToggleFocus,
         ("1", false) => AppShortcut::Writing,
-        ("2", false) => AppShortcut::Corkboard,
+        ("2", false) => AppShortcut::MindMap,
         ("3", false) => AppShortcut::Outliner,
         ("4", false) => AppShortcut::Plot,
         ("5", false) => AppShortcut::Characters,
@@ -174,7 +174,7 @@ mod tests {
         assert_eq!(app_shortcut("f", true, true, false), Some(AppShortcut::ToggleFocus));
         assert_eq!(app_shortcut("\\", true, false, false), Some(AppShortcut::ToggleFocus));
         assert_eq!(app_shortcut("1", true, false, false), Some(AppShortcut::Writing));
-        assert_eq!(app_shortcut("2", true, false, false), Some(AppShortcut::Corkboard));
+        assert_eq!(app_shortcut("2", true, false, false), Some(AppShortcut::MindMap));
         assert_eq!(app_shortcut("3", true, false, false), Some(AppShortcut::Outliner));
         assert_eq!(app_shortcut("4", true, false, false), Some(AppShortcut::Plot));
         assert_eq!(app_shortcut("5", true, false, false), Some(AppShortcut::Characters));

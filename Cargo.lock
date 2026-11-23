@@ -6314,14 +6314,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "writing-studio-corkboard"
-version = "0.1.0"
-dependencies = [
- "writing-studio-core",
- "writing-studio-project",
-]
-
-[[package]]
 name = "writing-studio-desktop"
 version = "0.1.0"
 dependencies = [
@@ -6482,7 +6474,6 @@ dependencies = [
  "writing-studio-characters",
  "writing-studio-context",
  "writing-studio-core",
- "writing-studio-corkboard",
  "writing-studio-diagnostics",
  "writing-studio-document",
  "writing-studio-editor",

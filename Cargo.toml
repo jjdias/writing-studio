@@ -9,7 +9,6 @@ members = [
     "crates/manuscript",
     "crates/storage",
     "crates/ui",
-    "crates/corkboard",
     "crates/plotting",
     "crates/characters",
     "crates/worldbuilding",
@@ -39,7 +38,6 @@ writing-studio-project = { path = "crates/project" }
 writing-studio-manuscript = { path = "crates/manuscript" }
 writing-studio-storage = { path = "crates/storage" }
 writing-studio-ui = { path = "crates/ui" }
-writing-studio-corkboard = { path = "crates/corkboard" }
 writing-studio-plotting = { path = "crates/plotting" }
 writing-studio-characters = { path = "crates/characters" }
 writing-studio-worldbuilding = { path = "crates/worldbuilding" }

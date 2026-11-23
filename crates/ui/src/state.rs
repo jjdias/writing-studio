@@ -5,7 +5,6 @@ use std::rc::Rc;
 use std::time::Instant;
 
 use writing_studio_characters::Cast;
-use writing_studio_corkboard::CorkGroup;
 use writing_studio_document::{
     accept_change, compare_documents, reject_change, tracked_changes, Document, DocumentDiff,
     NavItem, NoteKind, ReviewItem, ReviewKind, ReviewTarget, TrackedChange,
@@ -39,7 +38,7 @@ pub use compile::{CheckFinding, CompileCheck};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WorkspaceMode {
     Writing,
-    Corkboard,
+    MindMap,
     Outliner,
     Plot,
     Characters,
@@ -52,7 +51,7 @@ impl WorkspaceMode {
     /// The activity bar's order, which Ctrl+1 to Ctrl+8 follow.
     pub const ALL: [WorkspaceMode; 8] = [
         WorkspaceMode::Writing,
-        WorkspaceMode::Corkboard,
+        WorkspaceMode::MindMap,
         WorkspaceMode::Outliner,
         WorkspaceMode::Plot,
         WorkspaceMode::Characters,
@@ -63,7 +62,7 @@ impl WorkspaceMode {
 
     /// The other ways to show the manuscript, listed in the library under
     /// its books. The page opens from a scene.
-    pub const LIBRARY_VIEWS: [WorkspaceMode; 2] = [WorkspaceMode::Corkboard, WorkspaceMode::Outliner];
+    pub const LIBRARY_VIEWS: [WorkspaceMode; 2] = [WorkspaceMode::MindMap, WorkspaceMode::Outliner];
 
     /// What the library lists under "Extras".
     pub const LIBRARY_EXTRAS: [WorkspaceMode; 5] = [
@@ -75,36 +74,23 @@ impl WorkspaceMode {
     ];
 
     /// The scene list is beside the page in Writing, and in History, which
-    /// is about the scene chosen there. Corkboard and Outliner show the
+    /// is about the scene chosen there. The mind map and the outliner show the
     /// scenes themselves; the library is in every mode.
     pub fn shows_binder(self) -> bool {
         matches!(self, Self::Writing | Self::History)
     }
 
-    /// The inspector edits the item being written, so it is only in Writing.
+    /// The inspector edits the item being written, or the node chosen on
+    /// the mind map.
     pub fn shows_inspector(self) -> bool {
-        self == Self::Writing
+        matches!(self, Self::Writing | Self::MindMap)
     }
 
     pub fn label(self) -> &'static str {
         match self {
             Self::Writing => "Writing",
-            // The corkboard until it becomes the mind map (Phase 11).
-            Self::Corkboard => "Mind map",
+            Self::MindMap => "Mind map",
             Self::Outliner => "Outline",
-            Self::Plot => "Plot",
-            Self::Characters => "Characters",
-            Self::World => "World",
-            Self::Research => "Research",
-            Self::History => "History",
-        }
-    }
-
-    pub fn view_title(self) -> &'static str {
-        match self {
-            Self::Writing => "Explorer",
-            Self::Corkboard => "Corkboard",
-            Self::Outliner => "Outliner",
             Self::Plot => "Plot",
             Self::Characters => "Characters",
             Self::World => "World",
@@ -331,8 +317,12 @@ pub struct StudioState {
     pub editor_epoch: u64,
     pub search: String,
     pub manuscript_index: Rc<RefCell<ManuscriptIndex>>,
-    pub cork_query: String,
-    pub cork_group: CorkGroup,
+    /// The mind map's text filter: what does not match is dimmed.
+    pub map_query: String,
+    /// Mind map branches folded, until the program closes.
+    pub folded_map: Vec<Id>,
+    /// The mind map's zoom: `None` fits the window, a number scales it.
+    pub map_zoom: Option<f64>,
     pub plot: PlotGrid,
     pub plot_dirty: bool,
     pub confirm_plotline: Option<Id>,
@@ -349,7 +339,7 @@ pub struct StudioState {
     pub filter_selection: Option<Id>,
     /// The saved filter the filter form is changing, or `None` for a new one.
     pub editing_filter: Option<Id>,
-    /// The keyword the scene list, the corkboard, and the outliner are
+    /// The keyword the scene list, the mind map, and the outliner are
     /// narrowed to, chosen in the library or their keyword menu.
     pub keyword_filter: Option<String>,
     /// The story entry the same views are narrowed to, from the library's
@@ -472,8 +462,9 @@ impl Default for StudioState {
             editor_epoch: 0,
             search: String::new(),
             manuscript_index: Rc::new(RefCell::new(ManuscriptIndex::new())),
-            cork_query: String::new(),
-            cork_group: CorkGroup::Manuscript,
+            map_query: String::new(),
+            folded_map: Vec::new(),
+            map_zoom: None,
             plot: PlotGrid::new(),
             plot_dirty: false,
             confirm_plotline: None,
@@ -685,7 +676,7 @@ impl StudioState {
             .collect()
     }
 
-    /// The book the binder, corkboard, outliner, and search are limited to.
+    /// The book the binder, mind map, outliner, and search are limited to.
     /// None means the whole series is on screen. Compile still uses [`Self::compile_book_id`].
     pub fn series_scope(&self) -> Option<Id> {
         let show_all = self
@@ -2248,7 +2239,7 @@ impl StudioState {
         {
             self.set_compile_book(id);
         }
-        if !matches!(self.mode, WorkspaceMode::Writing | WorkspaceMode::Corkboard | WorkspaceMode::Outliner) {
+        if !matches!(self.mode, WorkspaceMode::Writing | WorkspaceMode::MindMap | WorkspaceMode::Outliner) {
             self.mode = WorkspaceMode::Writing;
         }
     }
@@ -2476,7 +2467,7 @@ impl StudioState {
         }
     }
 
-    /// Narrow the scene list, the corkboard, and the outliner to a keyword
+    /// Narrow the scene list, the mind map, and the outliner to a keyword
     /// and what is nested under it, as a search narrows them; choosing it
     /// again lets it go. Another mode gives way to the page.
     pub fn choose_keyword(&mut self, name: &str) {
@@ -2486,7 +2477,7 @@ impl StudioState {
         }
         self.keyword_filter = Some(name.to_string());
         self.open_menu = None;
-        if !matches!(self.mode, WorkspaceMode::Writing | WorkspaceMode::Corkboard | WorkspaceMode::Outliner) {
+        if !matches!(self.mode, WorkspaceMode::Writing | WorkspaceMode::MindMap | WorkspaceMode::Outliner) {
             self.mode = WorkspaceMode::Writing;
         }
     }
@@ -2546,13 +2537,40 @@ impl StudioState {
         }
     }
 
+    /// What the mind map has in its middle: the book the series menu
+    /// chose, the only book, or the whole manuscript when it holds several.
+    pub fn map_root(&self) -> Option<Id> {
+        if let Some(book) = self.series_scope() {
+            return Some(book);
+        }
+        match self.binder.manuscript_books().as_slice() {
+            [book] => Some(book.id),
+            _ => self.binder.draft_root().map(|draft| draft.id),
+        }
+    }
+
+    /// Fold or unfold a branch of the mind map.
+    pub fn toggle_map_fold(&mut self, id: Id) {
+        if let Some(at) = self.folded_map.iter().position(|kept| *kept == id) {
+            self.folded_map.remove(at);
+        } else {
+            self.folded_map.push(id);
+        }
+    }
+
+    /// Zoom the mind map in or out from where it is, a fitted map from
+    /// its natural size; `None` fits it to the window again.
+    pub fn zoom_map(&mut self, by: Option<f64>) {
+        self.map_zoom = by.map(|by| (self.map_zoom.unwrap_or(1.0) * by).clamp(0.25, 3.0));
+    }
+
     /// Let go of the chosen keyword and story entry. Returns whether one
     /// was chosen.
     pub fn clear_keyword_filter(&mut self) -> bool {
         self.keyword_filter.take().is_some() | self.story_filter.take().is_some()
     }
 
-    /// Whether the scene list, the corkboard, and the outliner are narrowed
+    /// Whether the scene list, the mind map, and the outliner are narrowed
     /// to a keyword or a story entry chosen in the library.
     pub fn narrowed(&self) -> bool {
         self.keyword_filter.is_some() || self.story_filter.is_some()
@@ -2711,7 +2729,7 @@ impl StudioState {
             .collect()
     }
 
-    /// Narrow the scene list, the corkboard, and the outliner to the scenes
+    /// Narrow the scene list, the mind map, and the outliner to the scenes
     /// a story entry reaches; choosing it again lets it go.
     pub fn choose_story(&mut self, entry: Id) {
         if self.story_filter == Some(entry) {
@@ -2720,7 +2738,7 @@ impl StudioState {
         }
         self.story_filter = Some(entry);
         self.open_menu = None;
-        if !matches!(self.mode, WorkspaceMode::Writing | WorkspaceMode::Corkboard | WorkspaceMode::Outliner) {
+        if !matches!(self.mode, WorkspaceMode::Writing | WorkspaceMode::MindMap | WorkspaceMode::Outliner) {
             self.mode = WorkspaceMode::Writing;
         }
     }
@@ -4973,6 +4991,38 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
+    /// The mind map has the only book in its middle, or the whole
+    /// manuscript once there are two; it folds, zooms, and fits again, and
+    /// a node chosen on it shows in the inspector.
+    #[test]
+    fn the_mind_map_has_its_book_in_the_middle_and_folds_and_zooms() {
+        let (mut state, dir) = open_state("mind-map");
+        let scene = state.selected.unwrap();
+        let book = state.binder.book_of(scene).unwrap();
+        assert_eq!(state.map_root(), Some(book));
+        assert!(WorkspaceMode::MindMap.shows_inspector());
+        let map = crate::mindmap::layout(&state.binder, book, &state.folded_map);
+        assert!(map.get(scene).is_some());
+
+        let chapter = state.binder.get(scene).unwrap().parent_id.unwrap();
+        state.toggle_map_fold(chapter);
+        assert!(crate::mindmap::layout(&state.binder, book, &state.folded_map).get(scene).is_none());
+        state.toggle_map_fold(chapter);
+        assert!(state.folded_map.is_empty());
+
+        state.zoom_map(Some(1.25));
+        assert_eq!(state.map_zoom, Some(1.25), "from fitted, a zoom starts at natural size");
+        state.zoom_map(Some(100.0));
+        assert_eq!(state.map_zoom, Some(3.0));
+        state.zoom_map(None);
+        assert_eq!(state.map_zoom, None);
+
+        state.choose_library(book);
+        state.add_node(NodeKind::Book);
+        assert_eq!(state.map_root(), state.binder.draft_root().map(|draft| draft.id), "two books: the manuscript");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     fn open_state(tag: &str) -> (StudioState, PathBuf) {
         let dir = std::env::temp_dir().join(format!("ws-ui-{tag}-{}", Id::new()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -5477,7 +5527,8 @@ mod tests {
             [WorkspaceMode::Writing, WorkspaceMode::History]
         );
         let with_inspector: Vec<_> = WorkspaceMode::ALL.into_iter().filter(|mode| mode.shows_inspector()).collect();
-        assert_eq!(with_inspector, [WorkspaceMode::Writing]);
+        // A node chosen on the mind map shows in the inspector too.
+        assert_eq!(with_inspector, [WorkspaceMode::Writing, WorkspaceMode::MindMap]);
     }
 
     #[test]

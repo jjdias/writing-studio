@@ -3,6 +3,7 @@
 #[cfg(test)]
 mod contrast;
 mod fonts;
+mod mindmap;
 mod shortcuts;
 mod state;
 mod studio;

@@ -19,7 +19,7 @@ pub(super) fn Library() -> Element {
     let goal = state.read().goal();
     let connected = state.read().sync_connected();
     let syncing = state.read().syncing;
-    let manuscript_mode = matches!(mode, WorkspaceMode::Writing | WorkspaceMode::Corkboard | WorkspaceMode::Outliner);
+    let manuscript_mode = matches!(mode, WorkspaceMode::Writing | WorkspaceMode::MindMap | WorkspaceMode::Outliner);
     let filter_chosen = state.read().shown_filter().is_some();
     let shown = if manuscript_mode && !filter_chosen { state.read().shown_container() } else { None };
     let rows: Vec<(Id, u32, NodeKind, String, bool, bool)> = {
@@ -775,7 +775,7 @@ fn FilterSection() -> Element {
 }
 
 /// Every keyword as a tree with how many items carry it. A click narrows
-/// the scene list, the corkboard, and the outliner to it and what is nested
+/// the scene list, the mind map, and the outliner to it and what is nested
 /// under it; a second click, or Escape, lets it go.
 #[component]
 fn KeywordSection() -> Element {
@@ -871,7 +871,7 @@ fn KeywordSection() -> Element {
 
 /// The characters, places, and notes linked into the manuscript, by kind,
 /// each with how many scenes it reaches. A click narrows the scene list,
-/// the corkboard, and the outliner to those scenes; a second click, or
+/// the mind map, and the outliner to those scenes; a second click, or
 /// Escape, lets it go.
 #[component]
 fn StorySection() -> Element {
