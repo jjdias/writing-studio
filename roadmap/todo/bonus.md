@@ -101,7 +101,7 @@ Not current work. **Backup** copies the SQLite file and leaves `attachments/` be
 
 ## Keywords on the story's entries
 
-What is left of the "Tags" entry, which moved to [Phase 11](phase-11.md). There, binder items get Obsidian-style keywords, and characters, places, and notes are linked to scenes and chapters, not tagged.
+What is left of the "Tags" entry, which moved to [Phase 11](../done/phase-11.md). There, binder items get Obsidian-style keywords, and characters, places, and notes are linked to scenes and chapters, not tagged.
 
 - A character, place, or note carries keywords from the same list (`antagonist`, `setting/coast`), and the keyword list counts them.
 - It changes `bible.json`, so it is a format change of its own.

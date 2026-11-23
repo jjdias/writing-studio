@@ -1,6 +1,6 @@
 use super::*;
 
-/// Context: what is said about the chosen item, beside the binder. Never
+/// Context: what is said about the chosen item, on the right. Never
 /// the work itself, which is on the page, the map, or the outline.
 #[component]
 pub(super) fn ContextPane() -> Element {

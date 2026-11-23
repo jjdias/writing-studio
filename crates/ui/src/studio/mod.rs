@@ -239,7 +239,7 @@ fn Workspace() -> Element {
     let arrangement = *chrome.read();
     let fold = current_fold();
     let inspector_mode = mode.shows_inspector();
-    // The binder is on screen in every mode, and Context beside it where
+    // The binder is on screen in every mode, and Context on the right where
     // there is something to say about what is chosen. In a narrow window
     // Context folds away first, then the binder.
     let show_library = !focus && arrangement.sidebar_visible && !fold.binder;
@@ -266,10 +266,6 @@ fn Workspace() -> Element {
             if show_library {
                 Library {}
                 Sash { kind: ResizeKind::Sidebar, positive: true }
-            }
-            if show_inspector {
-                ContextPane {}
-                Sash { kind: ResizeKind::Inspector, positive: true }
             }
             div { class: "editor-group",
                 if !focus {
@@ -313,9 +309,14 @@ fn Workspace() -> Element {
                     }}
                 }
             }
+            // Context is on the right of the page, as the inspector was.
+            if show_inspector {
+                Sash { kind: ResizeKind::Inspector, positive: false }
+                ContextPane {}
+            }
             if overlay_inspector {
                 div { class: "overlay-backdrop", onclick: move |_| state.write().overlay = None }
-                div { class: "overlay overlay-left", ContextPane {} }
+                div { class: "overlay overlay-right", ContextPane {} }
             }
         }
         if focus {

@@ -1,6 +1,6 @@
 # Phase 11 — Tags, story links, and a mind map
 
-Done: every stage is in, 13 to 16 added after trying the window. The maintainer's look at the window is left, and the tests of stage 16 beyond its own were not run at its end (see below).
+Done. Every stage is on `master`, 13 to 16 added after trying the window, and the whole workspace's tests pass. Looking at it in the window, by hand, is left for a later phase, as the maintainer decided; so is the Phase 7 check of the packages.
 
 Phase 9 gave binder items colored keywords and saved filters. This phase does four things with what is there:
 
@@ -54,7 +54,7 @@ So a writer gets what was asked for: chips in the scene's inspector, with sugges
 - **`#tag` typed in a scene's text.** Scene text is the book: compile would have to find and remove every tag, and "#1 bestseller" would read as one. Keywords stay outside the text, as the bonus entry already said.
 - **No spaces, and not only digits.** Obsidian needs those rules because it finds tags in text. Keywords are never looked for in text, and many already have spaces (labels became keywords in Phase 9). Only the Markdown export has to write a space differently (stage 6).
 - **Linking by itself.** A character named in a scene is offered as a link (stage 8); the writer decides.
-- **Assistance.** The scene context is built so that assistance can read it later ("Optional local assistance" in [bonus.md](bonus.md)); nothing in this phase sends text anywhere or runs a model.
+- **Assistance.** The scene context is built so that assistance can read it later ("Optional local assistance" in [bonus.md](../todo/bonus.md)); nothing in this phase sends text anywhere or runs a model.
 
 ## The work
 
@@ -179,7 +179,7 @@ The window had four columns: the binder, the scene list, the page, and the inspe
 **Done.** `StudioState::binder_rows` gives the tree (`BinderRow`: depth, kind, title, status, keyword colors, left out, scenes held and finished), with scenes in their chapters; `shown_scenes` is the set a search, saved filter, keyword, or story entry narrows it to, keeping what holds a match and opening what is folded; `trash_rows` lists the trash's contents under its row. One `LibraryRow` draws every row: a scene opens on the page (Ctrl+click and Shift+click pick), anything else is chosen and shows in Context. The search box is over the tree; **+ Add** adds a scene too. `ContextPane` (the inspector's `Inspector`, moved) sits between the binder and the page, with Restore and Empty trash when the trash is chosen, in Writing, the mind map, and the outline. The binder takes the old scene list's width setting and is resizable; Context takes the inspector's; Context folds below about 960 pixels, the binder below 660. The scene list, its cards, `scene_groups`, `SceneCard`, `SceneGroup`, `library_rows`, and the search index's `opening` (only the cards used it) are gone. `binder_matches` moved to the state.
 
 - The scene list goes. The binder lists scenes in their chapters (and in the parts, books, and folders they sit in), each row with its title, status, and keyword colors, and the chapter's ring of finished scenes. Choosing a scene opens it on the page; choosing a book, part, chapter, or folder shows it in Context.
-- Where the scene list was, **Context** holds what the right-hand inspector held: progress, synopsis, status, keywords, In this scene, Named here, the scene context, beats and diagnostics, snapshots, split and merge, include in compile, color, and Move to trash. The right-hand inspector goes; its button and Ctrl+Alt+I show and hide Context.
+- Where the scene list was, **Context** held (it moved back to the right of the page at the end of the phase) what the right-hand inspector held: progress, synopsis, status, keywords, In this scene, Named here, the scene context, beats and diagnostics, snapshots, split and merge, include in compile, color, and Move to trash. The right-hand inspector goes; its button and Ctrl+Alt+I show and hide Context.
 - What the scene list did comes to the binder: the search box over the tree, which keeps the books, parts, and chapters that hold a match; Ctrl+click and Shift+click picking; dragging scenes as chapters are dragged; a saved filter, keyword, or story entry chosen narrows the tree to what matches; the trash's contents under Trash, with Restore and Empty trash in Context when the trash is chosen.
 - On the mind map and the outline, Context shows the chosen node. Characters, World, and Research keep the main area until stage 14.
 
@@ -204,7 +204,7 @@ The window had four columns: the binder, the scene list, the page, and the inspe
 
 ### 16. Worldbuilding on the mind map
 
-**Done.** The map's layout takes any tree (`layout_tree`, `Tree`, `place_by_hand`, tested), and `StudioState::world_layout` builds the worldbuilding one: a middle and a node for each shown kind (`MapKind::Group`, fixed ids for the session), each kind's entries nested, or, with `map_center`, one entry with its parent, what it holds, and what it is connected to. `world_lines` draws named connections and fields as labeled lines, filtered by `TieFilter`; `world_kinds` says which kinds show. `current_map` gives whichever map is chosen. On it, Tab and Enter add entries (`add_on_world_map`), F2 renames, Delete deletes, Join connects two entries (named in Context), and dropping an entry on another of its kind nests it, on its kind brings it to the top. An entry chosen on the map shows in Context. Its state test passed; the whole workspace's tests were stopped at the maintainer's word before they finished, so run them before merging.
+**Done.** The map's layout takes any tree (`layout_tree`, `Tree`, `place_by_hand`, tested), and `StudioState::world_layout` builds the worldbuilding one: a middle and a node for each shown kind (`MapKind::Group`, fixed ids for the session), each kind's entries nested, or, with `map_center`, one entry with its parent, what it holds, and what it is connected to. `world_lines` draws named connections and fields as labeled lines, filtered by `TieFilter`; `world_kinds` says which kinds show. `current_map` gives whichever map is chosen. On it, Tab and Enter add entries (`add_on_world_map`), F2 renames, Delete deletes, Join connects two entries (named in Context), and dropping an entry on another of its kind nests it, on its kind brings it to the top. An entry chosen on the map shows in Context. Its state test passed, and so does the whole workspace's.
 
 - A menu over the map chooses its middle: the book, as now, or **Worldbuilding**. Worldbuilding shows the chosen kinds' trees, nesting as branches, and the named connections as labeled lines between them, so how places and characters relate shows at a glance.
 - Filters: which kinds (Places, Characters, and so on), which connection names, and one entry to center on, showing what it is inside, what it holds, and what it is connected to.
@@ -256,7 +256,7 @@ The tests in this repository are the only testing for now (see "How the work is 
 
 ## Not in this phase
 
-- Keywords on the story's entries themselves (a character tagged `antagonist`). Entries are linked, not tagged; tagging them is in [bonus.md](bonus.md).
+- Keywords on the story's entries themselves (a character tagged `antagonist`). Entries are linked, not tagged; tagging them is in [bonus.md](../todo/bonus.md).
 - Any assistance, local or remote, and anything that sends text from the computer.
 - `OR` and parentheses in the binder search.
 - A mind map for anything but the manuscript and what is linked to it.
