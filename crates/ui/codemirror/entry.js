@@ -16,6 +16,7 @@ import { EditorView, keymap, drawSelection } from "@codemirror/view";
 import { defaultKeymap, history, undo, redo } from "@codemirror/commands";
 import { sceneLanguage } from "./syntax.js";
 import { preview, sourceMode } from "./preview.js";
+import { selectReview, showBlock } from "./places.js";
 import { writingKeys, smartTypography, pairing, pasteHandler, insertPasted, runCommand, marksAt } from "./writing.js";
 
 let view = null;
@@ -227,4 +228,6 @@ window.wsEditor = {
   hold,
   release,
   pasted,
+  selectReview: (type, index) => (view ? selectReview(view, type, index) : false),
+  showBlock: (index) => (view ? showBlock(view, index) : false),
 };

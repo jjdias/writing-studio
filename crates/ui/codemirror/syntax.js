@@ -1,6 +1,9 @@
-// The Markdown the page reads: CommonMark with GitHub's additions, plus what
-// a scene holds that Markdown has no common way to say. It matches what
-// crates/format writes and reads:
+// The Markdown the page reads: what crates/format reads, so the page never
+// shows formatting the scene would not keep. That is CommonMark with
+// strikethrough, without what the scene has no place for (inline code,
+// images, setext headings, indented code, and link definitions, which read
+// as the text they are), plus what a scene holds that Markdown has no
+// common way to say:
 //
 // - `<u>text</u>` underline, as one node rather than two HTML tags;
 // - `==text==` and `{==text==}` highlights, `{.green}` after one for its
@@ -8,7 +11,7 @@
 // - `[^1]` footnote marks, and `[^1]: text` lines that hold their text.
 
 import { tags as t } from "@lezer/highlight";
-import { GFM } from "@lezer/markdown";
+import { Strikethrough } from "@lezer/markdown";
 import { Language } from "@codemirror/language";
 import { commonmarkLanguage } from "@codemirror/lang-markdown";
 
@@ -128,7 +131,11 @@ const Scene = {
 
 // The same language data as CodeMirror's own Markdown, so its list and
 // quote commands (Enter, Backspace) know this is Markdown.
-const parser = commonmarkLanguage.parser.configure([GFM, Scene]);
+const parser = commonmarkLanguage.parser.configure([
+  Strikethrough,
+  Scene,
+  { remove: ["InlineCode", "Image", "IndentedCode", "SetextHeading", "LinkReference"] },
+]);
 export const sceneLanguage = new Language(commonmarkLanguage.data, parser, [], "markdown");
 
 // The text of each footnote, by its label, from the `[^1]: text` lines.

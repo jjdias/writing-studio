@@ -1,6 +1,6 @@
 # Phase 12 — A Markdown editor
 
-In progress: stages 1 to 4 are done.
+In progress: stages 1 to 5 are done.
 
 The page is a rich-text editor today: a `contenteditable` element that the program's own scripts (`crates/ui/assets/review.js`, `spell.js`, `place.js`) and `crates/ui/src/studio/editor.rs` keep in step with the document model. This phase makes the page a Markdown editor: the writer types and sees Markdown, shown as the best Markdown editors show it, while everything the page does now keeps working.
 
@@ -89,6 +89,8 @@ In this order: the component and the round trip first, then what the writer sees
 
 - `==text==` and colored highlights, notes as CriticMarkup shown as highlighted text with the note in the review list and beside it, resolved notes dimmed. Notes do not count as words.
 - Footnotes `[^1]` with their text at the end of the scene, shown at the mark, compiled as today's notes are.
+
+**Done.** `crates/format` reads `==text==` as a yellow highlight (written back as `{==text==}`), `_` and `__` as `*` and `**` except inside a word, and footnotes: each `word[^1]` with a `[^1]: text` line becomes a note on the word before the mark, and the lines of the footnotes used go, so a footnote is in the review list, is not counted, and compiles as a note does. A mark with no plain word before it or no text, and anything in a code block, stay as written. Once the scene is drawn again (an undo, a review action, reopening), a footnote shows as the note it became. The page's parser reads only what `crates/format` keeps, so it never shows formatting the scene would lose: inline code, images, setext headings, indented code, and link definitions are text on the page too. Enter starts a new paragraph (a blank line), in a list or quote the next item or line; Shift+Enter is a line break inside the paragraph, the backslash `crates/format` writes. The review panel's notes and highlights and Navigate's blocks are found on the Markdown page as the rich-text page found them (`places.js`: pieces side by side in one block with the same note or color are one item). Tests: `double_equals_is_a_yellow_highlight`, `footnotes_are_read_as_notes_on_the_word_before_them`, `underscores_are_emphasis_except_inside_a_word`; the page was checked in a browser.
 
 ### 6. What the page did before
 

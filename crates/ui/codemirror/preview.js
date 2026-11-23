@@ -45,7 +45,6 @@ const INLINE_STYLES = {
   StrongEmphasis: "cm-strong",
   Strikethrough: "cm-strike",
   Underline: "cm-underline",
-  InlineCode: "cm-inline-code",
   Highlight: "ws-hl ws-hl-yellow",
 };
 const INLINE_MARKS = new Set(["EmphasisMark", "StrikethroughMark", "UnderlineMark", "HighlightMark", "CodeMark"]);
@@ -188,6 +187,11 @@ function build(view) {
         case "Escape":
           if (live && !touches(node.from, node.to)) hide(node.from, node.from + 1);
           return;
+        case "HardBreak":
+          // A line break inside a paragraph: the backslash at the line's end.
+          if (live && !lineActive(node.from)) hide(node.from, Math.min(node.to, doc.lineAt(node.from).to));
+          else add(quietMark, node.from, Math.min(node.to, doc.lineAt(node.from).to));
+          return;
         case "Entity":
           if (live && !touches(node.from, node.to)) {
             replace(node.from, node.to, new TextWidget(decodeEntity(doc.sliceString(node.from, node.to)), "cm-entity"));
@@ -277,8 +281,8 @@ function build(view) {
       }
       if (INLINE_MARKS.has(name)) {
         const parent = node.node.parent;
-        // A fence's backticks are a block's, not inline code's.
-        if (name === "CodeMark" && parent && parent.name !== "InlineCode") {
+        // A fence's backticks are a block's: always shown, quietly.
+        if (name === "CodeMark") {
           add(quietMark, node.from, node.to);
           return;
         }

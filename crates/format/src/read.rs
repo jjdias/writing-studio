@@ -20,6 +20,7 @@ const EDGE: [char; 2] = [' ', '\t'];
 /// Read Markdown into blocks, in canonical form. There is always at least
 /// one block.
 pub fn markdown_to_blocks(text: &str) -> Vec<Block> {
+    let text = footnotes_as_notes(text);
     let lines: Vec<&str> = text
         .split('\n')
         .map(|line| line.strip_suffix('\r').unwrap_or(line))
@@ -213,6 +214,142 @@ fn list_item(trimmed: &str) -> Option<(Marker, &str)> {
     }
 }
 
+/// Footnotes, as Typora, iA Writer, and Obsidian write them: `word[^1]` in
+/// the text and a `[^1]: text` line. Each becomes a note on the word before
+/// its mark, `{==word==}{>>text<<}`, and the lines of the footnotes used go.
+/// A mark with no plain word before it, or no line with its text, and
+/// anything in code, are left as written, so no text is lost.
+fn footnotes_as_notes(text: &str) -> String {
+    if !text.contains("[^") {
+        return text.to_string();
+    }
+    let lines: Vec<&str> = text.split('\n').collect();
+    let mut definitions: Vec<(String, String, usize)> = Vec::new();
+    let mut in_code: Option<usize> = None;
+    for (index, line) in lines.iter().enumerate() {
+        let trimmed = line.strip_suffix('\r').unwrap_or(line).trim_matches(EDGE);
+        match in_code {
+            Some(fence) => {
+                if closes_fence(line, fence) {
+                    in_code = None;
+                }
+                continue;
+            }
+            None => {
+                if let Some(fence) = fence_length(trimmed) {
+                    in_code = Some(fence);
+                    continue;
+                }
+            }
+        }
+        if let Some((label, body)) = footnote_definition(trimmed) {
+            definitions.push((label, body, index));
+        }
+    }
+    if definitions.is_empty() {
+        return text.to_string();
+    }
+    let mut used: Vec<String> = Vec::new();
+    let mut out: Vec<String> = Vec::new();
+    in_code = None;
+    for (index, line) in lines.iter().enumerate() {
+        let trimmed = line.strip_suffix('\r').unwrap_or(line).trim_matches(EDGE);
+        if in_code.is_none() {
+            if let Some(fence) = fence_length(trimmed) {
+                in_code = Some(fence);
+                out.push(line.to_string());
+                continue;
+            }
+        } else {
+            if in_code.is_some_and(|fence| closes_fence(line, fence)) {
+                in_code = None;
+            }
+            out.push(line.to_string());
+            continue;
+        }
+        if definitions.iter().any(|(_, _, at)| *at == index) {
+            out.push(line.to_string());
+            continue;
+        }
+        out.push(footnote_marks(line, &definitions, &mut used));
+    }
+    // The lines of the footnotes that became notes go, with the blank line
+    // that came before each.
+    let mut kept: Vec<String> = Vec::new();
+    for (index, line) in out.into_iter().enumerate() {
+        let gone = definitions
+            .iter()
+            .any(|(label, _, at)| *at == index && used.contains(label));
+        if gone {
+            while kept.last().is_some_and(|last| last.trim_matches(EDGE).is_empty()) {
+                kept.pop();
+            }
+            continue;
+        }
+        kept.push(line);
+    }
+    kept.join("\n")
+}
+
+/// `[^label]: text`, with the label and the text.
+fn footnote_definition(line: &str) -> Option<(String, String)> {
+    let rest = line.strip_prefix("[^")?;
+    let close = rest.find("]:")?;
+    let label = &rest[..close];
+    if label.is_empty() || label.chars().any(char::is_whitespace) || label.contains(']') {
+        return None;
+    }
+    Some((label.to_string(), rest[close + 2..].trim_matches(EDGE).to_string()))
+}
+
+/// One line with each `word[^label]` that has a definition written as a
+/// note on `word`.
+fn footnote_marks(line: &str, definitions: &[(String, String, usize)], used: &mut Vec<String>) -> String {
+    let chars: Vec<char> = line.chars().collect();
+    let mut out = String::new();
+    let mut at = 0;
+    while at < chars.len() {
+        let ch = chars[at];
+        if ch == '\\' && at + 1 < chars.len() {
+            out.push(ch);
+            out.push(chars[at + 1]);
+            at += 2;
+            continue;
+        }
+        let in_code = out.chars().filter(|c| *c == '`').count() % 2 == 1;
+        if ch == '[' && chars.get(at + 1) == Some(&'^') && !in_code {
+            if let Some(close) = chars[at + 2..].iter().position(|c| *c == ']') {
+                let label: String = chars[at + 2..at + 2 + close].iter().collect();
+                let definition = definitions.iter().find(|(name, _, _)| *name == label);
+                // The word before the mark: what follows the last space.
+                let word_from = out.rfind(char::is_whitespace).map_or(0, |space| space + 1);
+                let word = &out[word_from..];
+                let plain = !word.is_empty() && !word.contains(['{', '}', '[', ']', '(', ')', '<', '>']);
+                if let (Some((_, body, _)), true) = (definition, plain) {
+                    let note: String = body
+                        .chars()
+                        .flat_map(|c| match c {
+                            '\\' | '<' | '>' | '{' | '}' => vec!['\\', c],
+                            _ => vec![c],
+                        })
+                        .collect();
+                    let word = word.to_string();
+                    out.truncate(word_from);
+                    out.push_str(&format!("{{=={word}==}}{{>>{note}<<}}"));
+                    if !used.contains(&label) {
+                        used.push(label);
+                    }
+                    at += close + 3;
+                    continue;
+                }
+            }
+        }
+        out.push(ch);
+        at += 1;
+    }
+    out
+}
+
 struct InlineReader {
     chars: Vec<char>,
     at: usize,
@@ -225,6 +362,8 @@ struct InlineReader {
     link_from: Option<usize>,
     /// Where the text inside an open `{==` starts in `out`.
     review_from: Option<usize>,
+    /// Where the text inside an open `==` highlight starts in `out`.
+    plain_from: Option<usize>,
 }
 
 /// Read the text of one block. A line break in `text` that does not follow
@@ -239,6 +378,7 @@ pub(crate) fn parse_inlines(text: &str) -> Vec<Inline> {
         stars: Vec::new(),
         link_from: None,
         review_from: None,
+        plain_from: None,
     };
     reader.run();
     let mut inlines: Vec<Inline> = Vec::new();
@@ -298,6 +438,7 @@ impl InlineReader {
                     self.at += 1;
                 }
                 '*' => self.stars(),
+                '_' => self.underscores(),
                 '~' if self.rest_starts_with("~~") => {
                     self.flush();
                     self.marks.strikethrough = !self.marks.strikethrough;
@@ -324,6 +465,21 @@ impl InlineReader {
                 '=' if self.review_from.is_some() && self.rest_starts_with("==}") => {
                     self.close_review();
                 }
+                // `==text==`, as Typora, iA Writer, and Obsidian write a
+                // highlight: yellow, as `{==text==}` is.
+                '=' if self.plain_from.is_some() && self.rest_starts_with("==") => {
+                    self.flush();
+                    let from = self.plain_from.take().unwrap_or(self.out.len());
+                    for (_, marks) in &mut self.out[from..] {
+                        marks.highlight = Some(Highlight::Yellow);
+                    }
+                    self.at += 2;
+                }
+                '=' if self.opens_plain_highlight() => {
+                    self.flush();
+                    self.plain_from = Some(self.out.len());
+                    self.at += 2;
+                }
                 _ => {
                     self.text.push(ch);
                     self.at += 1;
@@ -331,6 +487,17 @@ impl InlineReader {
             }
         }
         self.flush();
+    }
+
+    /// `==` that opens a highlight: not inside another one, not three in a
+    /// row, not before a space, and closed later on.
+    fn opens_plain_highlight(&self) -> bool {
+        self.review_from.is_none()
+            && self.plain_from.is_none()
+            && self.rest_starts_with("==")
+            && self.chars.get(self.at + 2).is_some_and(|next| *next != '=' && !next.is_whitespace())
+            && (self.at == 0 || self.chars[self.at - 1] != '=')
+            && self.find(self.at + 3, "==").is_some()
     }
 
     fn escape(&mut self) {
@@ -355,10 +522,33 @@ impl InlineReader {
     /// outside italic, so a run closes what is open, innermost first, and
     /// then opens what is left over.
     fn stars(&mut self) {
-        let mut count = self.chars[self.at..]
+        let count = self.chars[self.at..]
             .iter()
             .take_while(|ch| **ch == '*')
             .count();
+        self.emphasis(count);
+    }
+
+    /// `_` and `__`, as `*` and `**`, as a person or another editor writes
+    /// them. Inside a word, as in `snake_case`, they are text. The writer
+    /// never writes them: it escapes `_`.
+    fn underscores(&mut self) {
+        let count = self.chars[self.at..]
+            .iter()
+            .take_while(|ch| **ch == '_')
+            .count();
+        let before = self.at.checked_sub(1).map(|at| self.chars[at]);
+        let after = self.chars.get(self.at + count).copied();
+        if before.is_some_and(char::is_alphanumeric) && after.is_some_and(char::is_alphanumeric) {
+            self.text.extend(std::iter::repeat_n('_', count));
+            self.at += count;
+            return;
+        }
+        self.emphasis(count);
+    }
+
+    /// A run of `count` emphasis marks at the reading position.
+    fn emphasis(&mut self, mut count: usize) {
         self.at += count;
         self.flush();
         while count > 0 {

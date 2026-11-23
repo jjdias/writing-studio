@@ -61,7 +61,6 @@ const INLINE = {
   italic: { node: "Emphasis", open: "*", close: "*" },
   strike: { node: "Strikethrough", open: "~~", close: "~~" },
   underline: { node: "Underline", open: "<u>", close: "</u>" },
-  code: { node: "InlineCode", open: "`", close: "`" },
 };
 
 // Wrap the selection in a mark, or take the mark off what the caret is in.
@@ -397,8 +396,6 @@ export function runCommand(view, name, argument, held) {
       return toggleInline(view, "underline");
     case "strikeThrough":
       return toggleInline(view, "strike");
-    case "code":
-      return toggleInline(view, "code");
     case "insertUnorderedList":
       return setBlock(view, "list");
     case "insertOrderedList":
@@ -484,17 +481,13 @@ export function marksAt(state) {
 
 // --- Smart typography --------------------------------------------------------
 
-const VERBATIM = new Set(["InlineCode", "FencedCode", "CodeBlock", "HTMLTag", "HTMLBlock", "URL", "Autolink", "CodeText"]);
+const VERBATIM = new Set(["FencedCode", "CodeText", "HTMLTag", "HTMLBlock", "URL", "Autolink"]);
 
 function inVerbatim(state, pos) {
   for (let node = syntaxTree(state).resolveInner(pos, -1); node; node = node.parent) {
     if (VERBATIM.has(node.name)) return true;
   }
-  // Inline code still being typed has no closing backtick yet, so it is not
-  // code to the parser: an odd number of backticks before the caret is.
-  const line = state.doc.lineAt(pos);
-  const before = state.doc.sliceString(line.from, pos);
-  return (before.match(/`/g) || []).length % 2 === 1;
+  return false;
 }
 
 // Curly quotes, an em dash for `--`, and an ellipsis for `...`, as typed.
@@ -534,7 +527,7 @@ export const smartTypography = EditorView.inputHandler.of((view, from, to, text)
 // A typed bracket, quote, or Markdown mark gets its closing pair, and
 // typing the closing one steps over it.
 export const pairing = [
-  EditorState.languageData.of(() => [{ closeBrackets: { brackets: ["(", "[", '"', "*", "_", "`", "“"] } }]),
+  EditorState.languageData.of(() => [{ closeBrackets: { brackets: ["(", "[", '"', "*", "_", "“"] } }]),
   closeBrackets(),
   keymap.of(closeBracketsKeymap),
 ];
@@ -578,6 +571,52 @@ export function insertPasted(view, from, to, text) {
   return true;
 }
 
+// --- Paragraphs --------------------------------------------------------------
+
+// Enter: in a list or a quote, the next item or quoted line (and on an empty
+// one, the end of it); anywhere else, a new paragraph, which in Markdown is a
+// blank line. One line end alone would be the same paragraph, wrapped.
+function enter(view) {
+  const { state } = view;
+  const range = state.selection.main;
+  for (let node = syntaxTree(state).resolveInner(range.head, -1); node; node = node.parent) {
+    if (node.name === "ListItem" || node.name === "Blockquote") return insertNewlineContinueMarkup(view);
+    if (node.name === "FencedCode") return false;
+  }
+  const line = state.doc.lineAt(range.head);
+  const before = state.doc.sliceString(line.from, range.from);
+  // On a blank line, or before a blank line, one line end is enough.
+  const blankAfter = range.to === line.to && line.number < state.doc.lines && state.doc.line(line.number + 1).length === 0;
+  const insert = before.trim() === "" || blankAfter ? "\n" : "\n\n";
+  view.dispatch({
+    changes: { from: range.from, to: range.to, insert },
+    selection: EditorSelection.cursor(range.from + insert.length),
+    scrollIntoView: true,
+    userEvent: "input",
+  });
+  return true;
+}
+
+// Shift+Enter: a line break inside the paragraph, as a backslash at the
+// line's end, which is how crates/format writes one.
+function lineBreak(view) {
+  const { state } = view;
+  const range = state.selection.main;
+  for (let node = syntaxTree(state).resolveInner(range.head, -1); node; node = node.parent) {
+    if (node.name === "FencedCode") return false;
+  }
+  const line = state.doc.lineAt(range.head);
+  const quote = /^>[ \t]?/.exec(line.text);
+  const insert = "\\\n" + (quote ? "> " : "");
+  view.dispatch({
+    changes: { from: range.from, to: range.to, insert },
+    selection: EditorSelection.cursor(range.from + insert.length),
+    scrollIntoView: true,
+    userEvent: "input",
+  });
+  return true;
+}
+
 // --- Keys --------------------------------------------------------------------
 
 export const writingKeys = Prec.high(
@@ -594,8 +633,8 @@ export const writingKeys = Prec.high(
     { key: "Mod-Alt-4", run: (view) => setBlock(view, "h4") },
     { key: "Mod-Alt-5", run: (view) => setBlock(view, "h5") },
     { key: "Mod-Alt-6", run: (view) => setBlock(view, "h6") },
-    // Lists and quotes continue on Enter and end on an empty item.
-    { key: "Enter", run: insertNewlineContinueMarkup },
+    { key: "Enter", run: enter },
+    { key: "Shift-Enter", run: lineBreak },
     { key: "Backspace", run: deleteMarkupBackward },
   ])
 );

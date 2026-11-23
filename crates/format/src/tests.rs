@@ -768,3 +768,83 @@ let x", "letx"),
         assert_eq!(kept, wanted, "{typed:?} lost text");
     }
 }
+
+/// `==text==`, as other Markdown editors write a highlight, reads as a
+/// yellow one; written back, it is `{==text==}`, which reads the same.
+#[test]
+fn double_equals_is_a_yellow_highlight() {
+    let blocks = markdown_to_blocks("A ==bright== day, a == b, and ==open");
+    let BlockKind::Paragraph { inlines } = &blocks[0].kind else {
+        panic!("a paragraph");
+    };
+    let lit: Vec<(&str, Option<Highlight>)> = inlines.iter().map(|inline| (inline.text.as_str(), inline.marks.highlight)).collect();
+    assert_eq!(
+        lit,
+        vec![("A ", None), ("bright", Some(Highlight::Yellow)), (" day, a == b, and ==open", None)]
+    );
+    assert_eq!(blocks_to_markdown(&blocks), "A {==bright==} day, a \\=\\= b, and \\=\\=open\n");
+}
+
+/// A footnote becomes a note on the word before its mark, and its line
+/// goes. One with no text, or no word before it, stays as written.
+#[test]
+fn footnotes_are_read_as_notes_on_the_word_before_them() {
+    let text = concat!(
+        "The ship sailed[^1] at dawn, *slowly*[^tide].\n",
+        "\n",
+        "Code `x[^1]` and [^1] alone and a gap[^9].\n",
+        "\n",
+        "[^1]: Which ship? {Check}\n",
+        "[^tide]: The tide was out.\n",
+    );
+    let blocks = markdown_to_blocks(text);
+    assert_eq!(blocks.len(), 2, "the footnote lines are gone: {blocks:#?}");
+    let BlockKind::Paragraph { inlines } = &blocks[0].kind else {
+        panic!("a paragraph");
+    };
+    let noted: Vec<(&str, Option<&str>, bool)> = inlines
+        .iter()
+        .map(|inline| (inline.text.as_str(), inline.marks.comment.as_deref(), inline.marks.italic))
+        .collect();
+    assert_eq!(
+        noted,
+        vec![
+            ("The ship ", None, false),
+            ("sailed", Some("Which ship? {Check}"), false),
+            (" at dawn, ", None, false),
+            ("slowly", Some("The tide was out."), true),
+            (".", None, false),
+        ]
+    );
+    let BlockKind::Paragraph { inlines } = &blocks[1].kind else {
+        panic!("a paragraph");
+    };
+    let text: String = inlines.iter().map(|inline| inline.text.as_str()).collect();
+    // The reader has no inline code, so the backticks are text; the mark
+    // inside them is still not taken for a footnote.
+    assert_eq!(text, "Code `x[^1]` and [^1] alone and a gap[^9].");
+    // Written back as notes, they read the same.
+    let written = blocks_to_markdown(&blocks);
+    assert!(same_content(&blocks, &markdown_to_blocks(&written)), "{written}");
+}
+
+/// `_italic_` and `__bold__`, as another editor or a person writes them,
+/// read as `*` and `**` do; underscores inside a word are text.
+#[test]
+fn underscores_are_emphasis_except_inside_a_word() {
+    let blocks = markdown_to_blocks("A _soft_ and __loud__ snake_case_name.");
+    let BlockKind::Paragraph { inlines } = &blocks[0].kind else {
+        panic!("a paragraph");
+    };
+    let read: Vec<(&str, bool, bool)> = inlines.iter().map(|inline| (inline.text.as_str(), inline.marks.italic, inline.marks.bold)).collect();
+    assert_eq!(
+        read,
+        vec![
+            ("A ", false, false),
+            ("soft", true, false),
+            (" and ", false, false),
+            ("loud", false, true),
+            (" snake_case_name.", false, false),
+        ]
+    );
+}
