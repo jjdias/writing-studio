@@ -1,6 +1,6 @@
 # Phase 12 — A Markdown editor
 
-In progress: stages 1 to 3 are done.
+In progress: stages 1 to 4 are done.
 
 The page is a rich-text editor today: a `contenteditable` element that the program's own scripts (`crates/ui/assets/review.js`, `spell.js`, `place.js`) and `crates/ui/src/studio/editor.rs` keep in step with the document model. This phase makes the page a Markdown editor: the writer types and sees Markdown, shown as the best Markdown editors show it, while everything the page does now keeps working.
 
@@ -82,6 +82,8 @@ In this order: the component and the round trip first, then what the writer sees
 - Lists continue on Enter; a quote too. Optional pairing of marks and brackets.
 - Pasting rich text converts it to Markdown; a URL over a selection makes a link.
 - Smart quotes and dashes, as a setting.
+
+**Done.** `crates/ui/codemirror/writing.js`. Keys: Ctrl+B, Ctrl+I, Ctrl+U, Ctrl+Shift+X (strikethrough), Ctrl+K (the selection becomes a link's text with the caret where its address goes), and Ctrl+Alt+1 to 6 and Ctrl+Alt+0 for headings and body text; each wraps the selection without the spaces at its edges, or takes the mark off what the caret is in. The format toolbar is on the Markdown page too, and its buttons, the link and note fields, and the review panel run the same commands there: `run_format_command`, `run_editor_script`, `open_prompt`, and `keep_caret` (`studio/editor.rs`) call the editor when the page is Markdown, by the rich-text page's names (`MARKDOWN_PAGE_CALLS`), until stage 7 removes the other branch. Highlights, notes, and links are written as `crates/format` writes them: `{==text==}`, `{.green}`, `{>>Question: text<<}` with `\ < > { }` escaped, and `[text](address)` for a web or mail address only. The toolbar shows the marks at the caret from the syntax tree. Enter continues a list or quote and ends it on an empty item; Backspace takes a marker off. **Close brackets and marks** and **Smart quotes and dashes** in Settings (`MarkdownOptions`): curly quotes and apostrophes, `--` as an em dash (not on a line of dashes, which is a scene break), `...` as an ellipsis, and nothing in code. A web address pasted over plain text makes it a link; rich text pasted from a browser or a word processor goes to the program, which takes the fragment that was copied without its styles, scripts, and title, reads it as the rich-text page read a paste (`pasted_markdown`), and gives back Markdown. Tests: `rich_text_pasted_on_the_markdown_page_comes_in_as_markdown`; the commands, keys, lists, typography, pairing, and paste were checked in a browser.
 
 ### 5. Notes, highlights, and footnotes
 

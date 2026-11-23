@@ -22,8 +22,16 @@ pub(super) fn EditorPane() -> Element {
         &unknown.iter().map(|item| item.word.as_str()).collect::<Vec<_>>(),
     )
     .unwrap_or_else(|_| "[]".into());
-    use_effect(use_reactive((&epoch, &unknown_json), |(_, words)| paint_spelling(words)));
-    use_effect(use_reactive((&epoch,), move |_| watch_marks(marks)));
+    use_effect(use_reactive((&epoch, &unknown_json, &markdown), |(_, words, markdown)| {
+        if !markdown {
+            paint_spelling(words)
+        }
+    }));
+    use_effect(use_reactive((&epoch, &markdown), move |(_, markdown)| {
+        if !markdown {
+            watch_marks(marks)
+        }
+    }));
     let keep = snapshot.keep_place();
     let keep_json = format!(
         r#"{{"scroll":"{}","marker":{},"fade":"{}","bars":{}}}"#,
@@ -32,7 +40,11 @@ pub(super) fn EditorPane() -> Element {
         keep.fade.as_str(),
         keep.quiet_bars
     );
-    use_effect(use_reactive((&epoch, &keep_json), |(_, options)| keep_place(options)));
+    use_effect(use_reactive((&epoch, &keep_json, &markdown), |(_, options, markdown)| {
+        if !markdown {
+            keep_place(options)
+        }
+    }));
     let initial_html = if html.trim().is_empty() {
         "<p><br></p>".into()
     } else {
@@ -41,7 +53,7 @@ pub(super) fn EditorPane() -> Element {
 
     rsx! {
         div { class: "editor-pane",
-            if !focus && !markdown {
+            if !focus {
                 FormatToolbar { enabled: can_edit, marks, prompt }
             }
             div { class: if side { "editor-body side" } else { "editor-body" },
@@ -58,7 +70,7 @@ pub(super) fn EditorPane() -> Element {
                     }
                     if markdown {
                         if let Some(scene) = scene {
-                            MarkdownPage { key: "{scene}", scene, can_edit }
+                            MarkdownPage { key: "{scene}", scene, can_edit, marks }
                         }
                     } else {
                     div {
@@ -91,8 +103,9 @@ pub(super) fn EditorPane() -> Element {
 /// `App`). One editor for each scene: its text comes from the session, and
 /// every change goes back through `crates/format` into the document.
 #[component]
-fn MarkdownPage(scene: Id, can_edit: bool) -> Element {
+fn MarkdownPage(scene: Id, can_edit: bool, marks: Signal<Vec<String>>) -> Element {
     let mut state = use_context::<Signal<StudioState>>();
+    let mut marks = marks;
     let epoch = state.read().editor_epoch;
     let token = serde_json::to_string(&scene.to_string()).unwrap_or_else(|_| "\"\"".into());
     let mount_token = token.clone();
@@ -112,11 +125,26 @@ fn MarkdownPage(scene: Id, can_edit: bool) -> Element {
             let current = state.peek();
             let _ = eval.send((current.editor_markdown(), page_options(&current.markdown_options())));
             drop(current);
-            // `{ kind: "text", text }` after a change, `{ kind: "blur" }`.
+            // What the page sends: see `crates/ui/codemirror/entry.js`.
             while let Ok(message) = eval.recv::<serde_json::Value>().await {
                 match message["kind"].as_str() {
                     Some("text") => state.write().apply_editor_markdown(message["text"].as_str().unwrap_or_default()),
                     Some("blur") => state.write().flush_editor(),
+                    Some("marks") => {
+                        let next: Vec<String> = message["marks"]
+                            .as_array()
+                            .map(|list| list.iter().filter_map(|mark| mark.as_str().map(str::to_owned)).collect())
+                            .unwrap_or_default();
+                        if *marks.peek() != next {
+                            marks.set(next);
+                        }
+                    }
+                    Some("paste") => {
+                        let text = pasted_markdown(message["html"].as_str().unwrap_or_default());
+                        let text = serde_json::to_string(&text).unwrap_or_else(|_| "\"\"".into());
+                        let (from, to) = (message["from"].as_u64().unwrap_or(0), message["to"].as_u64().unwrap_or(0));
+                        let _ = document::eval(&format!("window.wsEditor && wsEditor.pasted({from}, {to}, {text});"));
+                    }
                     _ => {}
                 }
             }
@@ -230,6 +258,11 @@ pub(super) fn commit_editor_html(mut state: Signal<StudioState>, html: String) {
 /// it was once the manuscript is drawn again. The panel's buttons keep focus
 /// off themselves, so the caret is still in the manuscript when this runs.
 pub(super) fn keep_caret(mut state: Signal<StudioState>, action: impl FnOnce(&mut StudioState) + 'static) {
+    // The Markdown page keeps its caret itself: only what changed is put in.
+    if state.peek().markdown_page {
+        action(&mut state.write());
+        return;
+    }
     spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(16)).await;
         let mut eval = document::eval(&format!(
@@ -705,6 +738,11 @@ pub(super) fn ReviewRow(item: ReviewItem) -> Element {
 }
 
 pub(super) fn run_format_command(state: Signal<StudioState>, command: &'static str, argument: &'static str) {
+    if state.peek().markdown_page {
+        let argument = serde_json::to_string(argument).unwrap_or_else(|_| "\"\"".into());
+        let _ = document::eval(&format!("window.wsEditor && wsEditor.command('{command}', {argument});"));
+        return;
+    }
     spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(16)).await;
         let script = format!(
@@ -730,6 +768,12 @@ pub(super) fn run_format_command(state: Signal<StudioState>, command: &'static s
 
 pub(super) fn run_editor_script(state: Signal<StudioState>, body: impl Into<String>) {
     let body = body.into();
+    if state.peek().markdown_page {
+        // The same calls, made on the Markdown page; its changes come back
+        // through the page's own messages.
+        let _ = document::eval(&format!("if (window.wsEditor) {{\n{MARKDOWN_PAGE_CALLS}\nconst el = null;\n{body}\n}}"));
+        return;
+    }
     spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(16)).await;
         let script = format!(
@@ -747,6 +791,19 @@ pub(super) fn run_editor_script(state: Signal<StudioState>, body: impl Into<Stri
         }
     });
 }
+
+/// The review panel's and the toolbar's calls, as the Markdown page makes
+/// them: the rich-text page's names, so the callers are the same for both.
+const MARKDOWN_PAGE_CALLS: &str = r#"
+const wsHighlight = (el, color) => wsEditor.command('highlight', color);
+const wsClearHighlight = (el) => wsEditor.command('clearHighlight');
+const wsUncomment = (el) => wsEditor.command('uncomment');
+const wsLink = (el, raw) => wsEditor.command('link', raw);
+const wsComment = (el, kind, raw) => wsEditor.command('note', { kind, text: raw || '' });
+const wsReleaseSelection = (el) => wsEditor.release();
+const wsSelectReview = (el, type, index) => wsEditor.selectReview(type, index);
+const wsShowBlock = (el, index) => wsEditor.showBlock(index);
+"#;
 
 /// The paragraph styles, as `formatBlock` takes them, and the name the
 /// mark watcher reports for each.
@@ -996,9 +1053,12 @@ pub(super) struct InlinePrompt {
 fn open_prompt(mut state: Signal<StudioState>, mut prompt: Signal<Option<InlinePrompt>>, kind: PromptKind) {
     spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(16)).await;
-        let mut eval = document::eval(&format!(
-            "{REVIEW_JS}\ndioxus.send(wsHoldSelection(document.querySelector('[data-manuscript]'), document.querySelector('.editor-body')));"
-        ));
+        let script = if state.peek().markdown_page {
+            "dioxus.send(window.wsEditor ? wsEditor.hold('.editor-body') : []);".to_string()
+        } else {
+            format!("{REVIEW_JS}\ndioxus.send(wsHoldSelection(document.querySelector('[data-manuscript]'), document.querySelector('.editor-body')));")
+        };
+        let mut eval = document::eval(&script);
         match eval.recv::<Vec<f64>>().await.unwrap_or_default()[..] {
             [x, y] => prompt.set(Some(InlinePrompt { kind, x, y })),
             _ => {

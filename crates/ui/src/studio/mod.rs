@@ -20,7 +20,7 @@ use writing_studio_diagnostics::{BookContext, SceneFacts};
 use writing_studio_spellcheck::UnknownWord;
 
 use crate::shortcuts::{app_shortcut, AppShortcut, IN_THE_MANUSCRIPT, LISTED};
-use crate::state::{binder_matches, story_choice, StoryEntry, 
+use crate::state::{binder_matches, pasted_markdown, story_choice, StoryEntry, 
     Beat, BibleLink, CheckFinding, CompileCheck, Earlier, FoldedPanel, FrameMenu, QuickMatch, ReviewTab, BinderRow,
     StudioState, WorkspaceMode,
     WorldSection,
@@ -828,6 +828,22 @@ fn MarkdownSettings() -> Element {
                 onchange: move |event| set(|options, on| options.source_mode = on, event.checked()),
             }
             "Show every Markdown mark"
+        }
+        label { class: "check-label", title: "Curly quotes, an em dash for --, and an ellipsis for ..., as you type",
+            input {
+                r#type: "checkbox",
+                checked: options.smart_typography,
+                onchange: move |event| set(|options, on| options.smart_typography = on, event.checked()),
+            }
+            "Smart quotes and dashes"
+        }
+        label { class: "check-label", title: "A typed bracket, quotation mark, *, _, or ` gets its closing pair",
+            input {
+                r#type: "checkbox",
+                checked: options.pair_marks,
+                onchange: move |event| set(|options, on| options.pair_marks = on, event.checked()),
+            }
+            "Close brackets and marks"
         }
     }
 }

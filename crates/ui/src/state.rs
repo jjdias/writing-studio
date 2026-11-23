@@ -301,6 +301,57 @@ pub enum MapStory {
 }
 
 /// The World section a kind of entry is edited in.
+/// Rich text pasted on the Markdown page, as Markdown: read as the
+/// rich-text page read what was pasted into it, and written as the Markdown
+/// export writes it. Only what was copied is read: the fragment a browser
+/// or word processor marks, without its styles, scripts, and title. One
+/// paragraph comes back as a line, to go into the paragraph pasted in.
+pub fn pasted_markdown(html: &str) -> String {
+    let fragment = match (html.find("<!--StartFragment-->"), html.find("<!--EndFragment-->")) {
+        (Some(start), Some(end)) if start < end => &html[start + "<!--StartFragment-->".len()..end],
+        _ => html,
+    };
+    let mut cleaned = fragment.to_string();
+    for tag in ["head", "style", "script", "title", "template"] {
+        cleaned = without_element(&cleaned, tag);
+    }
+    let mut document = Document::new(Id::new());
+    document.replace_html(&cleaned);
+    let empty = document.blocks.iter().all(|block| {
+        matches!(&block.kind, BlockKind::Paragraph { inlines } if inlines.iter().all(|inline| inline.text.trim().is_empty()))
+    });
+    if empty {
+        return String::new();
+    }
+    writing_studio_format::blocks_to_markdown(&document.blocks).trim_end_matches('\n').to_string()
+}
+
+/// `html` without every `<tag …>…</tag>` and what is in it, whatever the case.
+fn without_element(html: &str, tag: &str) -> String {
+    let lower = html.to_ascii_lowercase();
+    let open = format!("<{tag}");
+    let close = format!("</{tag}>");
+    let mut out = String::new();
+    let mut at = 0;
+    while let Some(found) = lower[at..].find(&open) {
+        let start = at + found;
+        // `<header>` is not `<head>`.
+        let next = lower[start + open.len()..].chars().next();
+        if next.is_some_and(|ch| ch.is_ascii_alphanumeric()) {
+            out.push_str(&html[at..start + open.len()]);
+            at = start + open.len();
+            continue;
+        }
+        out.push_str(&html[at..start]);
+        at = match lower[start..].find(&close) {
+            Some(end) => start + end + close.len(),
+            None => html.len(),
+        };
+    }
+    out.push_str(&html[at..]);
+    out
+}
+
 pub fn world_section_of(kind: BibleLink) -> WorldSection {
     match kind {
         BibleLink::Culture => WorldSection::Cultures,
@@ -6274,6 +6325,24 @@ mod tests {
         assert_eq!(left[0].text, "Too long.");
         assert_eq!(state.editor_text, "The harbor was quiet.\nToo long.");
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn rich_text_pasted_on_the_markdown_page_comes_in_as_markdown() {
+        // What a browser on Windows puts on the clipboard: a fragment marked
+        // inside a page with a style sheet and a title.
+        let clipboard = concat!(
+            "<html><head><title>Notes</title><style>p { color: red; }</style></head><body>",
+            "<!--StartFragment--><p>She opened the <b>red</b> door.</p>",
+            "<p>A <i>gull</i> cried.<o:p></o:p></p><!--EndFragment--></body></html>"
+        );
+        assert_eq!(pasted_markdown(clipboard), "She opened the **red** door.
+
+A *gull* cried.");
+        // One paragraph is a line, to go into the paragraph it is pasted in.
+        assert_eq!(pasted_markdown("<span>a <a href=\"https://example.com\">link</a></span>"), "a [link](https://example.com)");
+        assert_eq!(pasted_markdown("<style>p {}</style><p> </p>"), "");
+        assert_eq!(pasted_markdown("<header>Kept</header>"), "Kept", "a tag that only starts like head is not head");
     }
 
     #[test]

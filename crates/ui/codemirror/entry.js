@@ -6,14 +6,17 @@
 //
 // The program talks to it through `window.wsEditor`, below. It mounts one
 // editor for the open scene, and the editor sends it messages through
-// `send`: `{ kind: "text", text }` after every change, and
-// `{ kind: "blur" }` when the page loses the focus.
+// `send`: `{ kind: "text", text }` after every change, `{ kind: "blur" }`
+// when the page loses the focus, `{ kind: "marks", marks }` when the marks
+// at the caret change, and `{ kind: "paste", html, from, to }` for rich
+// text to be turned into Markdown and given back through `pasted`.
 
 import { EditorState, Compartment, Annotation, Transaction } from "@codemirror/state";
 import { EditorView, keymap, drawSelection } from "@codemirror/view";
 import { defaultKeymap, history, undo, redo } from "@codemirror/commands";
 import { sceneLanguage } from "./syntax.js";
 import { preview, sourceMode } from "./preview.js";
+import { writingKeys, smartTypography, pairing, pasteHandler, insertPasted, runCommand, marksAt } from "./writing.js";
 
 let view = null;
 let token = null;
@@ -21,6 +24,10 @@ let extensions = [];
 const editable = new Compartment();
 const undoHistory = new Compartment();
 const showSource = new Compartment();
+const smart = new Compartment();
+const pairs = new Compartment();
+// The selection a link or note is for while its field is open.
+let held = null;
 // Marks a change the program made, which is not sent back as the writer's.
 const fromProgram = Annotation.define();
 
@@ -34,10 +41,12 @@ function keepHandledKeys(element) {
   });
 }
 
-// `options`: `{ source }`, true to show every Markdown mark as typed.
+// `options`: `{ source, smart, pair }`: every Markdown mark shown as typed,
+// smart typography, and pairing of marks and brackets.
 function mount(parent, text, send, id, options = {}) {
   unmount();
   token = id;
+  let lastMarks = null;
   extensions = [
     undoHistory.of(history()),
     drawSelection(),
@@ -47,6 +56,10 @@ function mount(parent, text, send, id, options = {}) {
     sceneLanguage,
     showSource.of(sourceMode.of(!!options.source)),
     preview,
+    writingKeys,
+    smart.of(options.smart ? smartTypography : []),
+    pairs.of(options.pair ? pairing : []),
+    pasteHandler(send),
     // Ctrl+Z and Ctrl+Y go to the editor's own history while it has
     // something to undo. When it has nothing, as just after a scene was
     // split or a note resolved, the key goes on to the program, whose undo
@@ -60,6 +73,15 @@ function mount(parent, text, send, id, options = {}) {
     EditorView.updateListener.of((update) => {
       if (update.docChanged && update.transactions.some((tr) => !tr.annotation(fromProgram))) {
         send({ kind: "text", text: update.state.doc.toString() });
+      }
+      // The marks at the caret, for the toolbar, when they change.
+      if (update.docChanged || update.selectionSet || lastMarks === null) {
+        const marks = marksAt(update.state);
+        const key = marks.join(",");
+        if (key !== lastMarks) {
+          lastMarks = key;
+          send({ kind: "marks", marks });
+        }
       }
     }),
     EditorView.domEventHandlers({
@@ -141,8 +163,68 @@ function setSelection(from, to = from) {
 
 function setOptions(options) {
   if (!view) return false;
-  view.dispatch({ effects: showSource.reconfigure(sourceMode.of(!!options.source)) });
+  view.dispatch({
+    effects: [
+      showSource.reconfigure(sourceMode.of(!!options.source)),
+      smart.reconfigure(options.smart ? smartTypography : []),
+      pairs.reconfigure(options.pair ? pairing : []),
+    ],
+  });
   return true;
 }
 
-window.wsEditor = { mount, unmount, getText, setText, setEditable, setOptions, getSelection, setSelection };
+// Run one of the format toolbar's commands on the selection, or on the
+// held one when a link or note field had it.
+function command(name, argument) {
+  if (!view) return false;
+  const range = held;
+  held = null;
+  view.focus();
+  if (range) view.dispatch({ selection: { anchor: range.anchor, head: range.head } });
+  return runCommand(view, name, argument, range);
+}
+
+// Keep the selection for a link or note field, and say where the field
+// goes, relative to the element `box` names. Nothing when nothing is
+// selected.
+function hold(box) {
+  if (!view) return [];
+  const range = view.state.selection.main;
+  const frame = document.querySelector(box);
+  if (range.empty || !frame) return [];
+  held = range;
+  const at = view.coordsAtPos(range.from);
+  const end = view.coordsAtPos(range.to) || at;
+  if (!at) return [];
+  const outer = frame.getBoundingClientRect();
+  return [at.left - outer.left, end.bottom - outer.top];
+}
+
+// The field closed without acting: the selection comes back.
+function release() {
+  if (!view) return false;
+  const range = held;
+  held = null;
+  view.focus();
+  if (range) view.dispatch({ selection: { anchor: range.anchor, head: range.head } });
+  return true;
+}
+
+function pasted(from, to, text) {
+  return view ? insertPasted(view, from, to, text) : false;
+}
+
+window.wsEditor = {
+  mount,
+  unmount,
+  getText,
+  setText,
+  setEditable,
+  setOptions,
+  getSelection,
+  setSelection,
+  command,
+  hold,
+  release,
+  pasted,
+};
