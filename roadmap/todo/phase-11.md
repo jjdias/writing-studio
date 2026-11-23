@@ -1,6 +1,6 @@
 # Phase 11 — Tags, story links, and a mind map
 
-In progress: stages 1 to 10 are done.
+In progress: stages 1 to 11 are done.
 
 Phase 9 gave binder items colored keywords and saved filters. This phase does four things with what is there:
 
@@ -153,6 +153,8 @@ The corkboard becomes a mind map of the manuscript.
 
 ### 11. Editing the book from the map
 
+**Done.** A node is dragged with the mouse (SVG takes no HTML drag-and-drop): pressing on it starts the drag, three strips over each other node choose before, inside, or after, as a library row's thirds do, and letting go there drops it through `drop_in_binder`, which the library uses; a line or an outline shows where, red where it cannot go. Tab adds a child and Enter the next one beside it (`add_from_map`, which the library's `add_node` now shares `create_node` with), choosing it and opening its name under the map (the library's `RenameField`); F2 renames, Delete moves to the trash. Stage 10's Enter, which opened a scene, is Ctrl+Enter now, as Enter adds. Undo: `UndoOffer::Added` moves an addition back to the trash, and a drag, in the library as on the map, offers `UndoOffer::PutBack` (the trash's undo, renamed), which puts the item back where it was. Moving to the trash from the map does as the library's ×: at once, with Undo, not a question. The corkboard's own drag (`StudioState::set_drop_target` and `drop_on`) and `BinderTree::drop_on` and `drop_allowed`, which only tests used after that, are gone; the tests use `drop_at`.
+
 - Dragging a scene onto another chapter moves it there in the binder, as dragging in the library does; dropped between two scenes, it goes between them. Parts and chapters move the same way.
 - From a chosen node, Tab adds a child (a scene under a chapter, a chapter under a part or book) and Enter adds the next one beside it; F2 renames. Each is one undo step, and goes through the same binder functions as the library, so sync and the files see an ordinary binder change.
 - Moving an item to the trash from the map asks first, as in the library.
@@ -181,7 +183,7 @@ What came up while this phase was planned and built, and while the Phase 7 packa
 - The Markdown folder export lost every keyword: it wrote a scene's `label`, which Phase 9 emptied by folding labels into keywords, and never `keywords`. It writes them as `tags:` now (stage 6).
 **Open**
 
-- **Two kinds of undo.** Ctrl+Z undoes text (and a merge or split through it). Trash, keyword renames, and merges are undone only from the status line's Undo button, which goes as soon as another message replaces it. Other binder changes (a move, a new keyword, a status) have no undo at all.
+- **Two kinds of undo.** Ctrl+Z undoes text (and a merge or split through it). Trash, a drag, an addition on the map, and keyword renames and merges are undone only from the status line's Undo button, which goes as soon as another message replaces it. Other binder changes (a new keyword, a status, a rename) have no undo at all.
 - **The status bar's "Scene 21"** is the open scene's word count, but reads like a scene number. "21 words in this scene", or the scene's title, would say it.
 - **The web page inside the window is titled "Dioxus app"** (`document.title`); the window itself is "Writing Studio". Only assistive tools and the developer tools see it.
 - **The start screen says "Organize a manuscript the way Scrivener does"**, naming another product in the program's own words. A question for the maintainer, not a bug.

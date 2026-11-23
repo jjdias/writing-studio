@@ -330,7 +330,7 @@ fn DeleteButton(id: Id, name: String) -> Element {
 /// The name of a book, part, chapter, or folder, edited in its row. Enter
 /// or leaving the field keeps it; Escape leaves the name as it was.
 #[component]
-fn RenameField(id: Id, name: String) -> Element {
+pub(super) fn RenameField(id: Id, name: String) -> Element {
     let mut state = use_context::<Signal<StudioState>>();
     let mut draft = use_signal(|| name.clone());
     let mut finish = move |keep: bool| {
@@ -367,7 +367,7 @@ fn RenameField(id: Id, name: String) -> Element {
 
 /// Focus a field once it is on screen and select its text, so typing
 /// replaces the old name.
-fn select_field(id: String) {
+pub(super) fn select_field(id: String) {
     spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(30)).await;
         let script = format!(

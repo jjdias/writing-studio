@@ -395,30 +395,6 @@ impl BinderTree {
         None
     }
 
-    pub fn drop_allowed(&self, dragged: Id, target: Id) -> bool {
-        if dragged == target || self.is_under(target, dragged) {
-            return false;
-        }
-        let Some(drag_kind) = self.get(dragged).map(|node| node.kind) else {
-            return false;
-        };
-        if drag_kind.is_root() {
-            return false;
-        }
-        let Some(target_node) = self.get(target) else {
-            return false;
-        };
-        if target_node.kind == NodeKind::TrashRoot {
-            return true;
-        }
-        if self.accepts(target, drag_kind) {
-            return true;
-        }
-        target_node
-            .parent_id
-            .is_some_and(|parent| self.accepts(parent, drag_kind))
-    }
-
     fn is_under(&self, node: Id, ancestor: Id) -> bool {
         let mut current = Some(node);
         let mut guard = 0;
@@ -433,41 +409,6 @@ impl BinderTree {
             }
         }
         false
-    }
-
-    /// Drop `dragged` onto `target`: nest, reorder, or move to trash.
-    pub fn drop_on(&mut self, dragged: Id, target: Id) -> Result<()> {
-        if dragged == target {
-            return Err(Error::message("cannot drop an item on itself"));
-        }
-        if self.is_under(target, dragged) {
-            return Err(Error::message("cannot drop an item into its own contents"));
-        }
-        let drag_kind = self
-            .get(dragged)
-            .map(|node| node.kind)
-            .ok_or_else(|| Error::NodeNotFound(dragged.to_string()))?;
-        if drag_kind.is_root() {
-            return Err(Error::message("manuscript, research, and trash cannot be moved"));
-        }
-        let target_node = self
-            .get(target)
-            .cloned()
-            .ok_or_else(|| Error::NodeNotFound(target.to_string()))?;
-
-        if target_node.kind == NodeKind::TrashRoot {
-            return self.trash(dragged);
-        }
-        if self.accepts(target, drag_kind) {
-            return self.place(dragged, Some(target), None);
-        }
-        if target_node
-            .parent_id
-            .is_some_and(|parent| self.accepts(parent, drag_kind))
-        {
-            return self.place(dragged, target_node.parent_id, Some(target));
-        }
-        Err(Error::message("that binder item cannot hold the dragged item"))
     }
 
     /// The manuscript's books, parts, chapters, and folders in binder order,
@@ -1052,14 +993,14 @@ mod tests {
     #[test]
     fn reorder_scene_after_sibling() {
         let (mut binder, _, a, b, _) = tree();
-        binder.drop_on(a, b).unwrap();
+        binder.drop_at(a, b, DropPlace::After).unwrap();
         let order: Vec<_> = binder
             .children(binder.get(a).and_then(|node| node.parent_id))
             .into_iter()
             .map(|node| node.title.as_str())
             .collect();
         assert_eq!(order, vec!["Scene B", "Scene A"]);
-        binder.drop_on(b, a).unwrap();
+        binder.drop_at(b, a, DropPlace::After).unwrap();
         let order: Vec<_> = binder
             .children(binder.get(a).and_then(|node| node.parent_id))
             .into_iter()
@@ -1084,8 +1025,8 @@ mod tests {
     #[test]
     fn cannot_drop_into_own_descendant() {
         let (mut binder, chapter, a, _, _) = tree();
-        let err = binder.drop_on(chapter, a).unwrap_err();
-        assert!(err.to_string().contains("own contents"));
+        assert!(!binder.drop_allowed_at(chapter, a, DropPlace::After));
+        assert!(binder.drop_at(chapter, a, DropPlace::After).is_err());
     }
 
     #[test]
@@ -1107,19 +1048,18 @@ mod tests {
         let folder_id = folder.id;
         folder.parent_id = Some(book);
         binder.nodes.push(folder);
-        binder.drop_on(chapter, folder_id).unwrap();
+        binder.drop_at(chapter, folder_id, DropPlace::Inside).unwrap();
         assert_eq!(binder.get(chapter).unwrap().parent_id, Some(folder_id));
         let nested = BinderNode::new(NodeKind::Folder, "Scene group", Some(chapter), 2);
         let nested_id = nested.id;
         binder.nodes.push(nested);
-        binder.drop_on(scene, nested_id).unwrap();
+        binder.drop_at(scene, nested_id, DropPlace::Inside).unwrap();
         assert_eq!(binder.get(scene).unwrap().parent_id, Some(nested_id));
         let research = binder.research_root().unwrap().id;
         let notes = BinderNode::new(NodeKind::Folder, "Clippings", Some(research), 0);
         let notes_id = notes.id;
         binder.nodes.push(notes);
-        let err = binder.drop_on(chapter, notes_id).unwrap_err();
-        assert!(err.to_string().contains("cannot hold"));
+        assert!(binder.drop_at(chapter, notes_id, DropPlace::Inside).is_err(), "research cannot hold a chapter");
     }
 
     #[test]
@@ -1132,8 +1072,8 @@ mod tests {
         let inner = BinderNode::new(NodeKind::Part, "Part 1a", Some(book), 2);
         let inner_id = inner.id;
         binder.nodes.push(inner);
-        assert!(binder.drop_allowed(inner_id, outer_id));
-        binder.drop_on(inner_id, outer_id).unwrap();
+        assert!(binder.drop_allowed_at(inner_id, outer_id, DropPlace::Inside));
+        binder.drop_at(inner_id, outer_id, DropPlace::Inside).unwrap();
         assert_eq!(binder.get(inner_id).unwrap().parent_id, Some(outer_id));
         assert_eq!(binder.container_for(inner_id, NodeKind::Chapter), Some(inner_id));
     }

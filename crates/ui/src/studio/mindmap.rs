@@ -6,9 +6,11 @@ const MARGIN: f64 = 32.0;
 
 /// The manuscript as a mind map: the book in the middle, its parts,
 /// chapters, and scenes as branches. A click chooses a node for the
-/// inspector, a double click opens a scene on the page; the arrows move,
-/// Enter opens, and Space folds. The filter and the keyword menu dim what
-/// does not match, so the shape of the book stays in view.
+/// inspector, a double click or Ctrl+Enter opens a scene on the page; the
+/// arrows move, Space folds, Tab adds a child and Enter the next one beside
+/// it, F2 renames, Delete moves to the trash. A node dragged onto another
+/// moves in the binder. The filter and the keyword menu dim what does not
+/// match, so the shape of the book stays in view.
 #[component]
 pub(super) fn MindMapPane() -> Element {
     let mut state = use_context::<Signal<StudioState>>();
@@ -66,6 +68,17 @@ pub(super) fn MindMapPane() -> Element {
                     role: "tree",
                     aria_label: "Mind map of the manuscript. Arrows move, Enter opens, Space folds.",
                     onkeydown: move |event: KeyboardEvent| map_key(state, root, event),
+                    // A drag let go anywhere but on a node goes nowhere.
+                    onmouseup: move |_| {
+                        if state.read().dragging.is_some() {
+                            state.write().end_drag();
+                        }
+                    },
+                    onmouseleave: move |_| {
+                        if state.read().dragging.is_some() {
+                            state.write().end_drag();
+                        }
+                    },
                     onwheel: move |event: WheelEvent| {
                         if event.modifiers().ctrl() {
                             event.prevent_default();
@@ -92,7 +105,12 @@ pub(super) fn MindMapPane() -> Element {
                         }
                     }
                 }
-                if let Some(id) = chosen {
+                if let Some(id) = state.read().renaming.filter(|id| map.get(*id).is_some()) {
+                    div { class: "map-note map-rename",
+                        span { class: "hint", "Name: " }
+                        RenameField { id, name: state.read().binder.get(id).map(|node| node.title.clone()).unwrap_or_default() }
+                    }
+                } else if let Some(id) = chosen {
                     ChosenNote { id }
                 }
             }
@@ -160,6 +178,38 @@ fn MapNodeView(node: MapNode, chosen: bool, dim: bool) -> Element {
     }
     let fold_x = if node.side == Side::Left { 0.0 } else { NODE_WIDTH };
     let scene = item.kind == NodeKind::Scene;
+    // While another node is dragged, where it would land: before, in, or
+    // after this one, and whether it may.
+    let dragged = state.read().dragging.filter(|dragged| *dragged != id);
+    let mut edge_line = None;
+    if let Some(dragged) = dragged.filter(|_| state.read().drop_target == Some(id)) {
+        let place = state.read().drop_place;
+        let allowed = state.read().binder.drop_allowed_at(dragged, id, place);
+        class.push_str(match (allowed, place) {
+            (false, _) => " drop-invalid",
+            (true, DropPlace::Before) => " drop-before",
+            (true, DropPlace::After) => " drop-after",
+            (true, DropPlace::Inside) => " drop-inside",
+        });
+        edge_line = match (allowed, place) {
+            (true, DropPlace::Before) => Some(-3.0),
+            (true, DropPlace::After) => Some(NODE_HEIGHT + 3.0),
+            _ => None,
+        };
+    }
+    if state.read().dragging == Some(id) {
+        class.push_str(" dragging");
+    }
+    let movable = node.parent.is_some() && !item.kind.is_root();
+    let zone = move |place: DropPlace| {
+        move |_| {
+            let fits = state.peek().drag_fits_inside(id);
+            let place = if place == DropPlace::Inside && !fits { DropPlace::After } else { place };
+            if state.peek().dragging.is_some_and(|dragged| dragged != id) {
+                state.write().set_binder_drop(id, place);
+            }
+        }
+    };
     rsx! {
         g {
             class: "{class}",
@@ -167,7 +217,27 @@ fn MapNodeView(node: MapNode, chosen: bool, dim: bool) -> Element {
             role: "treeitem",
             "aria-label": "{item.title}",
             "aria-selected": "{chosen}",
-            onclick: move |_| state.write().select_node(id),
+            onmousedown: move |event: MouseEvent| {
+                if movable && event.trigger_button() == Some(dioxus::html::input_data::MouseButton::Primary) {
+                    state.write().begin_drag(id);
+                }
+            },
+            onmouseup: move |event| {
+                let dropping = state.read().dragging.is_some_and(|dragged| dragged != id) && state.read().drop_target == Some(id);
+                if dropping {
+                    event.stop_propagation();
+                    state.write().ignore_next_click = true;
+                    state.write().drop_in_binder(id);
+                } else if state.read().dragging.is_some() {
+                    state.write().end_drag();
+                }
+            },
+            onclick: move |_| {
+                let suppress = std::mem::take(&mut state.write().ignore_next_click);
+                if !suppress {
+                    state.write().select_node(id);
+                }
+            },
             ondoubleclick: move |_| {
                 if scene {
                     state.write().open_linked_scene(id);
@@ -175,6 +245,14 @@ fn MapNodeView(node: MapNode, chosen: bool, dim: bool) -> Element {
             },
             title { "{item.title}" }
             rect { width: "{NODE_WIDTH}", height: "{NODE_HEIGHT}", rx: "9" }
+            if let Some(y) = edge_line {
+                line { class: "map-drop-line", x1: "0", y1: "{y}", x2: "{NODE_WIDTH}", y2: "{y}" }
+            }
+            if dragged.is_some() {
+                rect { class: "map-zone", width: "{NODE_WIDTH}", height: "{NODE_HEIGHT / 4.0}", onmouseenter: zone(DropPlace::Before) }
+                rect { class: "map-zone", y: "{NODE_HEIGHT / 4.0}", width: "{NODE_WIDTH}", height: "{NODE_HEIGHT / 2.0}", onmouseenter: zone(DropPlace::Inside) }
+                rect { class: "map-zone", y: "{NODE_HEIGHT * 0.75}", width: "{NODE_WIDTH}", height: "{NODE_HEIGHT / 4.0}", onmouseenter: zone(DropPlace::After) }
+            }
             text { class: "map-title", x: "12", y: "19", "{title}" }
             text { class: "map-meta", x: "12", y: "36", "{meta}" }
             for (at, hex) in colors.into_iter().take(5).enumerate() {
@@ -228,7 +306,9 @@ fn shorten(text: &str, longest: usize) -> String {
     format!("{}…", cut.trim_end())
 }
 
-/// The arrows move the chosen node, Enter opens a scene, Space folds.
+/// The arrows move the chosen node and Space folds it. Tab adds a child
+/// and Enter the next one beside it, each named as it is added; Ctrl+Enter
+/// opens a scene; F2 renames; Delete moves to the trash, with Undo.
 fn map_key(mut state: Signal<StudioState>, root: Id, event: KeyboardEvent) {
     let key = match event.key() {
         Key::ArrowUp => Some(Step::Up),
@@ -251,12 +331,30 @@ fn map_key(mut state: Signal<StudioState>, root: Id, event: KeyboardEvent) {
         }
         return;
     }
+    let ctrl = event.modifiers().ctrl() || event.modifiers().meta();
+    let shift = event.modifiers().shift();
     match event.key() {
-        Key::Enter => {
+        Key::Enter if ctrl => {
             event.prevent_default();
             if state.read().binder.get(from).is_some_and(|node| node.kind == NodeKind::Scene) {
                 state.write().open_linked_scene(from);
             }
+        }
+        Key::Enter | Key::Tab if !shift => {
+            event.prevent_default();
+            let child = event.key() == Key::Tab;
+            if let Some(added) = state.write().add_from_map(from, child) {
+                select_field(format!("rename-{added}"));
+            }
+        }
+        Key::F2 => {
+            event.prevent_default();
+            state.write().start_rename(from);
+            select_field(format!("rename-{from}"));
+        }
+        Key::Delete if from != root => {
+            event.prevent_default();
+            state.write().trash_item(from);
         }
         Key::Character(space) if space == " " => {
             event.prevent_default();

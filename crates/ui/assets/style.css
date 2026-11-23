@@ -720,6 +720,12 @@ button.danger:hover, button.danger.armed { background: var(--danger-fill); borde
 .map-node.dim { opacity: 0.3; }
 .map-node .map-title { font-family: var(--ui); font-size: 13px; font-weight: 600; fill: var(--text); }
 .map-node .map-meta { font-family: var(--ui); font-size: 11px; fill: var(--muted); }
+.map-zone { fill: transparent; pointer-events: all; }
+.map-node.dragging { opacity: 0.45; }
+.map-node.drop-inside rect:first-of-type { stroke: var(--gold); stroke-width: 2.5; }
+.map-drop-line { stroke: var(--gold); stroke-width: 3; stroke-linecap: round; }
+.map-node.drop-invalid rect:first-of-type { stroke: var(--danger); stroke-dasharray: 2 3; }
+.map-rename { display: flex; align-items: center; gap: 6px; }
 .map-fold circle { fill: var(--panel-2); stroke: var(--line); }
 .map-fold text { font-family: var(--ui); font-size: 12px; fill: var(--text); }
 .map-note { margin-top: 8px; padding: 8px 12px; border-radius: 8px; background: var(--panel); max-height: 7.5em; overflow: auto; }

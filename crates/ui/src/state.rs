@@ -142,8 +142,11 @@ pub enum FrameMenu {
 pub enum UndoOffer {
     /// The last merge or split, through Ctrl+Z.
     Structure,
-    /// An item moved to the trash, put back where it was.
-    Trash { id: Id, parent: Id, after: Option<Id>, reopen: bool },
+    /// An item moved (to the trash, or by dragging), put back where it
+    /// was.
+    PutBack { id: Id, parent: Id, after: Option<Id>, reopen: bool },
+    /// An item added on the mind map, moved to the trash again.
+    Added { id: Id },
     /// A keyword renamed or merged, from `StudioState::keyword_undo`.
     Keywords,
 }
@@ -3267,6 +3270,47 @@ impl StudioState {
     pub fn add_node(&mut self, kind: NodeKind) {
         self.flush_editor();
         let parent_id = self.infer_parent(kind);
+        self.create_node(kind, parent_id);
+    }
+
+    /// Add a node from the mind map: a child of `from` with Tab (a chapter
+    /// in a book or part, a scene in a chapter or folder), or the next one
+    /// beside it with Enter, of its kind. It is chosen and its name opened
+    /// to type; the status line offers to take it away again.
+    pub fn add_from_map(&mut self, from: Id, child: bool) -> Option<Id> {
+        let node = self.binder.get(from)?.clone();
+        let (kind, parent, after) = if child {
+            let kind = match node.kind {
+                NodeKind::DraftRoot => NodeKind::Book,
+                NodeKind::Book | NodeKind::Part => NodeKind::Chapter,
+                NodeKind::Chapter | NodeKind::Folder => NodeKind::Scene,
+                _ => return None,
+            };
+            (kind, Some(from), self.binder.children(Some(from)).last().map(|last| last.id))
+        } else {
+            if node.kind.is_root() {
+                return None;
+            }
+            (node.kind, node.parent_id, Some(from))
+        };
+        self.flush_editor();
+        let id = self.create_node(kind, parent)?;
+        if let Some(parent) = parent {
+            if self.binder.put_after(id, parent, after).is_ok() {
+                self.persist_binder();
+            }
+        }
+        self.folded_map.retain(|folded| Some(*folded) != parent);
+        let title = self.binder.get(id).map(|node| node.title.clone()).unwrap_or_default();
+        self.status = format!("Added “{title}”. Type its name, then Enter.");
+        self.offer_undo(UndoOffer::Added { id });
+        self.renaming = Some(id);
+        Some(id)
+    }
+
+    /// Make a binder item at the end of `parent`, with its document, and
+    /// choose it.
+    fn create_node(&mut self, kind: NodeKind, parent_id: Option<Id>) -> Option<Id> {
         let sort = self.binder.next_sort_index(parent_id);
         let title = match kind {
             NodeKind::Chapter => format!(
@@ -3298,19 +3342,20 @@ impl StudioState {
         if let Some(store) = &self.store {
             if let Err(err) = store.borrow().upsert_node(&node) {
                 self.status = format!("Could not add item: {err}");
-                return;
+                return None;
             }
             if let Some(doc_id) = node.document_id {
                 let document = writing_studio_document::Document::new(doc_id);
                 if let Err(err) = store.borrow().save_document(&document) {
                     self.status = format!("Could not create document: {err}");
-                    return;
+                    return None;
                 }
             }
         }
         self.binder.nodes.push(node);
         self.select_node(new_id);
         self.status = "Added to binder.".into();
+        Some(new_id)
     }
 
     /// Write the whole project as a folder of Markdown files inside `parent`,
@@ -4209,12 +4254,6 @@ impl StudioState {
         self.drop_target = None;
     }
 
-    pub fn set_drop_target(&mut self, id: Id) {
-        if self.dragging.is_some_and(|dragged| dragged != id) {
-            self.drop_target = Some(id);
-        }
-    }
-
     /// The binder row under the pointer, and where on it the drop would go.
     pub fn set_binder_drop(&mut self, id: Id, place: DropPlace) {
         if self.dragging.is_some_and(|dragged| dragged != id)
@@ -4242,10 +4281,16 @@ impl StudioState {
         let place = self.drop_place;
         self.drop_target = None;
         self.flush_editor();
+        let parent = self.binder.get(dragged).and_then(|node| node.parent_id);
+        let after = self.binder.previous_sibling(dragged);
         match self.binder.drop_at(dragged, target, place) {
             Ok(()) => {
                 if self.persist_binder() {
-                    self.status = "Binder updated locally.".into();
+                    let title = self.binder.get(dragged).map(|node| node.title.clone()).unwrap_or_default();
+                    self.status = format!("Moved “{title}”.");
+                    if let Some(parent) = parent {
+                        self.offer_undo(UndoOffer::PutBack { id: dragged, parent, after, reopen: false });
+                    }
                     if self.selected == Some(dragged) {
                         self.select_node(dragged);
                     }
@@ -4258,26 +4303,6 @@ impl StudioState {
     pub fn end_drag(&mut self) {
         self.dragging = None;
         self.drop_target = None;
-    }
-
-    pub fn drop_on(&mut self, target: Id) {
-        let Some(dragged) = self.dragging.take() else {
-            self.drop_target = None;
-            return;
-        };
-        self.drop_target = None;
-        self.flush_editor();
-        match self.binder.drop_on(dragged, target) {
-            Ok(()) => {
-                if self.persist_binder() {
-                    self.status = "Binder updated locally.".into();
-                    if self.selected == Some(dragged) {
-                        self.select_node(dragged);
-                    }
-                }
-            }
-            Err(err) => self.status = err.to_string(),
-        }
     }
 
     pub fn trash_selected(&mut self) {
@@ -4307,7 +4332,7 @@ impl StudioState {
                     }
                     self.status = format!("Moved “{title}” to the trash. Restore it from Trash in the library.");
                     if let Some(parent) = parent {
-                        self.offer_undo(UndoOffer::Trash { id, parent, after, reopen: selected_gone });
+                        self.offer_undo(UndoOffer::PutBack { id, parent, after, reopen: selected_gone });
                     }
                 }
             }
@@ -4325,7 +4350,7 @@ impl StudioState {
     pub fn undo_offered(&self) -> bool {
         match &self.undo_offer {
             Some((UndoOffer::Structure, status)) => *status == self.status && self.undo_is_structure_step(),
-            Some((UndoOffer::Trash { .. }, status)) => *status == self.status,
+            Some((UndoOffer::PutBack { .. } | UndoOffer::Added { .. }, status)) => *status == self.status,
             Some((UndoOffer::Keywords, status)) => *status == self.status && self.keyword_undo.is_some(),
             None => false,
         }
@@ -4341,6 +4366,16 @@ impl StudioState {
         };
         match offer {
             UndoOffer::Structure => self.undo(),
+            UndoOffer::Added { id } => {
+                let title = self.binder.get(id).map(|node| node.title.clone()).unwrap_or_default();
+                if self.binder.trash(id).is_ok() && self.persist_binder() {
+                    if self.selected == Some(id) {
+                        self.selected = None;
+                        self.session = None;
+                    }
+                    self.status = format!("Took “{title}” away again. It is in the trash.");
+                }
+            }
             UndoOffer::Keywords => {
                 let Some(snapshot) = self.keyword_undo.take() else {
                     return;
@@ -4360,7 +4395,7 @@ impl StudioState {
                     self.status = "Put the keywords back.".into();
                 }
             }
-            UndoOffer::Trash { id, parent, after, reopen } => {
+            UndoOffer::PutBack { id, parent, after, reopen } => {
                 let title = self.binder.get(id).map(|node| node.title.clone()).unwrap_or_default();
                 match self.binder.put_after(id, parent, after) {
                     Ok(()) => {
@@ -5020,6 +5055,44 @@ mod tests {
         state.choose_library(book);
         state.add_node(NodeKind::Book);
         assert_eq!(state.map_root(), state.binder.draft_root().map(|draft| draft.id), "two books: the manuscript");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// From a chosen node, Tab adds a child of the next kind down and Enter
+    /// one of its own kind right after it, named as it comes; a move by
+    /// dragging, and an addition, are each undone from the status line.
+    #[test]
+    fn the_mind_map_adds_children_and_siblings_and_moves_with_undo() {
+        let (mut state, dir) = open_state("map-edit");
+        let first = state.selected.unwrap();
+        let chapter = state.binder.get(first).unwrap().parent_id.unwrap();
+        let book = state.binder.get(chapter).unwrap().parent_id.unwrap();
+
+        let added = state.add_from_map(chapter, false).unwrap();
+        let node = state.binder.get(added).unwrap().clone();
+        assert_eq!((node.kind, node.parent_id), (NodeKind::Chapter, Some(book)));
+        assert_eq!(state.binder.previous_sibling(added), Some(chapter), "right after the chosen one");
+        assert_eq!((state.selected, state.renaming), (Some(added), Some(added)), "chosen, with its name open");
+        let scene = state.add_from_map(added, true).unwrap();
+        assert_eq!(state.binder.get(scene).unwrap().kind, NodeKind::Scene);
+        assert_eq!(state.binder.get(scene).unwrap().parent_id, Some(added));
+        assert_eq!(state.add_from_map(scene, true), None, "a scene holds no node");
+        assert!(state.add_from_map(book, false).is_some(), "a book beside the book");
+
+        // Undo takes the last addition away again, into the trash.
+        let other_book = state.selected.unwrap();
+        assert!(state.undo_offered());
+        state.take_undo_offer();
+        assert!(state.binder.is_in_trash(other_book));
+
+        // Dragged into the new chapter, the first scene moves; Undo puts it back.
+        state.begin_drag(first);
+        state.set_binder_drop(added, DropPlace::Inside);
+        state.drop_in_binder(added);
+        assert_eq!(state.binder.get(first).unwrap().parent_id, Some(added));
+        assert!(state.status.starts_with("Moved"), "{}", state.status);
+        state.take_undo_offer();
+        assert_eq!(state.binder.get(first).unwrap().parent_id, Some(chapter));
         let _ = std::fs::remove_dir_all(dir);
     }
 
