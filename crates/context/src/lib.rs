@@ -67,36 +67,96 @@ pub struct StoryEntry {
     pub links: Vec<Id>,
     /// The entry of its kind it is inside, if any.
     pub parent: Option<Id>,
+    /// What it is, in the writer's words: "Country", "Father".
+    pub label: String,
 }
 
 /// Every entry of the story, characters first, each kind in its own order.
 /// An entry with no name is called by its kind: "Unnamed character".
 pub fn story_entries(cast: &Cast, world: &World, library: &ResearchLibrary) -> Vec<StoryEntry> {
     let mut entries = Vec::new();
-    let mut push = |kind: EntryKind, id: Id, name: &str, parts: &[&str], links: &[Id], parent: Option<Id>| {
+    let mut push = |kind: EntryKind, id: Id, name: &str, parts: &[&str], links: &[Id], parent: Option<Id>, label: &str| {
         let name = if name.trim().is_empty() { format!("Unnamed {}", kind.noun()) } else { name.trim().to_string() };
         let text = parts.iter().map(|part| part.trim()).filter(|part| !part.is_empty()).collect::<Vec<_>>().join("\n\n");
-        entries.push(StoryEntry { kind, id, name, text, links: links.to_vec(), parent });
+        entries.push(StoryEntry { kind, id, name, text, links: links.to_vec(), parent, label: label.trim().to_string() });
     };
     for item in cast.characters_in_order() {
-        push(EntryKind::Character, item.id, &item.name, &[&item.role, &item.summary], &item.linked_ids, item.parent_id);
+        push(EntryKind::Character, item.id, &item.name, &[&item.role, &item.summary], &item.linked_ids, item.parent_id, &item.label);
     }
     for item in world.locations_in_order() {
-        push(EntryKind::Location, item.id, &item.name, &[&item.summary], &item.linked_ids, item.parent_id);
+        push(EntryKind::Location, item.id, &item.name, &[&item.summary], &item.linked_ids, item.parent_id, &item.label);
     }
     for item in world.cultures_in_order() {
-        push(EntryKind::Culture, item.id, &item.name, &[&item.summary], &item.linked_ids, item.parent_id);
+        push(EntryKind::Culture, item.id, &item.name, &[&item.summary], &item.linked_ids, item.parent_id, &item.label);
     }
     for item in world.lore_in_order() {
-        push(EntryKind::Lore, item.id, &item.title, &[&item.body], &item.linked_ids, item.parent_id);
+        push(EntryKind::Lore, item.id, &item.title, &[&item.body], &item.linked_ids, item.parent_id, &item.label);
     }
     for item in world.events_in_order() {
-        push(EntryKind::Timeline, item.id, &item.title, &[&item.when_label, &item.summary], &item.linked_ids, item.parent_id);
+        push(EntryKind::Timeline, item.id, &item.title, &[&item.when_label, &item.summary], &item.linked_ids, item.parent_id, &item.label);
     }
     for item in library.items_in_order() {
-        push(EntryKind::Research, item.id, &item.title, &[&item.notes], &item.linked_ids, item.parent_id);
+        push(EntryKind::Research, item.id, &item.title, &[&item.notes], &item.linked_ids, item.parent_id, &item.label);
     }
     entries
+}
+
+/// How two entries are connected.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Tie {
+    /// A connection the writer named ("lives in"); its relationship's id.
+    Named(Id),
+    /// One is inside the other in its kind's tree.
+    Inside,
+    /// A field of one names the other: a place's culture, lore's place or
+    /// culture, an event's place.
+    Field,
+}
+
+/// A connection from one entry to another, with its name.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Connection {
+    pub from: Id,
+    pub to: Id,
+    pub name: String,
+    pub tie: Tie,
+}
+
+/// Every connection between the story's entries: named ones, being inside
+/// another, and the fields that name another entry.
+pub fn connections(cast: &Cast, world: &World, library: &ResearchLibrary) -> Vec<Connection> {
+    let mut found = Vec::new();
+    let mut tie = |from: Id, to: Id, name: &str, tie: Tie| {
+        found.push(Connection { from, to, name: name.to_string(), tie });
+    };
+    for item in &cast.relationships {
+        let name = if item.kind.trim().is_empty() { "connected to" } else { item.kind.trim() };
+        tie(item.from_id, item.to_id, name, Tie::Named(item.id));
+    }
+    for entry in story_entries(cast, world, library) {
+        if let Some(parent) = entry.parent {
+            tie(entry.id, parent, "inside", Tie::Inside);
+        }
+    }
+    for place in &world.locations {
+        if let Some(culture) = place.culture_id {
+            tie(place.id, culture, "of the culture", Tie::Field);
+        }
+    }
+    for lore in &world.lore {
+        if let Some(place) = lore.location_id {
+            tie(lore.id, place, "about the place", Tie::Field);
+        }
+        if let Some(culture) = lore.culture_id {
+            tie(lore.id, culture, "about the culture", Tie::Field);
+        }
+    }
+    for event in &world.events {
+        if let Some(place) = event.location_id {
+            tie(event.id, place, "takes place in", Tie::Field);
+        }
+    }
+    found
 }
 
 /// The item a link reaches `id` through: `id` itself, or the nearest
@@ -588,6 +648,28 @@ mod tests {
         assert!(move_entry(&mut world.locations, pub_, Some(country), None));
         assert_eq!(children_of(&world.locations, Some(country)), [pub_, city, other]);
         assert!(is_within(&world.locations, quarter, country) && !is_within(&world.locations, country, quarter));
+    }
+
+
+    #[test]
+    fn connections_hold_named_ones_nesting_and_fields() {
+        let mut cast = Cast::new();
+        let father = cast.add_character();
+        let son = cast.add_character();
+        let mut world = World::new();
+        let city = world.add_location();
+        let culture = world.add_culture();
+        world.locations[0].culture_id = Some(culture);
+        cast.characters.iter_mut().find(|item| item.id == son).unwrap().parent_id = Some(father);
+        let lives = cast.connect(son, city, " lives in ".into()).unwrap();
+        assert!(cast.connect(son, city, "Lives in".into()).is_none(), "once");
+        let all = connections(&cast, &world, &ResearchLibrary::new());
+        let names: Vec<(Id, Id, &str, Tie)> = all.iter().map(|c| (c.from, c.to, c.name.as_str(), c.tie)).collect();
+        assert!(names.contains(&(son, city, "lives in", Tie::Named(lives))));
+        assert!(names.contains(&(son, father, "inside", Tie::Inside)));
+        assert!(names.contains(&(city, culture, "of the culture", Tie::Field)));
+        assert!(cast.disconnect_all(city));
+        assert!(connections(&cast, &world, &ResearchLibrary::new()).iter().all(|c| !matches!(c.tie, Tie::Named(_))));
     }
 
 }

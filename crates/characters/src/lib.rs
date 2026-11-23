@@ -21,6 +21,9 @@ pub struct Character {
     /// under his father), or `None` at the top.
     #[serde(default)]
     pub parent_id: Option<Id>,
+    /// What it is, in the writer\'s words: "Country", "Pub", "Father".
+    #[serde(default)]
+    pub label: String,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
 }
@@ -36,6 +39,7 @@ impl Character {
             sort_index,
             linked_ids: Vec::new(),
             parent_id: None,
+            label: String::new(),
             created_at: now,
             updated_at: now,
         }
@@ -128,16 +132,6 @@ impl Cast {
             .motivations
             .iter()
             .filter(|item| item.character_id == character_id)
-            .collect();
-        items.sort_by_key(|item| (item.sort_index, item.id));
-        items
-    }
-
-    pub fn relationships_from(&self, character_id: Id) -> Vec<&CharacterRelationship> {
-        let mut items: Vec<&CharacterRelationship> = self
-            .relationships
-            .iter()
-            .filter(|item| item.from_id == character_id)
             .collect();
         items.sort_by_key(|item| (item.sort_index, item.id));
         items
@@ -283,24 +277,6 @@ impl Cast {
         true
     }
 
-    pub fn add_relationship(&mut self, from_id: Id, to_id: Id) -> Option<Id> {
-        if from_id == to_id || !self.has_character(from_id) || !self.has_character(to_id) {
-            return None;
-        }
-        let sort_index = self
-            .relationships
-            .iter()
-            .filter(|item| item.from_id == from_id)
-            .map(|item| item.sort_index)
-            .max()
-            .map(|index| index + 1)
-            .unwrap_or(0);
-        let item = CharacterRelationship::new(from_id, to_id, sort_index);
-        let id = item.id;
-        self.relationships.push(item);
-        Some(id)
-    }
-
     pub fn set_relationship_kind(&mut self, id: Id, kind: String) -> bool {
         let Some(item) = self.relationships.iter_mut().find(|item| item.id == id) else {
             return false;
@@ -313,19 +289,30 @@ impl Cast {
         true
     }
 
-    pub fn set_relationship_target(&mut self, id: Id, to_id: Id) -> bool {
-        if !self.has_character(to_id) {
-            return false;
+    /// Connect any two entries of the story (characters, places, notes)
+    /// with a name: "lives in", "son of". The caller knows they exist. The
+    /// same two with the same name are connected once.
+    pub fn connect(&mut self, from_id: Id, to_id: Id, kind: String) -> Option<Id> {
+        let kind = kind.trim().to_string();
+        let known = self.relationships.iter().any(|item| {
+            item.from_id == from_id && item.to_id == to_id && item.kind.trim().eq_ignore_ascii_case(&kind)
+        });
+        if from_id == to_id || known {
+            return None;
         }
-        let Some(item) = self.relationships.iter_mut().find(|item| item.id == id) else {
-            return false;
-        };
-        if item.from_id == to_id || item.to_id == to_id {
-            return false;
-        }
-        item.to_id = to_id;
-        item.touch();
-        true
+        let sort_index = self.relationships.iter().map(|item| item.sort_index).max().map(|index| index + 1).unwrap_or(0);
+        let mut item = CharacterRelationship::new(from_id, to_id, sort_index);
+        item.kind = kind;
+        let id = item.id;
+        self.relationships.push(item);
+        Some(id)
+    }
+
+    /// Drop every connection to or from an entry that is gone.
+    pub fn disconnect_all(&mut self, entry: Id) -> bool {
+        let before = self.relationships.len();
+        self.relationships.retain(|item| item.from_id != entry && item.to_id != entry);
+        self.relationships.len() != before
     }
 
     pub fn remove_relationship(&mut self, id: Id) -> bool {
@@ -435,10 +422,10 @@ mod tests {
         assert_eq!(motives[0].id, second);
         assert_eq!(motives[1].body, "Protect the house");
 
-        let link = cast.add_relationship(hero, rival).unwrap();
+        let link = cast.connect(hero, rival, "rival of".into()).unwrap();
         assert!(cast.set_relationship_kind(link, "rival".into()));
-        assert_eq!(cast.relationships_from(hero)[0].to_id, rival);
-        assert!(cast.add_relationship(hero, hero).is_none());
+        assert_eq!(cast.relationships[0].to_id, rival);
+        assert!(cast.connect(hero, hero, "self".into()).is_none());
         let scene = Id::new();
         let other_scene = Id::new();
         assert!(cast.link_scene(hero, scene));
@@ -455,8 +442,8 @@ mod tests {
         let hero = cast.add_character();
         let other = cast.add_character();
         cast.add_motivation(hero).unwrap();
-        cast.add_relationship(hero, other).unwrap();
-        cast.add_relationship(other, hero).unwrap();
+        cast.connect(hero, other, "sister of".into()).unwrap();
+        cast.connect(other, hero, "brother of".into()).unwrap();
         assert!(cast.remove_character(hero));
         assert!(cast.motivations.is_empty());
         assert!(cast.relationships.is_empty());

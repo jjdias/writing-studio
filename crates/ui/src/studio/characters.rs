@@ -13,20 +13,12 @@ pub(super) struct MotiveView {
 }
 
 #[derive(Clone, PartialEq)]
-pub(super) struct RelationView {
-    pub(super) id: Id,
-    pub(super) to_id: Id,
-    pub(super) kind: String,
-}
-
-#[derive(Clone, PartialEq)]
 pub(super) struct ProfileView {
     pub(super) id: Id,
     pub(super) name: String,
     pub(super) role: String,
     pub(super) summary: String,
     pub(super) motivations: Vec<MotiveView>,
-    pub(super) relationships: Vec<RelationView>,
 }
 
 #[component]
@@ -60,7 +52,7 @@ pub(super) fn CharactersPane() -> Element {
                     EmptyState {
                         mode: WorkspaceMode::Characters,
                         title: "No characters yet",
-                        body: "Each character has a profile, motivations, relationships, and the scenes they appear in. The cast stays in this project.",
+                        body: "Each character has a profile and motivations; Context beside it holds their connections and the scenes they appear in. The cast stays in this project.",
                         action: "Add character",
                         onclick: move |_| state.write().add_character(),
                     }
@@ -85,15 +77,6 @@ pub(super) fn profile_view(cast: &writing_studio_characters::Cast, id: Id) -> Op
                 body: item.body.clone(),
             })
             .collect(),
-        relationships: cast
-            .relationships_from(id)
-            .into_iter()
-            .map(|item| RelationView {
-                id: item.id,
-                to_id: item.to_id,
-                kind: item.kind.clone(),
-            })
-            .collect(),
     })
 }
 
@@ -105,7 +88,6 @@ pub(super) fn CharacterProfile(profile: ProfileView, others: Vec<CastListItem>, 
     let role = profile.role.clone();
     let summary = profile.summary.clone();
     let motivations = profile.motivations.clone();
-    let relationships = profile.relationships.clone();
     let delete_label = confirm_label(confirm == Some(id), "Delete", &name);
     rsx! {
         label { "Name" }
@@ -160,51 +142,6 @@ pub(super) fn CharacterProfile(profile: ProfileView, others: Vec<CastListItem>, 
                             }
                             button {
                                 onclick: move |_| state.write().remove_motivation(motive_id),
-                                "Remove"
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        section { class: "cast-block",
-            h3 { "Relationships" }
-            p { class: "hint", "How this character is connected to someone else in the cast." }
-            button {
-                onclick: move |_| state.write().add_relationship(id),
-                "Add relationship"
-            }
-            if relationships.is_empty() {
-                p { class: "hint", "No relationships yet." }
-            }
-            for relation in relationships {
-                {
-                    let relation_id = relation.id;
-                    let kind = relation.kind.clone();
-                    let to_id = relation.to_id;
-                    let choices = others.clone();
-                    rsx! {
-                        div { class: "cast-row", key: "{relation_id}",
-                            input {
-                                title: "Relationship",
-                                placeholder: "sibling, rival, owes a debt…",
-                                value: "{kind}",
-                                oninput: move |event| state.write().set_relationship_kind(relation_id, event.value()),
-                            }
-                            select {
-                                title: "Other character",
-                                value: "{to_id}",
-                                onchange: move |event| {
-                                    if let Some(target) = event.value().parse().ok() {
-                                        state.write().set_relationship_target(relation_id, target);
-                                    }
-                                },
-                                for person in choices {
-                                    option { value: "{person.id}", selected: person.id == to_id, "{person.name}" }
-                                }
-                            }
-                            button {
-                                onclick: move |_| state.write().remove_relationship(relation_id),
                                 "Remove"
                             }
                         }

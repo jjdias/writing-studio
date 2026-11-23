@@ -21,6 +21,9 @@ pub struct Location {
     /// under his father), or `None` at the top.
     #[serde(default)]
     pub parent_id: Option<Id>,
+    /// What it is, in the writer\'s words: "Country", "Pub", "Father".
+    #[serde(default)]
+    pub label: String,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
 }
@@ -36,6 +39,7 @@ impl Location {
             sort_index,
             linked_ids: Vec::new(),
             parent_id: None,
+            label: String::new(),
             created_at: now,
             updated_at: now,
         }
@@ -59,6 +63,9 @@ pub struct Culture {
     /// under his father), or `None` at the top.
     #[serde(default)]
     pub parent_id: Option<Id>,
+    /// What it is, in the writer\'s words: "Country", "Pub", "Father".
+    #[serde(default)]
+    pub label: String,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
 }
@@ -73,6 +80,7 @@ impl Culture {
             sort_index,
             linked_ids: Vec::new(),
             parent_id: None,
+            label: String::new(),
             created_at: now,
             updated_at: now,
         }
@@ -98,6 +106,9 @@ pub struct LoreEntry {
     /// under his father), or `None` at the top.
     #[serde(default)]
     pub parent_id: Option<Id>,
+    /// What it is, in the writer\'s words: "Country", "Pub", "Father".
+    #[serde(default)]
+    pub label: String,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
 }
@@ -114,6 +125,7 @@ impl LoreEntry {
             sort_index,
             linked_ids: Vec::new(),
             parent_id: None,
+            label: String::new(),
             created_at: now,
             updated_at: now,
         }
@@ -139,6 +151,9 @@ pub struct TimelineEvent {
     /// under his father), or `None` at the top.
     #[serde(default)]
     pub parent_id: Option<Id>,
+    /// What it is, in the writer\'s words: "Country", "Pub", "Father".
+    #[serde(default)]
+    pub label: String,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
 }
@@ -155,6 +170,7 @@ impl TimelineEvent {
             sort_index,
             linked_ids: Vec::new(),
             parent_id: None,
+            label: String::new(),
             created_at: now,
             updated_at: now,
         }

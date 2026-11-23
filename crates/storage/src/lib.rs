@@ -314,11 +314,13 @@ impl ProjectStore {
             .collect::<std::result::Result<Vec<_>, _>>()
             .map_err(sqlite)?;
         let parents = load_parents(&self.conn)?;
+        let labels = load_labels(&self.conn)?;
         let character_scenes = load_scene_link_map(&self.conn, "character")?;
         let mut characters = characters;
         for character in &mut characters {
             character.linked_ids = apply_scene_links(&character_scenes, character.id);
             character.parent_id = parents.get(&character.id).copied();
+            character.label = labels.get(&character.id).cloned().unwrap_or_default();
         }
         let mut motivations = self
             .conn
@@ -412,7 +414,7 @@ impl ProjectStore {
             "character",
             cast.characters
                 .iter()
-                .map(|character| (character.id, character.linked_ids.clone(), character.parent_id)),
+                .map(|character| (character.id, character.linked_ids.clone(), character.parent_id, character.label.clone())),
         )?;
         tx.commit().map_err(sqlite)?;
         Ok(())
@@ -444,6 +446,7 @@ impl ProjectStore {
         let mut lore = lore;
         let mut events = events;
         let parents = load_parents(&self.conn)?;
+        let labels = load_labels(&self.conn)?;
         let location_scenes = load_scene_link_map(&self.conn, "location")?;
         let culture_scenes = load_scene_link_map(&self.conn, "culture")?;
         let lore_scenes = load_scene_link_map(&self.conn, "lore")?;
@@ -451,18 +454,22 @@ impl ProjectStore {
         for place in &mut locations {
             place.linked_ids = apply_scene_links(&location_scenes, place.id);
             place.parent_id = parents.get(&place.id).copied();
+            place.label = labels.get(&place.id).cloned().unwrap_or_default();
         }
         for culture in &mut cultures {
             culture.linked_ids = apply_scene_links(&culture_scenes, culture.id);
             culture.parent_id = parents.get(&culture.id).copied();
+            culture.label = labels.get(&culture.id).cloned().unwrap_or_default();
         }
         for entry in &mut lore {
             entry.linked_ids = apply_scene_links(&lore_scenes, entry.id);
             entry.parent_id = parents.get(&entry.id).copied();
+            entry.label = labels.get(&entry.id).cloned().unwrap_or_default();
         }
         for event in &mut events {
             event.linked_ids = apply_scene_links(&event_scenes, event.id);
             event.parent_id = parents.get(&event.id).copied();
+            event.label = labels.get(&event.id).cloned().unwrap_or_default();
         }
         Ok(World {
             locations,
@@ -548,22 +555,22 @@ impl ProjectStore {
         write_scene_links(
             &tx,
             "location",
-            world.locations.iter().map(|place| (place.id, place.linked_ids.clone(), place.parent_id)),
+            world.locations.iter().map(|place| (place.id, place.linked_ids.clone(), place.parent_id, place.label.clone())),
         )?;
         write_scene_links(
             &tx,
             "culture",
-            world.cultures.iter().map(|culture| (culture.id, culture.linked_ids.clone(), culture.parent_id)),
+            world.cultures.iter().map(|culture| (culture.id, culture.linked_ids.clone(), culture.parent_id, culture.label.clone())),
         )?;
         write_scene_links(
             &tx,
             "lore",
-            world.lore.iter().map(|entry| (entry.id, entry.linked_ids.clone(), entry.parent_id)),
+            world.lore.iter().map(|entry| (entry.id, entry.linked_ids.clone(), entry.parent_id, entry.label.clone())),
         )?;
         write_scene_links(
             &tx,
             "timeline",
-            world.events.iter().map(|event| (event.id, event.linked_ids.clone(), event.parent_id)),
+            world.events.iter().map(|event| (event.id, event.linked_ids.clone(), event.parent_id, event.label.clone())),
         )?;
         tx.commit().map_err(sqlite)?;
         Ok(())
@@ -582,10 +589,12 @@ impl ProjectStore {
         )?;
         let mut items = items;
         let parents = load_parents(&self.conn)?;
+        let labels = load_labels(&self.conn)?;
         let note_scenes = load_scene_link_map(&self.conn, "research")?;
         for item in &mut items {
             item.linked_ids = apply_scene_links(&note_scenes, item.id);
             item.parent_id = parents.get(&item.id).copied();
+            item.label = labels.get(&item.id).cloned().unwrap_or_default();
         }
         Ok(ResearchLibrary { items, files })
     }
@@ -626,7 +635,7 @@ impl ProjectStore {
         write_scene_links(
             &tx,
             "research",
-            library.items.iter().map(|item| (item.id, item.linked_ids.clone(), item.parent_id)),
+            library.items.iter().map(|item| (item.id, item.linked_ids.clone(), item.parent_id, item.label.clone())),
         )?;
         tx.commit().map_err(sqlite)?;
         Ok(())
@@ -1046,6 +1055,7 @@ fn row_to_culture(row: &rusqlite::Row<'_>) -> Culture {
         sort_index: row.get(3).unwrap_or(0),
         linked_ids: Vec::new(),
         parent_id: None,
+        label: String::new(),
         created_at: parse_ts(&row.get::<_, String>(4).unwrap_or_default()),
         updated_at: parse_ts(&row.get::<_, String>(5).unwrap_or_default()),
     }
@@ -1060,6 +1070,7 @@ fn row_to_location(row: &rusqlite::Row<'_>) -> Location {
         sort_index: row.get(4).unwrap_or(0),
         linked_ids: Vec::new(),
         parent_id: None,
+        label: String::new(),
         created_at: parse_ts(&row.get::<_, String>(5).unwrap_or_default()),
         updated_at: parse_ts(&row.get::<_, String>(6).unwrap_or_default()),
     }
@@ -1075,6 +1086,7 @@ fn row_to_lore(row: &rusqlite::Row<'_>) -> LoreEntry {
         sort_index: row.get(5).unwrap_or(0),
         linked_ids: Vec::new(),
         parent_id: None,
+        label: String::new(),
         created_at: parse_ts(&row.get::<_, String>(6).unwrap_or_default()),
         updated_at: parse_ts(&row.get::<_, String>(7).unwrap_or_default()),
     }
@@ -1088,6 +1100,7 @@ fn row_to_research_item(row: &rusqlite::Row<'_>) -> ResearchItem {
         sort_index: row.get(3).unwrap_or(0),
         linked_ids: Vec::new(),
         parent_id: None,
+        label: String::new(),
         created_at: parse_ts(&row.get::<_, String>(4).unwrap_or_default()),
         updated_at: parse_ts(&row.get::<_, String>(5).unwrap_or_default()),
     }
@@ -1113,6 +1126,7 @@ fn row_to_event(row: &rusqlite::Row<'_>) -> TimelineEvent {
         sort_index: row.get(5).unwrap_or(0),
         linked_ids: Vec::new(),
         parent_id: None,
+        label: String::new(),
         created_at: parse_ts(&row.get::<_, String>(6).unwrap_or_default()),
         updated_at: parse_ts(&row.get::<_, String>(7).unwrap_or_default()),
     }
@@ -1135,6 +1149,7 @@ fn row_to_character(row: &rusqlite::Row<'_>) -> Character {
         sort_index: row.get(4).unwrap_or(0),
         linked_ids: Vec::new(),
         parent_id: None,
+        label: String::new(),
         created_at: parse_ts(&row.get::<_, String>(5).unwrap_or_default()),
         updated_at: parse_ts(&row.get::<_, String>(6).unwrap_or_default()),
     }
@@ -1160,6 +1175,20 @@ fn load_scene_link_map(conn: &Connection, kind: &str) -> Result<HashMap<Id, Vec<
     Ok(map)
 }
 
+/// Each entry's label, by id, for every kind.
+fn load_labels(conn: &Connection) -> Result<HashMap<Id, String>> {
+    let mut stmt = conn.prepare("SELECT id, label FROM bible_labels").map_err(sqlite)?;
+    let rows = stmt
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+        .map_err(sqlite)?;
+    let mut map = HashMap::new();
+    for row in rows {
+        let (id, label) = row.map_err(sqlite)?;
+        map.insert(parse_id(&id), label);
+    }
+    Ok(map)
+}
+
 /// Which entry each entry is inside, by id, for every kind.
 fn load_parents(conn: &Connection) -> Result<HashMap<Id, Id>> {
     let mut stmt = conn.prepare("SELECT id, parent_id FROM bible_parents").map_err(sqlite)?;
@@ -1178,12 +1207,12 @@ fn apply_scene_links(map: &HashMap<Id, Vec<Id>>, id: Id) -> Vec<Id> {
     map.get(&id).cloned().unwrap_or_default()
 }
 
-/// Each entry's links into the manuscript, and the entry of its kind it is
-/// inside, if any.
+/// Each entry's links into the manuscript, the entry of its kind it is
+/// inside, if any, and its label.
 fn write_scene_links(
     tx: &rusqlite::Transaction<'_>,
     kind: &str,
-    owners: impl IntoIterator<Item = (Id, Vec<Id>, Option<Id>)>,
+    owners: impl IntoIterator<Item = (Id, Vec<Id>, Option<Id>, String)>,
 ) -> Result<()> {
     tx.execute(
         "DELETE FROM bible_scene_links WHERE owner_kind = ?1",
@@ -1191,7 +1220,15 @@ fn write_scene_links(
     )
     .map_err(sqlite)?;
     tx.execute("DELETE FROM bible_parents WHERE owner_kind = ?1", params![kind]).map_err(sqlite)?;
-    for (owner, scenes, parent) in owners {
+    tx.execute("DELETE FROM bible_labels WHERE owner_kind = ?1", params![kind]).map_err(sqlite)?;
+    for (owner, scenes, parent, label) in owners {
+        if !label.trim().is_empty() {
+            tx.execute(
+                "INSERT OR REPLACE INTO bible_labels (owner_kind, id, label) VALUES (?1, ?2, ?3)",
+                params![kind, owner.to_string(), label],
+            )
+            .map_err(sqlite)?;
+        }
         if let Some(parent) = parent {
             tx.execute(
                 "INSERT OR REPLACE INTO bible_parents (owner_kind, id, parent_id) VALUES (?1, ?2, ?3)",
@@ -1480,7 +1517,7 @@ mod tests {
         cast.set_summary(hero, "Keeps the door locked.".into());
         let motive = cast.add_motivation(hero).unwrap();
         cast.set_motivation(motive, "Protect the house".into());
-        let link = cast.add_relationship(hero, rival).unwrap();
+        let link = cast.connect(hero, rival, String::new()).unwrap();
         cast.set_relationship_kind(link, "rival".into());
         let scene = Id::new();
         let later = Id::new();

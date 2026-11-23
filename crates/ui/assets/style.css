@@ -1350,3 +1350,8 @@ button.keyword-dot:hover { box-shadow: 0 0 0 2px var(--line); }
 .library-kind-add { background: transparent; border: 0; padding: 0 6px; font-size: 14px; line-height: 1; color: var(--muted); }
 .library-kind-add:hover { color: var(--text); background: transparent; }
 .library-row.entry-row .library-name { font-weight: 400; }
+/* An entry's label in the binder, and its connections in Context. */
+.entry-label { margin-left: 6px; font-size: 11px; color: var(--muted); flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.connection-row { display: flex; align-items: baseline; gap: 6px; padding: 2px 0; }
+.connection-name { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.connection-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; margin-top: 6px; }

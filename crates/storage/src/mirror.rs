@@ -1304,7 +1304,7 @@ mod tests {
         let mara = cast.add_character();
         cast.set_name(mara, "Mara".into());
         let tom = cast.add_character();
-        let bond = cast.add_relationship(mara, tom).unwrap();
+        let bond = cast.connect(mara, tom, String::new()).unwrap();
         cast.link_scene(mara, scene.id);
         store.persist_cast(&cast).unwrap();
         let mut grid = PlotGrid::new();

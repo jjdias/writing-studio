@@ -1,6 +1,6 @@
 # Phase 11 — Tags, story links, and a mind map
 
-In progress: stages 1 to 14 are done. Stages 13 to 16, added after trying the window, rework the columns and bring worldbuilding into the binder.
+In progress: stages 1 to 15 are done. Stages 13 to 16, added after trying the window, rework the columns and bring worldbuilding into the binder.
 
 Phase 9 gave binder items colored keywords and saved filters. This phase does four things with what is there:
 
@@ -194,6 +194,8 @@ The window had four columns: the binder, the scene list, the page, and the inspe
 - In `bible.json`, an entry has `parent` when it is inside another of its kind. An entry without one is at the top, so this adds to the format and refuses nothing. Sync merges it as a field. `documentation/PROJECT_FORMAT.md` says so.
 
 ### 15. Labels and named connections
+
+**Done.** Every kind of entry has `label`, in `bible.json` and the cache's new `bible_labels`; `StoryEntry` carries it. `Cast::connect` joins any two entries with a name (a `relationships` line, now between any kinds), `disconnect_all` drops an entry's, and removing a place or a note drops its connections. `crates/context` lists every connection (`connections`, `Connection`, `Tie`: named, inside, or a field), tested. Context for an entry has **What it is** (`set_entry_label`, suggestions from `labels_in_use`) and **Connections** (each way, × on named ones, and a form that connects to an entry typed or picked, `connect_entries` through `entry_named`, with names suggested from those in use). The binder shows a label beside its entry's name. The character page's relationship editor went, with `Cast::add_relationship`, `set_relationship_target`, and `relationships_from`, which only it and tests used.
 
 - Every entry has a **label**: what it is ("Country", "Pub", "Father"), typed with suggestions from the labels its kind already uses, and shown beside its name in the binder, on its page, and on the map.
 - **Connections** join any two entries, of any kinds, with a name ("lives in", "son of", "rules"), suggested from the names in use. They are added and removed in Context, and each side shows the other. Being inside another entry is a connection too ("inside"), without being added.

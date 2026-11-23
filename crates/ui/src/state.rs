@@ -2999,25 +2999,107 @@ impl StudioState {
         }
     }
 
-    /// Link an item to the entry typed in its inspector: as offered,
-    /// "Mara · character", or a name only one entry has. Says so when none
-    /// or several match.
-    pub fn link_story_named(&mut self, item: Id, typed: &str) {
+    /// The entry typed in a field: as offered, "Mara · character", or a
+    /// name only one entry has. Says so when none or several match.
+    pub fn entry_named(&mut self, typed: &str) -> Option<Id> {
         let typed = typed.trim();
         if typed.is_empty() {
-            return;
+            return None;
         }
         let entries = self.story_entries();
         let offered: Vec<&StoryEntry> =
             entries.iter().filter(|entry| same_keyword(&story_choice(entry), typed)).collect();
         let named: Vec<&StoryEntry> = entries.iter().filter(|entry| same_keyword(&entry.name, typed)).collect();
         match (offered.as_slice(), named.as_slice()) {
-            ([entry], _) | ([], [entry]) => {
-                let id = entry.id;
-                self.link_story(item, id);
-            }
+            ([entry], _) | ([], [entry]) => return Some(entry.id),
             ([], []) => self.status = format!("No character, place, or note is called “{typed}”."),
             _ => self.status = format!("More than one entry is called “{typed}”: choose one from the list."),
+        }
+        None
+    }
+
+    /// Link a binder item to the entry typed in its Context.
+    pub fn link_story_named(&mut self, item: Id, typed: &str) {
+        if let Some(id) = self.entry_named(typed) {
+            self.link_story(item, id);
+        }
+    }
+
+    /// Give an entry its label: what it is, "Country", "Father".
+    pub fn set_entry_label(&mut self, id: Id, label: String) {
+        let label = label.trim().to_string();
+        let Some(entry) = self.story_entry(id) else {
+            return;
+        };
+        if entry.label == label {
+            return;
+        }
+        match entry.kind {
+            BibleLink::Character => {
+                let mut cast = self.cast.clone();
+                if let Some(item) = cast.characters.iter_mut().find(|item| item.id == id) {
+                    item.label = label;
+                }
+                self.store_cast(cast, true);
+            }
+            BibleLink::Research => {
+                let mut library = self.library.clone();
+                if let Some(item) = library.items.iter_mut().find(|item| item.id == id) {
+                    item.label = label;
+                }
+                self.store_library(library, true);
+            }
+            kind => {
+                let mut world = self.world.clone();
+                match kind {
+                    BibleLink::Location => world.locations.iter_mut().find(|item| item.id == id).map(|item| item.label = label),
+                    BibleLink::Culture => world.cultures.iter_mut().find(|item| item.id == id).map(|item| item.label = label),
+                    BibleLink::Lore => world.lore.iter_mut().find(|item| item.id == id).map(|item| item.label = label),
+                    _ => world.events.iter_mut().find(|item| item.id == id).map(|item| item.label = label),
+                };
+                self.store_world(world, true);
+            }
+        }
+    }
+
+    /// The labels a kind of entry already uses, for suggestions.
+    pub fn labels_in_use(&self, kind: BibleLink) -> Vec<String> {
+        let mut labels: Vec<String> = Vec::new();
+        for entry in self.story_entries().into_iter().filter(|entry| entry.kind == kind) {
+            if !entry.label.is_empty() && !labels.iter().any(|kept| same_keyword(kept, &entry.label)) {
+                labels.push(entry.label);
+            }
+        }
+        labels
+    }
+
+    /// Every connection between the story's entries.
+    pub fn story_connections(&self) -> Vec<writing_studio_context::Connection> {
+        writing_studio_context::connections(&self.cast, &self.world, &self.library)
+    }
+
+    /// The names connections already use, for suggestions.
+    pub fn connection_names(&self) -> Vec<String> {
+        let mut names: Vec<String> = Vec::new();
+        for item in &self.cast.relationships {
+            let name = item.kind.trim();
+            if !name.is_empty() && !names.iter().any(|kept| same_keyword(kept, name)) {
+                names.push(name.to_string());
+            }
+        }
+        names
+    }
+
+    /// Connect an entry to the one typed, with a name: "lives in".
+    pub fn connect_entries(&mut self, from: Id, typed: &str, name: &str) {
+        let Some(to) = self.entry_named(typed) else {
+            return;
+        };
+        let mut cast = self.cast.clone();
+        if cast.connect(from, to, name.to_string()).is_some() {
+            self.store_cast(cast, true);
+        } else {
+            self.status = "They are already connected that way.".into();
         }
     }
 
@@ -3220,6 +3302,13 @@ impl StudioState {
             kind => {
                 self.world_section = world_section_of(kind);
                 self.remove_world_item(id);
+            }
+        }
+        // A character's go with it; a place's or a note's go here.
+        if self.story_entry(id).is_none() && entry.kind != BibleLink::Character {
+            let mut cast = self.cast.clone();
+            if cast.disconnect_all(id) {
+                self.store_cast(cast, true);
             }
         }
     }
@@ -4175,37 +4264,11 @@ impl StudioState {
         }
     }
 
-    pub fn add_relationship(&mut self, from_id: Id) {
-        self.confirm_character = None;
-        let other = self
-            .cast
-            .characters_in_order()
-            .into_iter()
-            .map(|character| character.id)
-            .find(|id| *id != from_id);
-        let Some(to_id) = other else {
-            self.status = "Add another character before linking a relationship.".into();
-            return;
-        };
-        let mut cast = self.cast.clone();
-        if cast.add_relationship(from_id, to_id).is_some() {
-            self.store_cast(cast, true);
-        }
-    }
-
     pub fn set_relationship_kind(&mut self, id: Id, kind: String) {
         self.confirm_character = None;
         let mut cast = self.cast.clone();
         if cast.set_relationship_kind(id, kind) {
             self.store_cast(cast, false);
-        }
-    }
-
-    pub fn set_relationship_target(&mut self, id: Id, to_id: Id) {
-        self.confirm_character = None;
-        let mut cast = self.cast.clone();
-        if cast.set_relationship_target(id, to_id) {
-            self.store_cast(cast, true);
         }
     }
 
@@ -5760,6 +5823,42 @@ mod tests {
         assert_eq!(state.entry_parent(pub_), Some(country));
         let bible = std::fs::read_to_string(state.project_root().unwrap().join("bible.json")).unwrap();
         assert!(bible.contains(&format!("\"parent\":\"{country}\"")), "{bible}");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Each entry says what it is, and connects to any other by a name;
+    /// being inside another counts too. A place taken away takes its
+    /// connections with it.
+    #[test]
+    fn entries_have_labels_and_named_connections() {
+        let (mut state, dir) = open_state("connections");
+        let father = state.add_entry(BibleLink::Character, None).unwrap();
+        state.rename_entry(father, "Tomas");
+        let son = state.add_entry(BibleLink::Character, Some(father)).unwrap();
+        state.rename_entry(son, "Ivo");
+        let pub_ = state.add_entry(BibleLink::Location, None).unwrap();
+        state.rename_entry(pub_, "The Anchor");
+        state.set_entry_label(pub_, " Pub ".into());
+        state.set_entry_label(father, "Father".into());
+        assert_eq!(state.story_entry(pub_).unwrap().label, "Pub");
+        assert_eq!(state.labels_in_use(BibleLink::Location), ["Pub"]);
+        let bible = std::fs::read_to_string(state.project_root().unwrap().join("bible.json")).unwrap();
+        assert!(bible.contains("\"label\":\"Pub\""), "{bible}");
+
+        state.connect_entries(son, "The Anchor · place", "works at");
+        state.connect_entries(son, "the anchor", "works at");
+        assert!(state.status.contains("already"), "{}", state.status);
+        state.connect_entries(son, "Nobody", "knows");
+        assert!(state.status.contains("No character"), "{}", state.status);
+        assert_eq!(state.connection_names(), ["works at"]);
+        let ties: Vec<(Id, Id, String)> =
+            state.story_connections().into_iter().map(|tie| (tie.from, tie.to, tie.name)).collect();
+        assert!(ties.contains(&(son, pub_, "works at".to_string())));
+        assert!(ties.contains(&(son, father, "inside".to_string())), "being inside counts");
+
+        state.remove_entry(pub_);
+        state.remove_entry(pub_);
+        assert!(state.story_connections().iter().all(|tie| tie.to != pub_), "gone with the place");
         let _ = std::fs::remove_dir_all(dir);
     }
 

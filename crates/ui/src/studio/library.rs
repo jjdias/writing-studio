@@ -517,6 +517,9 @@ fn EntryRow(id: Id, depth: u32, held: bool) -> Element {
                 },
                 ondragend: move |_| state.write().end_drag(),
                 span { class: "library-name", "{entry.name}" }
+                if !entry.label.is_empty() {
+                    span { class: "entry-label", "{entry.label}" }
+                }
             }
             button {
                 class: "item-delete item-edit",

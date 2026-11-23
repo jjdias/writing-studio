@@ -138,7 +138,7 @@ const BINDER_KEYS: [&str; 13] = [
     "id", "kind", "parent", "deleted", "restore_parent", "file", "status", "title", "synopsis", "label",
     "color", "keywords", "left_out",
 ];
-const ENTRY_KEYS: [&str; 3] = ["id", "file", "parent"];
+const ENTRY_KEYS: [&str; 4] = ["id", "file", "parent", "label"];
 const RESEARCH_FILE_KEYS: [&str; 4] = ["id", "note", "name", "stored"];
 const PLOTLINE_KEYS: [&str; 4] = ["id", "title", "color", "points"];
 const POINT_KEYS: [&str; 4] = ["id", "title", "summary", "scene"];
@@ -605,6 +605,7 @@ pub(crate) fn bible_files(
                      title: &str,
                      scenes: &[Id],
                      parent: Option<Id>,
+                     label: &str,
                      file: SceneFile| {
         let path = place(known, used, folder, title, id);
         entries.push((id, path.clone(), file));
@@ -614,6 +615,10 @@ pub(crate) fn bible_files(
         // Inside another entry of its kind: a city in a country.
         if let Some(parent) = parent {
             item.insert("parent".into(), json!(parent.to_string()));
+        }
+        // What it is, in the writer's words: "Country", "Father".
+        if !label.trim().is_empty() {
+            item.insert("label".into(), json!(label));
         }
         add_json_extras(&mut item, extras.get(&id), &ENTRY_KEYS);
         list.push(Value::Object(item));
@@ -648,7 +653,7 @@ pub(crate) fn bible_files(
             ],
             extras.get(&person.id),
         );
-        entry("characters", &mut list, person.id, &person.name, &person.linked_ids, person.parent_id, file);
+        entry("characters", &mut list, person.id, &person.name, &person.linked_ids, person.parent_id, &person.label, file);
     }
     order.push(("characters", std::mem::take(&mut list)));
 
@@ -660,13 +665,13 @@ pub(crate) fn bible_files(
             vec![("culture", optional_id(place_.culture_id))],
             extras.get(&place_.id),
         );
-        entry("places", &mut list, place_.id, &place_.name, &place_.linked_ids, place_.parent_id, file);
+        entry("places", &mut list, place_.id, &place_.name, &place_.linked_ids, place_.parent_id, &place_.label, file);
     }
     order.push(("places", std::mem::take(&mut list)));
 
     for culture in sorted(&world.cultures, |item| item.sort_index) {
         let file = entry_file(culture.id, &culture.name, &culture.summary, Vec::new(), extras.get(&culture.id));
-        entry("cultures", &mut list, culture.id, &culture.name, &culture.linked_ids, culture.parent_id, file);
+        entry("cultures", &mut list, culture.id, &culture.name, &culture.linked_ids, culture.parent_id, &culture.label, file);
     }
     order.push(("cultures", std::mem::take(&mut list)));
 
@@ -681,7 +686,7 @@ pub(crate) fn bible_files(
             ],
             extras.get(&lore.id),
         );
-        entry("lore", &mut list, lore.id, &lore.title, &lore.linked_ids, lore.parent_id, file);
+        entry("lore", &mut list, lore.id, &lore.title, &lore.linked_ids, lore.parent_id, &lore.label, file);
     }
     order.push(("lore", std::mem::take(&mut list)));
 
@@ -696,13 +701,13 @@ pub(crate) fn bible_files(
             ],
             extras.get(&event.id),
         );
-        entry("timeline", &mut list, event.id, &event.title, &event.linked_ids, event.parent_id, file);
+        entry("timeline", &mut list, event.id, &event.title, &event.linked_ids, event.parent_id, &event.label, file);
     }
     order.push(("timeline", std::mem::take(&mut list)));
 
     for note in sorted(&library.items, |item| item.sort_index) {
         let file = entry_file(note.id, &note.title, &note.notes, Vec::new(), extras.get(&note.id));
-        entry("research", &mut list, note.id, &note.title, &note.linked_ids, note.parent_id, file);
+        entry("research", &mut list, note.id, &note.title, &note.linked_ids, note.parent_id, &note.label, file);
     }
     order.push(("research", std::mem::take(&mut list)));
 
@@ -1155,12 +1160,17 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
     }
     // `head` is the names the program reads from this kind of entry's head.
     let parents: RefCell<HashMap<Id, Id>> = RefCell::new(HashMap::new());
+    let labels: RefCell<HashMap<Id, String>> = RefCell::new(HashMap::new());
     let mut entries = |key: &str, head: &[&str]| -> Result<Vec<(Id, i64, String, SceneFile)>> {
         let mut out = Vec::new();
         for (index, item) in bible.list(key).into_iter().enumerate() {
             let id = bible.id(item, "id")?;
             if let Some(parent) = bible.optional_id(item, "parent")? {
                 parents.borrow_mut().insert(id, parent);
+            }
+            let label = text_of(item, "label");
+            if !label.trim().is_empty() {
+                labels.borrow_mut().insert(id, label);
             }
             let path = text_of(item, "file");
             if !ids.insert(id) {
@@ -1239,6 +1249,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
             sort_index: index,
             linked_ids: links_of(id),
             parent_id: parents.borrow().get(&id).copied(),
+            label: labels.borrow().get(&id).cloned().unwrap_or_default(),
             created_at: now,
             updated_at: now,
         });
@@ -1268,6 +1279,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
             sort_index: index,
             linked_ids: links_of(id),
             parent_id: parents.borrow().get(&id).copied(),
+            label: labels.borrow().get(&id).cloned().unwrap_or_default(),
             created_at: now,
             updated_at: now,
         });
@@ -1280,6 +1292,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
             sort_index: index,
             linked_ids: links_of(id),
             parent_id: parents.borrow().get(&id).copied(),
+            label: labels.borrow().get(&id).cloned().unwrap_or_default(),
             created_at: now,
             updated_at: now,
         });
@@ -1294,6 +1307,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
             sort_index: index,
             linked_ids: links_of(id),
             parent_id: parents.borrow().get(&id).copied(),
+            label: labels.borrow().get(&id).cloned().unwrap_or_default(),
             created_at: now,
             updated_at: now,
         });
@@ -1308,6 +1322,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
             sort_index: index,
             linked_ids: links_of(id),
             parent_id: parents.borrow().get(&id).copied(),
+            label: labels.borrow().get(&id).cloned().unwrap_or_default(),
             created_at: now,
             updated_at: now,
         });
@@ -1322,6 +1337,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
             sort_index: index,
             linked_ids: links_of(id),
             parent_id: parents.borrow().get(&id).copied(),
+            label: labels.borrow().get(&id).cloned().unwrap_or_default(),
             created_at: now,
             updated_at: now,
         });
@@ -1655,6 +1671,7 @@ mod tests {
             sort_index: index,
             linked_ids: vec![scene.id],
             parent_id: None,
+            label: String::new(),
             created_at: now,
             updated_at: now,
         };
@@ -1691,6 +1708,7 @@ mod tests {
                     sort_index: 0,
                     linked_ids: vec![scene.id],
                     parent_id: None,
+                    label: String::new(),
                     created_at: now,
                     updated_at: now,
                 }],
@@ -1701,6 +1719,7 @@ mod tests {
                     sort_index: 0,
                     linked_ids: Vec::new(),
                     parent_id: None,
+                    label: String::new(),
                     created_at: now,
                     updated_at: now,
                 }],
@@ -1713,6 +1732,7 @@ mod tests {
                     sort_index: 0,
                     linked_ids: Vec::new(),
                     parent_id: None,
+                    label: String::new(),
                     created_at: now,
                     updated_at: now,
                 }],
@@ -1725,6 +1745,7 @@ mod tests {
                     sort_index: 0,
                     linked_ids: Vec::new(),
                     parent_id: None,
+                    label: String::new(),
                     created_at: now,
                     updated_at: now,
                 }],
