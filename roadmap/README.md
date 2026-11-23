@@ -23,6 +23,7 @@ Writing Studio is **open source** (MIT OR Apache-2.0) and **free for the communi
 | 9 | Writing comfort, from Ulysses: a brighter layout, page settings, deadlines, keywords | Done | [done/phase-9.md](done/phase-9.md) |
 | 11 | Tags, story links, and a mind map: nested keywords, entries linked from the scene, a scene context, views in the library; worldbuilding in the binder | Done (the look in the window waits for a later phase) | [done/phase-11.md](done/phase-11.md) |
 | 12 | A Markdown editor: live preview, Markdown shortcuts, notes and footnotes, what the page does now | In progress | [todo/phase-12.md](todo/phase-12.md) |
+| 13 | Context at every level: a file for each scene, chapter, part, and book, its context above its text, and the context of each level for a reader or an AI | Not started | [todo/phase-13.md](todo/phase-13.md) |
 | Bonus | Work with no phase yet | Not started | [todo/bonus.md](todo/bonus.md) |
 
 Phases 1 to 9 and 11 are on `master`.
@@ -43,7 +44,7 @@ The last three items were cleared at the end of Phase 5: a check used only by it
 
 ## What to do next
 
-The first release. The maintainer goes through the check in [documentation/RELEASING.md](../documentation/RELEASING.md) with the installer on Windows and the `.deb` in WSL2, then pushes the tag `v0.1.0`. Then [Phase 12](todo/phase-12.md): the page becomes a Markdown editor, on CodeMirror 6, with scenes kept as HTML files for now. Phase 10 has no plan. macOS, iOS, Android, and the web were dropped: see [done/phase-7.md](done/phase-7.md).
+The first release. The maintainer goes through the check in [documentation/RELEASING.md](../documentation/RELEASING.md) with the installer on Windows and the `.deb` in WSL2, then pushes the tag `v0.1.0`. Then [Phase 12](todo/phase-12.md): the page becomes a Markdown editor, on CodeMirror 6, and the project's text is stored as Markdown files (stage 8; it should be merged before v0.1.0 is tagged, or format 2 needs a conversion). Then [Phase 13](todo/phase-13.md): context at every level. Phase 10 has no plan. macOS, iOS, Android, and the web were dropped: see [done/phase-7.md](done/phase-7.md).
 
 ## Product principles
 

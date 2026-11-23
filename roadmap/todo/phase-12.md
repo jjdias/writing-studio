@@ -1,6 +1,6 @@
 # Phase 12 — A Markdown editor
 
-In progress: stages 1 to 7 are done. Stage 8, scenes as `.md` files, waits for the maintainer's decision; the scenes stay HTML files.
+In progress: stages 1 to 7 are done. Stage 8, the project's text as `.md` files, is decided and next.
 
 The page is a rich-text editor today: a `contenteditable` element that the program's own scripts (`crates/ui/assets/review.js`, `spell.js`, `place.js`) and `crates/ui/src/studio/editor.rs` keep in step with the document model. This phase makes the page a Markdown editor: the writer types and sees Markdown, shown as the best Markdown editors show it, while everything the page does now keeps working.
 
@@ -39,13 +39,13 @@ From their documentation (sources at the end):
 
 ## Decisions
 
-Decided by the maintainer: the component is CodeMirror 6, and scenes stay HTML files for now (stage 8 is decided at the end).
+Decided by the maintainer: the component is CodeMirror 6; the scenes stayed HTML files while the editor was built, and stage 8 makes them `.md` files.
 
 - **The editor component.** CodeMirror 6 is MIT-licensed, works offline, and is what Obsidian proves out; it is JavaScript, so it is vendored as one pinned, prebuilt file in `crates/ui/assets` (like the scripts there), not loaded from the network, and its license goes into the `licenses` folder beside `THIRD-PARTY-NOTICES.html`, which `cargo-about` does not cover. A plain `textarea` with the program's own highlighting is the smaller choice, but gives no live preview and makes spelling marks and notes hard to place. **Decided: CodeMirror 6**, approved by the maintainer as the dependency `.claude/rules/architecture.md` asks.
 - **What is stored.** Two ways:
   - *Keep the HTML files* and the document model as they are: the page turns the scene into Markdown when it opens it and back into blocks when it saves (both already in `crates/format`). No format change.
   - *Store scenes as `.md` files* (format 3): the files are what the writer sees, and other Markdown editors open the project directly. Following "No compatibility with earlier versions" in [../README.md](../README.md), format 2 projects would be refused.
-  **Decided: the HTML files stay for now.** `.md` storage is the phase's last, separate stage, decided once the editor has proved itself.
+  **Decided: the HTML files stayed while the editor was built (stages 1 to 7); stage 8 stores `.md` files.** The page edits Markdown already, so what is stored becomes what the writer sees, and each file is its level's context above its text, the shape [Phase 13](phase-13.md) builds on.
 - **Underline and colored highlights.** Markdown has neither. Underline stays `<u>`, as the export writes it; highlights keep their color as `{==text==}{.green}`. The toolbar keeps offering both.
 - **Shortcut keys.** Ctrl+1 to Ctrl+8 change views today, so heading levels take Ctrl+Alt+1 to Ctrl+Alt+6, or the paragraph style menu.
 
@@ -109,9 +109,17 @@ Each as CodeMirror decorations or panels, not changes to its DOM:
 
 **Done.** The Markdown page is the page, with no switch. Gone: the `contenteditable` page and its readers in `studio/editor.rs`, `review.js`, `spell.js`, and `place.js` with their CSS, `StudioState::editor_html`, `same_editor_html`, and `apply_editor_html`, and `EditorSession::html` and `apply_html`. The toolbar, the link and note field, the review panel, Navigate, finding a word, and split call the editor directly (`page_call`, `format_command`); review actions act on the document, and the page keeps its caret. The shortcuts window lists the Markdown keys, and `USAGE.md`, `ARCHITECTURE.md`, and `PROJECT_FORMAT.md` describe the page and what the reader now takes. The state's tests set their scenes up in Markdown, as the page sends them.
 
-### 8. Scenes as Markdown files (decided at the end)
+### 8. The project's text as Markdown files
 
-- If the maintainer chooses it: scenes are stored as `.md` files with their header as front matter, `FORMAT` says 3, and format 2 projects are refused with a clear message. `documentation/PROJECT_FORMAT.md` is rewritten for it.
+Decided by the maintainer, with Phase 13 in view: every file of the project that holds text is Markdown, its details as front matter above its text. A file is its level's context, then its body.
+
+- **Scenes and chapters with text** are `manuscript/<name>-<id>.md`, written and read as the Markdown export writes and reads a scene today (`SceneFile::to_markdown`, `parse_markdown`): `id`, `title`, `synopsis`, `status`, `goal`, `conflict`, `outcome`, and keys this program does not know, kept. The body is the text as the page shows it.
+- **The bible's entries** (`characters/`, `places/`, `cultures/`, `lore/`, `timeline/`, `research/`) are `.md` files the same way: their fields as front matter, their notes as the body.
+- **What stays where it is.** `binder.json` keeps the order and nesting of the book, and each item's keywords until Phase 13; `bible.json`, `plot.json`, and `mindmap.json` keep links, plotlines, and the map. A file names nothing it would have to keep in step with another file: no list of children, no copied plot points.
+- **What a Markdown file cannot hold** is what canonical form already removes, the same as the page does since stage 2: formatting on the spaces at a run's edges, formatting inside a code block, an empty list. Nothing else is lost; the round-trip tests in `crates/format` say so for every kind of block and mark.
+- **The format is 3.** `FORMAT` says `writing-studio-project 3`. A format 2 project is refused with a message that says it was made by an earlier version, as the roadmap's rule asks; it is not converted.
+- **Before the first release.** The rule holds only while nobody has downloaded the program. If v0.1.0 is released with format 2 first, refusing format 2 would lock its users out of their books. So either this stage is merged before v0.1.0 is tagged, or a one-time conversion from format 2 is written and the rule is changed; the maintainer chooses before this stage starts.
+- **Everywhere that reads files follows:** storage's reading and writing, the SQLite cache's rebuild on open, a file changed outside the program (kept beside as `name.conflict-<time>.md`), sync's merge of two versions of a file, backups and restore, and the Markdown export, which no longer needs to convert scenes. `documentation/PROJECT_FORMAT.md` is rewritten for format 3, and the project's `README.md` and `scene.css` change with it (`scene.css` goes: a browser no longer opens a scene; any Markdown reader does).
 
 ## How changes are checked
 
