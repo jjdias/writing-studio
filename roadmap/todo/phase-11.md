@@ -1,6 +1,6 @@
 # Phase 11 — Tags, story links, and a mind map
 
-In progress: stages 1 to 3 are done.
+In progress: stages 1 to 4 are done.
 
 Phase 9 gave binder items colored keywords and saved filters. This phase does four things with what is there:
 
@@ -87,6 +87,8 @@ In this order: the layout change first, because every later stage adds to the li
 - A click filters the binder to what carries the keyword or one of its children, as a search does. A second click, or Escape, clears it. The mind map and the outline follow the same filter.
 
 ### 4. Rename and merge
+
+**Done.** `BinderTree::rename_keyword` renames on every item (the trash included), its children with it, in the keyword list with its color, and in saved filters; `items_with_keyword` and `keyword_merges` say what it will do. A name in use merges: an item carrying both keeps one, and the kept keyword's spelling and color win, for the children too. A new name is tidied like a typed one, and a rename that would make a child longer than the keyword limit is refused rather than cut. In the library, a pencil button or F2 on a keyword row opens the field; Enter renames, Escape leaves it. A rename happens at once and names how many items changed; a merge asks first, in the status line, and waits for a second Enter. Either is undone with the status line's Undo (`UndoOffer::Keywords`, from a snapshot of every item's keywords, the list, and the filters), not with Ctrl+Z, which stays with the text. The chosen keyword follows a rename.
 
 - A keyword is renamed from its row in the list, on every item that carries it, its children included: `plot` to `story` makes `plot/subplot` into `story/subplot`.
 - Renaming to a keyword that already exists merges the two; the color of the one kept stays. It asks first, naming how many items change.

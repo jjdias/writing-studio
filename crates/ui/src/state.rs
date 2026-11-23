@@ -158,6 +158,17 @@ pub enum UndoOffer {
     Structure,
     /// An item moved to the trash, put back where it was.
     Trash { id: Id, parent: Id, after: Option<Id>, reopen: bool },
+    /// A keyword renamed or merged, from `StudioState::keyword_undo`.
+    Keywords,
+}
+
+/// The binder's keywords before a rename, to put back with Undo.
+#[derive(Clone, Debug)]
+pub struct KeywordSnapshot {
+    items: Vec<(Id, Vec<String>)>,
+    keywords: Vec<writing_studio_project::Keyword>,
+    filters: Vec<SavedFilter>,
+    chosen: Option<String>,
 }
 
 /// A book, part, chapter, folder, or scene the Go to box can open.
@@ -347,6 +358,12 @@ pub struct StudioState {
     pub keyword_sort: KeywordSort,
     /// Keywords folded in the library's list, whose children are hidden.
     pub folded_keywords: Vec<String>,
+    /// The keyword being renamed in the library's list.
+    pub renaming_keyword: Option<String>,
+    /// A rename that would merge two keywords, waiting for a second Enter.
+    confirm_keyword_merge: Option<(String, String)>,
+    /// What the last keyword rename changed, for the status line's Undo.
+    keyword_undo: Option<KeywordSnapshot>,
     pub confirm_character: Option<Id>,
     pub world: World,
     pub world_dirty: bool,
@@ -464,6 +481,9 @@ impl Default for StudioState {
             keyword_filter: None,
             keyword_sort: KeywordSort::Name,
             folded_keywords: Vec::new(),
+            renaming_keyword: None,
+            confirm_keyword_merge: None,
+            keyword_undo: None,
             confirm_character: None,
             world: World::new(),
             world_dirty: false,
@@ -2377,6 +2397,61 @@ impl StudioState {
         }
     }
 
+    /// Rename a keyword on every item that carries it, its children and
+    /// saved filters with it. A name already in use merges the two, after a
+    /// second Enter. The status line offers Undo.
+    pub fn rename_keyword(&mut self, old: &str, typed: &str) {
+        let Some(new) = tidy_keyword(typed) else {
+            self.status = format!("“{}” is not a keyword: each part around / needs a name.", typed.trim());
+            return;
+        };
+        if new == old.trim() {
+            self.renaming_keyword = None;
+            return;
+        }
+        let count = self.binder.items_with_keyword(old);
+        let items = if count == 1 { "1 item".to_string() } else { format!("{count} items") };
+        let merges = self.binder.keyword_merges(old, &new);
+        let waiting = self.confirm_keyword_merge.as_ref().is_some_and(|(from, to)| from == old && *to == new);
+        if merges && !waiting {
+            self.confirm_keyword_merge = Some((old.to_string(), new.clone()));
+            self.status = format!("“{new}” is in use: “{old}” joins it on {items}. Press Enter again to merge them.");
+            return;
+        }
+        self.confirm_keyword_merge = None;
+        let snapshot = KeywordSnapshot {
+            items: self
+                .binder
+                .nodes
+                .iter()
+                .filter(|node| !node.keywords.is_empty())
+                .map(|node| (node.id, node.keywords.clone()))
+                .collect(),
+            keywords: self.binder.keywords.clone(),
+            filters: self.binder.filters.clone(),
+            chosen: self.keyword_filter.clone(),
+        };
+        match self.binder.rename_keyword(old, &new) {
+            Err(why) => self.status = why,
+            Ok(_) => {
+                if !self.persist_binder() {
+                    return;
+                }
+                self.renaming_keyword = None;
+                if self.keyword_filter.as_deref().is_some_and(|chosen| keyword_covers(old, chosen)) {
+                    self.keyword_filter = Some(new.clone());
+                }
+                self.status = if merges {
+                    format!("Merged “{old}” into “{new}” on {items}.")
+                } else {
+                    format!("Renamed “{old}” to “{new}” on {items}.")
+                };
+                self.keyword_undo = Some(snapshot);
+                self.offer_undo(UndoOffer::Keywords);
+            }
+        }
+    }
+
     /// Let go of the chosen keyword. Returns whether one was chosen.
     pub fn clear_keyword_filter(&mut self) -> bool {
         self.keyword_filter.take().is_some()
@@ -2438,7 +2513,8 @@ impl StudioState {
             | self.confirm_research.take().is_some()
             | self.confirm_backup.take().is_some()
             | self.confirm_kept.take().is_some()
-            | std::mem::take(&mut self.confirm_empty_trash);
+            | std::mem::take(&mut self.confirm_empty_trash)
+            | self.confirm_keyword_merge.take().is_some();
         if waiting {
             self.status = "Cancelled.".into();
         }
@@ -3980,6 +4056,7 @@ impl StudioState {
         match &self.undo_offer {
             Some((UndoOffer::Structure, status)) => *status == self.status && self.undo_is_structure_step(),
             Some((UndoOffer::Trash { .. }, status)) => *status == self.status,
+            Some((UndoOffer::Keywords, status)) => *status == self.status && self.keyword_undo.is_some(),
             None => false,
         }
     }
@@ -3994,6 +4071,25 @@ impl StudioState {
         };
         match offer {
             UndoOffer::Structure => self.undo(),
+            UndoOffer::Keywords => {
+                let Some(snapshot) = self.keyword_undo.take() else {
+                    return;
+                };
+                for node in &mut self.binder.nodes {
+                    node.keywords = snapshot
+                        .items
+                        .iter()
+                        .find(|(id, _)| *id == node.id)
+                        .map(|(_, words)| words.clone())
+                        .unwrap_or_default();
+                }
+                self.binder.keywords = snapshot.keywords;
+                self.binder.filters = snapshot.filters;
+                self.keyword_filter = snapshot.chosen;
+                if self.persist_binder() {
+                    self.status = "Put the keywords back.".into();
+                }
+            }
             UndoOffer::Trash { id, parent, after, reopen } => {
                 let title = self.binder.get(id).map(|node| node.title.clone()).unwrap_or_default();
                 match self.binder.put_after(id, parent, after) {
@@ -4437,6 +4533,48 @@ mod tests {
         state.add_keyword(other, "plot/twist");
         state.keyword_sort = KeywordSort::Count;
         assert_eq!(names(&state), ["plot", "plot/subplot", "plot/twist", "flashback"]);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A rename is saved and offers Undo; one that would merge two
+    /// keywords waits for a second Enter, and Escape lets it go.
+    #[test]
+    fn a_keyword_is_renamed_merged_and_put_back() {
+        let (mut state, dir) = open_state("keyword-rename");
+        let tagged = state.selected.unwrap();
+        state.add_node(NodeKind::Scene);
+        let other = state.selected.unwrap();
+        state.add_keyword(tagged, "plot/subplot");
+        state.add_keyword(other, "story");
+        state.choose_keyword("plot");
+        state.renaming_keyword = Some("plot".into());
+
+        state.rename_keyword("plot", "thread");
+        assert_eq!(state.binder.get(tagged).unwrap().keywords, ["thread/subplot"]);
+        assert!(state.status.contains("on 1 item"), "{}", state.status);
+        assert_eq!(state.renaming_keyword, None);
+        assert_eq!(state.keyword_filter.as_deref(), Some("thread"), "the chosen keyword follows");
+        let binder = state.project_root().unwrap().join("binder.json");
+        let saved = std::fs::read_to_string(&binder).unwrap();
+        assert!(saved.contains("thread/subplot") && !saved.contains("plot/subplot"));
+
+        assert!(state.undo_offered());
+        state.take_undo_offer();
+        assert_eq!(state.binder.get(tagged).unwrap().keywords, ["plot/subplot"]);
+        assert_eq!(state.keyword_filter.as_deref(), Some("plot"));
+        assert!(std::fs::read_to_string(&binder).unwrap().contains("plot/subplot"));
+
+        state.rename_keyword("plot", "Story");
+        assert!(state.status.contains("Enter again"), "{}", state.status);
+        assert_eq!(state.binder.get(tagged).unwrap().keywords, ["plot/subplot"], "nothing yet");
+        assert!(state.cancel_confirmation(), "Escape lets the merge go");
+        state.rename_keyword("plot", "Story");
+        state.rename_keyword("plot", "Story");
+        assert_eq!(state.binder.get(tagged).unwrap().keywords, ["story/subplot"], "spelled as the one in use");
+        assert!(state.status.starts_with("Merged"), "{}", state.status);
+
+        state.rename_keyword("story", "a//b");
+        assert!(state.status.contains("not a keyword"));
         let _ = std::fs::remove_dir_all(dir);
     }
 

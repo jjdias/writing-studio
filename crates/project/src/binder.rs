@@ -1542,6 +1542,94 @@ impl BinderTree {
         choices
     }
 
+    /// How many items carry a keyword or one nested under it, the trash
+    /// included: the items a rename changes.
+    pub fn items_with_keyword(&self, name: &str) -> usize {
+        self.nodes.iter().filter(|node| node.keywords.iter().any(|word| keyword_covers(name, word))).count()
+    }
+
+    /// Whether renaming `old` to `new` would fold it into a keyword already
+    /// in use, rather than give it a new name or a new spelling.
+    pub fn keyword_merges(&self, old: &str, new: &str) -> bool {
+        let Some(new) = tidy_keyword(new) else {
+            return false;
+        };
+        self.keywords.iter().any(|keyword| same_word(&keyword.name, &new) && !keyword_covers(old, &keyword.name))
+    }
+
+    /// Rename a keyword on every item and saved filter, with what is nested
+    /// under it: `plot` to `story` makes `plot/subplot` into
+    /// `story/subplot`. A name already in use merges the two, keeping that
+    /// keyword's spelling and color. Returns how many items changed, or why
+    /// the new name cannot be taken.
+    pub fn rename_keyword(&mut self, old: &str, new: &str) -> std::result::Result<usize, String> {
+        let new = tidy_keyword(new).ok_or_else(|| format!("“{}” is not a keyword: each part around / needs a name.", new.trim()))?;
+        let depth = old.trim().split('/').count();
+        // The keywords that stay as they are, which a renamed one may join.
+        let staying: Vec<String> = self
+            .keywords
+            .iter()
+            .filter(|keyword| !keyword_covers(old, &keyword.name))
+            .map(|keyword| keyword.name.clone())
+            .collect();
+        // Joining a keyword in use, its children take its spelling too.
+        let new = staying.iter().find(|kept| same_word(kept, &new)).cloned().unwrap_or(new);
+        let moved = |word: &str| -> Option<String> {
+            if !keyword_covers(old, word) {
+                return None;
+            }
+            let rest: Vec<&str> = word.trim().split('/').skip(depth).collect();
+            let name = if rest.is_empty() { new.clone() } else { format!("{new}/{}", rest.join("/")) };
+            Some(staying.iter().find(|kept| same_word(kept, &name)).cloned().unwrap_or(name))
+        };
+        let renamed = self
+            .nodes
+            .iter()
+            .flat_map(|node| node.keywords.iter())
+            .chain(self.keywords.iter().map(|keyword| &keyword.name))
+            .chain(self.filters.iter().map(|filter| &filter.keyword))
+            .filter_map(|word| moved(word));
+        for name in renamed {
+            if name.chars().count() > KEYWORD_MAX {
+                return Err(format!("“{name}” would be longer than {KEYWORD_MAX} characters."));
+            }
+        }
+
+        let mut changed = 0;
+        for node in &mut self.nodes {
+            if !node.keywords.iter().any(|word| keyword_covers(old, word)) {
+                continue;
+            }
+            let mut words: Vec<String> = Vec::new();
+            for word in &node.keywords {
+                let word = moved(word).unwrap_or_else(|| word.clone());
+                if !words.iter().any(|kept| same_word(kept, &word)) {
+                    words.push(word);
+                }
+            }
+            node.keywords = words;
+            node.updated_at = Timestamp::now();
+            changed += 1;
+        }
+        let mut keywords: Vec<Keyword> = Vec::new();
+        for keyword in &self.keywords {
+            match moved(&keyword.name) {
+                // A keyword that stays keeps its place and its color.
+                Some(name) if staying.iter().any(|kept| same_word(kept, &name)) => {}
+                Some(name) if keywords.iter().any(|kept| same_word(&kept.name, &name)) => {}
+                Some(name) => keywords.push(Keyword { name, color: keyword.color.clone() }),
+                None => keywords.push(keyword.clone()),
+            }
+        }
+        self.keywords = keywords;
+        for filter in &mut self.filters {
+            if let Some(name) = moved(&filter.keyword) {
+                filter.keyword = name;
+            }
+        }
+        Ok(changed)
+    }
+
     /// Every keyword as a tree, for the library's list: each under the one
     /// it is nested in, siblings sorted by `sort`, each counting the items
     /// outside the trash that carry it or one nested under it.
@@ -1780,6 +1868,56 @@ mod keyword_tests {
         );
         tree.add_keyword(a, "plot");
         assert_eq!(tree.keyword_choices().iter().filter(|word| same_keyword(word, "plot")).count(), 1);
+    }
+
+    /// Renaming a keyword renames it on every item, its children with it,
+    /// and in the saved filters; the color stays with it.
+    #[test]
+    fn a_renamed_keyword_takes_its_children_and_filters_along() {
+        let (mut tree, a, b) = tree();
+        tree.add_keyword(a, "Plot");
+        tree.add_keyword(a, "plot/subplot");
+        tree.add_keyword(b, "plot/twist/late");
+        tree.add_keyword(b, "plotting");
+        tree.filters.push(keyword_filter("plot/twist"));
+        let color = tree.keyword_color("plot/subplot").to_string();
+        assert_eq!(tree.items_with_keyword("PLOT"), 2);
+        assert!(!tree.keyword_merges("plot", "story"));
+
+        assert_eq!(tree.rename_keyword("plot", " #Story "), Ok(2));
+        assert_eq!(tree.get(a).unwrap().keywords, ["Story", "Story/subplot"]);
+        assert_eq!(tree.get(b).unwrap().keywords, ["Story/twist/late", "plotting"], "plotting is another keyword");
+        assert_eq!(tree.filters[0].keyword, "Story/twist");
+        assert_eq!(tree.keyword_color("story/subplot"), color, "the color goes with it");
+        assert!(tree.keywords.iter().all(|keyword| !keyword_covers("plot", &keyword.name)));
+
+        assert!(tree.rename_keyword("story", "a//b").is_err(), "the new name is tidied like a typed one");
+        assert_eq!(tree.rename_keyword("nothing", "else"), Ok(0));
+        assert_eq!(tree.rename_keyword("story", "STORY"), Ok(2), "a new spelling of the same keyword");
+        assert_eq!(tree.get(a).unwrap().keywords, ["STORY", "STORY/subplot"]);
+    }
+
+    /// Renaming to a keyword in use merges the two: an item carrying both
+    /// keeps one, spelled and colored as the one that was there.
+    #[test]
+    fn renaming_to_a_keyword_in_use_merges_them() {
+        let (mut tree, a, b) = tree();
+        tree.add_keyword(a, "Mara");
+        tree.add_keyword(b, "Mara");
+        tree.add_keyword(b, "mara-old");
+        tree.add_keyword(a, "mara-old/scar");
+        tree.add_keyword(b, "Mara/scar");
+        tree.add_keyword(a, "mara-old/eyes");
+        let kept_color = tree.keyword_color("Mara").to_string();
+        assert!(tree.keyword_merges("mara-old", "mara"));
+        assert!(!tree.keyword_merges("mara", "MARA"), "a new spelling is not a merge");
+
+        assert_eq!(tree.rename_keyword("mara-old", "mara"), Ok(2));
+        assert_eq!(tree.get(a).unwrap().keywords, ["Mara", "Mara/scar", "Mara/eyes"], "a new child takes the kept spelling");
+        assert_eq!(tree.get(b).unwrap().keywords, ["Mara", "Mara/scar"], "one of each, not two");
+        assert_eq!(tree.keyword_color("mara"), kept_color);
+        let names: Vec<&str> = tree.keywords.iter().map(|keyword| keyword.name.as_str()).collect();
+        assert_eq!(names, ["Mara", "Mara/scar", "Mara/eyes"]);
     }
 
     /// The library's keyword list: a tree, each keyword counting the items

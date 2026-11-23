@@ -805,7 +805,8 @@ fn KeywordSection() -> Element {
                 let hex = binder_color_hex(state.read().binder.keyword_color(&name)).to_string();
                 let indent = row.depth * 14;
                 let fold_label = if folded { format!("Show what is under {name}") } else { format!("Fold {name}") };
-                let (fold_name, pick_name) = (name.clone(), name.clone());
+                let (fold_name, pick_name, key_name, edit_name) = (name.clone(), name.clone(), name.clone(), name.clone());
+                let renaming = state.read().renaming_keyword.as_deref().is_some_and(|kept| same_keyword(kept, &name));
                 rsx! {
                     div { class: "library-item", key: "{name}", style: "padding-left: {indent}px",
                         if row.has_children {
@@ -822,11 +823,21 @@ fn KeywordSection() -> Element {
                         } else {
                             span { class: "fold-spacer" }
                         }
+                        if renaming {
+                            KeywordRenameField { name: name.clone() }
+                        } else {
                         button {
                             class: if active { "library-row active" } else { "library-row" },
                             aria_current: if active { "true" } else { "false" },
-                            title: if active { "Show every scene again (Escape)" } else { "Show only what carries “{name}” or a keyword under it" },
+                            title: if active { "Show every scene again (Escape). F2 renames it." } else { "Show only what carries “{name}” or a keyword under it. F2 renames it." },
                             onclick: move |_| state.write().choose_keyword(&pick_name),
+                            onkeydown: move |event: KeyboardEvent| {
+                                if event.key() == Key::F2 {
+                                    event.prevent_default();
+                                    state.write().renaming_keyword = Some(key_name.clone());
+                                    select_field("rename-keyword".into());
+                                }
+                            },
                             span {
                                 class: "keyword-dot small",
                                 style: if hex.is_empty() { "background: transparent; box-shadow: inset 0 0 0 1px var(--muted)".to_string() } else { format!("background: {hex}") },
@@ -834,9 +845,54 @@ fn KeywordSection() -> Element {
                             span { class: "library-name", "{row.leaf}" }
                             span { class: "library-count", "{row.count}" }
                         }
+                        button {
+                            class: "item-delete item-edit",
+                            title: "Rename “{name}” everywhere, with what is under it",
+                            aria_label: "Rename the keyword {name}",
+                            onclick: move |event| {
+                                event.stop_propagation();
+                                state.write().renaming_keyword = Some(edit_name.clone());
+                                select_field("rename-keyword".into());
+                            },
+                            svg { class: "glyph", view_box: "0 0 16 16", "aria-hidden": "true",
+                                path { d: "M3 13l1-3.5 6.5-6.5 2.5 2.5-6.5 6.5z", fill: "none", stroke: "currentColor", stroke_width: "1.2", stroke_linejoin: "round" }
+                            }
+                        }
+                        }
                     }
                 }
             }
+        }
+    }
+}
+
+/// The field that renames a keyword in place. Enter renames it (a second
+/// Enter when it would merge into another), Escape leaves it as it was.
+#[component]
+fn KeywordRenameField(name: String) -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let mut draft = use_signal(|| name.clone());
+    let old = name.clone();
+    rsx! {
+        input {
+            id: "rename-keyword",
+            class: "rename-field",
+            aria_label: "New name for the keyword “{name}”",
+            value: "{draft}",
+            oninput: move |event| draft.set(event.value()),
+            onkeydown: move |event| match event.key() {
+                Key::Enter => {
+                    event.prevent_default();
+                    state.write().rename_keyword(&old, &draft());
+                }
+                Key::Escape => {
+                    event.stop_propagation();
+                    let mut current = state.write();
+                    current.renaming_keyword = None;
+                    current.cancel_confirmation();
+                }
+                _ => {}
+            },
         }
     }
 }
