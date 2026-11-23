@@ -49,6 +49,14 @@ impl Document {
         self.blocks = reuse_ids(&self.blocks, parsed);
         self.updated_at = writing_studio_core::Timestamp::now();
     }
+
+    /// Take these blocks as the text, as `replace_html` takes the page's
+    /// HTML: a block keeps the id of the one it replaces, at the same place,
+    /// so tracked changes and links to a block still find it.
+    pub fn replace_blocks(&mut self, blocks: Vec<Block>) {
+        self.blocks = reuse_ids(&self.blocks, blocks);
+        self.updated_at = writing_studio_core::Timestamp::now();
+    }
 }
 
 fn block_to_html(block: &Block, notes: &mut NoteWriter<'_>) -> String {

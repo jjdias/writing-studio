@@ -727,3 +727,44 @@ fn two_thousand_random_documents_are_stored_exactly() {
         assert_stored_exactly(&blocks);
     }
 }
+
+/// What the Markdown page sends while the writer is typing: marks not yet
+/// closed, a list item or quote just started, a heading with no space. Each
+/// is read without losing a character, and reads the same once written
+/// back, so a scene left like this opens again as it was left.
+#[test]
+fn text_half_typed_on_the_page_reads_back_stably() {
+    // Each with the letters and digits it should keep: a list's numbers
+    // are its marker, not text.
+    for (typed, wanted) in [
+        ("It was **dar", "Itwasdar"),
+        ("It was *dark", "Itwasdark"),
+        ("==bright", "bright"),
+        ("{==bright==}{>>why", "brightwhy"),
+        ("[the harbor](", "theharbor"),
+        ("#Heading with no space", "Headingwithnospace"),
+        ("- ", ""),
+        ("- one
+- ", "one"),
+        ("1. one
+2. ", "one"),
+        ("> ", ""),
+        ("> She said
+>", "Shesaid"),
+        ("```
+let x", "letx"),
+        ("* * ", ""),
+        ("trailing space ", "trailingspace"),
+    ] {
+        let read = markdown_to_blocks(typed);
+        let written = blocks_to_markdown(&read);
+        let again = markdown_to_blocks(&written);
+        assert!(same_content(&read, &again), "{typed:?} read again differs:\n{written}");
+        assert_eq!(blocks_to_markdown(&again), written, "{typed:?} is not stable");
+        // Nothing the writer typed is gone, except the marks that made a
+        // block and the spaces Markdown trims.
+        let text: String = Document { blocks: read, ..Document::new(Id::new()) }.to_plain_text();
+        let kept: String = text.chars().filter(|c| c.is_alphanumeric()).collect();
+        assert_eq!(kept, wanted, "{typed:?} lost text");
+    }
+}

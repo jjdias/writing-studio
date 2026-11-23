@@ -490,6 +490,7 @@ fn SettingsPanel() -> Element {
     let font = state.read().prose_font();
     let spelling_value = state.read().spelling_language().unwrap_or_default();
     let spelling_choices = state.read().spelling_choices();
+    let markdown_page = state.read().markdown_page;
     rsx! {
         div { class: "menu popover", role: "dialog", aria_label: "Settings",
             label { r#for: "setting-font", "Manuscript font" }
@@ -505,6 +506,14 @@ fn SettingsPanel() -> Element {
                 for item in ProseFont::ALL {
                     option { value: "{item.as_str()}", selected: item == font, "{item.label()}" }
                 }
+            }
+            label { class: "compare-toggle",
+                input {
+                    r#type: "checkbox",
+                    checked: markdown_page,
+                    onchange: move |event| state.write().markdown_page = event.checked(),
+                }
+                "Markdown page (in progress)"
             }
             PageSettings {}
             KeepPlaceSettings {}

@@ -11,6 +11,8 @@ pub(super) fn EditorPane() -> Element {
     let focus = snapshot.focus_mode;
     let can_edit = snapshot.session.is_some() && !snapshot.syncing;
     let side = snapshot.review_at_side && !snapshot.review_folded;
+    let markdown = snapshot.markdown_page;
+    let scene = snapshot.session.as_ref().map(|session| session.document_id());
     let marks = use_signal(Vec::<String>::new);
     let prompt = use_signal(|| None::<InlinePrompt>);
     // The words to underline. An empty list clears the underlines, which is
@@ -39,7 +41,7 @@ pub(super) fn EditorPane() -> Element {
 
     rsx! {
         div { class: "editor-pane",
-            if !focus {
+            if !focus && !markdown {
                 FormatToolbar { enabled: can_edit, marks, prompt }
             }
             div { class: if side { "editor-body side" } else { "editor-body" },
@@ -54,6 +56,11 @@ pub(super) fn EditorPane() -> Element {
                         }
                         span { class: "page-words", "{words} words" }
                     }
+                    if markdown {
+                        if let Some(scene) = scene {
+                            MarkdownPage { key: "{scene}", scene, can_edit }
+                        }
+                    } else {
                     div {
                         key: "{epoch}",
                         class: if keep.fade == Fade::Off { "manuscript rich" } else { "manuscript rich fading" },
@@ -67,6 +74,7 @@ pub(super) fn EditorPane() -> Element {
                             state.write().flush_editor();
                         },
                     }
+                    }
                 }
                 if !focus {
                     ReviewPanel { unknown }
@@ -76,6 +84,57 @@ pub(super) fn EditorPane() -> Element {
                 }
             }
         }
+    }
+}
+
+/// The scene as Markdown, in CodeMirror (`window.wsEditor`, loaded by
+/// `App`). One editor for each scene: its text comes from the session, and
+/// every change goes back through `crates/format` into the document.
+#[component]
+fn MarkdownPage(scene: Id, can_edit: bool) -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let epoch = state.read().editor_epoch;
+    let token = serde_json::to_string(&scene.to_string()).unwrap_or_else(|_| "\"\"".into());
+    let mount_token = token.clone();
+    use_hook(move || {
+        spawn(async move {
+            // Wait for the element to be on the page.
+            tokio::time::sleep(std::time::Duration::from_millis(16)).await;
+            let mut eval = document::eval(&format!(
+                r#"
+                const text = await dioxus.recv();
+                const el = document.getElementById('markdown-page');
+                if (window.wsEditor && el) {{
+                    wsEditor.mount(el, text, (message) => dioxus.send(message), {mount_token});
+                }}
+                "#
+            ));
+            let _ = eval.send(state.peek().editor_markdown());
+            // `{ kind: "text", text }` after a change, `{ kind: "blur" }`.
+            while let Ok(message) = eval.recv::<serde_json::Value>().await {
+                match message["kind"].as_str() {
+                    Some("text") => state.write().apply_editor_markdown(message["text"].as_str().unwrap_or_default()),
+                    Some("blur") => state.write().flush_editor(),
+                    _ => {}
+                }
+            }
+        })
+    });
+    // Text changed from outside the page (undo, the review panel, a split):
+    // show it. The page's own changes do not move the epoch.
+    use_effect(use_reactive((&epoch,), move |_| {
+        let text = serde_json::to_string(&state.peek().editor_markdown()).unwrap_or_else(|_| "\"\"".into());
+        let _ = document::eval(&format!("window.wsEditor && wsEditor.setText({text});"));
+    }));
+    let editable = if can_edit { "true" } else { "false" };
+    use_effect(use_reactive((&can_edit,), move |(can_edit,)| {
+        let _ = document::eval(&format!("window.wsEditor && wsEditor.setEditable({can_edit});"));
+    }));
+    use_drop(move || {
+        let _ = document::eval(&format!("window.wsEditor && wsEditor.unmount({token});"));
+    });
+    rsx! {
+        div { id: "markdown-page", class: "manuscript markdown-page", "data-editable": "{editable}", aria_label: "Manuscript" }
     }
 }
 

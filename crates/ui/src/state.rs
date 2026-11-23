@@ -6,7 +6,7 @@ use std::time::Instant;
 
 use writing_studio_characters::Cast;
 use writing_studio_document::{
-    accept_change, compare_documents, reject_change, tracked_changes, Document, DocumentDiff,
+    accept_change, compare_documents, BlockKind, reject_change, tracked_changes, Document, DocumentDiff,
     NavItem, NoteKind, ReviewItem, ReviewKind, ReviewTarget, TrackedChange,
 };
 use writing_studio_diagnostics::{
@@ -458,6 +458,9 @@ pub struct StudioState {
     pub renaming: Option<Id>,
     /// The window that lists every shortcut.
     pub show_shortcuts: bool,
+    /// The page is the Markdown editor, not the rich-text one. A choice
+    /// while Phase 12 brings the Markdown page level with the old one.
+    pub markdown_page: bool,
     /// The Go to box (Ctrl+P) is open.
     pub quick_open: bool,
     /// The Compile dialog is open.
@@ -589,6 +592,7 @@ impl Default for StudioState {
             item_menu: None,
             renaming: None,
             show_shortcuts: false,
+            markdown_page: false,
             quick_open: false,
             compile_open: false,
             compile_check: None,
@@ -1823,6 +1827,38 @@ impl StudioState {
                 self.note_edit();
                 self.note_session_for_search();
             }
+        }
+    }
+
+    /// The open scene as the Markdown page shows it: what the Markdown export
+    /// writes, without its last line end, and nothing for an empty scene.
+    pub fn editor_markdown(&self) -> String {
+        let Some(session) = &self.session else {
+            return String::new();
+        };
+        let blocks = &session.document().blocks;
+        let empty = blocks
+            .iter()
+            .all(|block| matches!(&block.kind, BlockKind::Paragraph { inlines } if inlines.iter().all(|inline| inline.text.is_empty())));
+        if empty {
+            return String::new();
+        }
+        let mut text = writing_studio_format::blocks_to_markdown(blocks);
+        if text.ends_with('\n') {
+            text.pop();
+        }
+        text
+    }
+
+    /// Take what the Markdown page holds as the open scene's text.
+    pub fn apply_editor_markdown(&mut self, text: &str) {
+        let Some(session) = &mut self.session else {
+            return;
+        };
+        if session.apply_blocks(writing_studio_format::markdown_to_blocks(text)) {
+            self.editor_text = session.plain_text();
+            self.note_edit();
+            self.note_session_for_search();
         }
     }
 
@@ -6202,6 +6238,41 @@ mod tests {
         assert_eq!(left.len(), 1);
         assert_eq!(left[0].text, "Too long.");
         assert_eq!(state.editor_text, "The harbor was quiet.\nToo long.");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn the_markdown_page_reads_and_writes_the_scene() {
+        let (mut state, dir) = open_state("markdown-page");
+        state.apply_editor_markdown("");
+        assert_eq!(state.editor_markdown(), "", "an empty scene is an empty page");
+        state.apply_editor_html("<p>She opened the <strong>red</strong> door.</p><p>Nobody spoke.</p>".into());
+        assert_eq!(state.editor_markdown(), "She opened the **red** door.
+
+Nobody spoke.");
+        let ids: Vec<_> = state.session.as_ref().unwrap().document().blocks.iter().map(|block| block.id).collect();
+        let epoch = state.editor_epoch;
+
+        // A change from the page: the document follows, keeps its blocks'
+        // ids, and the page is not drawn again for it.
+        state.apply_editor_markdown("She opened the *red* door.
+
+Nobody spoke. A gull cried.");
+        let document = state.session.as_ref().unwrap().document().clone();
+        assert_eq!(document.blocks.iter().map(|block| block.id).collect::<Vec<_>>(), ids);
+        assert_eq!(state.editor_text, "She opened the red door.
+Nobody spoke. A gull cried.");
+        assert_eq!(state.editor_epoch, epoch);
+        assert!(state.has_unsaved());
+        // The same text again is no change and no undo step.
+        state.apply_editor_markdown("She opened the *red* door.
+
+Nobody spoke. A gull cried.");
+        state.undo();
+        assert_eq!(state.editor_markdown(), "She opened the **red** door.
+
+Nobody spoke.");
+        assert!(state.editor_epoch > epoch, "an undo redraws the page");
         let _ = std::fs::remove_dir_all(dir);
     }
 

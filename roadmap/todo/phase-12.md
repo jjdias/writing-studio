@@ -1,6 +1,6 @@
 # Phase 12 — A Markdown editor
 
-In progress: stage 1 is done.
+In progress: stages 1 and 2 are done.
 
 The page is a rich-text editor today: a `contenteditable` element that the program's own scripts (`crates/ui/assets/review.js`, `spell.js`, `place.js`) and `crates/ui/src/studio/editor.rs` keep in step with the document model. This phase makes the page a Markdown editor: the writer types and sees Markdown, shown as the best Markdown editors show it, while everything the page does now keeps working.
 
@@ -66,6 +66,8 @@ In this order: the component and the round trip first, then what the writer sees
 - Opening a scene puts its Markdown (from `crates/format`'s writer) on the page; a change goes back through the reader into the document model, so saving, search, compile, sync, and diagnostics read what they read today.
 - Every document the old editor could make survives Markdown and back (the format crate's round-trip tests, extended to every mark and to what the page can type). What Markdown cannot hold is written as the export writes it.
 - The editor session's undo (`crates/editor`) keeps the structure steps (merge, split); typing is CodeMirror's history.
+
+**Done.** Settings has **Markdown page (in progress)**, off by default and not saved, so the rich-text page stays the page until stage 7. On, the page is `MarkdownPage` (`studio/editor.rs`): one CodeMirror for each scene, mounted with `StudioState::editor_markdown` (the Markdown export, with nothing for an empty scene), and every change read back by `apply_editor_markdown` through `markdown_to_blocks` and `EditorSession::apply_blocks`, which keeps the blocks' ids where they stand (`Document::replace_blocks`, as `replace_html` does), so tracked changes still line up. Leaving the page saves, as before. A change from outside the page (undo, the review panel, a split) moves the epoch, and `wsEditor.setText` puts in only what differs, keeping the caret, and starts CodeMirror's history again: so Ctrl+Z takes back typing from CodeMirror's history while it has any, and otherwise goes on to the program's undo, which takes back the structure step. A key CodeMirror acted on does not also reach the program's shortcuts. Opening a scene changes nothing; the first change puts it in canonical form, as the Markdown export always has. Tests: `text_half_typed_on_the_page_reads_back_stably` (`crates/format`: marks left open, a list item or quote just started, read without losing a letter and stable once written back) and `the_markdown_page_reads_and_writes_the_scene` (`crates/ui`); the script was checked in a browser.
 
 ### 3. Live preview and Source mode
 

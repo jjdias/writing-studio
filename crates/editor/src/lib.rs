@@ -82,6 +82,20 @@ impl EditorSession {
         self.dirty = true;
     }
 
+    /// Take blocks read from the Markdown page as the text, as one undo
+    /// step, unless they say what the document already says.
+    pub fn apply_blocks(&mut self, blocks: Vec<writing_studio_document::Block>) -> bool {
+        let mut next = self.document.clone();
+        next.replace_blocks(blocks);
+        if next.to_html() == self.document.to_html() {
+            return false;
+        }
+        self.push_undo();
+        self.document = next;
+        self.dirty = true;
+        true
+    }
+
     /// Change the document in place, as one undo step. The closure returns
     /// whether it changed anything.
     pub fn edit(&mut self, change: impl FnOnce(&mut Document) -> bool) -> bool {

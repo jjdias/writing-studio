@@ -1370,3 +1370,15 @@ button.keyword-dot:hover { box-shadow: 0 0 0 2px var(--line); }
 /* The worldbuilding map: its middle and kinds, and the kinds shown. */
 .map-node.kind-group rect { fill: var(--control); stroke-width: 1.5; }
 .map-kinds { display: inline-flex; flex-wrap: wrap; gap: 8px; font-size: 12px; }
+
+/* The Markdown page (Phase 12): CodeMirror inside the manuscript, set in
+   the manuscript's own type. The desk scrolls, not the editor. */
+.markdown-page .cm-editor { background: transparent; color: inherit; outline: none; }
+.markdown-page .cm-editor.cm-focused { outline: none; }
+.markdown-page .cm-scroller { font-family: inherit; line-height: inherit; overflow: visible; }
+.markdown-page .cm-content { padding: 0; caret-color: var(--editor-text); }
+.markdown-page .cm-line { padding: 0; }
+.markdown-page .cm-cursor { border-left-color: var(--editor-text); }
+.markdown-page .cm-selectionBackground,
+.markdown-page .cm-focused .cm-selectionBackground { background: color-mix(in srgb, var(--gold) 28%, transparent); }
+.markdown-page[data-editable="false"] { opacity: 0.85; }

@@ -6478,6 +6478,7 @@ dependencies = [
  "writing-studio-document",
  "writing-studio-editor",
  "writing-studio-export",
+ "writing-studio-format",
  "writing-studio-manuscript",
  "writing-studio-plotting",
  "writing-studio-project",
