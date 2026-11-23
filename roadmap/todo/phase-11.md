@@ -1,6 +1,6 @@
 # Phase 11 — Tags, story links, and a mind map
 
-In progress: stages 1 to 7 are done.
+In progress: stages 1 to 8 are done.
 
 Phase 9 gave binder items colored keywords and saved filters. This phase does four things with what is there:
 
@@ -122,6 +122,8 @@ In this order: the layout change first, because every later stage adds to the li
 
 ### 8. Named in the text, offered as a link
 
+**Done.** `StudioState::named_in` finds, in a scene's text, the entries not linked to it (directly or through what it is in) and not hidden for it: characters with diagnostics' `mentions` (any capitalized part of the name, so Rose is not found in "the sun rose"), now public; places, cultures, and lore with the new `phrases_in` in `crates/diagnostics`, the whole name as words in a row, ignoring case. Timeline events and research notes are not looked for: their titles are phrases, not names. `refresh_named_here` runs when a scene is opened, when its text is saved (`flush_editor`), and after a link or unlink, and keeps the result in `named_here`, so drawing the inspector searches nothing. The inspector shows "Named here:" under the scene's links, each with + to link and × to hide (`link_named`, `hide_named`). A hidden suggestion stays hidden until the program closes.
+
 - The scene's inspector lists the entries its text names that it is not linked to: "Named here: Mara, Port Ely". One click links each; one more hides the suggestion for that scene.
 - Names come from each entry's name and, for a character, the names diagnostics already look for (`crates/diagnostics`, `mentions`); places, cultures, and lore by their names. Matched as whole words, ignoring case, on the scene's text when it is saved, not on every key press (`.claude/rules/performance.md`).
 - Nothing is linked without the writer's click.
@@ -183,6 +185,8 @@ What came up while this phase was planned and built, and while the Phase 7 packa
 - **The Package workflow does not run on code changes.** It runs when `apps/desktop/**`, licenses, or the workflow change, not `crates/**`, so the packages on the last Package run can be older than the code (the Phase 7 packages missed the ShellExecuteW and compile fixes). The Release workflow builds fresh, so a release is not affected.
 - **`scene_ids` holds chapters now.** Each entry kind's field, and the cache's `bible_scene_links.scene_id`, keep the name from when only scenes were linked (stage 7). Renaming them is a change across five crates with no change in behavior.
 - **"That scene is no longer in the binder"** is what an entry page's Open says for a missing chapter too (`open_linked_scene`).
+- **A character is found by any capitalized part of the name**, as diagnostics always did, so a character called "The Pilot" is suggested wherever a sentence starts with "The" (stage 8 reuses the rule; places, cultures, and lore need the whole name).
+- **A hidden "Named here" suggestion comes back when the program reopens**: hiding is kept for the session only.
 - **Keyword folding and the list's order last until the program closes.** The plan did not ask for more; the binder's folding is kept with the project.
 - **Not yet checked by hand:** opening a real research file through `ShellExecuteW`, the MSI install and removal, and everything on Linux (stage 6 of Phase 7, the maintainer's).
 

@@ -467,6 +467,12 @@ fn StoryLinks(id: Id, kind: NodeKind) -> Element {
         .collect();
     let mut draft = use_signal(String::new);
     let heading = format!("In this {}", kind.icon_label().to_lowercase());
+    // Found when the scene was opened or last saved, for the open scene only.
+    let named: Vec<StoryEntry> = if state.read().selected == Some(id) {
+        state.read().named_here.iter().filter_map(|entry| state.read().story_entry(*entry)).collect()
+    } else {
+        Vec::new()
+    };
     rsx! {
         div { class: "dash-heading", "{heading}" }
         if !own.is_empty() {
@@ -502,6 +508,28 @@ fn StoryLinks(id: Id, kind: NodeKind) -> Element {
                             "{entry.name}"
                         }
                         span { class: "story-kind", "from {from}" }
+                    }
+                }
+            }
+        }
+        if !named.is_empty() {
+            div { class: "story-named",
+                span { class: "hint", "Named here:" }
+                for entry in named {
+                    span { class: "keyword-chip story-chip named", key: "{entry.id}",
+                        button {
+                            class: "story-open",
+                            title: "Link the {entry.kind.noun()} “{entry.name}” to this scene",
+                            onclick: move |_| state.write().link_named(entry.id),
+                            "+ {entry.name}"
+                        }
+                        button {
+                            class: "keyword-remove",
+                            title: "Stop suggesting “{entry.name}” for this scene",
+                            aria_label: "Hide {entry.name}",
+                            onclick: move |_| state.write().hide_named(entry.id),
+                            "×"
+                        }
                     }
                 }
             }

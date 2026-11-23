@@ -261,12 +261,9 @@ fn dialogue_words(text: &str) -> u32 {
     spoken
 }
 
-/// A character is named when any capitalized word of their name appears as a
-/// whole word, with or without a possessive. Matching keeps the capital, so
-/// a character called Rose is not found in "the sun rose".
-fn mentions(text: &str, names: &[String]) -> Vec<Mention> {
-    let words: Vec<&str> = text
-        .split(|ch: char| !(ch.is_alphanumeric() || ch == '\'' || ch == '\u{2019}'))
+/// The words of a text, each without a possessive `'s` or quote marks.
+fn words_of(text: &str) -> Vec<&str> {
+    text.split(|ch: char| !(ch.is_alphanumeric() || ch == '\'' || ch == '\u{2019}'))
         .map(|word| {
             word.strip_suffix("'s")
                 .or_else(|| word.strip_suffix("\u{2019}s"))
@@ -274,7 +271,30 @@ fn mentions(text: &str, names: &[String]) -> Vec<Mention> {
                 .trim_matches(|ch| ch == '\'' || ch == '\u{2019}')
         })
         .filter(|word| !word.is_empty())
-        .collect();
+        .collect()
+}
+
+/// Which of `phrases` a text holds, each as whole words in a row, ignoring
+/// case and a possessive: "Port Ely" is in "the lights of port Ely's
+/// harbor", not in "Port Elysium". For places and the like, whose whole
+/// name is wanted; a character is found by any part of the name
+/// (`mentions`).
+pub fn phrases_in(text: &str, phrases: &[String]) -> Vec<bool> {
+    let words: Vec<String> = words_of(text).iter().map(|word| word.to_lowercase()).collect();
+    phrases
+        .iter()
+        .map(|phrase| {
+            let wanted: Vec<String> = words_of(phrase).iter().map(|word| word.to_lowercase()).collect();
+            !wanted.is_empty() && words.windows(wanted.len()).any(|run| run == wanted.as_slice())
+        })
+        .collect()
+}
+
+/// A character is named when any capitalized word of their name appears as a
+/// whole word, with or without a possessive. Matching keeps the capital, so
+/// a character called Rose is not found in "the sun rose".
+pub fn mentions(text: &str, names: &[String]) -> Vec<Mention> {
+    let words = words_of(text);
     let mut found: Vec<Mention> = names
         .iter()
         .filter_map(|name| {
@@ -413,5 +433,12 @@ mod tests {
         );
         // With too few scenes to compare, length is not judged.
         assert!(findings(&complete, &short, &BookContext::default()).is_empty());
+    }
+
+    #[test]
+    fn a_whole_name_is_found_as_words_in_a_row_ignoring_case() {
+        let text = "The lights of port Ely\u{2019}s harbor. The Old War ended. Elysium waited.";
+        let found = phrases_in(text, &names(&["Port Ely", "The old war", "Port Elysium", "Ely", "", "Harbor lights"]));
+        assert_eq!(found, [true, true, false, true, false, false]);
     }
 }

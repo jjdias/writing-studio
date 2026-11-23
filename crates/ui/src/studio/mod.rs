@@ -23,7 +23,7 @@ use writing_studio_search::matches_query;
 use writing_studio_spellcheck::UnknownWord;
 
 use crate::shortcuts::{app_shortcut, AppShortcut, IN_THE_MANUSCRIPT, LISTED};
-use crate::state::{story_choice, 
+use crate::state::{story_choice, StoryEntry, 
     Beat, BibleLink, CheckFinding, CompileCheck, Earlier, FoldedPanel, FrameMenu, QuickMatch, ReviewTab, SceneCard, SceneGroup,
     StudioState, WorkspaceMode,
     WorldSection,

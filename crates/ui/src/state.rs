@@ -11,7 +11,7 @@ use writing_studio_document::{
     NavItem, NoteKind, ReviewItem, ReviewKind, ReviewTarget, TrackedChange,
 };
 use writing_studio_diagnostics::{
-    findings, scene_facts, typical_words, BookContext, Finding, SceneBeats, SceneFacts,
+    findings, mentions, phrases_in, scene_facts, typical_words, BookContext, Finding, SceneBeats, SceneFacts,
 };
 use writing_studio_core::{autosave_due, autosave_wait, local_day, Id, Timestamp, PRODUCT_NAME};
 use writing_studio_editor::EditorSession;
@@ -399,6 +399,11 @@ pub struct StudioState {
     /// The story entry the same views are narrowed to, from the library's
     /// Story group.
     pub story_filter: Option<Id>,
+    /// Entries the open scene's text names that it is not linked to, found
+    /// when it is opened or saved (`refresh_named_here`).
+    pub named_here: Vec<Id>,
+    /// Suggestions hidden, by scene and entry, until the program closes.
+    hidden_named: Vec<(Id, Id)>,
     /// How the library's keyword list is ordered.
     pub keyword_sort: KeywordSort,
     /// Keywords folded in the library's list, whose children are hidden.
@@ -525,6 +530,8 @@ impl Default for StudioState {
             editing_filter: None,
             keyword_filter: None,
             story_filter: None,
+            named_here: Vec::new(),
+            hidden_named: Vec::new(),
             keyword_sort: KeywordSort::Name,
             folded_keywords: Vec::new(),
             renaming_keyword: None,
@@ -1217,6 +1224,7 @@ impl StudioState {
             self.editor_epoch += 1;
         }
         self.load_tracking();
+        self.refresh_named_here();
     }
 
     /// Read the tracking baseline of the open document, if it has one.
@@ -1794,7 +1802,68 @@ impl StudioState {
                 Err(err) => self.status = format!("Save failed: {err}"),
             }
         }
+        // Looked for when the text is saved, not on every key press.
+        self.refresh_named_here();
         self.report_set_aside();
+    }
+
+    /// The entries the open scene's text names that it is not linked to,
+    /// directly or through what it is in, and not hidden for it: characters
+    /// by any capitalized part of the name, as diagnostics find them; places,
+    /// cultures, and lore by the whole name.
+    pub fn named_in(&self, scene: Id, text: &str) -> Vec<Id> {
+        let entries: Vec<StoryEntry> = self
+            .story_entries()
+            .into_iter()
+            .filter(|entry| !self.story_reaches(entry, scene))
+            .filter(|entry| !self.hidden_named.contains(&(scene, entry.id)))
+            .collect();
+        let (people, others): (Vec<&StoryEntry>, Vec<&StoryEntry>) =
+            entries.iter().partition(|entry| entry.kind == BibleLink::Character);
+        let others: Vec<&StoryEntry> = others
+            .into_iter()
+            .filter(|entry| matches!(entry.kind, BibleLink::Location | BibleLink::Culture | BibleLink::Lore))
+            .collect();
+        let names: Vec<String> = people.iter().map(|entry| entry.name.clone()).collect();
+        let found = mentions(text, &names);
+        let mut named: Vec<Id> = people
+            .iter()
+            .filter(|entry| found.iter().any(|mention| mention.name == entry.name))
+            .map(|entry| entry.id)
+            .collect();
+        let phrases: Vec<String> = others.iter().map(|entry| entry.name.clone()).collect();
+        named.extend(
+            others.iter().zip(phrases_in(text, &phrases)).filter(|(_, found)| *found).map(|(entry, _)| entry.id),
+        );
+        named
+    }
+
+    /// Look again for what the open scene names, after it is opened or saved
+    /// or a suggestion is taken.
+    fn refresh_named_here(&mut self) {
+        let scene = self.selected.filter(|id| self.binder.get(*id).is_some_and(|node| node.kind == NodeKind::Scene));
+        self.named_here = match (scene, &self.session) {
+            (Some(scene), Some(session)) => {
+                let text = session.plain_text();
+                self.named_in(scene, &text)
+            }
+            _ => Vec::new(),
+        };
+    }
+
+    /// Link the open scene to an entry its text names.
+    pub fn link_named(&mut self, entry: Id) {
+        if let Some(scene) = self.selected {
+            self.link_story(scene, entry);
+        }
+    }
+
+    /// Stop suggesting an entry for the open scene, until the program closes.
+    pub fn hide_named(&mut self, entry: Id) {
+        if let Some(scene) = self.selected {
+            self.hidden_named.push((scene, entry));
+            self.refresh_named_here();
+        }
     }
 
     fn project_root(&self) -> Option<PathBuf> {
@@ -2628,6 +2697,7 @@ impl StudioState {
     pub fn link_story(&mut self, item: Id, entry: Id) {
         if let Some(found) = self.story_entry(entry) {
             self.link_bible_scene(found.kind, entry, item);
+            self.refresh_named_here();
         }
     }
 
@@ -2656,6 +2726,7 @@ impl StudioState {
     pub fn unlink_story(&mut self, item: Id, entry: Id) {
         if let Some(found) = self.story_entry(entry) {
             self.unlink_bible_scene(found.kind, entry, item);
+            self.refresh_named_here();
         }
     }
 
@@ -4902,6 +4973,49 @@ mod tests {
         state.empty_trash();
         state.empty_trash();
         assert!(state.bible_scene_ids(BibleLink::Character, mara).is_empty());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Entries the open scene names are offered as links once it is saved,
+    /// never linked by themselves; one click links, another hides it.
+    #[test]
+    fn names_in_a_saved_scene_are_offered_as_links() {
+        let (mut state, dir) = open_state("named-here");
+        let scene = state.selected.unwrap();
+        state.add_character();
+        let mara = state.selected_character.unwrap();
+        state.set_character_name(mara, "Mara Vance".into());
+        state.add_character();
+        let rose = state.selected_character.unwrap();
+        state.set_character_name(rose, "Rose".into());
+        state.set_world_section(WorldSection::Locations);
+        state.add_world_item();
+        let port = state.selected_world.unwrap();
+        state.set_location_name(port, "Port Ely".into());
+        state.set_world_section(WorldSection::Lore);
+        state.add_world_item();
+        let war = state.selected_world.unwrap();
+        state.set_lore_title(war, "The Old War".into());
+        state.select_node(scene);
+
+        state.apply_editor_text("Vance ran down to port Ely as the sun rose.".into());
+        assert!(state.named_here.is_empty(), "nothing is looked for before the save");
+        state.flush_editor();
+        assert_eq!(state.named_here, [mara, port], "Rose is not in “rose”; the war is not named");
+        assert!(state.bible_scene_ids(BibleLink::Character, mara).is_empty(), "nothing is linked by itself");
+
+        state.link_named(mara);
+        assert_eq!(state.bible_scene_ids(BibleLink::Character, mara), [scene]);
+        assert_eq!(state.named_here, [port]);
+        state.hide_named(port);
+        assert!(state.named_here.is_empty());
+        state.unlink_story(scene, mara);
+        assert_eq!(state.named_here, [mara], "unlinked, it is offered again");
+
+        // Linked through its chapter, it is not offered.
+        let chapter = state.binder.get(scene).unwrap().parent_id.unwrap();
+        state.link_story(chapter, mara);
+        assert!(state.named_here.is_empty());
         let _ = std::fs::remove_dir_all(dir);
     }
 
