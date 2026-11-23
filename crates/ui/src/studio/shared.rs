@@ -60,7 +60,7 @@ pub(super) fn SceneLinks(owner: Id, kind: BibleLink) -> Element {
     // A link to an item in the trash hides until it comes back, or goes
     // when the trash is emptied.
     let linked: Vec<Id> = snapshot
-        .bible_scene_ids(kind, owner)
+        .bible_linked_ids(kind, owner)
         .into_iter()
         .filter(|id| !snapshot.binder.is_in_trash(*id))
         .collect();

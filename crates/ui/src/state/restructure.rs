@@ -135,7 +135,7 @@ impl StudioState {
             .cast
             .characters
             .iter()
-            .filter(|character| character.scene_ids.contains(&next))
+            .filter(|character| character.linked_ids.contains(&next))
             .map(|character| character.id)
             .collect();
         for character in characters {
@@ -148,11 +148,11 @@ impl StudioState {
         let entries: Vec<(u8, Id)> = world
             .locations
             .iter()
-            .filter(|entry| linked(&entry.scene_ids))
+            .filter(|entry| linked(&entry.linked_ids))
             .map(|entry| (0, entry.id))
-            .chain(world.cultures.iter().filter(|entry| linked(&entry.scene_ids)).map(|entry| (1, entry.id)))
-            .chain(world.lore.iter().filter(|entry| linked(&entry.scene_ids)).map(|entry| (2, entry.id)))
-            .chain(world.events.iter().filter(|entry| linked(&entry.scene_ids)).map(|entry| (3, entry.id)))
+            .chain(world.cultures.iter().filter(|entry| linked(&entry.linked_ids)).map(|entry| (1, entry.id)))
+            .chain(world.lore.iter().filter(|entry| linked(&entry.linked_ids)).map(|entry| (2, entry.id)))
+            .chain(world.events.iter().filter(|entry| linked(&entry.linked_ids)).map(|entry| (3, entry.id)))
             .collect();
         for (kind, id) in entries {
             let added = match kind {
@@ -812,9 +812,9 @@ mod tests {
         state.merge_with_next();
         let point_scene = |state: &StudioState| state.plot.points.iter().find(|kept| kept.id == point).unwrap().scene_id;
         assert_eq!(point_scene(&state), Some(first));
-        let hero_scenes = |state: &StudioState| state.cast.characters.iter().find(|kept| kept.id == hero).unwrap().scene_ids.clone();
+        let hero_scenes = |state: &StudioState| state.cast.characters.iter().find(|kept| kept.id == hero).unwrap().linked_ids.clone();
         assert_eq!(hero_scenes(&state), [second, first], "the trashed scene keeps its link for restoring");
-        assert!(state.world.locations.iter().find(|kept| kept.id == place).unwrap().scene_ids.contains(&first));
+        assert!(state.world.locations.iter().find(|kept| kept.id == place).unwrap().linked_ids.contains(&first));
         let beats = state.beats.get(&first).unwrap();
         assert_eq!(beats.goal, "Find the key
 Open the door");
@@ -823,7 +823,7 @@ Open the door");
         state.undo();
         assert_eq!(point_scene(&state), Some(second));
         assert_eq!(hero_scenes(&state), [second]);
-        assert!(!state.world.locations.iter().find(|kept| kept.id == place).unwrap().scene_ids.contains(&first));
+        assert!(!state.world.locations.iter().find(|kept| kept.id == place).unwrap().linked_ids.contains(&first));
         assert_eq!(state.beats.get(&first).unwrap().goal, "Find the key");
         assert!(state.beats.get(&first).unwrap().outcome.is_empty());
         let _ = std::fs::remove_dir_all(dir);

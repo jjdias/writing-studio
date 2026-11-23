@@ -118,7 +118,7 @@ impl ProjectStore {
 
     /// One of the binder's lists (keyword colors, saved filters) from the
     /// cache, or none when it was never stored.
-    fn load_binder_list(&self, name: &str) -> Result<Option<String>> {
+    pub(crate) fn load_binder_list(&self, name: &str) -> Result<Option<String>> {
         self
             .conn
             .query_row("SELECT json FROM binder_lists WHERE name = ?1", params![name], |row| row.get(0))
@@ -126,7 +126,7 @@ impl ProjectStore {
             .map_err(sqlite)
     }
 
-    fn store_binder_list(&self, name: &str, json: String) -> Result<()> {
+    pub(crate) fn store_binder_list(&self, name: &str, json: String) -> Result<()> {
         self.conn
             .execute(
                 "INSERT INTO binder_lists (name, json) VALUES (?1, ?2)
@@ -316,7 +316,7 @@ impl ProjectStore {
         let character_scenes = load_scene_link_map(&self.conn, "character")?;
         let mut characters = characters;
         for character in &mut characters {
-            character.scene_ids = apply_scene_links(&character_scenes, character.id);
+            character.linked_ids = apply_scene_links(&character_scenes, character.id);
         }
         let mut motivations = self
             .conn
@@ -410,7 +410,7 @@ impl ProjectStore {
             "character",
             cast.characters
                 .iter()
-                .map(|character| (character.id, character.scene_ids.clone())),
+                .map(|character| (character.id, character.linked_ids.clone())),
         )?;
         tx.commit().map_err(sqlite)?;
         Ok(())
@@ -446,16 +446,16 @@ impl ProjectStore {
         let lore_scenes = load_scene_link_map(&self.conn, "lore")?;
         let event_scenes = load_scene_link_map(&self.conn, "timeline")?;
         for place in &mut locations {
-            place.scene_ids = apply_scene_links(&location_scenes, place.id);
+            place.linked_ids = apply_scene_links(&location_scenes, place.id);
         }
         for culture in &mut cultures {
-            culture.scene_ids = apply_scene_links(&culture_scenes, culture.id);
+            culture.linked_ids = apply_scene_links(&culture_scenes, culture.id);
         }
         for entry in &mut lore {
-            entry.scene_ids = apply_scene_links(&lore_scenes, entry.id);
+            entry.linked_ids = apply_scene_links(&lore_scenes, entry.id);
         }
         for event in &mut events {
-            event.scene_ids = apply_scene_links(&event_scenes, event.id);
+            event.linked_ids = apply_scene_links(&event_scenes, event.id);
         }
         Ok(World {
             locations,
@@ -541,22 +541,22 @@ impl ProjectStore {
         write_scene_links(
             &tx,
             "location",
-            world.locations.iter().map(|place| (place.id, place.scene_ids.clone())),
+            world.locations.iter().map(|place| (place.id, place.linked_ids.clone())),
         )?;
         write_scene_links(
             &tx,
             "culture",
-            world.cultures.iter().map(|culture| (culture.id, culture.scene_ids.clone())),
+            world.cultures.iter().map(|culture| (culture.id, culture.linked_ids.clone())),
         )?;
         write_scene_links(
             &tx,
             "lore",
-            world.lore.iter().map(|entry| (entry.id, entry.scene_ids.clone())),
+            world.lore.iter().map(|entry| (entry.id, entry.linked_ids.clone())),
         )?;
         write_scene_links(
             &tx,
             "timeline",
-            world.events.iter().map(|event| (event.id, event.scene_ids.clone())),
+            world.events.iter().map(|event| (event.id, event.linked_ids.clone())),
         )?;
         tx.commit().map_err(sqlite)?;
         Ok(())
@@ -576,7 +576,7 @@ impl ProjectStore {
         let mut items = items;
         let note_scenes = load_scene_link_map(&self.conn, "research")?;
         for item in &mut items {
-            item.scene_ids = apply_scene_links(&note_scenes, item.id);
+            item.linked_ids = apply_scene_links(&note_scenes, item.id);
         }
         Ok(ResearchLibrary { items, files })
     }
@@ -617,7 +617,7 @@ impl ProjectStore {
         write_scene_links(
             &tx,
             "research",
-            library.items.iter().map(|item| (item.id, item.scene_ids.clone())),
+            library.items.iter().map(|item| (item.id, item.linked_ids.clone())),
         )?;
         tx.commit().map_err(sqlite)?;
         Ok(())
@@ -1035,7 +1035,7 @@ fn row_to_culture(row: &rusqlite::Row<'_>) -> Culture {
         name: row.get(1).unwrap_or_default(),
         summary: row.get(2).unwrap_or_default(),
         sort_index: row.get(3).unwrap_or(0),
-        scene_ids: Vec::new(),
+        linked_ids: Vec::new(),
         created_at: parse_ts(&row.get::<_, String>(4).unwrap_or_default()),
         updated_at: parse_ts(&row.get::<_, String>(5).unwrap_or_default()),
     }
@@ -1048,7 +1048,7 @@ fn row_to_location(row: &rusqlite::Row<'_>) -> Location {
         summary: row.get(2).unwrap_or_default(),
         culture_id: optional_id(row, 3),
         sort_index: row.get(4).unwrap_or(0),
-        scene_ids: Vec::new(),
+        linked_ids: Vec::new(),
         created_at: parse_ts(&row.get::<_, String>(5).unwrap_or_default()),
         updated_at: parse_ts(&row.get::<_, String>(6).unwrap_or_default()),
     }
@@ -1062,7 +1062,7 @@ fn row_to_lore(row: &rusqlite::Row<'_>) -> LoreEntry {
         location_id: optional_id(row, 3),
         culture_id: optional_id(row, 4),
         sort_index: row.get(5).unwrap_or(0),
-        scene_ids: Vec::new(),
+        linked_ids: Vec::new(),
         created_at: parse_ts(&row.get::<_, String>(6).unwrap_or_default()),
         updated_at: parse_ts(&row.get::<_, String>(7).unwrap_or_default()),
     }
@@ -1074,7 +1074,7 @@ fn row_to_research_item(row: &rusqlite::Row<'_>) -> ResearchItem {
         title: row.get(1).unwrap_or_default(),
         notes: row.get(2).unwrap_or_default(),
         sort_index: row.get(3).unwrap_or(0),
-        scene_ids: Vec::new(),
+        linked_ids: Vec::new(),
         created_at: parse_ts(&row.get::<_, String>(4).unwrap_or_default()),
         updated_at: parse_ts(&row.get::<_, String>(5).unwrap_or_default()),
     }
@@ -1098,7 +1098,7 @@ fn row_to_event(row: &rusqlite::Row<'_>) -> TimelineEvent {
         summary: row.get(3).unwrap_or_default(),
         location_id: optional_id(row, 4),
         sort_index: row.get(5).unwrap_or(0),
-        scene_ids: Vec::new(),
+        linked_ids: Vec::new(),
         created_at: parse_ts(&row.get::<_, String>(6).unwrap_or_default()),
         updated_at: parse_ts(&row.get::<_, String>(7).unwrap_or_default()),
     }
@@ -1119,7 +1119,7 @@ fn row_to_character(row: &rusqlite::Row<'_>) -> Character {
         role: row.get(2).unwrap_or_default(),
         summary: row.get(3).unwrap_or_default(),
         sort_index: row.get(4).unwrap_or(0),
-        scene_ids: Vec::new(),
+        linked_ids: Vec::new(),
         created_at: parse_ts(&row.get::<_, String>(5).unwrap_or_default()),
         updated_at: parse_ts(&row.get::<_, String>(6).unwrap_or_default()),
     }
@@ -1464,7 +1464,7 @@ mod tests {
         assert_eq!(loaded.relationships.len(), 1);
         assert_eq!(loaded.relationships[0].kind, "rival");
         assert_eq!(loaded.relationships[0].from_id, ada.id);
-        assert_eq!(ada.scene_ids, vec![scene, later]);
+        assert_eq!(ada.linked_ids, vec![scene, later]);
         let _ = fs::remove_dir_all(dir);
     }
 

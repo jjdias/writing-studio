@@ -40,6 +40,8 @@ use crate::files::{
 use crate::{open_connection, row_to_node, schema, sqlite, ProjectStore};
 
 const LOCAL_DIR: &str = ".local";
+/// The cache's copy of `mindmap.json`, in `binder_lists`.
+const MINDMAP_LIST: &str = "mindmap";
 const CACHE_FILE: &str = "cache.sqlite";
 
 /// What the store remembers about the files, so that a save writes only the
@@ -264,6 +266,7 @@ impl ProjectStore {
         self.persist_plot_cached(&content.plot)?;
         self.persist_cast_cached(&content.cast)?;
         self.persist_world_cached(&content.world)?;
+        self.persist_mindmap_cached(&content.mindmap)?;
         self.persist_library_cached(&content.library)
     }
 
@@ -276,6 +279,10 @@ impl ProjectStore {
         content.missing = self.mirror.missing.borrow().clone();
         let (files, written) = write_project_files_noted(&self.root, &content)?;
         self.mirror.remember(&content, files, written);
+        // An empty map writes no file, so one left from before is emptied.
+        if content.mindmap.is_empty() && self.root.join(MINDMAP_FILE).exists() {
+            self.write_small(MINDMAP_FILE, &mindmap_json(&content.mindmap)?)?;
+        }
         Ok(())
     }
 
@@ -689,19 +696,28 @@ impl ProjectStore {
         self.persist_meta_cached(meta)
     }
 
-    /// The mind map's ideas, lines, and positions, from `mindmap.json`. It
-    /// has no table in the cache: the file is small and read when needed.
+    /// The mind map's ideas, lines, and positions. The cache keeps a copy
+    /// as one JSON value, so a backup holds it and a restore brings it back;
+    /// a cache without one reads `mindmap.json`.
     pub fn load_mindmap(&self) -> Result<MindMap> {
-        read_mindmap(&self.root, &RefCell::new(HashMap::new()))
+        match self.load_binder_list(MINDMAP_LIST)? {
+            Some(json) => serde_json::from_str(&json).map_err(|err| Error::message(format!("{MINDMAP_FILE}: {err}"))),
+            None => read_mindmap(&self.root, &RefCell::new(HashMap::new())),
+        }
     }
 
-    /// Write `mindmap.json`. A project that never had one does not get an
-    /// empty one.
+    /// Write `mindmap.json`, and the cache's copy. A project that never had
+    /// a map does not get an empty file.
     pub fn persist_mindmap(&self, map: &MindMap) -> Result<()> {
-        if map.is_empty() && !self.root.join(MINDMAP_FILE).exists() {
-            return Ok(());
+        if self.mirroring() && (!map.is_empty() || self.root.join(MINDMAP_FILE).exists()) {
+            self.write_small(MINDMAP_FILE, &mindmap_json(map)?)?;
         }
-        self.write_small(MINDMAP_FILE, &mindmap_json(map)?)
+        self.persist_mindmap_cached(map)
+    }
+
+    fn persist_mindmap_cached(&self, map: &MindMap) -> Result<()> {
+        let json = serde_json::to_string(map).map_err(|err| Error::message(err.to_string()))?;
+        self.store_binder_list(MINDMAP_LIST, json)
     }
 
     pub fn persist_plot(&self, grid: &PlotGrid) -> Result<()> {
@@ -835,10 +851,18 @@ mod tests {
         assert_eq!(read.mindmap.ideas[0].other["mood"], "dark");
         assert_eq!(read.mindmap.other["made_by"], "hand");
         drop(store);
-        let reopened = ProjectStore::open(&dir).unwrap();
+        let mut reopened = ProjectStore::open(&dir).unwrap();
         reopened.write_files_from_cache().unwrap();
         let written = fs::read_to_string(dir.join(MINDMAP_FILE)).unwrap();
         assert!(written.contains("\"mood\":\"dark\"") && written.contains("\"made_by\": \"hand\""), "{written}");
+
+        // A backup holds the map: emptied since, it comes back on restore.
+        let backup = reopened.backup().unwrap();
+        reopened.persist_mindmap(&MindMap::default()).unwrap();
+        assert!(reopened.load_mindmap().unwrap().is_empty());
+        reopened.restore_backup(&backup).unwrap();
+        assert_eq!(reopened.load_mindmap().unwrap().ideas.len(), 1);
+        assert!(fs::read_to_string(dir.join(MINDMAP_FILE)).unwrap().contains("New idea"));
         let _ = fs::remove_dir_all(dir);
     }
 

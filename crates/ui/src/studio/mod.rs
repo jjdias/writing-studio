@@ -77,6 +77,8 @@ pub fn App() -> Element {
     use_context_provider(|| Signal::new(None::<ResizeDrag>));
     use_context_provider(|| Signal::new(initial_window_width()));
     rsx! {
+        // The page's own title, which assistive tools read, is the window's.
+        document::Title { "Writing Studio" }
         style { "{STYLES}" }
         Studio {}
     }
@@ -573,7 +575,7 @@ fn StatusBar() -> Element {
             span { class: "status-book", title: "{book_text}", "{book_text}" }
             div { class: "status-stats",
                 if mode == WorkspaceMode::Writing {
-                    span { "Scene {words}" }
+                    span { if words == 1 { "1 word in this scene" } else { "{words} words in this scene" } }
                 }
                 span { "{today_text}" }
                 span { "This sitting {session_words} · {session_time}" }

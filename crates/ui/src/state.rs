@@ -3799,7 +3799,7 @@ impl StudioState {
 
     pub fn open_linked_scene(&mut self, scene_id: Id) {
         if self.binder.get(scene_id).is_none() {
-            self.status = "That scene is no longer in the binder.".into();
+            self.status = "That is no longer in the binder.".into();
             return;
         }
         self.select_node(scene_id);
@@ -4033,49 +4033,49 @@ impl StudioState {
         }
     }
 
-    pub fn bible_scene_ids(&self, kind: BibleLink, owner: Id) -> Vec<Id> {
+    pub fn bible_linked_ids(&self, kind: BibleLink, owner: Id) -> Vec<Id> {
         match kind {
             BibleLink::Character => self
                 .cast
                 .characters
                 .iter()
                 .find(|item| item.id == owner)
-                .map(|item| item.scene_ids.clone())
+                .map(|item| item.linked_ids.clone())
                 .unwrap_or_default(),
             BibleLink::Location => self
                 .world
                 .locations
                 .iter()
                 .find(|item| item.id == owner)
-                .map(|item| item.scene_ids.clone())
+                .map(|item| item.linked_ids.clone())
                 .unwrap_or_default(),
             BibleLink::Culture => self
                 .world
                 .cultures
                 .iter()
                 .find(|item| item.id == owner)
-                .map(|item| item.scene_ids.clone())
+                .map(|item| item.linked_ids.clone())
                 .unwrap_or_default(),
             BibleLink::Lore => self
                 .world
                 .lore
                 .iter()
                 .find(|item| item.id == owner)
-                .map(|item| item.scene_ids.clone())
+                .map(|item| item.linked_ids.clone())
                 .unwrap_or_default(),
             BibleLink::Timeline => self
                 .world
                 .events
                 .iter()
                 .find(|item| item.id == owner)
-                .map(|item| item.scene_ids.clone())
+                .map(|item| item.linked_ids.clone())
                 .unwrap_or_default(),
             BibleLink::Research => self
                 .library
                 .items
                 .iter()
                 .find(|item| item.id == owner)
-                .map(|item| item.scene_ids.clone())
+                .map(|item| item.linked_ids.clone())
                 .unwrap_or_default(),
         }
     }
@@ -5187,7 +5187,7 @@ mod tests {
         state.set_character_name(mara, "Mara".into());
 
         state.link_story_named(chapter, "mara");
-        assert_eq!(state.bible_scene_ids(BibleLink::Character, mara), [chapter], "the page lists the chapter");
+        assert_eq!(state.bible_linked_ids(BibleLink::Character, mara), [chapter], "the page lists the chapter");
         let (own, through) = state.story_links_of(first);
         assert!(own.is_empty());
         assert_eq!(through.len(), 1);
@@ -5244,7 +5244,7 @@ mod tests {
         assert!(state.story_list().is_empty(), "a link to the trash hides");
         state.empty_trash();
         state.empty_trash();
-        assert!(state.bible_scene_ids(BibleLink::Character, mara).is_empty());
+        assert!(state.bible_linked_ids(BibleLink::Character, mara).is_empty());
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -5274,10 +5274,10 @@ mod tests {
         assert!(state.named_here.is_empty(), "nothing is looked for before the save");
         state.flush_editor();
         assert_eq!(state.named_here, [mara, port], "Rose is not in “rose”; the war is not named");
-        assert!(state.bible_scene_ids(BibleLink::Character, mara).is_empty(), "nothing is linked by itself");
+        assert!(state.bible_linked_ids(BibleLink::Character, mara).is_empty(), "nothing is linked by itself");
 
         state.link_named(mara);
-        assert_eq!(state.bible_scene_ids(BibleLink::Character, mara), [scene]);
+        assert_eq!(state.bible_linked_ids(BibleLink::Character, mara), [scene]);
         assert_eq!(state.named_here, [port]);
         state.hide_named(port);
         assert!(state.named_here.is_empty());
@@ -5431,7 +5431,7 @@ mod tests {
         state.set_binder_drop(chapter, DropPlace::Inside);
         assert!(state.map_drop_allowed(mara, chapter));
         state.drop_on_map(chapter);
-        assert_eq!(state.bible_scene_ids(BibleLink::Character, mara), [chapter]);
+        assert_eq!(state.bible_linked_ids(BibleLink::Character, mara), [chapter]);
         state.map_story = MapStory::Kind(BibleLink::Character);
         assert!(state.map_layout(book).get(mara).is_some(), "shown, linked to what is on the map");
         state.map_story = MapStory::Hidden;

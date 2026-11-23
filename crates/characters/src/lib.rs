@@ -13,9 +13,10 @@ pub struct Character {
     pub role: String,
     pub summary: String,
     pub sort_index: i64,
-    /// Manuscript scenes this character appears in. The scenes are not copied.
+    /// Binder items this character is linked to: scenes, or chapters,
+    /// parts, and books for every scene in them. Nothing is copied.
     #[serde(default)]
-    pub scene_ids: Vec<Id>,
+    pub linked_ids: Vec<Id>,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
 }
@@ -29,7 +30,7 @@ impl Character {
             role: String::new(),
             summary: String::new(),
             sort_index,
-            scene_ids: Vec::new(),
+            linked_ids: Vec::new(),
             created_at: now,
             updated_at: now,
         }
@@ -181,7 +182,7 @@ impl Cast {
 
     pub fn link_scene(&mut self, id: Id, scene_id: Id) -> bool {
         self.edit_character(id, |character| {
-            if !link_id(&mut character.scene_ids, scene_id) {
+            if !link_id(&mut character.linked_ids, scene_id) {
                 return false;
             }
             character.touch();
@@ -191,7 +192,7 @@ impl Cast {
 
     pub fn unlink_scene(&mut self, id: Id, scene_id: Id) -> bool {
         self.edit_character(id, |character| {
-            if !unlink_id(&mut character.scene_ids, scene_id) {
+            if !unlink_id(&mut character.linked_ids, scene_id) {
                 return false;
             }
             character.touch();
@@ -203,7 +204,7 @@ impl Cast {
         let gone: std::collections::HashSet<Id> = scene_ids.iter().copied().collect();
         let mut changed = false;
         for character in &mut self.characters {
-            if detach_ids(&mut character.scene_ids, &gone) {
+            if detach_ids(&mut character.linked_ids, &gone) {
                 character.touch();
                 changed = true;
             }
@@ -439,7 +440,7 @@ mod tests {
         assert!(!cast.link_scene(hero, scene));
         assert!(cast.link_scene(hero, other_scene));
         assert!(cast.detach_scenes(&[scene]));
-        assert_eq!(cast.characters.iter().find(|c| c.id == hero).unwrap().scene_ids, vec![other_scene]);
+        assert_eq!(cast.characters.iter().find(|c| c.id == hero).unwrap().linked_ids, vec![other_scene]);
         assert!(cast.unlink_scene(hero, other_scene));
     }
 

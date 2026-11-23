@@ -14,7 +14,7 @@ pub struct ResearchItem {
     pub sort_index: i64,
     /// Manuscript scenes this note belongs to. The scenes are not copied.
     #[serde(default)]
-    pub scene_ids: Vec<Id>,
+    pub linked_ids: Vec<Id>,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
 }
@@ -27,7 +27,7 @@ impl ResearchItem {
             title: title.into(),
             notes: String::new(),
             sort_index,
-            scene_ids: Vec::new(),
+            linked_ids: Vec::new(),
             created_at: now,
             updated_at: now,
         }
@@ -82,10 +82,10 @@ impl ResearchLibrary {
         let Some(item) = self.items.iter_mut().find(|item| item.id == id) else {
             return false;
         };
-        if item.scene_ids.contains(&scene_id) {
+        if item.linked_ids.contains(&scene_id) {
             return false;
         }
-        item.scene_ids.push(scene_id);
+        item.linked_ids.push(scene_id);
         item.touch();
         true
     }
@@ -94,9 +94,9 @@ impl ResearchLibrary {
         let Some(item) = self.items.iter_mut().find(|item| item.id == id) else {
             return false;
         };
-        let before = item.scene_ids.len();
-        item.scene_ids.retain(|scene| *scene != scene_id);
-        if item.scene_ids.len() == before {
+        let before = item.linked_ids.len();
+        item.linked_ids.retain(|scene| *scene != scene_id);
+        if item.linked_ids.len() == before {
             return false;
         }
         item.touch();
@@ -107,9 +107,9 @@ impl ResearchLibrary {
         let gone: std::collections::HashSet<Id> = scene_ids.iter().copied().collect();
         let mut changed = false;
         for item in &mut self.items {
-            let before = item.scene_ids.len();
-            item.scene_ids.retain(|scene| !gone.contains(scene));
-            if item.scene_ids.len() != before {
+            let before = item.linked_ids.len();
+            item.linked_ids.retain(|scene| !gone.contains(scene));
+            if item.linked_ids.len() != before {
                 item.touch();
                 changed = true;
             }
@@ -254,7 +254,7 @@ mod tests {
         assert!(library.link_scene(item, scene));
         assert!(!library.link_scene(item, scene));
         assert!(library.detach_scenes(&[scene]));
-        assert!(library.items[0].scene_ids.is_empty());
+        assert!(library.items[0].linked_ids.is_empty());
         let file_id = Id::new();
         let stored = stored_attachment_name(item, file_id, "coast.pdf");
         assert!(stored.ends_with(".pdf"));

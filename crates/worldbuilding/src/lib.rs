@@ -16,7 +16,7 @@ pub struct Location {
     pub sort_index: i64,
     /// Manuscript scenes where this place appears. The scenes are not copied.
     #[serde(default)]
-    pub scene_ids: Vec<Id>,
+    pub linked_ids: Vec<Id>,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
 }
@@ -30,7 +30,7 @@ impl Location {
             summary: String::new(),
             culture_id: None,
             sort_index,
-            scene_ids: Vec::new(),
+            linked_ids: Vec::new(),
             created_at: now,
             updated_at: now,
         }
@@ -49,7 +49,7 @@ pub struct Culture {
     pub sort_index: i64,
     /// Manuscript scenes where this culture appears. The scenes are not copied.
     #[serde(default)]
-    pub scene_ids: Vec<Id>,
+    pub linked_ids: Vec<Id>,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
 }
@@ -62,7 +62,7 @@ impl Culture {
             name: name.into(),
             summary: String::new(),
             sort_index,
-            scene_ids: Vec::new(),
+            linked_ids: Vec::new(),
             created_at: now,
             updated_at: now,
         }
@@ -83,7 +83,7 @@ pub struct LoreEntry {
     pub sort_index: i64,
     /// Manuscript scenes this lore belongs to. The scenes are not copied.
     #[serde(default)]
-    pub scene_ids: Vec<Id>,
+    pub linked_ids: Vec<Id>,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
 }
@@ -98,7 +98,7 @@ impl LoreEntry {
             location_id: None,
             culture_id: None,
             sort_index,
-            scene_ids: Vec::new(),
+            linked_ids: Vec::new(),
             created_at: now,
             updated_at: now,
         }
@@ -119,7 +119,7 @@ pub struct TimelineEvent {
     pub sort_index: i64,
     /// Manuscript scenes this event belongs to. The scenes are not copied.
     #[serde(default)]
-    pub scene_ids: Vec<Id>,
+    pub linked_ids: Vec<Id>,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
 }
@@ -134,7 +134,7 @@ impl TimelineEvent {
             summary: String::new(),
             location_id: None,
             sort_index,
-            scene_ids: Vec::new(),
+            linked_ids: Vec::new(),
             created_at: now,
             updated_at: now,
         }
@@ -176,44 +176,44 @@ impl World {
     }
 
     pub fn link_location_scene(&mut self, id: Id, scene_id: Id) -> bool {
-        link_owned(&mut self.locations, id, scene_id, |item| item.id, |item| &mut item.scene_ids, |item| item.touch())
+        link_owned(&mut self.locations, id, scene_id, |item| item.id, |item| &mut item.linked_ids, |item| item.touch())
     }
 
     pub fn unlink_location_scene(&mut self, id: Id, scene_id: Id) -> bool {
-        unlink_owned(&mut self.locations, id, scene_id, |item| item.id, |item| &mut item.scene_ids, |item| item.touch())
+        unlink_owned(&mut self.locations, id, scene_id, |item| item.id, |item| &mut item.linked_ids, |item| item.touch())
     }
 
     pub fn link_culture_scene(&mut self, id: Id, scene_id: Id) -> bool {
-        link_owned(&mut self.cultures, id, scene_id, |item| item.id, |item| &mut item.scene_ids, |item| item.touch())
+        link_owned(&mut self.cultures, id, scene_id, |item| item.id, |item| &mut item.linked_ids, |item| item.touch())
     }
 
     pub fn unlink_culture_scene(&mut self, id: Id, scene_id: Id) -> bool {
-        unlink_owned(&mut self.cultures, id, scene_id, |item| item.id, |item| &mut item.scene_ids, |item| item.touch())
+        unlink_owned(&mut self.cultures, id, scene_id, |item| item.id, |item| &mut item.linked_ids, |item| item.touch())
     }
 
     pub fn link_lore_scene(&mut self, id: Id, scene_id: Id) -> bool {
-        link_owned(&mut self.lore, id, scene_id, |item| item.id, |item| &mut item.scene_ids, |item| item.touch())
+        link_owned(&mut self.lore, id, scene_id, |item| item.id, |item| &mut item.linked_ids, |item| item.touch())
     }
 
     pub fn unlink_lore_scene(&mut self, id: Id, scene_id: Id) -> bool {
-        unlink_owned(&mut self.lore, id, scene_id, |item| item.id, |item| &mut item.scene_ids, |item| item.touch())
+        unlink_owned(&mut self.lore, id, scene_id, |item| item.id, |item| &mut item.linked_ids, |item| item.touch())
     }
 
     pub fn link_event_scene(&mut self, id: Id, scene_id: Id) -> bool {
-        link_owned(&mut self.events, id, scene_id, |item| item.id, |item| &mut item.scene_ids, |item| item.touch())
+        link_owned(&mut self.events, id, scene_id, |item| item.id, |item| &mut item.linked_ids, |item| item.touch())
     }
 
     pub fn unlink_event_scene(&mut self, id: Id, scene_id: Id) -> bool {
-        unlink_owned(&mut self.events, id, scene_id, |item| item.id, |item| &mut item.scene_ids, |item| item.touch())
+        unlink_owned(&mut self.events, id, scene_id, |item| item.id, |item| &mut item.linked_ids, |item| item.touch())
     }
 
     pub fn detach_scenes(&mut self, scene_ids: &[Id]) -> bool {
         let gone: std::collections::HashSet<Id> = scene_ids.iter().copied().collect();
         let mut changed = false;
-        changed |= detach_owned(&mut self.locations, &gone, |item| &mut item.scene_ids, |item| item.touch());
-        changed |= detach_owned(&mut self.cultures, &gone, |item| &mut item.scene_ids, |item| item.touch());
-        changed |= detach_owned(&mut self.lore, &gone, |item| &mut item.scene_ids, |item| item.touch());
-        changed |= detach_owned(&mut self.events, &gone, |item| &mut item.scene_ids, |item| item.touch());
+        changed |= detach_owned(&mut self.locations, &gone, |item| &mut item.linked_ids, |item| item.touch());
+        changed |= detach_owned(&mut self.cultures, &gone, |item| &mut item.linked_ids, |item| item.touch());
+        changed |= detach_owned(&mut self.lore, &gone, |item| &mut item.linked_ids, |item| item.touch());
+        changed |= detach_owned(&mut self.events, &gone, |item| &mut item.linked_ids, |item| item.touch());
         changed
     }
 

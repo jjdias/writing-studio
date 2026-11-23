@@ -15,7 +15,9 @@ on:
       - about.hbs
       - LICENSE-*
       - apps/desktop/**
+      - crates/**
       - Cargo.toml
+      - Cargo.lock
 
 permissions:
   contents: read

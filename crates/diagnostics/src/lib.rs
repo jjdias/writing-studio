@@ -295,6 +295,12 @@ pub fn phrases_in(text: &str, phrases: &[String]) -> Vec<bool> {
 /// a character called Rose is not found in "the sun rose".
 pub fn mentions(text: &str, names: &[String]) -> Vec<Mention> {
     let words = words_of(text);
+    // Words of a name that start sentences or come with any name: "The
+    // Pilot" is not named by every "The", nor "Dr Vance" by every "Dr".
+    const NOT_A_NAME: [&str; 30] = [
+        "The", "A", "An", "Of", "And", "Mr", "Mrs", "Ms", "Dr", "Sir", "Lady", "Lord", "Saint", "St", "O", "Os", "As", "Do",
+        "Da", "Dos", "Das", "De", "Del", "El", "La", "Los", "Las", "Le", "Les", "Du",
+    ];
     let mut found: Vec<Mention> = names
         .iter()
         .filter_map(|name| {
@@ -302,6 +308,7 @@ pub fn mentions(text: &str, names: &[String]) -> Vec<Mention> {
                 .split(|ch: char| !ch.is_alphanumeric())
                 .filter(|part| part.chars().count() >= 2)
                 .filter(|part| part.chars().next().is_some_and(char::is_uppercase))
+                .filter(|part| !NOT_A_NAME.contains(part))
                 .collect();
             let count = words.iter().filter(|word| parts.contains(word)).count() as u32;
             (count > 0).then(|| Mention {
@@ -433,6 +440,14 @@ mod tests {
         );
         // With too few scenes to compare, length is not judged.
         assert!(findings(&complete, &short, &BookContext::default()).is_empty());
+    }
+
+    #[test]
+    fn a_name_is_not_found_by_its_article_or_title() {
+        let found = mentions("The sea was calm. Dr Ames waited.", &names(&["The Pilot", "Dr Vance"]));
+        assert!(found.is_empty(), "{found:?}");
+        let found = mentions("The Pilot's boat. Vance slept.", &names(&["The Pilot", "Dr Vance"]));
+        assert_eq!(found.len(), 2);
     }
 
     #[test]

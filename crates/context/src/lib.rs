@@ -77,22 +77,22 @@ pub fn story_entries(cast: &Cast, world: &World, library: &ResearchLibrary) -> V
         entries.push(StoryEntry { kind, id, name, text, links: links.to_vec() });
     };
     for item in cast.characters_in_order() {
-        push(EntryKind::Character, item.id, &item.name, &[&item.role, &item.summary], &item.scene_ids);
+        push(EntryKind::Character, item.id, &item.name, &[&item.role, &item.summary], &item.linked_ids);
     }
     for item in world.locations_in_order() {
-        push(EntryKind::Location, item.id, &item.name, &[&item.summary], &item.scene_ids);
+        push(EntryKind::Location, item.id, &item.name, &[&item.summary], &item.linked_ids);
     }
     for item in world.cultures_in_order() {
-        push(EntryKind::Culture, item.id, &item.name, &[&item.summary], &item.scene_ids);
+        push(EntryKind::Culture, item.id, &item.name, &[&item.summary], &item.linked_ids);
     }
     for item in world.lore_in_order() {
-        push(EntryKind::Lore, item.id, &item.title, &[&item.body], &item.scene_ids);
+        push(EntryKind::Lore, item.id, &item.title, &[&item.body], &item.linked_ids);
     }
     for item in world.events_in_order() {
-        push(EntryKind::Timeline, item.id, &item.title, &[&item.when_label, &item.summary], &item.scene_ids);
+        push(EntryKind::Timeline, item.id, &item.title, &[&item.when_label, &item.summary], &item.linked_ids);
     }
     for item in library.items_in_order() {
-        push(EntryKind::Research, item.id, &item.title, &[&item.notes], &item.scene_ids);
+        push(EntryKind::Research, item.id, &item.title, &[&item.notes], &item.linked_ids);
     }
     entries
 }
@@ -382,15 +382,15 @@ mod tests {
         cast.set_summary(mara, "Always late.".into());
         let pilot = cast.add_character();
         cast.set_name(pilot, "The Pilot".into());
-        cast.characters.iter_mut().find(|item| item.id == mara).unwrap().scene_ids = vec![chapter];
-        cast.characters.iter_mut().find(|item| item.id == pilot).unwrap().scene_ids = vec![scenes[1]];
+        cast.characters.iter_mut().find(|item| item.id == mara).unwrap().linked_ids = vec![chapter];
+        cast.characters.iter_mut().find(|item| item.id == pilot).unwrap().linked_ids = vec![scenes[1]];
 
         let mut world = World::new();
         let port = world.add_location();
         let place = world.locations.iter_mut().find(|item| item.id == port).unwrap();
         place.name = "Port Ely".into();
         place.summary = "A harbor town.".into();
-        place.scene_ids = vec![scenes[1]];
+        place.linked_ids = vec![scenes[1]];
         let war = world.add_lore();
         world.lore.iter_mut().find(|item| item.id == war).unwrap().title = "The Old War".into();
 
@@ -398,7 +398,7 @@ mod tests {
         let note = library.add_item();
         library.set_title(note, "Tides".into());
         library.set_notes(note, "x".repeat(400));
-        library.items.iter_mut().find(|item| item.id == note).unwrap().scene_ids = vec![scenes[1]];
+        library.items.iter_mut().find(|item| item.id == note).unwrap().linked_ids = vec![scenes[1]];
 
         let mut plot = PlotGrid::new();
         let line = plot.add_line();

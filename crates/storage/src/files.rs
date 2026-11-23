@@ -643,7 +643,7 @@ pub(crate) fn bible_files(
             ],
             extras.get(&person.id),
         );
-        entry("characters", &mut list, person.id, &person.name, &person.scene_ids, file);
+        entry("characters", &mut list, person.id, &person.name, &person.linked_ids, file);
     }
     order.push(("characters", std::mem::take(&mut list)));
 
@@ -655,13 +655,13 @@ pub(crate) fn bible_files(
             vec![("culture", optional_id(place_.culture_id))],
             extras.get(&place_.id),
         );
-        entry("places", &mut list, place_.id, &place_.name, &place_.scene_ids, file);
+        entry("places", &mut list, place_.id, &place_.name, &place_.linked_ids, file);
     }
     order.push(("places", std::mem::take(&mut list)));
 
     for culture in sorted(&world.cultures, |item| item.sort_index) {
         let file = entry_file(culture.id, &culture.name, &culture.summary, Vec::new(), extras.get(&culture.id));
-        entry("cultures", &mut list, culture.id, &culture.name, &culture.scene_ids, file);
+        entry("cultures", &mut list, culture.id, &culture.name, &culture.linked_ids, file);
     }
     order.push(("cultures", std::mem::take(&mut list)));
 
@@ -676,7 +676,7 @@ pub(crate) fn bible_files(
             ],
             extras.get(&lore.id),
         );
-        entry("lore", &mut list, lore.id, &lore.title, &lore.scene_ids, file);
+        entry("lore", &mut list, lore.id, &lore.title, &lore.linked_ids, file);
     }
     order.push(("lore", std::mem::take(&mut list)));
 
@@ -691,13 +691,13 @@ pub(crate) fn bible_files(
             ],
             extras.get(&event.id),
         );
-        entry("timeline", &mut list, event.id, &event.title, &event.scene_ids, file);
+        entry("timeline", &mut list, event.id, &event.title, &event.linked_ids, file);
     }
     order.push(("timeline", std::mem::take(&mut list)));
 
     for note in sorted(&library.items, |item| item.sort_index) {
         let file = entry_file(note.id, &note.title, &note.notes, Vec::new(), extras.get(&note.id));
-        entry("research", &mut list, note.id, &note.title, &note.scene_ids, file);
+        entry("research", &mut list, note.id, &note.title, &note.linked_ids, file);
     }
     order.push(("research", std::mem::take(&mut list)));
 
@@ -1228,7 +1228,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
             role: file.header.other.text("role").unwrap_or_default().to_string(),
             summary: blocks_text(file.blocks),
             sort_index: index,
-            scene_ids: links_of(id),
+            linked_ids: links_of(id),
             created_at: now,
             updated_at: now,
         });
@@ -1256,7 +1256,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
             culture_id: header_id(&file, &path, "culture")?,
             summary: blocks_text(file.blocks),
             sort_index: index,
-            scene_ids: links_of(id),
+            linked_ids: links_of(id),
             created_at: now,
             updated_at: now,
         });
@@ -1267,7 +1267,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
             name: file.header.title.clone(),
             summary: blocks_text(file.blocks),
             sort_index: index,
-            scene_ids: links_of(id),
+            linked_ids: links_of(id),
             created_at: now,
             updated_at: now,
         });
@@ -1280,7 +1280,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
             culture_id: header_id(&file, &path, "culture")?,
             body: blocks_text(file.blocks),
             sort_index: index,
-            scene_ids: links_of(id),
+            linked_ids: links_of(id),
             created_at: now,
             updated_at: now,
         });
@@ -1293,7 +1293,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
             location_id: header_id(&file, &path, "place")?,
             summary: blocks_text(file.blocks),
             sort_index: index,
-            scene_ids: links_of(id),
+            linked_ids: links_of(id),
             created_at: now,
             updated_at: now,
         });
@@ -1306,7 +1306,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
             title: file.header.title.clone(),
             notes: blocks_text(file.blocks),
             sort_index: index,
-            scene_ids: links_of(id),
+            linked_ids: links_of(id),
             created_at: now,
             updated_at: now,
         });
@@ -1638,7 +1638,7 @@ mod tests {
             role: "lead".into(),
             summary: "Late.\n\nAlways late.".into(),
             sort_index: index,
-            scene_ids: vec![scene.id],
+            linked_ids: vec![scene.id],
             created_at: now,
             updated_at: now,
         };
@@ -1673,7 +1673,7 @@ mod tests {
                     summary: "Stone.".into(),
                     culture_id: Some(guild),
                     sort_index: 0,
-                    scene_ids: vec![scene.id],
+                    linked_ids: vec![scene.id],
                     created_at: now,
                     updated_at: now,
                 }],
@@ -1682,7 +1682,7 @@ mod tests {
                     name: "Pilots' Guild".into(),
                     summary: String::new(),
                     sort_index: 0,
-                    scene_ids: Vec::new(),
+                    linked_ids: Vec::new(),
                     created_at: now,
                     updated_at: now,
                 }],
@@ -1693,7 +1693,7 @@ mod tests {
                     location_id: Some(quay),
                     culture_id: None,
                     sort_index: 0,
-                    scene_ids: Vec::new(),
+                    linked_ids: Vec::new(),
                     created_at: now,
                     updated_at: now,
                 }],
@@ -1704,7 +1704,7 @@ mod tests {
                     summary: String::new(),
                     location_id: Some(quay),
                     sort_index: 0,
-                    scene_ids: Vec::new(),
+                    linked_ids: Vec::new(),
                     created_at: now,
                     updated_at: now,
                 }],
@@ -1796,7 +1796,7 @@ mod tests {
         let names: Vec<&str> = read.cast.characters.iter().map(|c| c.name.as_str()).collect();
         assert_eq!(names, ["Mara Vance", "The Pilot"]);
         assert_eq!(read.cast.characters[0].summary, "Late.\n\nAlways late.");
-        assert_eq!(read.cast.characters[0].scene_ids, vec![harbor.id]);
+        assert_eq!(read.cast.characters[0].linked_ids, vec![harbor.id]);
         let motives: Vec<&str> = read.cast.motivations.iter().map(|m| m.body.as_str()).collect();
         assert_eq!(motives, ["Leave", "Be forgiven"]);
         assert_eq!(read.cast.relationships[0].kind, "owes");
@@ -1826,7 +1826,7 @@ mod tests {
         assert!(fs::read_to_string(&bible).unwrap().contains(&to_harbor));
         let to_chapter = fs::read_to_string(&bible).unwrap().replace(&to_harbor, &format!(r#""item":"{chapter}""#));
         fs::write(&bible, &to_chapter).unwrap();
-        assert_eq!(read_project_files(&first).unwrap().cast.characters[0].scene_ids, vec![chapter]);
+        assert_eq!(read_project_files(&first).unwrap().cast.characters[0].linked_ids, vec![chapter]);
         // A link written with `scene`, before links could point at a chapter,
         // is refused and not converted.
         fs::write(&bible, to_chapter.replace(r#""item":"#, r#""scene":"#)).unwrap();
@@ -1877,13 +1877,17 @@ mod tests {
         let path = tagged.join("binder.json");
         let edited = fs::read_to_string(&path)
             .unwrap()
-            .replace(r#""keywords":["Flashback"]"#, &format!(r#""keywords":["  ","{}","Flashback"]"#, "x".repeat(90)))
+            .replace(
+                r#""keywords":["Flashback"]"#,
+                &format!(r#""keywords":["  ","{}","{}","Flashback"]"#, "x".repeat(90), "y".repeat(300)),
+            )
             .replace(r#""color":"gold""#, r#""color":"chartreuse""#);
         fs::write(&path, edited).unwrap();
         let checked = read_project_files(&tagged).unwrap();
         let words = &checked.binder.get(scene).unwrap().keywords;
-        assert_eq!(words.len(), 2);
-        assert!(words.iter().all(|word| !word.trim().is_empty() && word.chars().count() <= 40));
+        assert_eq!(words.len(), 3);
+        assert_eq!(words[0].chars().count(), 90, "a long keyword from elsewhere is kept whole");
+        assert_eq!(words[1].chars().count(), 200, "past the sanity limit it is cut");
         assert!(checked.binder.keywords.iter().all(|keyword| keyword.color != "chartreuse"));
 
         // A filter from before filters took several keywords is refused,
@@ -1932,8 +1936,11 @@ mod tests {
     }
 }
 
-/// The longest keyword read from a file, as the binder keeps them.
-const KEYWORD_LIMIT: usize = 40;
+/// The longest keyword read from a file. Typing stops at 40 characters
+/// (`tidy_keyword`); a file from another machine or a hand edit may hold a
+/// longer one, which is kept whole up to here, so that two long keywords
+/// are not cut into one. Past this it is not a keyword but a mistake.
+const KEYWORD_LIMIT: usize = 200;
 
 /// An item's keywords from its `binder.json` line: strings only, trimmed,
 /// none empty, none too long.
