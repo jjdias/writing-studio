@@ -1,6 +1,6 @@
 # Phase 7 — Windows and Linux release
 
-In progress: stages 1 to 5 are done, and 6 waits on the maintainer's check.
+Done. Stages 1 to 6 are on `master`. The check of the installed packages, on Windows from the MSI and on Linux from the `.deb`, waits on the maintainer and comes before the first release tag (see stage 6).
 
 Today Writing Studio runs by building it from source with `cargo run`. This phase makes it something a writer downloads and installs on Windows or Linux, built and checked by the project's own CI, with no cost to the project.
 
@@ -66,7 +66,7 @@ Today Writing Studio runs by building it from source with `cargo run`. This phas
 
 ### 6. A pass over the packaged program
 
-**In progress.** `documentation/RELEASING.md` has the steps of a release and the check to make on Windows and Linux, from the packages. Measured on the maintainer's Windows computer, 2026-11-22, from `cargo build --release` (5.7 minutes): the program is 19.0 MB (7.5 MB packed), its window shows 129 ms after it starts the first time and about 50 ms after, and it holds about 26 MB, not counting WebView2's own processes. That is when the window appears, not when its page is drawn; the check notes how long until it is ready to use. Left: the check itself, by the maintainer, on Windows and on Linux in WSL2.
+**Done, but for the maintainer's check.** `documentation/RELEASING.md` has the steps of a release and the check to make on Windows and Linux, from the packages. Measured on the maintainer's Windows computer, 2026-11-22, from `cargo build --release` (5.7 minutes): the program is 19.0 MB (7.5 MB packed), its window shows 129 ms after it starts the first time and about 50 ms after, and it holds about 26 MB, not counting WebView2's own processes. That is when the window appears, not when its page is drawn; the check notes how long until it is ready to use. On 2026-11-23 the portable zip from CI was driven through WebView2's debugging port and the Windows file dialogs: it started in 490 ms the first time and 94 ms after, created a project titled `Tom&Jerry 100%`, kept a typed line through a forced close, reopened it, compiled all four formats, marked two misspellings, and showed About with the licenses folder. That found an empty paragraph under every chapter heading in Word, EPUB, and HTML, from a chapter's empty text and the starter scene's blank line; both are fixed. Left, before `v0.1.0`: the installer, the Start menu and removal, sync, research files, and Linux in WSL2, by the maintainer, from the steps in `documentation/RELEASING.md`.
 
 - Start the installed program on Windows and on Linux, open and create a project, write, compile each format, and sync, from the package rather than from `cargo run`.
 - What differs between WebView2 and WebKitGTK (fonts, the editor, file dialogs, keyboard shortcuts) is fixed where it can be, or written down where it cannot.

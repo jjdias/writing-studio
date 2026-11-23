@@ -113,7 +113,7 @@ Checked by a test of the window's state that syncs two drafts, lists them, compa
 
 ## Moved out of Phase 5
 
-- **A git engine built into the program**, so that nothing has to be installed and Sync works on phones and tablets: to [Phase 7](../todo/phase-7.md). It means a large new dependency, and the program handling SSH keys or tokens itself, which needs an explicit decision.
+- **A git engine built into the program**, so that nothing has to be installed and Sync works on phones and tablets: to [Phase 7](phase-7.md). It means a large new dependency, and the program handling SSH keys or tokens itself, which needs an explicit decision.
 - **Guided setup**, creating a repository and signing in from inside the program: to [bonus](../todo/bonus.md). It needs an integration with each git host, against syncing with any git host, and stored tokens.
 
 ## Not in Phase 5
