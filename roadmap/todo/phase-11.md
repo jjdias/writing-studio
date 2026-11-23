@@ -1,6 +1,6 @@
 # Phase 11 — Tags, story links, and a mind map
 
-Done: every stage is in. The maintainer's look at the window is left, as in Phases 8 and 9.
+In progress: stages 1 to 12 are done. Stages 13 to 16, added after trying the window, rework the columns and bring worldbuilding into the binder.
 
 Phase 9 gave binder items colored keywords and saved filters. This phase does four things with what is there:
 
@@ -169,6 +169,39 @@ The corkboard becomes a mind map of the manuscript.
 - **Positions.** A node the writer drags keeps where it was put; the others stay laid out automatically around it. "Tidy" puts everything back.
 - **An idea becomes a scene**: dropped on a chapter, or with a menu item, it becomes a new scene there, its note the synopsis, and its lines go with it.
 - Stored in a new file, `mindmap.json`: `ideas`, `lines`, and `positions` by item id (entries included). Story links stay in `bible.json`. Sync merges `mindmap.json` by id, as `bible.json` and `plot.json` are, and keeps keys the program does not know. Lines to an item in the trash hide, and go when the trash is emptied. A project without the file has no ideas or lines. `documentation/PROJECT_FORMAT.md` describes it.
+
+### Added after trying the window
+
+The window had four columns: the binder, the scene list, the page, and the inspector on the right, which crowded the page. These stages make it three: the **binder**, with scenes nested in their chapters and the story's worldbuilding as trees of its own; **Context**, where the scene list was, holding what the inspector held; and the page, mind map, or outline. Context is for what is said about the work, never the work itself.
+
+### 13. Scenes in the binder, and the Context panel
+
+- The scene list goes. The binder lists scenes in their chapters (and in the parts, books, and folders they sit in), each row with its title, status, and keyword colors, and the chapter's ring of finished scenes. Choosing a scene opens it on the page; choosing a book, part, chapter, or folder shows it in Context.
+- Where the scene list was, **Context** holds what the right-hand inspector held: progress, synopsis, status, keywords, In this scene, Named here, the scene context, beats and diagnostics, snapshots, split and merge, include in compile, color, and Move to trash. The right-hand inspector goes; its button and Ctrl+Alt+I show and hide Context.
+- What the scene list did comes to the binder: the search box over the tree, which keeps the books, parts, and chapters that hold a match; Ctrl+click and Shift+click picking; dragging scenes as chapters are dragged; a saved filter, keyword, or story entry chosen narrows the tree to what matches; the trash's contents under Trash, with Restore and Empty trash in Context when the trash is chosen.
+- On the mind map and the outline, Context shows the chosen node. Characters, World, and Research keep the main area until stage 14.
+
+### 14. Worldbuilding in the binder
+
+- "Extras" becomes **Worldbuilding**: Characters, Places, Cultures, Lore, Events, and Research, each a tree in the binder that nests freely within its kind: Country › City › Neighbourhood › Pub; Father › Son › Grandson. Plot and History move under Views.
+- Entries are added (+ on a kind's heading, or inside a chosen entry), renamed in place (F2, double-click), dragged to nest or reorder within their kind, folded like binder rows, and deleted as now, with a second click.
+- Choosing an entry opens its page in the main area: its name, its text (a character's summary, a place's or culture's summary, lore's body, an event's time and summary, a research note's notes and files), and what its kind has besides (a character's role and motivations). Context shows its connections and where it is in the manuscript.
+- The Characters, World, and Research views go, with their code.
+- In `bible.json`, an entry has `parent` when it is inside another of its kind. An entry without one is at the top, so this adds to the format and refuses nothing. Sync merges it as a field. `documentation/PROJECT_FORMAT.md` says so.
+
+### 15. Labels and named connections
+
+- Every entry has a **label**: what it is ("Country", "Pub", "Father"), typed with suggestions from the labels its kind already uses, and shown beside its name in the binder, on its page, and on the map.
+- **Connections** join any two entries, of any kinds, with a name ("lives in", "son of", "rules"), suggested from the names in use. They are added and removed in Context, and each side shows the other. Being inside another entry is a connection too ("inside"), without being added.
+- A character's relationships become connections: `relationships` in `bible.json` may join any two entries, its `kind` the connection's name. A place's culture, lore's place and culture, and an event's place stay their own fields and show as connections.
+- In `bible.json`, an entry has `label`. Both are additions to the format.
+
+### 16. Worldbuilding on the mind map
+
+- A menu over the map chooses its middle: the book, as now, or **Worldbuilding**. Worldbuilding shows the chosen kinds' trees, nesting as branches, and the named connections as labeled lines between them, so how places and characters relate shows at a glance.
+- Filters: which kinds (Places, Characters, and so on), which connection names, and one entry to center on, showing what it is inside, what it holds, and what it is connected to.
+- Editing as on the book's map where it fits: drag to nest within a kind, Tab and Enter to add, F2 to rename, Delete, and Join, which draws a named connection (stored as a connection, not a map line).
+- The book's map keeps its story entries (stage 12).
 
 ## Noticed along the way
 
