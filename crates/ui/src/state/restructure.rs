@@ -453,7 +453,7 @@ impl StudioState {
         });
         for scene in &joined {
             for word in &scene.node.keywords {
-                self.binder.add_keyword(first, word);
+                self.binder.carry_keyword(first, word);
             }
             if let Some(open) = self.binder.get_mut(first) {
                 if open.synopsis.trim().is_empty() {

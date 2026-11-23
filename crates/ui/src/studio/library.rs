@@ -794,7 +794,7 @@ fn filter_summary(filter: &SavedFilter) -> String {
 #[component]
 fn FilterForm(editing: Option<SavedFilter>) -> Element {
     let mut state = use_context::<Signal<StudioState>>();
-    let known: Vec<String> = state.read().binder.keywords.iter().map(|keyword| keyword.name.clone()).collect();
+    let known: Vec<String> = state.read().binder.keyword_choices();
     let start = editing.clone().unwrap_or_else(|| SavedFilter {
         id: Id::new(),
         name: String::new(),
@@ -819,7 +819,7 @@ fn FilterForm(editing: Option<SavedFilter>) -> Element {
                 onchange: move |event| keyword.set(event.value()),
                 option { value: "", selected: keyword().is_empty(), "Any" }
                 for word in known {
-                    option { value: "{word}", selected: keyword().eq_ignore_ascii_case(&word), "{word}" }
+                    option { value: "{word}", selected: same_keyword(&keyword(), &word), "{word}" }
                 }
             }
             label { r#for: "filter-status", "Status" }

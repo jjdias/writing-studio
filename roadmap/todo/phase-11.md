@@ -1,6 +1,6 @@
 # Phase 11 — Tags, story links, and a mind map
 
-In progress: stage 1 is done.
+In progress: stages 1 and 2 are done.
 
 Phase 9 gave binder items colored keywords and saved filters. This phase does four things with what is there:
 
@@ -70,6 +70,8 @@ In this order: the layout change first, because every later stage adds to the li
 - Until stage 10 the "Mind map" row opens the corkboard as it is.
 
 ### 2. Nested keywords
+
+**Done.** `crates/project/src/binder.rs` has `keyword_covers` (a keyword or one nested under it), `same_keyword`, and `tidy_keyword`, all ignoring case in any alphabet. Saved filters and the outline's keyword menu (`keyword_allows`) match with `keyword_covers`; the binder search already matched keywords by any part of the name, so it finds nested ones as it is. `add_keyword` tidies what the writer types and the inspector says why a keyword is refused, keeping it in the field; `carry_keyword` keeps an older label or a merged scene's keyword as it is. The keyword menus offer `BinderTree::keyword_choices`: every keyword in use, each after any parent no item carries itself, so `plot` can be chosen while only `plot/subplot` exists.
 
 - A keyword with `/` is nested: `plot/subplot` is under `plot`. Choosing `plot` anywhere also matches `plot/…`: saved filters (`BinderTree::scenes_matching`), the outline's and the map's keyword menu (`StudioState::keyword_allows`), and the binder search. A keyword is never matched by a part of its name: `subplot` does not match `plot/subplot`.
 - A keyword is tidied when it is entered: a leading `#` is dropped, spaces around `/` go, and empty parts (`a//b`, a `/` at either end) are not allowed. Keywords already in a project are read as they are.

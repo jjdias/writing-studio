@@ -19,7 +19,7 @@ use writing_studio_manuscript::{book_outline_words, outline_rows};
 use writing_studio_plotting::PlotGrid;
 use writing_studio_research::ResearchLibrary;
 use writing_studio_project::{
-    binder_color_hex, format_elapsed, normalize_binder_color, pace, BinderNode, BinderTree, NodeKind, Pace, PanelLayout,
+    binder_color_hex, format_elapsed, keyword_covers, normalize_binder_color, pace, tidy_keyword, BinderNode, BinderTree, NodeKind, Pace, PanelLayout,
     DropPlace, KeepPlace, PageStyle, ProjectMeta, ProseFont, SavedFilter, StoredSession, Theme,
 };
 use writing_studio_search::ManuscriptIndex;
@@ -2315,6 +2315,10 @@ impl StudioState {
     }
 
     pub fn add_keyword(&mut self, id: Id, name: &str) {
+        if !name.trim().is_empty() && tidy_keyword(name).is_none() {
+            self.status = format!("“{}” is not a keyword: each part around / needs a name.", name.trim());
+            return;
+        }
         if self.binder.add_keyword(id, name) {
             self.persist_binder();
         }
@@ -2339,11 +2343,12 @@ impl StudioState {
             return true;
         };
         // The scene's own keywords, or those of the chapter, part, or book
-        // it is in, as a saved filter matches.
+        // it is in, as a saved filter matches; a keyword nested under the
+        // one chosen counts.
         let mut at = Some(id);
         let mut guard = 0;
         while let Some(node) = at.and_then(|id| self.binder.get(id)) {
-            if node.keywords.iter().any(|word| word.eq_ignore_ascii_case(wanted)) {
+            if node.keywords.iter().any(|word| keyword_covers(wanted, word)) {
                 return true;
             }
             at = node.parent_id;
@@ -4720,6 +4725,16 @@ mod tests {
 
         state.keyword_filter = Some("Flashback".into());
         assert!(state.keyword_allows(tagged) && !state.keyword_allows(other));
+        // A keyword nested under the one chosen counts, in any alphabet's case.
+        state.add_keyword(other, "AÇÃO/fuga");
+        state.keyword_filter = Some("ação".into());
+        assert!(state.keyword_allows(other) && !state.keyword_allows(tagged));
+        state.remove_keyword(other, "AÇÃO/fuga");
+        state.keyword_filter = None;
+        // A keyword with an empty part is refused, and says why.
+        state.add_keyword(other, "act//two");
+        assert!(state.status.contains("not a keyword"), "{}", state.status);
+        assert!(state.binder.get(other).unwrap().keywords.is_empty());
 
         // Changing a saved filter keeps its row and shows what it finds now.
         let filter = state.binder.filters[0].id;

@@ -170,7 +170,7 @@ pub(super) fn EmptyState(
 #[component]
 pub(super) fn KeywordSelect() -> Element {
     let mut state = use_context::<Signal<StudioState>>();
-    let known: Vec<String> = state.read().binder.keywords.iter().map(|keyword| keyword.name.clone()).collect();
+    let known: Vec<String> = state.read().binder.keyword_choices();
     let current = state.read().keyword_filter.clone().unwrap_or_default();
     if known.is_empty() {
         return rsx! {};
@@ -186,7 +186,7 @@ pub(super) fn KeywordSelect() -> Element {
             },
             option { value: "", selected: current.is_empty(), "Any keyword" }
             for word in known {
-                option { value: "{word}", selected: word.eq_ignore_ascii_case(&current), "{word}" }
+                option { value: "{word}", selected: same_keyword(&word, &current), "{word}" }
             }
         }
     }

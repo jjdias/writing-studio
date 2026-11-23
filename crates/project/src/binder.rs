@@ -1324,6 +1324,34 @@ fn same_word(one: &str, other: &str) -> bool {
     one.trim().to_lowercase() == other.trim().to_lowercase()
 }
 
+/// Whether two keywords are the same one, ignoring case in any alphabet.
+pub fn same_keyword(one: &str, other: &str) -> bool {
+    same_word(one, other)
+}
+
+/// Whether choosing `wanted` takes in an item carrying `word`: the same
+/// keyword, or one nested under it with `/`. `plot` covers `plot/subplot`;
+/// `subplot` does not, and neither covers `plotting`.
+pub fn keyword_covers(wanted: &str, word: &str) -> bool {
+    let wanted = wanted.trim().to_lowercase();
+    let word = word.trim().to_lowercase();
+    word == wanted || word.strip_prefix(&wanted).is_some_and(|rest| rest.starts_with('/'))
+}
+
+/// A keyword as it is kept, from what was typed: without a leading `#`,
+/// without spaces around `/`, and at most `KEYWORD_MAX` characters. `None`
+/// when it is empty or has an empty part (`a//b`, a `/` at either end).
+pub fn tidy_keyword(typed: &str) -> Option<String> {
+    let typed = typed.trim().trim_start_matches('#');
+    let parts: Vec<&str> = typed.split('/').map(str::trim).collect();
+    if parts.iter().any(|part| part.is_empty()) {
+        return None;
+    }
+    let joined: String = parts.join("/").chars().take(KEYWORD_MAX).collect();
+    let kept = joined.trim_end_matches(['/', ' ']).to_string();
+    (!kept.is_empty()).then_some(kept)
+}
+
 fn keyword_colors() -> Vec<&'static str> {
     BINDER_COLORS.iter().map(|color| color.id).filter(|id| !id.is_empty()).collect()
 }
@@ -1338,9 +1366,20 @@ impl BinderTree {
             .unwrap_or("")
     }
 
-    /// Give an item a keyword. A keyword new to the project takes the next
-    /// color in turn. Returns whether anything changed.
+    /// Give an item a keyword the writer typed, tidied first
+    /// (`tidy_keyword`). A keyword new to the project takes the next color
+    /// in turn. Returns whether anything changed.
     pub fn add_keyword(&mut self, id: Id, name: &str) -> bool {
+        match tidy_keyword(name) {
+            Some(name) => self.carry_keyword(id, &name),
+            None => false,
+        }
+    }
+
+    /// Give an item a keyword that is already kept somewhere (another
+    /// item's, or an older label), as it is spelled: what a project holds
+    /// is not tidied again. Returns whether anything changed.
+    pub fn carry_keyword(&mut self, id: Id, name: &str) -> bool {
         let name: String = name.trim().chars().take(KEYWORD_MAX).collect();
         if name.is_empty() {
             return false;
@@ -1405,7 +1444,7 @@ impl BinderTree {
             .collect();
         let mut changed = false;
         for (id, label) in labelled {
-            self.add_keyword(id, &label);
+            self.carry_keyword(id, &label);
             if let Some(node) = self.get_mut(id) {
                 node.label.clear();
             }
@@ -1422,6 +1461,23 @@ impl BinderTree {
             changed = true;
         }
         changed
+    }
+
+    /// The keywords a menu offers: each one in use, each after the parents
+    /// it is nested under, so a parent no item carries itself can still be
+    /// chosen. Each once, spelled as it first comes.
+    pub fn keyword_choices(&self) -> Vec<String> {
+        let mut choices: Vec<String> = Vec::new();
+        for keyword in &self.keywords {
+            let name = keyword.name.as_str();
+            let nested = name.match_indices('/').map(|(at, _)| &name[..at]);
+            for word in nested.chain(std::iter::once(name)) {
+                if !choices.iter().any(|kept| same_word(kept, word)) {
+                    choices.push(word.to_string());
+                }
+            }
+        }
+        choices
     }
 
     /// Give a keyword the next binder color, for every item that carries it.
@@ -1450,7 +1506,7 @@ impl BinderTree {
         };
         let matches = |node: &BinderNode| {
             let keyword = filter.keyword.trim().is_empty()
-                || node.keywords.iter().any(|kept| same_word(kept, &filter.keyword));
+                || node.keywords.iter().any(|kept| keyword_covers(&filter.keyword, kept));
             let status = filter.status.trim().is_empty() || same_word(&node.status, &filter.status);
             let label = filter.label.trim().is_empty() || same_word(&node.label, &filter.label);
             keyword && status && label
@@ -1571,6 +1627,74 @@ mod keyword_tests {
             text: String::new(),
         };
         assert_eq!(tree.scenes_matching(&filter), [a, b]);
+    }
+
+    fn keyword_filter(keyword: &str) -> SavedFilter {
+        SavedFilter {
+            id: Id::new(),
+            name: keyword.into(),
+            keyword: keyword.into(),
+            status: String::new(),
+            label: String::new(),
+            text: String::new(),
+        }
+    }
+
+    /// `plot` covers `plot/subplot`, as a parent tag covers its children in
+    /// Obsidian; never the other way, and never by a part of the name.
+    #[test]
+    fn a_parent_keyword_brings_its_children_and_not_the_other_way() {
+        let (mut tree, a, b) = tree();
+        tree.add_keyword(a, "plot/subplot");
+        tree.add_keyword(b, "plotting");
+        assert_eq!(tree.scenes_matching(&keyword_filter("Plot")), [a]);
+        assert_eq!(tree.scenes_matching(&keyword_filter("plot/subplot")), [a]);
+        assert!(tree.scenes_matching(&keyword_filter("subplot")).is_empty());
+        assert!(tree.scenes_matching(&keyword_filter("plot/subplot/twist")).is_empty());
+        assert!(keyword_covers("Ação", "AÇÃO/fuga"), "case is ignored outside ASCII too");
+        assert!(same_keyword("Ação", "AÇÃO"));
+        assert!(!keyword_covers("plot", "plotting"));
+    }
+
+    #[test]
+    fn a_keyword_is_tidied_when_it_is_entered() {
+        assert_eq!(tidy_keyword(" #plot / subplot ").as_deref(), Some("plot/subplot"));
+        assert_eq!(tidy_keyword("##Mara").as_deref(), Some("Mara"));
+        assert_eq!(tidy_keyword("act two").as_deref(), Some("act two"), "spaces inside a part stay");
+        for broken in ["", "  ", "#", "a//b", "/a", "a/", "a/ /b"] {
+            assert_eq!(tidy_keyword(broken), None, "{broken:?}");
+        }
+        let long = format!("{}/{}", "a".repeat(39), "b".repeat(10));
+        let kept = tidy_keyword(&long).unwrap();
+        assert_eq!(kept.chars().count(), KEYWORD_MAX - 1, "cut where it does not end on a /");
+        assert!(!kept.ends_with('/'));
+
+        let (mut tree, a, _) = tree();
+        assert!(tree.add_keyword(a, "#plot / subplot"));
+        assert_eq!(tree.get(a).unwrap().keywords, ["plot/subplot"]);
+        assert!(!tree.add_keyword(a, "a//b"));
+        // What a project already holds is carried as it is.
+        assert!(tree.carry_keyword(a, "#todo/"));
+        assert_eq!(tree.get(a).unwrap().keywords, ["plot/subplot", "#todo/"]);
+        tree.get_mut(a).unwrap().label = "later/".into();
+        tree.fold_labels_into_keywords();
+        assert!(tree.get(a).unwrap().keywords.contains(&"later/".to_string()), "an old label is not lost");
+    }
+
+    /// The keyword menus offer a parent that no item carries itself, so it
+    /// can be chosen to bring all its children.
+    #[test]
+    fn the_keyword_choices_add_each_parent_once_before_its_children() {
+        let (mut tree, a, b) = tree();
+        tree.add_keyword(a, "Plot/Subplot");
+        tree.add_keyword(b, "flashback");
+        tree.add_keyword(b, "plot/twist/late");
+        assert_eq!(
+            tree.keyword_choices(),
+            ["Plot", "Plot/Subplot", "flashback", "plot/twist", "plot/twist/late"],
+        );
+        tree.add_keyword(a, "plot");
+        assert_eq!(tree.keyword_choices().iter().filter(|word| same_keyword(word, "plot")).count(), 1);
     }
 }
 

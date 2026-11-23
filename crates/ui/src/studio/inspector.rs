@@ -419,7 +419,10 @@ fn Keywords(id: Id) -> Element {
                 event.prevent_default();
                 let word = draft();
                 state.write().add_keyword(id, &word);
-                draft.set(String::new());
+                // A refused keyword stays in the field, to be corrected.
+                if word.trim().is_empty() || tidy_keyword(&word).is_some() {
+                    draft.set(String::new());
+                }
             },
             input {
                 class: "keyword-field",
