@@ -19,7 +19,7 @@ use writing_studio_manuscript::{book_outline_words, outline_rows};
 use writing_studio_plotting::PlotGrid;
 use writing_studio_research::ResearchLibrary;
 use writing_studio_project::{
-    binder_color_hex, format_elapsed, keyword_covers, normalize_binder_color, same_keyword, KeywordRow, KeywordSort, pace, tidy_keyword, BinderNode, BinderTree, NodeKind, Pace, PanelLayout,
+    binder_color_hex, format_elapsed, keyword_covers, normalize_binder_color, same_keyword, KeywordQuery, KeywordRow, KeywordSort, pace, tidy_keyword, BinderNode, BinderTree, NodeKind, Pace, PanelLayout,
     DropPlace, KeepPlace, PageStyle, ProjectMeta, ProseFont, SavedFilter, StoredSession, Theme,
 };
 use writing_studio_search::ManuscriptIndex;
@@ -160,6 +160,23 @@ pub enum UndoOffer {
     Trash { id: Id, parent: Id, after: Option<Id>, reopen: bool },
     /// A keyword renamed or merged, from `StudioState::keyword_undo`.
     Keywords,
+}
+
+/// What a saved filter looks for, a phrase each: "plot or Mara", "not
+/// draft", "Revise", "“harbor”". Its default name and its row's tooltip.
+pub fn filter_parts(filter: &SavedFilter) -> Vec<String> {
+    let mut parts = Vec::new();
+    if !filter.keywords.is_empty() {
+        parts.push(filter.keywords.join(if filter.any { " or " } else { " and " }));
+    }
+    parts.extend(filter.without.iter().map(|word| format!("not {word}")));
+    if !filter.status.trim().is_empty() {
+        parts.push(filter.status.trim().to_string());
+    }
+    if !filter.text.trim().is_empty() {
+        parts.push(format!("“{}”", filter.text.trim()));
+    }
+    parts
 }
 
 /// The binder's keywords before a rename, to put back with Undo.
@@ -2292,11 +2309,7 @@ impl StudioState {
     /// for what it looks for.
     pub fn add_filter(&mut self, mut filter: SavedFilter) {
         if filter.name.trim().is_empty() {
-            let parts: Vec<&str> = [&filter.keyword, &filter.status, &filter.label, &filter.text]
-                .into_iter()
-                .map(|part| part.trim())
-                .filter(|part| !part.is_empty())
-                .collect();
+            let parts = filter_parts(&filter);
             filter.name = if parts.is_empty() { "All scenes".into() } else { parts.join(", ") };
         }
         let id = filter.id;
@@ -2574,7 +2587,8 @@ impl StudioState {
     }
 
     pub fn content_hits(&self) -> HashSet<Id> {
-        self.manuscript_index.borrow().search(&self.search)
+        // Only the words: `#plot` is a keyword, matched on the binder.
+        self.manuscript_index.borrow().search(&KeywordQuery::parse(&self.search).text)
     }
 
     fn reindex_manuscript(&mut self) {
@@ -4934,14 +4948,22 @@ mod tests {
         state.add_filter(SavedFilter {
             id: Id::new(),
             name: String::new(),
-            keyword: "flashback".into(),
+            keywords: vec!["flashback".into()],
+            any: false,
+            without: vec!["draft".into()],
             status: String::new(),
-            label: String::new(),
             text: String::new(),
         });
-        assert_eq!(state.binder.filters[0].name, "flashback");
+        assert_eq!(state.binder.filters[0].name, "flashback, not draft", "named for what it looks for");
         assert!(card(&state, tagged).is_some());
         assert!(card(&state, other).is_none(), "the filter shows only its matches");
+
+        // The search's `#keyword` is not looked for in the text.
+        state.search = "#flashback writing".into();
+        assert!(!state.content_hits().is_empty(), "the words are");
+        state.search = "#flashback".into();
+        assert!(state.content_hits().is_empty());
+        state.search.clear();
 
         state.keyword_filter = Some("Flashback".into());
         assert!(state.keyword_allows(tagged) && !state.keyword_allows(other));
@@ -4961,7 +4983,8 @@ mod tests {
         state.edit_filter(filter);
         assert_eq!(state.editing_filter, Some(filter));
         let mut changed = state.binder.filters[0].clone();
-        changed.keyword = String::new();
+        changed.keywords.clear();
+        changed.without.clear();
         changed.name = "Everything".into();
         state.add_filter(changed);
         assert_eq!(state.binder.filters.len(), 1);

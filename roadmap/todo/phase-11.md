@@ -1,6 +1,6 @@
 # Phase 11 — Tags, story links, and a mind map
 
-In progress: stages 1 to 4 are done.
+In progress: stages 1 to 5 are done.
 
 Phase 9 gave binder items colored keywords and saved filters. This phase does four things with what is there:
 
@@ -96,6 +96,8 @@ In this order: the layout change first, because every later stage adds to the li
 
 ### 5. Filters that combine keywords
 
+**Done.** `SavedFilter` has `keywords`, `any`, and `without`, and no `keyword` or `label`. `BinderTree::keywords_match` checks an item's keywords with those of what it is in (`keywords_through`), each taking in its children; saved filters and the binder search both use it. The filter form adds keywords from a menu as chips, offers "Any of them, not all" once there are two, and has a "Leave out" list the same way; `filter_parts` names a new filter and describes it on its row ("flashback, not draft"). `KeywordQuery::parse` splits the search into `#keyword`, `-#keyword`, and the words, which alone go to the text index. Reading `binder.json` refuses a filter with `keyword` or `label`, saying what to change; `documentation/PROJECT_FORMAT.md` describes both. A filter's status is now the scene's own: before, it matched through the chapter, so "Draft" took every scene in a draft chapter.
+
 - A saved filter takes several keywords, matching all of them or any of them, and keywords to leave out. Status and text stay as they are.
 - In the binder search, `#plot` is a keyword (with its children), and `-#plot` leaves it out; other words are matched as now. Several are all required, as a space is AND in Obsidian. `OR` and parentheses are not added: a saved filter is where "any" is chosen.
 - In `binder.json`, a filter's `keyword` becomes `keywords`, a list, beside `any` and `without`; `documentation/PROJECT_FORMAT.md` and its version notes say so. Following "No compatibility with earlier versions" in [../README.md](../README.md), nothing converts an old filter: a project whose filters still have `keyword` is refused with a message that says why.
@@ -163,11 +165,12 @@ What came up while this phase was planned and built, and while the Phase 7 packa
 - Compile wrote an empty paragraph under every chapter heading in Word, EPUB, and HTML, from a chapter's empty text, and the starter scene held an empty paragraph between its two lines (found trying the portable package; fixed on `phase-7` before this phase).
 - The outline's keyword menu ignored case only for ASCII, so `Ação` and `AÇÃO` were two keywords there and one everywhere else (stage 2).
 - Renaming `plot` to `Story` while `story` was in use spelled the children `Story/subplot`; they now take the kept spelling (stage 4, caught by its test).
+- A saved filter's status matched through the chapter, part, or book, which are "draft" when made, so a "Draft" filter took every scene in a draft chapter whatever its own status. Status is the scene's own now (stage 5).
+- `SavedFilter::label`, left over from before keywords, is gone with the filter format change (stage 5).
 
 **Open**
 
 - **The Markdown folder export loses every keyword.** It writes a scene's `label` (`crates/storage/src/markdown.rs`), which Phase 9 emptied by folding labels into keywords, and never `keywords`. Stage 6 fixes it by writing `tags:`.
-- **`SavedFilter::label` is left over** from before keywords: it is only read to be folded into `keyword`, and `filter_summary` still lists it. Stage 5 removes it with the filter format change.
 - **`WorkspaceMode::view_title` is never called** (`crates/ui/src/state.rs`). Dead code from before Phase 8's layout.
 - **Two kinds of undo.** Ctrl+Z undoes text (and a merge or split through it). Trash, keyword renames, and merges are undone only from the status line's Undo button, which goes as soon as another message replaces it. Other binder changes (a move, a new keyword, a status) have no undo at all.
 - **The status bar's "Scene 21"** is the open scene's word count, but reads like a scene number. "21 words in this scene", or the scene's title, would say it.

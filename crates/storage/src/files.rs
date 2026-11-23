@@ -1334,6 +1334,14 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
             (!name.is_empty()).then(|| Keyword { name, color: normalize_binder_color(&keyword.color) })
         })
         .collect();
+    // A filter took one `keyword` (or, before that, a `label`) until it could
+    // take several. Nothing converts it: the project is refused, saying why.
+    if binder_file.list("filters").iter().any(|filter| filter.get("keyword").is_some() || filter.get("label").is_some()) {
+        return Err(bad(
+            "binder.json",
+            "a saved filter was written by an earlier version: it has \"keyword\" where this version reads \"keywords\", a list.              Change \"keyword\": \"Flashback\" to \"keywords\": [\"Flashback\"] in that filter (and drop any \"label\"), or remove the filter, then open the project again.",
+        ));
+    }
     binder.filters = binder_file
         .list("filters")
         .into_iter()
@@ -1782,9 +1790,10 @@ mod tests {
         content.binder.filters.push(SavedFilter {
             id: Id::new(),
             name: "Flashbacks".into(),
-            keyword: "Flashback".into(),
+            keywords: vec!["Flashback".into(), "Draft two".into()],
+            any: true,
+            without: vec!["Mara".into()],
             status: String::new(),
-            label: String::new(),
             text: "harbor".into(),
         });
         let tagged = temp("tagged");
@@ -1808,6 +1817,14 @@ mod tests {
         assert_eq!(words.len(), 2);
         assert!(words.iter().all(|word| !word.trim().is_empty() && word.chars().count() <= 40));
         assert!(checked.binder.keywords.iter().all(|keyword| keyword.color != "chartreuse"));
+
+        // A filter from before filters took several keywords is refused,
+        // with what to change; nothing is converted.
+        let old = fs::read_to_string(&path).unwrap().replace(r#""keywords":["Flashback","Draft two"]"#, r#""keyword":"Flashback""#);
+        assert!(old.contains(r#""keyword":"Flashback""#), "{old}");
+        fs::write(&path, old).unwrap();
+        let refused = read_project_files(&tagged).unwrap_err().to_string();
+        assert!(refused.contains("binder.json") && refused.contains("\"keywords\""), "{refused}");
 
         for dir in [source, plain, tagged] {
             let _ = fs::remove_dir_all(dir);

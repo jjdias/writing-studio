@@ -1301,20 +1301,60 @@ pub struct Keyword {
 }
 
 /// A filter kept as a row of the library: the scenes that carry its
-/// keyword, have its status and label, and contain its text. An empty field
-/// matches anything.
+/// keywords (all of them, or any with `any`) and none of `without`, have
+/// its status, and contain its text. Keywords count through the chapter,
+/// part, or book a scene is in, and take in what is nested under them. An
+/// empty field matches anything.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SavedFilter {
     pub id: Id,
     pub name: String,
     #[serde(default)]
-    pub keyword: String,
+    pub keywords: Vec<String>,
+    #[serde(default)]
+    pub any: bool,
+    #[serde(default)]
+    pub without: Vec<String>,
     #[serde(default)]
     pub status: String,
     #[serde(default)]
-    pub label: String,
-    #[serde(default)]
     pub text: String,
+}
+
+/// A binder search split into its keywords (`#plot`), the keywords it
+/// leaves out (`-#plot`), and the words looked for in titles and text.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct KeywordQuery {
+    pub with: Vec<String>,
+    pub without: Vec<String>,
+    pub text: String,
+}
+
+impl KeywordQuery {
+    /// `#plot -#draft harbor` asks for `plot`, leaves out `draft`, and looks
+    /// for "harbor". A `#` with no keyword after it is text.
+    pub fn parse(query: &str) -> Self {
+        let mut parsed = Self::default();
+        let mut words = Vec::new();
+        for word in query.split_whitespace() {
+            let (list, rest) = match word.strip_prefix("-#") {
+                Some(rest) => (&mut parsed.without, rest),
+                None => match word.strip_prefix('#') {
+                    Some(rest) => (&mut parsed.with, rest),
+                    None => {
+                        words.push(word);
+                        continue;
+                    }
+                },
+            };
+            match tidy_keyword(rest) {
+                Some(keyword) => list.push(keyword),
+                None => words.push(word),
+            }
+        }
+        parsed.text = words.join(" ");
+        parsed
+    }
 }
 
 /// How the library's keyword list orders the keywords at each level.
@@ -1494,9 +1534,8 @@ impl BinderTree {
     }
 
     /// Labels became keywords: each item's label is added to its keywords
-    /// and cleared, and a filter's label becomes its keyword. A project from
-    /// before keywords opens with its labels kept this way. Returns whether
-    /// anything changed.
+    /// and cleared. A project from before keywords opens with its labels
+    /// kept this way. Returns whether anything changed.
     pub fn fold_labels_into_keywords(&mut self) -> bool {
         let labelled: Vec<(Id, String)> = self
             .nodes
@@ -1510,16 +1549,6 @@ impl BinderTree {
             if let Some(node) = self.get_mut(id) {
                 node.label.clear();
             }
-            changed = true;
-        }
-        for filter in &mut self.filters {
-            if filter.label.trim().is_empty() {
-                continue;
-            }
-            if filter.keyword.trim().is_empty() {
-                filter.keyword = filter.label.trim().to_string();
-            }
-            filter.label.clear();
             changed = true;
         }
         changed
@@ -1587,7 +1616,7 @@ impl BinderTree {
             .iter()
             .flat_map(|node| node.keywords.iter())
             .chain(self.keywords.iter().map(|keyword| &keyword.name))
-            .chain(self.filters.iter().map(|filter| &filter.keyword))
+            .chain(self.filters.iter().flat_map(|filter| filter.keywords.iter().chain(&filter.without)))
             .filter_map(|word| moved(word));
         for name in renamed {
             if name.chars().count() > KEYWORD_MAX {
@@ -1623,8 +1652,10 @@ impl BinderTree {
         }
         self.keywords = keywords;
         for filter in &mut self.filters {
-            if let Some(name) = moved(&filter.keyword) {
-                filter.keyword = name;
+            for word in filter.keywords.iter_mut().chain(filter.without.iter_mut()) {
+                if let Some(name) = moved(word) {
+                    *word = name;
+                }
             }
         }
         Ok(changed)
@@ -1668,43 +1699,51 @@ impl BinderTree {
         true
     }
 
-    /// The manuscript's scenes, in binder order, that match the filter's
-    /// keyword, status, and label themselves or through the chapter, part,
-    /// or book they are in. The text is matched by the
-    /// caller, which has the search index.
+    /// The keywords an item has, with those of the chapter, part, or book
+    /// it is in: a chapter's keyword counts for every scene in it.
+    pub fn keywords_through(&self, id: Id) -> Vec<&str> {
+        self.chain_of(id).into_iter().flat_map(|node| node.keywords.iter().map(String::as_str)).collect()
+    }
+
+    /// Whether an item, through what it is in, carries the keywords asked
+    /// for (all of them, or one with `any`) and none of `without`; each
+    /// takes in what is nested under it.
+    pub fn keywords_match(&self, id: Id, with: &[String], any: bool, without: &[String]) -> bool {
+        let words = self.keywords_through(id);
+        let carries = |wanted: &String| words.iter().any(|word| keyword_covers(wanted, word));
+        let wanted = with.is_empty() || if any { with.iter().any(carries) } else { with.iter().all(carries) };
+        wanted && !without.iter().any(carries)
+    }
+
+    /// The manuscript's scenes, in binder order, that match the filter: its
+    /// keywords on the scene or the chapter, part, or book it is in, and its
+    /// status on the scene itself (a chapter's status is no scene's). The
+    /// text is matched by the caller, which has the search index.
     pub fn scenes_matching(&self, filter: &SavedFilter) -> Vec<Id> {
-        let mut found = Vec::new();
         let Some(draft) = self.draft_root() else {
-            return found;
+            return Vec::new();
         };
-        let matches = |node: &BinderNode| {
-            let keyword = filter.keyword.trim().is_empty()
-                || node.keywords.iter().any(|kept| keyword_covers(&filter.keyword, kept));
-            let status = filter.status.trim().is_empty() || same_word(&node.status, &filter.status);
-            let label = filter.label.trim().is_empty() || same_word(&node.label, &filter.label);
-            keyword && status && label
-        };
-        for (_, scene) in self.scenes_under(draft.id) {
-            // A scene matches on its own, or through the chapter, part, or book
-            // it is in: a chapter with the keyword brings all its scenes.
-            let mut at = Some(scene);
-            let mut guard = 0;
-            while let Some(id) = at.filter(|id| *id != draft.id) {
-                let Some(node) = self.get(id) else {
-                    break;
-                };
-                if matches(node) {
-                    found.push(scene);
-                    break;
-                }
-                at = node.parent_id;
-                guard += 1;
-                if guard > 10_000 {
-                    break;
-                }
+        let status = filter.status.trim();
+        self.scenes_under(draft.id)
+            .into_iter()
+            .map(|(_, scene)| scene)
+            .filter(|scene| self.keywords_match(*scene, &filter.keywords, filter.any, &filter.without))
+            .filter(|scene| status.is_empty() || self.get(*scene).is_some_and(|node| same_word(&node.status, status)))
+            .collect()
+    }
+
+    /// An item and what it is in, up to the top.
+    fn chain_of(&self, id: Id) -> Vec<&BinderNode> {
+        let mut chain = Vec::new();
+        let mut at = Some(id);
+        while let Some(node) = at.and_then(|id| self.get(id)) {
+            chain.push(node);
+            at = node.parent_id;
+            if chain.len() > 10_000 {
+                break;
             }
         }
-        found
+        chain
     }
 }
 
@@ -1749,40 +1788,28 @@ mod keyword_tests {
         tree.add_keyword(a, "Flashback");
         tree.get_mut(b).unwrap().status = "Revise".into();
         let filter = |keyword: &str, status: &str| SavedFilter {
-            id: Id::new(),
-            name: "Look".into(),
-            keyword: keyword.into(),
             status: status.into(),
-            label: String::new(),
-            text: String::new(),
+            ..keyword_filter(keyword)
         };
         assert_eq!(tree.scenes_matching(&filter("flashback", "")), [a]);
         assert_eq!(tree.scenes_matching(&filter("", "revise")), [b]);
         assert_eq!(tree.scenes_matching(&filter("", "")), [a, b]);
         assert!(tree.scenes_matching(&filter("Flashback", "Revise")).is_empty());
+        // Status is the scene's own: its chapter, a draft too, does not
+        // bring a scene under revision into "draft".
+        assert_eq!(tree.scenes_matching(&filter("", "draft")), [a]);
     }
 
     #[test]
-    fn labels_become_keywords_and_a_filters_label_its_keyword() {
+    fn labels_become_keywords() {
         let (mut tree, a, b) = tree();
         tree.get_mut(a).unwrap().label = "subplot".into();
         tree.get_mut(b).unwrap().label = "Subplot".into();
         tree.add_keyword(b, "Mara");
-        tree.filters.push(SavedFilter {
-            id: Id::new(),
-            name: "Subplot".into(),
-            keyword: String::new(),
-            status: String::new(),
-            label: "subplot".into(),
-            text: String::new(),
-        });
         assert!(tree.fold_labels_into_keywords());
         assert_eq!(tree.get(a).unwrap().keywords, ["subplot"]);
         assert_eq!(tree.get(b).unwrap().keywords, ["Mara", "subplot"], "one keyword for both spellings");
         assert!(tree.nodes.iter().all(|node| node.label.is_empty()));
-        assert_eq!(tree.filters[0].keyword, "subplot");
-        assert!(tree.filters[0].label.is_empty());
-        assert_eq!(tree.scenes_matching(&tree.filters[0].clone()), [a, b]);
         assert!(!tree.fold_labels_into_keywords(), "nothing left to fold");
     }
 
@@ -1791,26 +1818,56 @@ mod keyword_tests {
         let (mut tree, a, b) = tree();
         let chapter = tree.get(a).unwrap().parent_id.unwrap();
         tree.add_keyword(chapter, "Act two");
-        let filter = SavedFilter {
-            id: Id::new(),
-            name: "Act two".into(),
-            keyword: "act two".into(),
-            status: String::new(),
-            label: String::new(),
-            text: String::new(),
-        };
-        assert_eq!(tree.scenes_matching(&filter), [a, b]);
+        assert_eq!(tree.scenes_matching(&keyword_filter("act two")), [a, b]);
     }
 
     fn keyword_filter(keyword: &str) -> SavedFilter {
         SavedFilter {
             id: Id::new(),
             name: keyword.into(),
-            keyword: keyword.into(),
+            keywords: if keyword.is_empty() { Vec::new() } else { vec![keyword.into()] },
+            any: false,
+            without: Vec::new(),
             status: String::new(),
-            label: String::new(),
             text: String::new(),
         }
+    }
+
+    /// A filter takes several keywords, all of them or any, and keywords to
+    /// leave out; a chapter's keyword counts with its scene's.
+    #[test]
+    fn a_filter_combines_keywords_all_any_and_without() {
+        let (mut tree, a, b) = tree();
+        let chapter = tree.get(a).unwrap().parent_id.unwrap();
+        tree.add_keyword(chapter, "act two");
+        tree.add_keyword(a, "flashback");
+        tree.add_keyword(b, "Mara/young");
+        let filter = |with: &[&str], any: bool, without: &[&str]| SavedFilter {
+            keywords: with.iter().map(|word| word.to_string()).collect(),
+            any,
+            without: without.iter().map(|word| word.to_string()).collect(),
+            ..keyword_filter("")
+        };
+        assert_eq!(tree.scenes_matching(&filter(&["act two", "flashback"], false, &[])), [a], "the chapter's and the scene's");
+        assert!(tree.scenes_matching(&filter(&["flashback", "mara"], false, &[])).is_empty());
+        assert_eq!(tree.scenes_matching(&filter(&["flashback", "mara"], true, &[])), [a, b]);
+        assert_eq!(tree.scenes_matching(&filter(&["act two"], false, &["mara"])), [a], "mara takes in Mara/young");
+        assert!(tree.scenes_matching(&filter(&[], false, &["act two"])).is_empty(), "left out through the chapter");
+
+        // A rename reaches the keywords a filter leaves out too.
+        tree.filters.push(filter(&["flashback"], false, &["mara/young"]));
+        tree.rename_keyword("mara", "Maren").unwrap();
+        assert_eq!(tree.filters[0].without, ["Maren/young"]);
+    }
+
+    #[test]
+    fn a_search_is_split_into_keywords_left_out_keywords_and_words() {
+        let query = KeywordQuery::parse("  #plot / harbor -#Draft  #  the  -#a//b night ");
+        assert_eq!(query.with, ["plot"]);
+        assert_eq!(query.without, ["Draft"]);
+        assert_eq!(query.text, "/ harbor # the -#a//b night", "a # with no keyword is a word");
+        assert_eq!(KeywordQuery::parse("harbor").text, "harbor");
+        assert!(KeywordQuery::parse("#plot").text.is_empty());
     }
 
     /// `plot` covers `plot/subplot`, as a parent tag covers its children in
@@ -1887,7 +1944,7 @@ mod keyword_tests {
         assert_eq!(tree.rename_keyword("plot", " #Story "), Ok(2));
         assert_eq!(tree.get(a).unwrap().keywords, ["Story", "Story/subplot"]);
         assert_eq!(tree.get(b).unwrap().keywords, ["Story/twist/late", "plotting"], "plotting is another keyword");
-        assert_eq!(tree.filters[0].keyword, "Story/twist");
+        assert_eq!(tree.filters[0].keywords, ["Story/twist"]);
         assert_eq!(tree.keyword_color("story/subplot"), color, "the color goes with it");
         assert!(tree.keywords.iter().all(|keyword| !keyword_covers("plot", &keyword.name)));
 

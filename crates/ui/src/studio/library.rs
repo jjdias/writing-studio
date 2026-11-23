@@ -395,6 +395,8 @@ pub(super) fn SceneList() -> Element {
     };
     let in_trash = shown.is_some() && shown == state.read().binder.trash_root().map(|node| node.id);
     let search = state.read().search.clone();
+    // `#plot` and `-#plot` in the search are keywords; the rest is words.
+    let query = KeywordQuery::parse(&search);
     let hits = state.read().content_hits();
     let groups: Vec<SceneGroup> = {
         let current = state.read();
@@ -403,11 +405,11 @@ pub(super) fn SceneList() -> Element {
             .into_iter()
             .map(|mut group| {
                 // A chapter whose name matches keeps all its scenes.
-                if !matches_query(&group.title, &search) || group.title.is_empty() {
-                    group
-                        .scenes
-                        .retain(|card| binder_matches(&current.binder, card.id, &search, &hits));
-                }
+                let title_hit = !query.text.is_empty() && !group.title.is_empty() && matches_query(&group.title, &query.text);
+                group.scenes.retain(|card| {
+                    current.binder.keywords_match(card.id, &query.with, false, &query.without)
+                        && (title_hit || binder_matches(&current.binder, card.id, &query.text, &hits))
+                });
                 group
             })
             .filter(|group| !group.scenes.is_empty())
@@ -443,7 +445,7 @@ pub(super) fn SceneList() -> Element {
                 id: "binder-search",
                 class: "search",
                 placeholder: "Search titles and text",
-                title: "Ctrl+F",
+                title: "Ctrl+F. #plot for a keyword, -#plot to leave it out.",
                 aria_label: "Search scenes",
                 value: "{search}",
                 oninput: move |event| state.write().search = event.value(),
@@ -899,16 +901,7 @@ fn KeywordRenameField(name: String) -> Element {
 
 /// What a filter looks for, in a line: "Keyword Flashback · status Revise".
 fn filter_summary(filter: &SavedFilter) -> String {
-    let parts: Vec<String> = [
-        ("keyword", &filter.keyword),
-        ("status", &filter.status),
-        ("label", &filter.label),
-        ("text", &filter.text),
-    ]
-    .into_iter()
-    .filter(|(_, value)| !value.trim().is_empty())
-    .map(|(name, value)| format!("{name} “{}”", value.trim()))
-    .collect();
+    let parts = filter_parts(filter);
     if parts.is_empty() {
         "Every scene".to_string()
     } else {
@@ -925,14 +918,17 @@ fn FilterForm(editing: Option<SavedFilter>) -> Element {
     let start = editing.clone().unwrap_or_else(|| SavedFilter {
         id: Id::new(),
         name: String::new(),
-        keyword: String::new(),
+        keywords: Vec::new(),
+        any: false,
+        without: Vec::new(),
         status: String::new(),
-        label: String::new(),
         text: String::new(),
     });
     let id = start.id;
     let mut name = use_signal(|| start.name.clone());
-    let mut keyword = use_signal(|| start.keyword.clone());
+    let keywords = use_signal(|| start.keywords.clone());
+    let mut any = use_signal(|| start.any);
+    let without = use_signal(|| start.without.clone());
     let mut status = use_signal(|| start.status.clone());
     let mut text = use_signal(|| start.text.clone());
     let title = if editing.is_some() { "Change filter" } else { "New filter" };
@@ -940,15 +936,14 @@ fn FilterForm(editing: Option<SavedFilter>) -> Element {
         div { class: "menu popover", role: "dialog", aria_label: "{title}",
             label { r#for: "filter-name", "Name" }
             input { id: "filter-name", placeholder: "Flashbacks to revise", value: "{name}", oninput: move |event| name.set(event.value()) }
-            label { r#for: "filter-keyword", "Keyword" }
-            select {
-                id: "filter-keyword",
-                onchange: move |event| keyword.set(event.value()),
-                option { value: "", selected: keyword().is_empty(), "Any" }
-                for word in known {
-                    option { value: "{word}", selected: same_keyword(&keyword(), &word), "{word}" }
+            KeywordPicks { id: "filter-keywords", label: "Keywords", empty: "Any", known: known.clone(), picked: keywords }
+            if keywords().len() > 1 {
+                label { class: "check-label",
+                    input { r#type: "checkbox", checked: any(), onchange: move |event| any.set(event.checked()) }
+                    "Any of them, not all"
                 }
             }
+            KeywordPicks { id: "filter-without", label: "Leave out", empty: "Nothing", known, picked: without }
             label { r#for: "filter-status", "Status" }
             StatusSelect { id: "filter-status", current: status(), any: true, onchange: move |value: String| status.set(value) }
             label { r#for: "filter-text", "Words in the text" }
@@ -959,14 +954,59 @@ fn FilterForm(editing: Option<SavedFilter>) -> Element {
                     let filter = SavedFilter {
                         id,
                         name: name().trim().to_string(),
-                        keyword: keyword(),
+                        keywords: keywords(),
+                        any: any() && keywords().len() > 1,
+                        without: without(),
                         status: status().trim().to_string(),
-                        label: String::new(),
                         text: text().trim().to_string(),
                     };
                     state.write().add_filter(filter);
                 },
                 "Save filter"
+            }
+        }
+    }
+}
+
+/// Keywords chosen for a filter, as chips that come off with ×, and a menu
+/// that adds one. A keyword takes in what is nested under it.
+#[component]
+fn KeywordPicks(id: String, label: String, empty: String, known: Vec<String>, picked: Signal<Vec<String>>) -> Element {
+    let mut picked = picked;
+    let chosen = picked();
+    let offered: Vec<String> = known.into_iter().filter(|word| !chosen.iter().any(|kept| same_keyword(kept, word))).collect();
+    rsx! {
+        label { r#for: "{id}", "{label}" }
+        if !chosen.is_empty() {
+            div { class: "keyword-chips",
+                for word in chosen.clone() {
+                    span { class: "keyword-chip", key: "{word}",
+                        span { "{word}" }
+                        button {
+                            class: "keyword-remove",
+                            title: "Take “{word}” out of the filter",
+                            aria_label: "Remove {word}",
+                            onclick: {
+                                let word = word.clone();
+                                move |_| picked.write().retain(|kept| !same_keyword(kept, &word))
+                            },
+                            "×"
+                        }
+                    }
+                }
+            }
+        }
+        select {
+            id: "{id}",
+            onchange: move |event| {
+                let word = event.value();
+                if !word.is_empty() {
+                    picked.write().push(word);
+                }
+            },
+            option { value: "", selected: true, if chosen.is_empty() { "{empty}" } else { "Add a keyword…" } }
+            for word in offered {
+                option { value: "{word}", "{word}" }
             }
         }
     }

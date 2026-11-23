@@ -829,9 +829,10 @@ mod tests {
         tree.filters.push(writing_studio_project::SavedFilter {
             id: Id::new(),
             name: "Flashbacks".into(),
-            keyword: "Flashback".into(),
+            keywords: vec!["Flashback".into()],
+            any: false,
+            without: Vec::new(),
             status: String::new(),
-            label: String::new(),
             text: String::new(),
         });
         store.persist_binder(&tree).unwrap();
