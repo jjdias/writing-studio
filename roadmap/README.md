@@ -38,7 +38,7 @@ The project is young and has no users yet. Until that changes:
 
 ### Known technical debt
 
-None listed. The last three items were cleared at the end of Phase 5: a check used only by its own test, the unused `collaboration` and `security` crates, and the old format 1 document, folded into `documentation/PROJECT_FORMAT.md`.
+The last three items were cleared at the end of Phase 5: a check used only by its own test, the unused `collaboration` and `security` crates, and the old format 1 document, folded into `documentation/PROJECT_FORMAT.md`. What has been found since is listed in "Noticed along the way" in [todo/phase-11.md](todo/phase-11.md), each marked fixed or open.
 
 ## What to do next
 

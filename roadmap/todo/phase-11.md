@@ -154,6 +154,30 @@ The corkboard becomes a mind map of the manuscript.
 - **An idea becomes a scene**: dropped on a chapter, or with a menu item, it becomes a new scene there, its note the synopsis, and its lines go with it.
 - Stored in a new file, `mindmap.json`: `ideas`, `lines`, and `positions` by item id (entries included). Story links stay in `bible.json`. Sync merges `mindmap.json` by id, as `bible.json` and `plot.json` are, and keeps keys the program does not know. Lines to an item in the trash hide, and go when the trash is emptied. A project without the file has no ideas or lines. `documentation/PROJECT_FORMAT.md` describes it.
 
+## Noticed along the way
+
+What came up while this phase was planned and built, and while the Phase 7 packages were tried, that was not part of the plan. Each says whether it is fixed.
+
+**Fixed**
+
+- Compile wrote an empty paragraph under every chapter heading in Word, EPUB, and HTML, from a chapter's empty text, and the starter scene held an empty paragraph between its two lines (found trying the portable package; fixed on `phase-7` before this phase).
+- The outline's keyword menu ignored case only for ASCII, so `Ação` and `AÇÃO` were two keywords there and one everywhere else (stage 2).
+- Renaming `plot` to `Story` while `story` was in use spelled the children `Story/subplot`; they now take the kept spelling (stage 4, caught by its test).
+
+**Open**
+
+- **The Markdown folder export loses every keyword.** It writes a scene's `label` (`crates/storage/src/markdown.rs`), which Phase 9 emptied by folding labels into keywords, and never `keywords`. Stage 6 fixes it by writing `tags:`.
+- **`SavedFilter::label` is left over** from before keywords: it is only read to be folded into `keyword`, and `filter_summary` still lists it. Stage 5 removes it with the filter format change.
+- **`WorkspaceMode::view_title` is never called** (`crates/ui/src/state.rs`). Dead code from before Phase 8's layout.
+- **Two kinds of undo.** Ctrl+Z undoes text (and a merge or split through it). Trash, keyword renames, and merges are undone only from the status line's Undo button, which goes as soon as another message replaces it. Other binder changes (a move, a new keyword, a status) have no undo at all.
+- **The status bar's "Scene 21"** is the open scene's word count, but reads like a scene number. "21 words in this scene", or the scene's title, would say it.
+- **The web page inside the window is titled "Dioxus app"** (`document.title`); the window itself is "Writing Studio". Only assistive tools and the developer tools see it.
+- **The start screen says "Organize a manuscript the way Scrivener does"**, naming another product in the program's own words. A question for the maintainer, not a bug.
+- **Keywords longer than 40 characters are cut when a project is read** (sync or a hand edit), so two long keywords that differ after the 40th character become one. Renames that would cross the limit are refused (stage 4); reading has no such check.
+- **The Package workflow does not run on code changes.** It runs when `apps/desktop/**`, licenses, or the workflow change, not `crates/**`, so the packages on the last Package run can be older than the code (the Phase 7 packages missed the ShellExecuteW and compile fixes). The Release workflow builds fresh, so a release is not affected.
+- **Keyword folding and the list's order last until the program closes.** The plan did not ask for more; the binder's folding is kept with the project.
+- **Not yet checked by hand:** opening a real research file through `ShellExecuteW`, the MSI install and removal, and everything on Linux (stage 6 of Phase 7, the maintainer's).
+
 ## How changes are checked
 
 The tests in this repository are the only testing for now (see "How the work is done now" in [../README.md](../README.md)).
