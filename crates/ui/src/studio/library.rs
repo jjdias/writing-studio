@@ -2,8 +2,6 @@ use super::*;
 
 /// The library row height, as `.library-row` sets it in `style.css`.
 const LIBRARY_ROW_HEIGHT: f64 = 30.0;
-/// A scene card's height, as `.scene-card` sets it in `style.css`.
-const SCENE_CARD_HEIGHT: f64 = 92.0;
 
 /// The left column: the project and its goal, the manuscript's books,
 /// parts, chapters, and folders, the views of the manuscript, then the
@@ -19,21 +17,28 @@ pub(super) fn Library() -> Element {
     let goal = state.read().goal();
     let connected = state.read().sync_connected();
     let syncing = state.read().syncing;
-    let manuscript_mode = matches!(mode, WorkspaceMode::Writing | WorkspaceMode::MindMap | WorkspaceMode::Outliner);
-    let filter_chosen = state.read().shown_filter().is_some();
-    let shown = if manuscript_mode && !filter_chosen { state.read().shown_container() } else { None };
-    let rows: Vec<(Id, u32, NodeKind, String, bool, bool)> = {
-        let current = state.read();
-        current
-            .library_rows()
-            .into_iter()
-            .filter_map(|(id, depth, has_children)| {
-                let node = current.binder.get(id)?;
-                Some((id, depth, node.kind, node.title.clone(), has_children, current.is_collapsed(id)))
-            })
-            .collect()
-    };
+    let selected = state.read().selected;
+    let rows = state.read().binder_rows();
+    let search = state.read().search.clone();
+    let narrowed = state.read().shown_scenes().is_some();
+    // The trash, as a row of its own, and what is in it when it is open.
     let trash = state.read().binder.trash_root().map(|node| node.id);
+    let trash_rows = state.read().trash_rows();
+    let trash_row = trash.map(|id| BinderRow {
+        id,
+        depth: 0,
+        kind: NodeKind::TrashRoot,
+        title: "Trash".into(),
+        has_children: !trash_rows.is_empty(),
+        collapsed: state.read().is_collapsed(id),
+        status: String::new(),
+        keywords: Vec::new(),
+        left_out: false,
+        scenes: 0,
+        finished: 0,
+    });
+    let widths = use_context::<Signal<PanelWidths>>();
+    let width = widths.read().sidebar;
     let fraction = if goal > 0 { (book_words as f64 / goal as f64).min(1.0) } else { 0.0 };
     let deadline = state.read().compile_book_deadline();
     let days_left = match state.read().compile_book_pace() {
@@ -49,7 +54,7 @@ pub(super) fn Library() -> Element {
         }
     };
     rsx! {
-        aside { class: "library", aria_label: "Library",
+        aside { class: "library", aria_label: "Library", style: "width: {width}px; flex: 0 0 {width}px;",
             div { class: "library-head",
                 h1 { class: "library-title", title: "{title}", "{title}" }
                 div { class: "menu-anchor",
@@ -118,9 +123,21 @@ pub(super) fn Library() -> Element {
                     }
                 }
             }
+            input {
+                id: "binder-search",
+                class: "search library-search",
+                placeholder: "Search titles and text",
+                title: "Ctrl+F. #plot for a keyword, -#plot to leave it out.",
+                aria_label: "Search the binder",
+                value: "{search}",
+                oninput: move |event| state.write().search = event.value(),
+            }
             nav { class: "library-list", aria_label: "Manuscript",
-                for (id, depth, kind, name, has_children, collapsed) in rows {
-                    LibraryRow { key: "{id}", id, depth, kind, name, active: shown == Some(id), has_children, collapsed }
+                if narrowed && rows.is_empty() {
+                    p { class: "hint library-empty", "Nothing matches." }
+                }
+                for row in rows {
+                    LibraryRow { key: "{row.id}", active: selected == Some(row.id), row: row.clone() }
                 }
                 div { class: "menu-anchor library-add",
                     button {
@@ -132,6 +149,7 @@ pub(super) fn Library() -> Element {
                     }
                     if add_open {
                         div { class: "menu", role: "menu", aria_label: "Add",
+                            button { class: "menu-item", role: "menuitem", onclick: add(NodeKind::Scene), span { "Scene" } span { class: "menu-hint", "Ctrl+N" } }
                             button { class: "menu-item", role: "menuitem", onclick: add(NodeKind::Chapter), span { "Chapter" } span { class: "menu-hint", "Ctrl+Shift+N" } }
                             button { class: "menu-item", role: "menuitem", onclick: add(NodeKind::Part), "Part" }
                             button { class: "menu-item", role: "menuitem", title: "Another novel under the manuscript", onclick: add(NodeKind::Book), "Book" }
@@ -150,8 +168,13 @@ pub(super) fn Library() -> Element {
                 for candidate in WorkspaceMode::LIBRARY_EXTRAS {
                     ModeRow { key: "{candidate.label()}", candidate, active: mode == candidate }
                 }
-                if let Some(trash) = trash {
-                    LibraryRow { id: trash, depth: 0, kind: NodeKind::TrashRoot, name: "Trash".to_string(), active: shown == Some(trash), has_children: false, collapsed: false }
+                if let Some(row) = trash_row {
+                    LibraryRow { active: selected == Some(row.id), row: row.clone() }
+                    if !row.collapsed {
+                        for inside in trash_rows {
+                            LibraryRow { key: "{inside.id}", active: selected == Some(inside.id), row: inside.clone() }
+                        }
+                    }
                 }
             }
         }
@@ -178,17 +201,16 @@ fn ModeRow(candidate: WorkspaceMode, active: bool) -> Element {
 
 /// A manuscript container in the library. Chosen, it fills the scene
 /// list; it takes chapters, scenes, and folders dropped on it.
+/// A row of the binder: a book, part, chapter, folder, or scene, or the
+/// trash and what is in it. A scene opens on the page (Ctrl+click and
+/// Shift+click pick several); anything else is chosen, and shows in
+/// Context. Rows are dragged anywhere they can go.
 #[component]
-fn LibraryRow(
-    id: Id,
-    depth: u32,
-    kind: NodeKind,
-    name: String,
-    active: bool,
-    has_children: bool,
-    collapsed: bool,
-) -> Element {
+fn LibraryRow(row: BinderRow, active: bool) -> Element {
     let mut state = use_context::<Signal<StudioState>>();
+    let id = row.id;
+    let kind = row.kind;
+    let name = if row.title.trim().is_empty() && kind == NodeKind::Scene { "Untitled scene".to_string() } else { row.title.clone() };
     let dragging = state.read().dragging == Some(id);
     let target = state.read().drop_target == Some(id);
     let place = state.read().drop_place;
@@ -196,12 +218,19 @@ fn LibraryRow(
         .read()
         .dragging
         .is_some_and(|dragged| state.read().binder.drop_allowed_at(dragged, id, place));
+    let in_trash = state.read().binder.is_in_trash(id);
     let mut class = String::from("library-row");
+    if kind == NodeKind::Scene {
+        class.push_str(" scene-row");
+    }
     if active {
         class.push_str(" active");
     }
-    if state.read().binder.is_left_out(id) {
+    if row.left_out {
         class.push_str(" left-out");
+    }
+    if state.read().picked.contains(&id) {
+        class.push_str(" picked");
     }
     if dragging {
         class.push_str(" dragging");
@@ -214,10 +243,11 @@ fn LibraryRow(
             (true, DropPlace::Inside) => " drop-target",
         });
     }
-    let indent = depth * 14;
+    let indent = row.depth * 14;
+    let collapsed = row.collapsed;
     let fold_label = if collapsed { format!("Show what is in {name}") } else { format!("Fold {name}") };
     let editing = state.read().renaming == Some(id);
-    let can_change = !kind.is_root();
+    let can_change = !kind.is_root() && !in_trash;
     let start_rename = move || {
         if can_change {
             state.write().start_rename(id);
@@ -232,9 +262,10 @@ fn LibraryRow(
             }
         };
     }
+    let fraction = if row.scenes == 0 { 0.0 } else { row.finished as f64 / row.scenes as f64 };
     rsx! {
         div { class: "library-item", style: "padding-left: {indent}px",
-        if has_children {
+        if row.has_children {
             button {
                 class: if collapsed { "fold-btn folded" } else { "fold-btn" },
                 title: "{fold_label}",
@@ -253,15 +284,17 @@ fn LibraryRow(
             aria_current: if active { "true" } else { "false" },
             draggable: !kind.is_root(),
             title: if can_change { "Double-click or press F2 to rename" } else { "" },
-            onclick: move |_| state.write().choose_library(id),
+            onclick: move |event: MouseEvent| choose_row(state, id, kind, &event),
             oncontextmenu: move |event: MouseEvent| {
                 event.prevent_default();
                 let point = event.client_coordinates();
                 state.write().open_item_menu(id, point.x, point.y);
             },
             ondoubleclick: move |_| {
-                let mut start = start_rename;
-                start();
+                if kind != NodeKind::Scene {
+                    let mut start = start_rename;
+                    start();
+                }
             },
             onkeydown: move |event: KeyboardEvent| {
                 if event.key() == Key::F2 {
@@ -297,11 +330,53 @@ fn LibraryRow(
             ondragend: move |_| state.write().end_drag(),
             KindGlyph { kind }
             span { class: "library-name", "{name}" }
+            if kind == NodeKind::Scene && !row.status.trim().is_empty() {
+                StatusPill { status: row.status.clone() }
+            }
+            if !row.keywords.is_empty() {
+                span { class: "card-keywords",
+                    for (word, hex) in row.keywords.iter() {
+                        span {
+                            class: "keyword-dot small",
+                            style: if hex.is_empty() { String::new() } else { format!("background: {hex}") },
+                            title: "{word}",
+                        }
+                    }
+                }
+            }
+            if row.scenes > 0 {
+                span { class: "row-progress", title: "{row.finished} of {row.scenes} scenes final", Ring { fraction } }
+            }
         }
         if can_change {
             DeleteButton { id, name: name.clone() }
         }
         }
+    }
+}
+
+/// What a click on a binder row does: a scene opens on the page, or is
+/// picked with Ctrl or Shift; anything else is chosen and shows in Context.
+fn choose_row(mut state: Signal<StudioState>, id: Id, kind: NodeKind, event: &MouseEvent) {
+    let keys = event.modifiers();
+    if kind == NodeKind::Scene && (keys.ctrl() || keys.meta()) {
+        state.write().toggle_pick(id);
+        return;
+    }
+    if kind == NodeKind::Scene && keys.shift() {
+        state.write().pick_range(id);
+        return;
+    }
+    let mut current = state.write();
+    current.clear_picked();
+    if kind == NodeKind::Scene || current.binder.is_in_trash(id) && kind != NodeKind::TrashRoot {
+        current.select_node(id);
+        if kind == NodeKind::Scene {
+            current.mode = WorkspaceMode::Writing;
+        }
+    } else {
+        current.choose_library(id);
+        current.select_node(id);
     }
 }
 
@@ -381,247 +456,6 @@ pub(super) fn select_field(id: String) {
 
 /// The middle column: the shown container's scenes, grouped by chapter,
 /// each with its first lines and its status.
-#[component]
-pub(super) fn SceneList() -> Element {
-    let mut state = use_context::<Signal<StudioState>>();
-    let widths = use_context::<Signal<PanelWidths>>();
-    let width = widths.read().sidebar;
-    let shown = state.read().shown_container();
-    let filter = state.read().shown_filter();
-    let heading = match &filter {
-        Some(filter) => filter.name.clone(),
-        None => shown
-            .and_then(|id| state.read().binder.get(id).map(|node| node.title.clone()))
-            .unwrap_or_else(|| "Manuscript".into()),
-    };
-    let in_trash = shown.is_some() && shown == state.read().binder.trash_root().map(|node| node.id);
-    let search = state.read().search.clone();
-    // `#plot` and `-#plot` in the search are keywords; the rest is words.
-    let query = KeywordQuery::parse(&search);
-    let hits = state.read().content_hits();
-    let groups: Vec<SceneGroup> = {
-        let current = state.read();
-        current
-            .scene_groups()
-            .into_iter()
-            .map(|mut group| {
-                // A chapter whose name matches keeps all its scenes.
-                let title_hit = !query.text.is_empty() && !group.title.is_empty() && matches_query(&group.title, &query.text);
-                group.scenes.retain(|card| {
-                    current.binder.keywords_match(card.id, &query.with, false, &query.without)
-                        && (title_hit || binder_matches(&current.binder, card.id, &query.text, &hits))
-                });
-                group
-            })
-            .filter(|group| !group.scenes.is_empty())
-            .collect()
-    };
-    let selected = state.read().selected;
-    // The ring for everything shown, filled as its scenes reach a final status.
-    let (finished, total) = groups.iter().flat_map(|group| group.scenes.iter()).fold((0, 0), |(done, all), card| {
-        (done + usize::from(status_tone(&card.status) == "final"), all + 1)
-    });
-    rsx! {
-        aside {
-            class: "scene-list",
-            aria_label: "Scenes",
-            style: "width: {width}px; flex: 0 0 {width}px;",
-            div { class: "scene-list-head",
-                h2 { title: "{heading}", "{heading}" }
-                if total > 0 {
-                    span { class: "scene-list-progress", title: "{finished} of {total} scenes final",
-                        Ring { fraction: finished as f64 / total as f64 }
-                    }
-                }
-                if !in_trash && filter.is_none() {
-                    IconButton {
-                        name: "New scene (Ctrl+N)",
-                        open: false,
-                        onclick: move |_| state.write().add_node(NodeKind::Scene),
-                        path { d: "M9.5 2.5H3.5v10h9V6.5M7 9l1.5-.3 5-5-1.2-1.2-5 5z", fill: "none", stroke: "currentColor", stroke_width: "1.2", stroke_linejoin: "round" }
-                    }
-                }
-            }
-            input {
-                id: "binder-search",
-                class: "search",
-                placeholder: "Search titles and text",
-                title: "Ctrl+F. #plot for a keyword, -#plot to leave it out.",
-                aria_label: "Search scenes",
-                value: "{search}",
-                oninput: move |event| state.write().search = event.value(),
-            }
-            if in_trash {
-                div { class: "scene-trash-actions", TrashActions {} }
-            }
-            div { class: "scene-cards",
-                if groups.is_empty() {
-                    p { class: "hint scene-empty",
-                        if !search.trim().is_empty() {
-                            "No scene matches the search."
-                        } else if in_trash {
-                            "The trash is empty."
-                        } else {
-                            "No scenes here yet."
-                        }
-                    }
-                }
-                for group in groups {
-                    {
-                        let group_id = group.id;
-                        // A group folds with its chapter: one folded set for the library and here.
-                        let folded = !group.title.is_empty() && state.read().is_collapsed(group_id);
-                        let count = group.scenes.len();
-                        // The ring fills as the chapter's scenes reach a final status.
-                        let finished = group.scenes.iter().filter(|card| status_tone(&card.status) == "final").count();
-                        let fraction = if count == 0 { 0.0 } else { finished as f64 / count as f64 };
-                        rsx! {
-                            section { class: "scene-group", key: "{group_id}",
-                                if !group.title.is_empty() {
-                                    h3 { class: "scene-group-title",
-                                        button {
-                                            class: if folded { "scene-group-toggle folded" } else { "scene-group-toggle" },
-                                            aria_expanded: "{!folded}",
-                                            title: if folded { "Show these scenes" } else { "Fold these scenes" },
-                                            onclick: move |_| state.write().toggle_collapsed(group_id),
-                                            svg { class: "fold-glyph", view_box: "0 0 16 16", "aria-hidden": "true",
-                                                path { d: "M5 6l3 3 3-3", fill: "none", stroke: "currentColor", stroke_width: "1.6", stroke_linecap: "round", stroke_linejoin: "round" }
-                                            }
-                                            span { class: "scene-group-name", "{group.title}" }
-                                            span { class: "scene-group-progress", title: "{finished} of {count} scenes final",
-                                                Ring { fraction }
-                                            }
-                                        }
-                                    }
-                                }
-                                if !folded {
-                                    for card in group.scenes {
-                                        SceneCardView { active: selected == Some(card.id), card }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-#[component]
-fn SceneCardView(card: SceneCard, active: bool) -> Element {
-    let mut state = use_context::<Signal<StudioState>>();
-    let id = card.id;
-    let dragging = state.read().dragging == Some(id);
-    let target = state.read().drop_target == Some(id);
-    let place = state.read().drop_place;
-    let ok = state
-        .read()
-        .dragging
-        .is_some_and(|dragged| state.read().binder.drop_allowed_at(dragged, id, place));
-    let mut class = String::from("scene-card");
-    if active {
-        class.push_str(" active");
-    }
-    if card.left_out {
-        class.push_str(" left-out");
-    }
-    if state.read().picked.contains(&id) {
-        class.push_str(" picked");
-    }
-    if dragging {
-        class.push_str(" dragging");
-    }
-    if target {
-        class.push_str(match (ok, place) {
-            (false, _) => " drop-invalid",
-            (true, DropPlace::Before) => " drop-before",
-            _ => " drop-after",
-        });
-    }
-    let title = if card.title.trim().is_empty() { "Untitled scene".to_string() } else { card.title.clone() };
-    let in_trash = state.read().binder.is_in_trash(id);
-    rsx! {
-        div { class: "scene-card-wrap",
-        button {
-            class: "{class}",
-            aria_current: if active { "true" } else { "false" },
-            draggable: true,
-            onkeydown: move |event: KeyboardEvent| {
-                if let Some(step) = arrow_step(&event) {
-                    event.prevent_default();
-                    step_focus(".scene-list button.scene-card", step);
-                }
-            },
-            onclick: move |event: MouseEvent| {
-                let keys = event.modifiers();
-                if keys.ctrl() || keys.meta() {
-                    state.write().toggle_pick(id);
-                    return;
-                }
-                if keys.shift() {
-                    state.write().pick_range(id);
-                    return;
-                }
-                let mut current = state.write();
-                current.clear_picked();
-                current.select_node(id);
-                current.mode = WorkspaceMode::Writing;
-            },
-            oncontextmenu: move |event: MouseEvent| {
-                event.prevent_default();
-                let point = event.client_coordinates();
-                state.write().open_item_menu(id, point.x, point.y);
-            },
-            ondragstart: move |event| {
-                event.stop_propagation();
-                state.write().begin_drag(id);
-            },
-            ondragover: move |event| {
-                event.prevent_default();
-                event.stop_propagation();
-                // A scene card is never a container: its halves are before and after.
-                let y = event.element_coordinates().y;
-                let place = DropPlace::at(y, SCENE_CARD_HEIGHT, false);
-                let current = state.peek();
-                let changed = current.drop_target != Some(id) || current.drop_place != place;
-                drop(current);
-                if changed {
-                    state.write().set_binder_drop(id, place);
-                }
-            },
-            ondrop: move |event| {
-                event.prevent_default();
-                event.stop_propagation();
-                state.write().drop_in_binder(id);
-            },
-            ondragend: move |_| state.write().end_drag(),
-            span { class: "scene-card-title", "{title}" }
-            span { class: if card.opening.is_empty() { "scene-card-opening empty" } else { "scene-card-opening" },
-                if card.opening.is_empty() { "Nothing written yet." } else { "{card.opening}" }
-            }
-            if !card.status.trim().is_empty() {
-                StatusPill { status: card.status.clone() }
-            }
-            if !card.keywords.is_empty() {
-                span { class: "card-keywords",
-                    for (word, hex) in card.keywords.iter() {
-                        span {
-                            class: "keyword-dot small",
-                            style: if hex.is_empty() { String::new() } else { format!("background: {hex}") },
-                            title: "{word}",
-                        }
-                    }
-                }
-            }
-        }
-        if !in_trash {
-            DeleteButton { id, name: title.clone() }
-        }
-        }
-    }
-}
-
 /// A status as a small colored pill. Draft, Revise, and Final have their
 /// own colors; any other status takes a steady one from its name.
 #[component]

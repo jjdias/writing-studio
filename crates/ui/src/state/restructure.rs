@@ -968,11 +968,12 @@ Four.");
         state.trash_item(chapter);
         let trash = state.binder.trash_root().unwrap().id;
         state.choose_library(trash);
-        let cards: Vec<_> = state.scene_groups().into_iter().flat_map(|group| group.scenes).collect();
-        assert_eq!(cards.len(), 1, "the chapter, not each scene in it");
-        assert_eq!(cards[0].id, chapter);
-        assert_eq!(cards[0].opening, "Chapter with 1 scene");
-        assert!(cards[0].status.is_empty());
+        // Under Trash in the binder: the chapter, not each scene in it.
+        let rows = state.trash_rows();
+        assert_eq!(rows.len(), 1, "the chapter, not each scene in it");
+        assert_eq!((rows[0].id, rows[0].depth, rows[0].scenes), (chapter, 1, 1));
+        assert!(rows[0].status.is_empty());
+        assert!(!state.binder_rows().iter().any(|row| row.id == chapter), "out of the manuscript's rows");
         let _ = std::fs::remove_dir_all(dir);
     }
 

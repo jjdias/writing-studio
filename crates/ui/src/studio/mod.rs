@@ -1,7 +1,6 @@
 //! The window. Each area is its own module; they share names through
 //! `use super::*`, so an item one area uses from another is `pub(super)`.
 
-use std::collections::HashSet;
 
 use dioxus::prelude::*;
 use writing_studio_core::Id;
@@ -18,12 +17,11 @@ use writing_studio_project::{
     INSPECTOR_WIDTH_MIN, SIDEBAR_WIDTH_DEFAULT, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN,
 };
 use writing_studio_diagnostics::{BookContext, SceneFacts};
-use writing_studio_search::matches_query;
 use writing_studio_spellcheck::UnknownWord;
 
 use crate::shortcuts::{app_shortcut, AppShortcut, IN_THE_MANUSCRIPT, LISTED};
-use crate::state::{story_choice, StoryEntry, 
-    Beat, BibleLink, CheckFinding, CompileCheck, Earlier, FoldedPanel, FrameMenu, QuickMatch, ReviewTab, SceneCard, SceneGroup,
+use crate::state::{binder_matches, story_choice, StoryEntry, 
+    Beat, BibleLink, CheckFinding, CompileCheck, Earlier, FoldedPanel, FrameMenu, QuickMatch, ReviewTab, BinderRow,
     StudioState, WorkspaceMode,
     WorldSection,
 };
@@ -241,11 +239,10 @@ fn Workspace() -> Element {
     let arrangement = *chrome.read();
     let fold = current_fold();
     let inspector_mode = mode.shows_inspector();
-    let list_mode = mode.shows_binder();
-    // The library is on screen in every mode; the scene list where scenes
-    // are chosen. Both fold away together in a narrow window.
+    // The binder is on screen in every mode, and Context beside it where
+    // there is something to say about what is chosen. In a narrow window
+    // Context folds away first, then the binder.
     let show_library = !focus && arrangement.sidebar_visible && !fold.binder;
-    let show_list = show_library && list_mode;
     let show_inspector =
         !focus && arrangement.inspector_visible && inspector_mode && !fold.inspector;
     let overlay_library = !focus && fold.binder && overlay == Some(FoldedPanel::Binder);
@@ -264,13 +261,15 @@ fn Workspace() -> Element {
                 div { class: "overlay-backdrop", onclick: move |_| state.write().overlay = None }
                 div { class: "overlay overlay-left",
                     Library {}
-                    if list_mode { SceneList {} }
                 }
             }
-            if show_library { Library {} }
-            if show_list {
-                SceneList {}
+            if show_library {
+                Library {}
                 Sash { kind: ResizeKind::Sidebar, positive: true }
+            }
+            if show_inspector {
+                ContextPane {}
+                Sash { kind: ResizeKind::Inspector, positive: true }
             }
             div { class: "editor-group",
                 if !focus {
@@ -293,7 +292,7 @@ fn Workspace() -> Element {
                         }
                         if inspector_mode {
                             IconButton {
-                                name: "Inspector (Ctrl+Alt+I)",
+                                name: "Context (Ctrl+Alt+I)",
                                 open: inspector_on,
                                 onclick: move |_| toggle_inspector_panel(state, chrome, fold),
                                 path { d: "M1.5 2.5h13v11h-13zM10 2.5v11", fill: "none", stroke: "currentColor", stroke_width: "1.2" }
@@ -314,13 +313,9 @@ fn Workspace() -> Element {
                     }}
                 }
             }
-            if show_inspector {
-                Sash { kind: ResizeKind::Inspector, positive: false }
-                InspectorPane {}
-            }
             if overlay_inspector {
                 div { class: "overlay-backdrop", onclick: move |_| state.write().overlay = None }
-                div { class: "overlay overlay-right", InspectorPane {} }
+                div { class: "overlay overlay-left", ContextPane {} }
             }
         }
         if focus {

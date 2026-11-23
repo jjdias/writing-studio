@@ -1,34 +1,6 @@
 use super::*;
 
 
-pub(super) fn binder_matches(
-    tree: &writing_studio_project::BinderTree,
-    id: Id,
-    query: &str,
-    hits: &HashSet<Id>,
-) -> bool {
-    if query.trim().is_empty() {
-        return true;
-    }
-    let Some(node) = tree.get(id) else {
-        return false;
-    };
-    if matches_query(&node.title, query)
-        || matches_query(&node.label, query)
-        || matches_query(&node.status, query)
-        || node.keywords.iter().any(|word| matches_query(word, query))
-    {
-        return true;
-    }
-    if node.document_id.is_some_and(|document_id| hits.contains(&document_id)) {
-        return true;
-    }
-    tree.children(Some(id))
-        .iter()
-        .any(|child| binder_matches(tree, child.id, query, hits))
-}
-
-
 /// The kind of a binder item, as a small icon with the kind as its name.
 #[component]
 pub(super) fn KindGlyph(kind: NodeKind) -> Element {
@@ -80,6 +52,7 @@ pub(super) fn TrashActions() -> Element {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
     use writing_studio_project::{BinderNode, BinderTree};
 
     #[test]

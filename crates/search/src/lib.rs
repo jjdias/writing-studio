@@ -3,7 +3,7 @@
 //! The project folder stays the source of truth. This Tantivy index is rebuilt
 //! from document text when a project opens and updated when a document is saved.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::str::FromStr;
 
 use tantivy::collector::TopDocs;
@@ -22,9 +22,6 @@ pub struct ManuscriptIndex {
     id_field: tantivy::schema::Field,
     body_field: tantivy::schema::Field,
     pending: Option<(Id, String)>,
-    /// The opening words of each document, for lists that show a scene by
-    /// its first lines. Kept here because every text passes through here.
-    openings: HashMap<Id, String>,
 }
 
 #[derive(Debug)]
@@ -62,21 +59,11 @@ impl ManuscriptIndex {
             id_field,
             body_field,
             pending: None,
-            openings: HashMap::new(),
         })
     }
 
-    /// The first words of a document's text, or `None` before it is indexed.
-    pub fn opening(&self, id: Id) -> Option<&str> {
-        self.openings.get(&id).map(String::as_str)
-    }
-
     pub fn replace_all(&mut self, documents: &[(Id, &str)]) -> Result<(), SearchError> {
-        let mut fresh = Self::empty()?;
-        fresh.openings = documents
-            .iter()
-            .map(|(id, text)| (*id, opening_of(text)))
-            .collect();
+        let fresh = Self::empty()?;
         if !documents.is_empty() {
             {
                 let mut writer = fresh.writer()?;
@@ -115,7 +102,6 @@ impl ManuscriptIndex {
             writer.commit().map_err(|err| SearchError(err.to_string()))?;
         }
         self.reader.reload().map_err(|err| SearchError(err.to_string()))?;
-        self.openings.insert(id, opening_of(text));
         Ok(())
     }
 
@@ -123,7 +109,6 @@ impl ManuscriptIndex {
         if self.pending.as_ref().is_some_and(|(pending_id, _)| *pending_id == id) {
             self.pending = None;
         }
-        self.openings.remove(&id);
         {
             let mut writer = self.writer()?;
             writer.delete_term(Term::from_field_text(self.id_field, &id.to_string()));
@@ -324,36 +309,5 @@ mod tests {
         assert!(matches_query("Chapter One", "chap"));
         assert!(!matches_query("Chapter One", "scene"));
         assert!(matches_query("Anything", "  "));
-    }
-}
-
-/// About two lines of a list: the text's first 160 characters, with runs of
-/// space and line breaks as one space.
-const OPENING_CHARS: usize = 160;
-
-fn opening_of(text: &str) -> String {
-    let joined = text.split_whitespace().collect::<Vec<_>>().join(" ");
-    match joined.char_indices().nth(OPENING_CHARS) {
-        Some((cut, _)) => format!("{}…", joined[..cut].trim_end()),
-        None => joined,
-    }
-}
-
-#[cfg(test)]
-mod opening_tests {
-    use super::*;
-
-    #[test]
-    fn a_documents_opening_follows_its_saved_text() {
-        let mut index = ManuscriptIndex::new();
-        let id = Id::new();
-        index.replace_all(&[(id, "Finch had learned\n\nthat the desert   kept nothing.")]).unwrap();
-        assert_eq!(index.opening(id), Some("Finch had learned that the desert kept nothing."));
-        let long = "word ".repeat(100);
-        index.upsert(id, &long).unwrap();
-        let opening = index.opening(id).unwrap();
-        assert!(opening.ends_with('…') && opening.chars().count() <= OPENING_CHARS + 1);
-        index.remove(id).unwrap();
-        assert_eq!(index.opening(id), None);
     }
 }

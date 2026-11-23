@@ -69,8 +69,6 @@ pub(super) fn reveal_sidebar(state: Signal<StudioState>, mut chrome: Signal<Pane
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) struct WindowWidth(pub(super) u32);
 
-/// Matches `.library` in `style.css`.
-const LIBRARY_WIDTH: u32 = 232;
 /// The narrowest the page may get before a side panel folds away.
 const PAGE_MIN_WIDTH: u32 = 400;
 
@@ -82,12 +80,11 @@ pub(super) struct Fold {
     pub(super) inspector: bool,
 }
 
-/// The inspector folds first, once the page would be narrower than
-/// `PAGE_MIN_WIDTH` beside both panels, then the library and the scene list
-/// together (the `binder` fold). With the default
-/// widths that is about 1,200 and 900 pixels.
+/// Context folds first, once the page would be narrower than
+/// `PAGE_MIN_WIDTH` beside both panels, then the binder. With the default
+/// widths that is about 960 and 660 pixels.
 pub(super) fn fold_for(window: u32, widths: PanelWidths) -> Fold {
-    let beside_binder = LIBRARY_WIDTH + widths.sidebar + PAGE_MIN_WIDTH;
+    let beside_binder = widths.sidebar + PAGE_MIN_WIDTH;
     Fold {
         binder: window < beside_binder,
         inspector: window < beside_binder + widths.inspector,
@@ -149,12 +146,12 @@ mod tests {
     fn the_inspector_folds_before_the_binder() {
         let widths = PanelWidths::default();
         assert_eq!(fold_for(1400, widths), Fold::default());
-        let below_inspector = fold_for(1000, widths);
+        let below_inspector = fold_for(900, widths);
         assert!(below_inspector.inspector && !below_inspector.binder);
-        assert_eq!(fold_for(700, widths), Fold { binder: true, inspector: true });
+        assert_eq!(fold_for(600, widths), Fold { binder: true, inspector: true });
         // A wider binder needs more room before it stays beside the page.
         let wide = PanelWidths { sidebar: SIDEBAR_WIDTH_MAX, ..widths };
-        assert!(fold_for(900, wide).binder);
+        assert!(fold_for(850, wide).binder);
     }
 }
 

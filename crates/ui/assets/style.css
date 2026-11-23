@@ -983,8 +983,6 @@ kbd {
 /* The library: the project, its goal, the manuscript, then Extras.
    The width is LIBRARY_WIDTH in studio/layout.rs. */
 .library {
-  width: 232px;
-  flex: 0 0 232px;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -1053,64 +1051,6 @@ kbd {
 .library-add-btn:hover, .library-add-btn.open { background: var(--hover); color: var(--text); }
 
 /* The scene list: scenes as frameless cards, grouped by chapter. */
-.scene-list {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  min-width: 0;
-  background: var(--panel-2);
-  border-right: 1px solid var(--line);
-}
-.scene-list-head { display: flex; align-items: center; gap: 8px; padding: 16px 12px 8px 16px; }
-.scene-list-head h2 { flex: 1; min-width: 0; margin: 0; font-size: 17px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.scene-list .search { margin: 0 12px 8px; width: auto; }
-.scene-trash-actions .row-actions { padding: 0 12px 8px; }
-.scene-cards { flex: 1; min-height: 0; overflow: auto; padding: 0 8px 16px; }
-.scene-empty { padding: 12px 8px; }
-.scene-group-title {
-  margin: 14px 8px 4px;
-  padding-bottom: 6px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--muted);
-  border-bottom: 1px solid var(--line);
-}
-.scene-card {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 3px;
-  width: 100%;
-  height: 92px; /* SCENE_CARD_HEIGHT in studio/library.rs */
-  margin: 2px 0;
-  padding: 10px 12px;
-  overflow: hidden;
-  text-align: left;
-  background: transparent;
-  border: 0;
-  border-radius: 9px;
-  color: var(--text);
-}
-.scene-card > * { pointer-events: none; }
-.scene-card:hover { background: var(--hover); }
-.scene-card.active { background: var(--selection); color: var(--selection-fg); }
-.scene-card.dragging { opacity: 0.45; }
-.scene-card.drop-before { box-shadow: inset 0 2px 0 var(--gold); }
-.scene-card.drop-after { box-shadow: inset 0 -2px 0 var(--gold); }
-.scene-card.drop-invalid { outline: 2px dashed var(--danger); outline-offset: -2px; }
-.scene-card-title { width: 100%; font-size: 14px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.scene-card-opening {
-  width: 100%;
-  font-size: 13px;
-  line-height: 1.35;
-  color: inherit;
-  opacity: 0.85;
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-.scene-card-opening.empty { font-style: italic; opacity: 0.6; }
 
 /* Status as a small colored pill: color carries meaning, not decoration. */
 .status-pill { display: inline-block; margin-top: 2px; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; line-height: 1.5; }
@@ -1160,26 +1100,11 @@ kbd {
 .fold-btn { display: grid; place-items: center; padding: 0; background: transparent; border-color: transparent; border-radius: 5px; color: var(--muted); }
 .fold-btn:hover { background: var(--hover); color: var(--text); }
 .fold-glyph { width: 14px; height: 14px; transition: transform 0.12s ease; }
-.fold-btn.folded .fold-glyph, .scene-group-toggle.folded .fold-glyph { transform: rotate(-90deg); }
-.scene-group-toggle {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  padding: 2px 4px;
-  background: transparent;
-  border: 0;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-}
-.scene-group-toggle:hover { background: transparent; color: var(--text); }
-.scene-group-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.scene-group-count { font-size: 11px; font-weight: 400; padding: 0 6px; border-radius: 8px; background: var(--hover); }
+.fold-btn.folded .fold-glyph { transform: rotate(-90deg); }
 
 /* The × that moves an item to the trash: at the right of its row or card,
    shown on hover or when Tab reaches the item, so the list stays quiet. */
-.library-item, .scene-card-wrap { position: relative; }
+.library-item { position: relative; }
 .item-delete {
   position: absolute;
   top: 50%;
@@ -1196,16 +1121,13 @@ kbd {
   color: var(--muted);
   opacity: 0;
 }
-.scene-card-wrap .item-delete { top: 10px; transform: none; }
 .library-item:hover .item-delete, .library-item:focus-within .item-delete,
-.scene-card-wrap:hover .item-delete, .scene-card-wrap:focus-within .item-delete { opacity: 1; }
 .item-delete:hover { background: var(--hover); color: var(--danger); }
 .item-delete:focus-visible { opacity: 1; }
 .item-edit { right: 30px; }
 .item-edit:hover { color: var(--ink); }
 .item-delete .glyph { width: 14px; height: 14px; }
 .library-item .library-row { padding-right: 30px; }
-.scene-card-title { padding-right: 24px; }
 
 /* A book, part, chapter, or folder renamed in place. */
 .rename-field { flex: 1; min-width: 0; height: 28px; margin: 1px 0; padding: 2px 8px; font-size: 14px; }
@@ -1250,26 +1172,13 @@ kbd {
 .dash-facts dt { color: var(--text); }
 .dash-facts dd { margin: 0; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
 .dashboard .inspector-section > summary { font-size: 12px; font-weight: 600; }
-.scene-group-progress { display: inline-grid; place-items: center; color: var(--gold); }
 
 /* A ring's empty track, visible on every column color. */
 .ring .ring-track { stroke: var(--muted); opacity: 0.35; }
 .ring { color: var(--gold); }
-.scene-list-progress { display: inline-grid; place-items: center; flex: 0 0 auto; }
-.scene-list-progress .ring { width: 18px; height: 18px; }
 
 /* The scene list takes the library's look: the same tone, the same
    headings, rows that highlight the same way, and a thin line between. */
-.scene-list { background: var(--library); border-right: 0; border-left: 1px solid var(--line); }
-.scene-list-head { padding: 18px 12px 10px 16px; }
-.scene-list-head h2 { font-size: 20px; line-height: 1.2; }
-.scene-list .search { margin: 0 12px 10px; border-radius: 7px; background: var(--panel); border-color: var(--line); }
-.scene-cards { padding: 0 8px 16px; border-top: 1px solid var(--line); }
-.scene-group-title { margin: 14px 4px 4px; padding: 0; border-bottom: 0; font-size: 11px; font-weight: 600; color: var(--muted); }
-.scene-card { border-radius: 7px; }
-.scene-card:hover { background: var(--hover); }
-.scene-card.active { background: var(--row-active); color: var(--row-active-fg); }
-.scene-card.active .scene-card-opening { opacity: 0.9; }
 
 /* Page settings (Phase 9 stage 2). The shell sets these from the
    project's page style; the values here are today's look. */
@@ -1310,12 +1219,11 @@ kbd {
 /* While one types, the bars and the side columns step back (they keep
    their room, so the page does not move); moving the pointer,
    a chord, or leaving the page brings them back (place.js). */
-.format-toolbar, .work-bar, .status, .library, .scene-list, .secondary.dashboard, .sash { transition: opacity 0.35s ease; }
+.format-toolbar, .work-bar, .status, .library, .secondary.dashboard, .sash { transition: opacity 0.35s ease; }
 body[data-typing] .format-toolbar,
 body[data-typing] .work-bar,
 body[data-typing] .status,
 body[data-typing] .library,
-body[data-typing] .scene-list,
 body[data-typing] .secondary.dashboard,
 body[data-typing] .sash { opacity: 0; }
 
@@ -1362,14 +1270,10 @@ button.keyword-dot:hover { box-shadow: 0 0 0 2px var(--line); }
 .keyword-field { width: 100%; }
 .keyword-form { display: contents; }
 .card-keywords { display: inline-flex; gap: 4px; margin-left: 6px; vertical-align: middle; }
-.scene-card .status-pill + .card-keywords { margin-left: 6px; }
 .filter-save { margin-top: 12px; width: 100%; }
 
 /* A chapter heading in the scene list keeps its full line height, so its
    name is never clipped top or bottom; a long one ends with "…". */
-.scene-group-title { overflow: visible; line-height: 1.4; }
-.scene-group-toggle { min-height: 24px; line-height: 1.4; padding: 3px 4px; }
-.scene-group-name { line-height: 1.4; padding: 1px 0; }
 
 /* The menu a right-click opens on a library row or a scene card. It sits at
    the pointer, so it is fixed to the window rather than to a bar. */
@@ -1391,7 +1295,6 @@ button.keyword-dot:hover { box-shadow: 0 0 0 2px var(--line); }
 
 /* Scenes picked together with Ctrl or Shift: a ring, so the open one still
    shows as the open one. */
-.scene-card.picked { box-shadow: inset 0 0 0 2px var(--gold); }
 
 /* Project → Compile…: the book and profile, then the profile's choices in
    two columns, labels at the left. */
@@ -1406,7 +1309,7 @@ button.keyword-dot:hover { box-shadow: 0 0 0 2px var(--line); }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 
 /* An item compile leaves out stays in its list, dimmed. */
-.library-row.left-out .library-name, .scene-card.left-out, .outline-table tr.left-out > td { opacity: 0.55; }
+.library-row.left-out .library-name, .outline-table tr.left-out > td { opacity: 0.55; }
 .compile-check { margin-top: 12px; }
 .compile-row input.compile-word { flex: 0 0 7rem; }
 /* Front and back matter: the pages as a row of checks, and the text of each
@@ -1431,3 +1334,14 @@ button.keyword-dot:hover { box-shadow: 0 0 0 2px var(--line); }
 /* About, at the end of Help: quiet text under the shortcuts. */
 .about { margin-top: 18px; padding-top: 10px; border-top: 1px solid var(--line); }
 .about p { margin: 6px 0; font-size: 13px; color: var(--muted); }
+
+/* The binder holds scenes; Context sits beside it, where the scene list was. */
+.library-search { margin: 0 12px 8px; width: auto; }
+.library-empty { padding: 4px 16px; }
+.library-row.scene-row .library-name { font-weight: 400; }
+.library-row .status-pill { flex: 0 0 auto; margin-left: 6px; font-size: 10px; }
+.library-row .card-keywords { display: inline-flex; gap: 3px; margin-left: 6px; flex: 0 0 auto; }
+.library-row.picked { box-shadow: inset 3px 0 0 var(--gold); }
+.row-progress { display: inline-grid; place-items: center; margin-left: auto; padding-left: 6px; color: var(--gold); flex: 0 0 auto; }
+.row-progress .ring { width: 14px; height: 14px; }
+.secondary.dashboard.context { border-left: 0; border-right: 1px solid var(--line); }

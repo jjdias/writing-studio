@@ -633,7 +633,7 @@ mod tests {
         // A scene left out stays in the binder and out of the file.
         let scene = state.selected.unwrap();
         state.set_left_out(scene, true);
-        assert!(state.scene_groups().iter().flat_map(|group| &group.scenes).any(|card| card.id == scene && card.left_out));
+        assert!(state.binder_rows().iter().any(|row| row.id == scene && row.left_out));
         let file = state.prepare_compile().unwrap();
         assert!(!String::from_utf8(file.bytes).unwrap().contains("The harbor was quiet."));
         state.set_left_out(scene, false);

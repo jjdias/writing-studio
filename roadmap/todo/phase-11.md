@@ -1,6 +1,6 @@
 # Phase 11 — Tags, story links, and a mind map
 
-In progress: stages 1 to 12 are done. Stages 13 to 16, added after trying the window, rework the columns and bring worldbuilding into the binder.
+In progress: stages 1 to 13 are done. Stages 13 to 16, added after trying the window, rework the columns and bring worldbuilding into the binder.
 
 Phase 9 gave binder items colored keywords and saved filters. This phase does four things with what is there:
 
@@ -175,6 +175,8 @@ The corkboard becomes a mind map of the manuscript.
 The window had four columns: the binder, the scene list, the page, and the inspector on the right, which crowded the page. These stages make it three: the **binder**, with scenes nested in their chapters and the story's worldbuilding as trees of its own; **Context**, where the scene list was, holding what the inspector held; and the page, mind map, or outline. Context is for what is said about the work, never the work itself.
 
 ### 13. Scenes in the binder, and the Context panel
+
+**Done.** `StudioState::binder_rows` gives the tree (`BinderRow`: depth, kind, title, status, keyword colors, left out, scenes held and finished), with scenes in their chapters; `shown_scenes` is the set a search, saved filter, keyword, or story entry narrows it to, keeping what holds a match and opening what is folded; `trash_rows` lists the trash's contents under its row. One `LibraryRow` draws every row: a scene opens on the page (Ctrl+click and Shift+click pick), anything else is chosen and shows in Context. The search box is over the tree; **+ Add** adds a scene too. `ContextPane` (the inspector's `Inspector`, moved) sits between the binder and the page, with Restore and Empty trash when the trash is chosen, in Writing, the mind map, and the outline. The binder takes the old scene list's width setting and is resizable; Context takes the inspector's; Context folds below about 960 pixels, the binder below 660. The scene list, its cards, `scene_groups`, `SceneCard`, `SceneGroup`, `library_rows`, and the search index's `opening` (only the cards used it) are gone. `binder_matches` moved to the state.
 
 - The scene list goes. The binder lists scenes in their chapters (and in the parts, books, and folders they sit in), each row with its title, status, and keyword colors, and the chapter's ring of finished scenes. Choosing a scene opens it on the page; choosing a book, part, chapter, or folder shows it in Context.
 - Where the scene list was, **Context** holds what the right-hand inspector held: progress, synopsis, status, keywords, In this scene, Named here, the scene context, beats and diagnostics, snapshots, split and merge, include in compile, color, and Move to trash. The right-hand inspector goes; its button and Ctrl+Alt+I show and hide Context.

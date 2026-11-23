@@ -1,15 +1,26 @@
 use super::*;
 
+/// Context: what is said about the chosen item, beside the binder. Never
+/// the work itself, which is on the page, the map, or the outline.
 #[component]
-pub(super) fn InspectorPane() -> Element {
+pub(super) fn ContextPane() -> Element {
     let widths = use_context::<Signal<PanelWidths>>();
     let width = widths.read().inspector;
+    let state = use_context::<Signal<StudioState>>();
+    let trash = state.read().binder.trash_root().map(|node| node.id);
+    let trash_chosen = trash.is_some() && state.read().selected == trash;
     rsx! {
         aside {
-            class: "secondary dashboard",
-            aria_label: "Dashboard",
+            class: "secondary dashboard context",
+            aria_label: "Context",
             style: "width: {width}px; flex: 0 0 {width}px;",
-            Inspector {}
+            if trash_chosen {
+                div { class: "dash-heading", "Trash" }
+                p { class: "hint", "What was moved here, under Trash in the binder. Choose an item to restore it." }
+                TrashActions {}
+            } else {
+                Inspector {}
+            }
         }
     }
 }

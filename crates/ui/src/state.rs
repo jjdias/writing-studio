@@ -80,10 +80,10 @@ impl WorkspaceMode {
         matches!(self, Self::Writing | Self::History)
     }
 
-    /// The inspector edits the item being written, or the node chosen on
-    /// the mind map.
+    /// Context shows the item being written, or the node chosen on the
+    /// mind map or in the outline.
     pub fn shows_inspector(self) -> bool {
-        matches!(self, Self::Writing | Self::MindMap)
+        matches!(self, Self::Writing | Self::MindMap | Self::Outliner)
     }
 
     pub fn label(self) -> &'static str {
@@ -100,25 +100,47 @@ impl WorkspaceMode {
     }
 }
 
-/// One scene in the scene list: its title, its first words, and its status.
+/// One row of the binder: a book, part, chapter, folder, or scene, with
+/// what the row shows of it.
 #[derive(Clone, Debug, PartialEq)]
-pub struct SceneCard {
+pub struct BinderRow {
     pub id: Id,
+    pub depth: u32,
+    pub kind: NodeKind,
     pub title: String,
-    pub opening: String,
+    pub has_children: bool,
+    pub collapsed: bool,
+    /// A scene's status; empty for the rest.
     pub status: String,
     /// Its keywords, each with its color's hex, or `""` for none.
     pub keywords: Vec<(String, String)>,
     /// Compile leaves it out, by itself or with what it is in.
     pub left_out: bool,
+    /// For what holds scenes: how many it holds, and how many are final.
+    pub scenes: usize,
+    pub finished: usize,
 }
 
-/// The scenes one chapter or folder holds, in binder order.
-#[derive(Clone, Debug, PartialEq)]
-pub struct SceneGroup {
-    pub id: Id,
-    pub title: String,
-    pub scenes: Vec<SceneCard>,
+/// A binder search: does the item, or something in it, match the words, by
+/// its title, label, status, keywords, or text (`hits`, from the index)?
+pub(crate) fn binder_matches(tree: &BinderTree, id: Id, query: &str, hits: &HashSet<Id>) -> bool {
+    if query.trim().is_empty() {
+        return true;
+    }
+    let Some(node) = tree.get(id) else {
+        return false;
+    };
+    if writing_studio_search::matches_query(&node.title, query)
+        || writing_studio_search::matches_query(&node.label, query)
+        || writing_studio_search::matches_query(&node.status, query)
+        || node.keywords.iter().any(|word| writing_studio_search::matches_query(word, query))
+    {
+        return true;
+    }
+    if node.document_id.is_some_and(|document_id| hits.contains(&document_id)) {
+        return true;
+    }
+    tree.children(Some(id)).iter().any(|child| binder_matches(tree, child.id, query, hits))
 }
 
 /// A menu or small panel opened from the top bar or the status bar.
@@ -2241,24 +2263,121 @@ impl StudioState {
         self.note_edit();
     }
 
-    /// The library's rows: each container with its depth and whether it
-    /// holds other containers, leaving out what is inside a folded one.
-    pub fn library_rows(&self) -> Vec<(Id, u32, bool)> {
-        let all = self.binder.manuscript_containers();
+    /// The binder's rows: the manuscript's books, parts, chapters, folders,
+    /// and the scenes in them, each at its depth, leaving out what is inside
+    /// a folded one. Narrowed by a search, a saved filter, or a keyword or
+    /// story entry chosen in the library, it holds the scenes that match and
+    /// what they are in, unfolded.
+    pub fn binder_rows(&self) -> Vec<BinderRow> {
         let mut rows = Vec::new();
-        let mut folded_at: Option<u32> = None;
-        for (index, (id, depth)) in all.iter().enumerate() {
-            if folded_at.is_some_and(|fold| *depth > fold) {
-                continue;
-            }
-            folded_at = None;
-            let has_children = all.get(index + 1).is_some_and(|(_, next)| *next > *depth);
-            rows.push((*id, *depth, has_children));
-            if has_children && self.is_collapsed(*id) {
-                folded_at = Some(*depth);
-            }
+        if let Some(draft) = self.binder.draft_root() {
+            let shown = self.shown_scenes();
+            self.push_rows(draft.id, 0, shown.as_ref(), &mut rows);
         }
         rows
+    }
+
+    /// The trash's contents, under its row when it is open.
+    pub fn trash_rows(&self) -> Vec<BinderRow> {
+        let Some(trash) = self.binder.trash_root() else {
+            return Vec::new();
+        };
+        self.binder.children(Some(trash.id)).into_iter().map(|node| self.binder_row(node, 1, false, false)).collect()
+    }
+
+    fn push_rows(&self, parent: Id, depth: u32, shown: Option<&HashSet<Id>>, rows: &mut Vec<BinderRow>) {
+        let in_binder = |node: &&BinderNode| {
+            matches!(node.kind, NodeKind::Book | NodeKind::Part | NodeKind::Chapter | NodeKind::Folder | NodeKind::Scene)
+        };
+        let visible = |node: &BinderNode| match shown {
+            None => true,
+            Some(set) if node.kind == NodeKind::Scene => set.contains(&node.id),
+            Some(set) => self.binder.scenes_under(node.id).iter().any(|(_, scene)| set.contains(scene)),
+        };
+        for node in self.binder.children(Some(parent)).into_iter().filter(in_binder) {
+            if !visible(node) || depth > 64 {
+                continue;
+            }
+            let has_children = self.binder.children(Some(node.id)).into_iter().filter(in_binder).any(|child| visible(child));
+            let collapsed = has_children && shown.is_none() && self.is_collapsed(node.id);
+            rows.push(self.binder_row(node, depth, has_children, collapsed));
+            if has_children && !collapsed {
+                self.push_rows(node.id, depth + 1, shown, rows);
+            }
+        }
+    }
+
+    fn binder_row(&self, node: &BinderNode, depth: u32, has_children: bool, collapsed: bool) -> BinderRow {
+        let scene = node.kind == NodeKind::Scene;
+        let held: Vec<Id> = if scene {
+            Vec::new()
+        } else {
+            self.binder.scenes_under(node.id).into_iter().map(|(_, id)| id).collect()
+        };
+        let finished = held
+            .iter()
+            .filter_map(|id| self.binder.get(*id))
+            .filter(|held| ["done", "final"].contains(&held.status.trim().to_lowercase().as_str()))
+            .count();
+        BinderRow {
+            id: node.id,
+            depth,
+            kind: node.kind,
+            title: node.title.clone(),
+            has_children,
+            collapsed,
+            status: if scene { node.status.clone() } else { String::new() },
+            keywords: self.keyword_colors_of(node),
+            left_out: self.binder.is_left_out(node.id),
+            scenes: held.len(),
+            finished,
+        }
+    }
+
+    /// The scenes the binder shows while it is narrowed, or `None` when it
+    /// shows them all: a saved filter's matches from every book, those of a
+    /// chosen keyword or story entry, and those the search finds (`#plot`
+    /// and `-#plot` are keywords; a chapter whose name matches keeps its
+    /// scenes).
+    pub fn shown_scenes(&self) -> Option<HashSet<Id>> {
+        let filter = self.shown_filter();
+        let searching = !self.search.trim().is_empty();
+        if filter.is_none() && !self.narrowed() && !searching {
+            return None;
+        }
+        let scenes: Vec<Id> = match &filter {
+            Some(filter) => self.filter_matches(filter).into_iter().map(|(_, scene)| scene).collect(),
+            None => self
+                .binder
+                .draft_root()
+                .map(|draft| self.binder.scenes_under(draft.id).into_iter().map(|(_, scene)| scene).collect())
+                .unwrap_or_default(),
+        };
+        let query = KeywordQuery::parse(&self.search);
+        let hits = self.manuscript_index.borrow().search(&query.text);
+        let titled = |scene: Id| {
+            !query.text.is_empty()
+                && {
+                    let mut at = self.binder.get(scene).and_then(|node| node.parent_id);
+                    let mut found = false;
+                    while let Some(node) = at.and_then(|id| self.binder.get(id)) {
+                        if node.kind.is_root() {
+                            break;
+                        }
+                        found |= writing_studio_search::matches_query(&node.title, &query.text);
+                        at = node.parent_id;
+                    }
+                    found
+                }
+        };
+        Some(
+            scenes
+                .into_iter()
+                .filter(|scene| self.chosen_allows(*scene))
+                .filter(|scene| self.binder.keywords_match(*scene, &query.with, false, &query.without))
+                .filter(|scene| titled(*scene) || binder_matches(&self.binder, *scene, &query.text, &hits))
+                .collect(),
+        )
     }
 
     /// Show a library row's scenes. A row of the manuscript or the trash
@@ -2278,68 +2397,6 @@ impl StudioState {
         if !matches!(self.mode, WorkspaceMode::Writing | WorkspaceMode::MindMap | WorkspaceMode::Outliner) {
             self.mode = WorkspaceMode::Writing;
         }
-    }
-
-    /// The scenes of the shown container, grouped by the chapter or folder
-    /// that holds them. A group holding scenes directly in the container
-    /// itself has no title.
-    pub fn scene_groups(&self) -> Vec<SceneGroup> {
-        // A saved filter lists its matches from every book, by chapter.
-        let (container, scenes) = match self.shown_filter() {
-            Some(filter) => (None, self.filter_matches(&filter)),
-            None => {
-                let Some(container) = self.shown_container() else {
-                    return Vec::new();
-                };
-                // The trash lists what was moved there, whatever it is: a
-                // trashed part is one card, with its scenes inside it.
-                if self.binder.trash_root().is_some_and(|trash| trash.id == container) {
-                    let items = self.binder.children(Some(container)).into_iter().map(|node| (container, node.id)).collect();
-                    (Some(container), items)
-                } else {
-                    (Some(container), self.binder.scenes_under(container))
-                }
-            }
-        };
-        let index = self.manuscript_index.borrow();
-        let mut groups: Vec<SceneGroup> = Vec::new();
-        for (holder, scene) in scenes.into_iter().filter(|(_, scene)| self.chosen_allows(*scene)) {
-            let Some(node) = self.binder.get(scene) else {
-                continue;
-            };
-            let opening = if matches!(node.kind, NodeKind::Scene | NodeKind::Note) {
-                node.document_id.and_then(|document| index.opening(document)).unwrap_or_default().to_string()
-            } else {
-                let held = self.binder.scenes_under(scene).len();
-                let what = node.kind.icon_label();
-                match held {
-                    0 => format!("{what}, empty"),
-                    1 => format!("{what} with 1 scene"),
-                    many => format!("{what} with {many} scenes"),
-                }
-            };
-            let card = SceneCard {
-                id: scene,
-                title: node.title.clone(),
-                opening,
-                status: if node.kind == NodeKind::Scene { node.status.clone() } else { String::new() },
-                keywords: self.keyword_colors_of(node),
-                left_out: self.binder.is_left_out(scene),
-            };
-            match groups.last_mut() {
-                Some(group) if group.id == holder => group.scenes.push(card),
-                _ => groups.push(SceneGroup {
-                    id: holder,
-                    title: if Some(holder) == container {
-                        String::new()
-                    } else {
-                        self.binder.get(holder).map(|node| node.title.clone()).unwrap_or_default()
-                    },
-                    scenes: vec![card],
-                }),
-            }
-        }
-        groups
     }
 
     /// An item's keywords with each one's color as a hex value.
@@ -5102,7 +5159,7 @@ mod tests {
         state.add_keyword(tagged, "plot/subplot");
         state.add_keyword(other, "flashback");
         let shown = |state: &StudioState| -> Vec<Id> {
-            state.scene_groups().into_iter().flat_map(|group| group.scenes).map(|card| card.id).collect()
+            state.binder_rows().into_iter().filter(|row| row.kind == NodeKind::Scene).map(|row| row.id).collect()
         };
         assert_eq!(shown(&state), [tagged, other]);
 
@@ -5205,7 +5262,7 @@ mod tests {
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].1, 2, "the chapter's two scenes");
         let shown = |state: &StudioState| -> Vec<Id> {
-            state.scene_groups().into_iter().flat_map(|group| group.scenes).map(|card| card.id).collect()
+            state.binder_rows().into_iter().filter(|row| row.kind == NodeKind::Scene).map(|row| row.id).collect()
         };
         state.choose_library(state.binder.book_of(first).unwrap());
         state.choose_story(mara);
@@ -5732,8 +5789,11 @@ mod tests {
         assert!(!state.focus_mode);
     }
 
+    /// The binder lists the scenes in their chapters, under the books and
+    /// parts they are in, each row with what it shows; a search keeps the
+    /// scenes that match and what they are in.
     #[test]
-    fn the_scene_list_shows_the_chosen_containers_scenes_with_their_openings() {
+    fn the_binder_holds_the_scenes_in_their_chapters_and_a_search_narrows_it() {
         let (mut state, dir) = open_state("scene-list");
         let book = state.binder.manuscript_books()[0].id;
         state.choose_library(book);
@@ -5744,13 +5804,28 @@ mod tests {
         state.apply_editor_text("Finch had learned that the desert kept nothing.".into());
         state.save_all();
         let scene = state.selected.unwrap();
-        let groups = state.scene_groups();
-        let card = groups
-            .iter()
-            .flat_map(|group| group.scenes.iter())
-            .find(|card| card.id == scene)
-            .expect("the open scene is listed");
-        assert_eq!(card.opening, "Finch had learned that the desert kept nothing.");
+        let chapter = state.binder.get(scene).unwrap().parent_id.unwrap();
+        state.update_node_status(scene, "Done".into());
+        let rows = state.binder_rows();
+        let depth = |id: Id| rows.iter().find(|row| row.id == id).map(|row| row.depth);
+        assert_eq!((depth(book), depth(chapter), depth(scene)), (Some(0), Some(1), Some(2)), "nested");
+        let chapter_row = rows.iter().find(|row| row.id == chapter).unwrap();
+        assert_eq!((chapter_row.scenes, chapter_row.finished), (1, 1), "its ring");
+
+        state.add_node(NodeKind::Scene);
+        let other = state.selected.unwrap();
+        state.search = "desert".into();
+        let shown: Vec<Id> = state.binder_rows().iter().map(|row| row.id).collect();
+        assert!(shown.contains(&scene) && shown.contains(&chapter) && !shown.contains(&other), "{shown:?}");
+        state.search = "chapter 1".into();
+        assert!(state.binder_rows().iter().any(|row| row.id == other), "a chapter whose name matches keeps its scenes");
+        state.search.clear();
+        state.toggle_collapsed(chapter);
+        assert!(!state.binder_rows().iter().any(|row| row.id == scene), "folded");
+        state.search = "desert".into();
+        assert!(state.binder_rows().iter().any(|row| row.id == scene), "a search opens what it found");
+        state.search.clear();
+        state.toggle_collapsed(chapter);
         // A chosen row that is gone falls back to a container that is there.
         state.library_selection = Some(Id::new());
         assert!(state.shown_container().is_some());
@@ -5762,11 +5837,11 @@ mod tests {
         let (mut state, dir) = open_state("fold");
         let book = state.binder.manuscript_books()[0].id;
         let inside_book = |state: &StudioState| {
-            state.library_rows().iter().filter(|(id, _, _)| *id != book).count()
+            state.binder_rows().iter().filter(|row| row.id != book).count()
         };
         let before = inside_book(&state);
         assert!(before > 0, "a new project has a chapter in its book");
-        assert!(state.library_rows().iter().any(|(id, _, children)| *id == book && *children));
+        assert!(state.binder_rows().iter().any(|row| row.id == book && row.has_children));
         state.toggle_collapsed(book);
         assert!(state.is_collapsed(book));
         assert_eq!(inside_book(&state), 0);
@@ -5788,13 +5863,7 @@ mod tests {
         state.add_node(NodeKind::Scene);
         let other = state.selected.unwrap();
         state.add_keyword(tagged, "Flashback");
-        let card = |state: &StudioState, id: Id| {
-            state
-                .scene_groups()
-                .into_iter()
-                .flat_map(|group| group.scenes)
-                .find(|card| card.id == id)
-        };
+        let card = |state: &StudioState, id: Id| state.binder_rows().into_iter().find(|row| row.id == id);
         let shown = card(&state, tagged).unwrap();
         assert_eq!(shown.keywords.len(), 1);
         assert!(!shown.keywords[0].1.is_empty(), "the keyword has a color");
@@ -5902,11 +5971,7 @@ mod tests {
         state.add_node(NodeKind::Scene);
         let added = state.selected.unwrap();
         assert_eq!(state.binder.get(added).unwrap().parent_id, Some(second_chapter));
-        assert!(state
-            .scene_groups()
-            .iter()
-            .flat_map(|group| group.scenes.iter())
-            .any(|card| card.id == added));
+        assert!(state.binder_rows().iter().any(|row| row.id == added));
         // The next one goes beside it, in the same chapter.
         state.add_node(NodeKind::Scene);
         assert_eq!(state.binder.get(state.selected.unwrap()).unwrap().parent_id, Some(second_chapter));
@@ -5950,8 +6015,8 @@ mod tests {
             [WorkspaceMode::Writing, WorkspaceMode::History]
         );
         let with_inspector: Vec<_> = WorkspaceMode::ALL.into_iter().filter(|mode| mode.shows_inspector()).collect();
-        // A node chosen on the mind map shows in the inspector too.
-        assert_eq!(with_inspector, [WorkspaceMode::Writing, WorkspaceMode::MindMap]);
+        // Context shows the node chosen on the mind map and in the outline too.
+        assert_eq!(with_inspector, [WorkspaceMode::Writing, WorkspaceMode::MindMap, WorkspaceMode::Outliner]);
     }
 
     #[test]
