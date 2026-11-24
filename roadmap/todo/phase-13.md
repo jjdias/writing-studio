@@ -1,6 +1,6 @@
 # Phase 13 — Context at every level
 
-In progress: stages 1 and 2 are done. It comes after [Phase 12](../done/phase-12.md), whose stage 8 makes every text file of the project Markdown with front matter.
+In progress: stages 1 to 3 are done. It comes after [Phase 12](../done/phase-12.md), whose stage 8 makes every text file of the project Markdown with front matter.
 
 A scene, a chapter, a part, and a book each have a **context** and a **body**. The context is what the writer knows about that level: its synopsis, keywords, status, goal, and notes, and what it is linked to. The body is its text: a scene's prose, a chapter's own text if it has any. For a chapter, part, or book, what it holds (its scenes or chapters, each with its synopsis) is part of what is read about it, in order.
 
@@ -48,6 +48,8 @@ In `crates/context`, beside `scene_context`:
 - What it holds, in order: each scene or chapter with its title, status, and synopsis. For a book, its chapters, and under each its scenes' titles; a chapter's scenes with their synopses. This is the rolling summary: each level is read from the level below's synopses, not its text.
 - The entries linked to it or to anything in it, named, with how often they appear; and the plotlines and plot points that run through its scenes.
 - As Markdown, capped to a length like the scene's: when it is too long, the deepest synopses go first, then the entries' text, and what was left out is said.
+
+**Done.** `level_context` in `crates/context`, for a chapter, a part, a book, or a folder: its kind, title, status, synopsis, notes, keywords (with those of what it is in), and place; an outline of what it holds and what that holds, each with its status and synopsis; the plot points of its scenes; and every entry linked to it or reaching one of its scenes, with how many scenes it is in. `LevelContext::to_markdown` caps it like a scene's: the deepest synopses go first, then the others, then the entries' text from the end, and what was left out is said. A scene's context now has its notes too. Word counts are not in it: the crate reads the models, not the text, and the window shows them. Test: `a_book_and_a_chapter_are_read_from_the_synopses_below_them`.
 
 ### 4. Context in the window
 

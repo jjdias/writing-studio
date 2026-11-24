@@ -326,6 +326,8 @@ pub struct SceneContext {
     pub title: String,
     pub synopsis: String,
     pub status: String,
+    /// What the writer wants to remember about it.
+    pub notes: String,
     /// Its keywords, with those of the chapter, part, or book it is in.
     pub keywords: Vec<String>,
     /// Where it is, from the book down: "Book: Tide", "Chapter: Chapter 1".
@@ -337,20 +339,21 @@ pub struct SceneContext {
     pub entries: Vec<ContextEntry>,
 }
 
-/// A scene's context, or `None` when the id is not a scene in the binder.
-pub fn scene_context(sources: &Sources<'_>, scene: Id) -> Option<SceneContext> {
-    let binder = sources.binder;
-    let node = binder.get(scene).filter(|node| node.kind == NodeKind::Scene)?;
-
+/// An item's keywords with those of what it is in, each once.
+fn keywords_of(binder: &BinderTree, id: Id) -> Vec<String> {
     let mut keywords: Vec<String> = Vec::new();
-    for word in binder.keywords_through(scene) {
+    for word in binder.keywords_through(id) {
         if !keywords.iter().any(|kept| writing_studio_project::same_keyword(kept, word)) {
             keywords.push(word.to_string());
         }
     }
+    keywords
+}
 
+/// Where an item is, from the top down: "Book: Tide", "Chapter: Chapter 1".
+fn place_of(binder: &BinderTree, id: Id) -> Vec<String> {
     let mut place = Vec::new();
-    let mut at = node.parent_id;
+    let mut at = binder.get(id).and_then(|node| node.parent_id);
     while let Some(up) = at.and_then(|id| binder.get(id)) {
         if up.kind.is_root() || place.len() > 64 {
             break;
@@ -359,6 +362,15 @@ pub fn scene_context(sources: &Sources<'_>, scene: Id) -> Option<SceneContext> {
         at = up.parent_id;
     }
     place.reverse();
+    place
+}
+
+/// A scene's context, or `None` when the id is not a scene in the binder.
+pub fn scene_context(sources: &Sources<'_>, scene: Id) -> Option<SceneContext> {
+    let binder = sources.binder;
+    let node = binder.get(scene).filter(|node| node.kind == NodeKind::Scene)?;
+    let keywords = keywords_of(binder, scene);
+    let place = place_of(binder, scene);
 
     // The scenes before and after, in the book's reading order.
     let order: Vec<Id> = binder
@@ -407,6 +419,7 @@ pub fn scene_context(sources: &Sources<'_>, scene: Id) -> Option<SceneContext> {
         title: node.title.clone(),
         synopsis: node.synopsis.trim().to_string(),
         status: node.status.trim().to_string(),
+        notes: node.notes.trim().to_string(),
         keywords,
         place,
         before,
@@ -464,6 +477,9 @@ impl SceneContext {
         if !self.synopsis.is_empty() {
             out.push_str(&format!("## Synopsis\n\n{}\n\n", self.synopsis));
         }
+        if !self.notes.is_empty() {
+            out.push_str(&format!("## Notes\n\n{}\n\n", self.notes));
+        }
         for (heading, neighbor) in [("Before", &self.before), ("After", &self.after)] {
             if let Some(neighbor) = neighbor {
                 out.push_str(&format!("## {heading}\n\n**{}**", neighbor.title.trim()));
@@ -495,6 +511,237 @@ impl SceneContext {
                 out.push_str(&format!("_Through {from}._\n\n"));
             }
             if index < kept_text && !entry.text.is_empty() {
+                out.push_str(&format!("{}\n\n", entry.text));
+            }
+        }
+        out.trim_end().to_string() + "\n"
+    }
+}
+
+// ---- The context of a chapter, a part, a book, or a folder ----
+
+/// One item a level holds, as its outline shows it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OutlineItem {
+    /// 0 for what the level holds directly, 1 for what that holds.
+    pub depth: usize,
+    pub kind: NodeKind,
+    pub title: String,
+    pub status: String,
+    pub synopsis: String,
+}
+
+/// An entry linked to the level or to anything in it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct LevelEntry {
+    pub kind: EntryKind,
+    pub name: String,
+    pub text: String,
+    /// How many of the level's scenes it reaches.
+    pub scenes: usize,
+}
+
+/// What is read about a level: its own context, then what it holds, each
+/// with its synopsis, then the plot points and entries in it. A level is
+/// read from the synopses of the level below, not from their text.
+#[derive(Clone, Debug, PartialEq)]
+pub struct LevelContext {
+    pub kind: NodeKind,
+    pub title: String,
+    pub synopsis: String,
+    pub status: String,
+    pub notes: String,
+    pub keywords: Vec<String>,
+    pub place: Vec<String>,
+    pub outline: Vec<OutlineItem>,
+    pub plot_points: Vec<PlotPointNote>,
+    pub entries: Vec<LevelEntry>,
+}
+
+/// The context of a chapter, a part, a book, or a folder; `None` for a
+/// scene (see [`scene_context`]), a note, a root, or an id not in the binder.
+pub fn level_context(sources: &Sources<'_>, id: Id) -> Option<LevelContext> {
+    let binder = sources.binder;
+    let node = binder
+        .get(id)
+        .filter(|node| matches!(node.kind, NodeKind::Chapter | NodeKind::Part | NodeKind::Book | NodeKind::Folder))?;
+
+    let mut outline = Vec::new();
+    for child in binder.children(Some(id)) {
+        outline.push(outline_item(child, 0));
+        for grandchild in binder.children(Some(child.id)) {
+            outline.push(outline_item(grandchild, 1));
+        }
+    }
+
+    let scenes: Vec<Id> = binder.scenes_under(id).into_iter().map(|(_, scene)| scene).collect();
+    let mut plot_points = Vec::new();
+    for line in sources.plot.lines_in_order() {
+        let mut points: Vec<_> = sources
+            .plot
+            .points
+            .iter()
+            .filter(|point| point.plotline_id == line.id && point.scene_id.is_some_and(|scene| scenes.contains(&scene)))
+            .collect();
+        points.sort_by_key(|point| point.sort_index);
+        plot_points.extend(points.into_iter().map(|point| PlotPointNote {
+            line: line.title.clone(),
+            title: point.title.clone(),
+            summary: point.summary.trim().to_string(),
+        }));
+    }
+
+    let entries = story_entries(sources.cast, sources.world, sources.library)
+        .into_iter()
+        .filter_map(|entry| {
+            let reached = scenes.iter().filter(|scene| reaches(binder, &entry, **scene)).count();
+            let linked_here = reaches(binder, &entry, id);
+            (reached > 0 || linked_here).then(|| LevelEntry {
+                kind: entry.kind,
+                name: entry.name,
+                text: entry.text,
+                scenes: reached,
+            })
+        })
+        .collect();
+
+    Some(LevelContext {
+        kind: node.kind,
+        title: node.title.clone(),
+        synopsis: node.synopsis.trim().to_string(),
+        status: node.status.trim().to_string(),
+        notes: node.notes.trim().to_string(),
+        keywords: keywords_of(binder, id),
+        place: place_of(binder, id),
+        outline,
+        plot_points,
+        entries,
+    })
+}
+
+fn outline_item(node: &writing_studio_project::BinderNode, depth: usize) -> OutlineItem {
+    OutlineItem {
+        depth,
+        kind: node.kind,
+        title: node.title.trim().to_string(),
+        status: node.status.trim().to_string(),
+        synopsis: node.synopsis.trim().to_string(),
+    }
+}
+
+/// How much of a level's context is kept when it must be shortened.
+#[derive(Clone, Copy)]
+struct Kept {
+    /// Synopses kept down to this depth: 2 for all, 1 for what the level
+    /// holds directly, 0 for none.
+    synopses: usize,
+    /// The text of the first this many entries.
+    entry_text: usize,
+}
+
+impl LevelContext {
+    /// The context as plain Markdown, at most `limit` characters. When it is
+    /// longer, the synopses of the deepest items go first, then those of the
+    /// items the level holds directly, then the entries' text from the end
+    /// of the list, and the last line says what was left out; if that is not
+    /// enough, the end is cut, and that is said too.
+    pub fn to_markdown(&self, limit: usize) -> String {
+        let mut kept = Kept { synopses: 2, entry_text: self.entries.len() };
+        loop {
+            let text = self.render(kept);
+            let mut left_out = Vec::new();
+            match kept.synopses {
+                0 => left_out.push("every synopsis in the outline".to_string()),
+                1 => left_out.push("the synopses of the outline's deepest items".to_string()),
+                _ => {}
+            }
+            match self.entries.len() - kept.entry_text {
+                0 => {}
+                1 => left_out.push("the text of 1 entry".to_string()),
+                many => left_out.push(format!("the text of {many} entries")),
+            }
+            let note = if left_out.is_empty() {
+                String::new()
+            } else {
+                format!("\n_Left out, to keep this under {limit} characters: {}._\n", left_out.join(" and "))
+            };
+            if text.chars().count() + note.chars().count() <= limit {
+                return text + &note;
+            }
+            if kept.synopses > 0 {
+                kept.synopses -= 1;
+            } else if kept.entry_text > 0 {
+                kept.entry_text -= 1;
+            } else {
+                let cut_note = format!("\n_Cut here, to keep this under {limit} characters._\n");
+                let room = limit.saturating_sub(cut_note.chars().count());
+                let cut: String = text.chars().take(room).collect();
+                return cut + &cut_note;
+            }
+        }
+    }
+
+    fn render(&self, kept: Kept) -> String {
+        let mut out = format!("# {}\n\n", self.title.trim());
+        let mut facts = vec![self.kind.icon_label().to_string()];
+        if !self.status.is_empty() {
+            facts.push(format!("Status: {}", self.status));
+        }
+        if !self.keywords.is_empty() {
+            facts.push(format!("Keywords: {}", self.keywords.join(", ")));
+        }
+        if !self.place.is_empty() {
+            facts.push(self.place.join(" › "));
+        }
+        for fact in facts {
+            out.push_str(&format!("{fact}  \n"));
+        }
+        out.push('\n');
+        if !self.synopsis.is_empty() {
+            out.push_str(&format!("## Synopsis\n\n{}\n\n", self.synopsis));
+        }
+        if !self.notes.is_empty() {
+            out.push_str(&format!("## Notes\n\n{}\n\n", self.notes));
+        }
+        if !self.outline.is_empty() {
+            out.push_str("## What it holds\n\n");
+            for item in &self.outline {
+                let indent = "  ".repeat(item.depth);
+                out.push_str(&format!("{indent}- **{}**", item.title));
+                if !item.status.is_empty() {
+                    out.push_str(&format!(" ({})", item.status));
+                }
+                if item.depth < kept.synopses && !item.synopsis.is_empty() {
+                    out.push_str(&format!(": {}", item.synopsis.replace('\n', " ")));
+                }
+                out.push('\n');
+            }
+            out.push('\n');
+        }
+        if !self.plot_points.is_empty() {
+            out.push_str("## Plot points\n\n");
+            for point in &self.plot_points {
+                out.push_str(&format!("- **{}**, {}", point.line.trim(), point.title.trim()));
+                if !point.summary.is_empty() {
+                    out.push_str(&format!(": {}", point.summary));
+                }
+                out.push('\n');
+            }
+            out.push('\n');
+        }
+        let mut heading = None;
+        for (index, entry) in self.entries.iter().enumerate() {
+            if heading != Some(entry.kind) {
+                out.push_str(&format!("## {}\n\n", entry.kind.heading()));
+                heading = Some(entry.kind);
+            }
+            out.push_str(&format!("### {}\n\n", entry.name));
+            match entry.scenes {
+                0 => {}
+                1 => out.push_str("_In 1 scene._\n\n"),
+                many => out.push_str(&format!("_In {many} scenes._\n\n")),
+            }
+            if index < kept.entry_text && !entry.text.is_empty() {
                 out.push_str(&format!("{}\n\n", entry.text));
             }
         }
@@ -601,6 +848,57 @@ mod tests {
         assert!(first.before.is_none());
         assert_eq!(first.entries.len(), 1);
         assert!(scene_context(&sources(&story), story.chapter).is_none(), "a chapter is not a scene");
+    }
+
+    #[test]
+    fn a_book_and_a_chapter_are_read_from_the_synopses_below_them() {
+        let mut story = story();
+        let book = story.binder.book_of(story.chapter).unwrap();
+        story.binder.nodes.iter_mut().find(|node| node.id == book).unwrap().notes = "Ends at sea.".into();
+        let context = level_context(&sources(&story), book).unwrap();
+        assert_eq!(context.title, "Tide");
+        assert_eq!(context.notes, "Ends at sea.");
+        let outline: Vec<(usize, &str, &str)> = context
+            .outline
+            .iter()
+            .map(|item| (item.depth, item.title.as_str(), item.synopsis.as_str()))
+            .collect();
+        assert_eq!(
+            outline,
+            [
+                (0, "One", ""),
+                (1, "Arrival", "The ship comes in."),
+                (1, "Harbor", "Mara looks for the pilot."),
+                (0, "Two", ""),
+                (1, "Dawn", "They leave."),
+            ]
+        );
+        // Mara is linked to chapter One, so she is in both of its scenes;
+        // the lore is linked to nothing and is not here.
+        let entries: Vec<(&str, usize)> = context.entries.iter().map(|entry| (entry.name.as_str(), entry.scenes)).collect();
+        assert!(entries.contains(&("Mara Vance", 2)) && entries.contains(&("The Pilot", 1)), "{entries:?}");
+        assert!(!entries.iter().any(|(name, _)| *name == "The Old War"));
+        assert_eq!(context.plot_points[0].title, "She finds him");
+
+        let chapter = level_context(&sources(&story), story.chapter).unwrap();
+        assert_eq!(chapter.keywords, ["act one"]);
+        assert_eq!(chapter.place, ["Book: Tide"]);
+        assert_eq!(chapter.outline.len(), 2);
+        assert!(level_context(&sources(&story), story.scenes[0]).is_none(), "a scene has its own context");
+
+        // Shortened: the deepest synopses go first, and that is said.
+        let full = context.to_markdown(100_000);
+        assert!(full.contains("## What it holds\n\n- **One** (draft)\n  - **Arrival** (draft): The ship comes in.\n"), "{full}");
+        assert!(full.contains("## Notes\n\nEnds at sea."));
+        let limit = full.chars().count() - 1;
+        let short = context.to_markdown(limit);
+        assert!(short.chars().count() <= limit);
+        // The outline's synopses went first, then the entries' text from the
+        // end of the list: the research note's long notes, not Mara's line.
+        assert!(!short.contains("The ship comes in.") && short.contains("every synopsis in the outline"), "{short}");
+        assert!(short.contains("Always late.") && !short.contains(&"x".repeat(400)), "{short}");
+        let tiny = context.to_markdown(120);
+        assert!(tiny.chars().count() <= 120 && tiny.contains("Cut here"), "{tiny}");
     }
 
     #[test]
