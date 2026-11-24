@@ -131,3 +131,12 @@ Moved here from Phase 7. Linux ships as a `.deb` for Debian and Ubuntu; a writer
 
 - An AppImage: one file that runs on most Linux distributions, carrying WebKitGTK with it.
 - `dx bundle --package-types appimage` failed on the GitHub Ubuntu runner (Ubuntu 26.04) and said only that `build_appimage.sh` failed, as `dx` does not pass on the script's output. What was tried: running the AppImage tools without FUSE (`APPIMAGE_EXTRACT_AND_RUN=1`) and skipping their `strip` (`NO_STRIP=true`). Not tried: adding `librsvg2-dev`, which the GTK plugin's image loaders need, and running the script again with `bash -x` to see where it stops.
+
+## A timeline of events
+
+Not current work. Phase 14 makes a timeline event a note like any other, written freely, so the program no longer keeps a list of events by date.
+
+- A view that lays out the story's events in order on a line: when each happens in the story, and where in the book it is told, so a flashback or a story told out of order can be seen at a glance.
+- An event is a note with a date the writer gives it, without becoming a form: a `when:` line in the note's front matter, set from Context or typed in the file, in whatever the story's calendar is (a year, "Day 3", "Third Age 3019").
+- Notes and scenes can both be placed on it, and an event links to the scenes that tell it, as any note does.
+- It needs a decision first: how a date the writer types is ordered when it is not a plain date, such as an invented calendar. One way is an order the writer drags, with the date only shown.
