@@ -1,6 +1,6 @@
 # Phase 13 — Context at every level
 
-Not started. It comes after [Phase 12](phase-12.md), whose stage 8 makes every text file of the project Markdown with front matter.
+Not started. It comes after [Phase 12](../done/phase-12.md), whose stage 8 makes every text file of the project Markdown with front matter.
 
 A scene, a chapter, a part, and a book each have a **context** and a **body**. The context is what the writer knows about that level: its synopsis, keywords, status, goal, and notes, and what it is linked to. The body is its text: a scene's prose, a chapter's own text if it has any. For a chapter, part, or book, what it holds (its scenes or chapters, each with its synopsis) is part of what is read about it, in order.
 

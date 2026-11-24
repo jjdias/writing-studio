@@ -12,7 +12,7 @@ The files in the project folder are the project. The code that writes a scene is
 
 ### Why Markdown is stored
 
-Format 2 stored HTML, because Markdown cannot hold a few things a rich-text page could make: formatting on the spaces at a run's edges, formatting inside a code block, an empty list. Since Phase 12 the page itself is Markdown and never makes them, so storing the same Markdown loses nothing the writer can see, and the files are readable as they are by every Markdown tool. See [Phase 12](../roadmap/todo/phase-12.md), stage 8.
+Format 2 stored HTML, because Markdown cannot hold a few things a rich-text page could make: formatting on the spaces at a run's edges, formatting inside a code block, an empty list. Since Phase 12 the page itself is Markdown and never makes them, so storing the same Markdown loses nothing the writer can see, and the files are readable as they are by every Markdown tool. See [Phase 12](../roadmap/done/phase-12.md), stage 8.
 
 ## The folder
 
