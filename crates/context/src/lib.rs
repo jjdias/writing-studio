@@ -551,6 +551,9 @@ pub struct LevelContext {
     pub synopsis: String,
     pub status: String,
     pub notes: String,
+    /// A folder's own text: what the writer says it holds. Read from the
+    /// document by the caller, since this crate reads only the models.
+    pub about: String,
     pub keywords: Vec<String>,
     pub place: Vec<String>,
     pub outline: Vec<OutlineItem>,
@@ -611,6 +614,7 @@ pub fn level_context(sources: &Sources<'_>, id: Id) -> Option<LevelContext> {
         synopsis: node.synopsis.trim().to_string(),
         status: node.status.trim().to_string(),
         notes: node.notes.trim().to_string(),
+        about: String::new(),
         keywords: keywords_of(binder, id),
         place: place_of(binder, id),
         outline,
@@ -699,6 +703,9 @@ impl LevelContext {
         out.push('\n');
         if !self.synopsis.is_empty() {
             out.push_str(&format!("## Synopsis\n\n{}\n\n", self.synopsis));
+        }
+        if !self.about.is_empty() {
+            out.push_str(&format!("## About\n\n{}\n\n", self.about));
         }
         if !self.notes.is_empty() {
             out.push_str(&format!("## Notes\n\n{}\n\n", self.notes));

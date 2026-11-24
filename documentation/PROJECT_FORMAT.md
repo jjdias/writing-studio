@@ -55,7 +55,7 @@ A scene is written as "One scene" under "Markdown export and import" shows: fron
 - Each other detail is a `key: value` line. Text of several lines is written under `|-`, indented.
 - A key with nothing to say is left out. Missing and empty mean the same.
 - Keys the program does not know are kept, after the ones it does, and written back on every save; a list stays a list. A key the program knows always comes from the program.
-- An item with no text, such as a book or a folder, has a file of only front matter. A file with no front matter, only text, is read as a scene with no title; the program gives it an id when it takes the file in. A file whose front matter cannot be read is reported and left out, never written over.
+- An item with no text, such as a book, has a file of only front matter. A folder's text, after its front matter, is what the writer says it holds: never compiled or counted. A file with no front matter, only text, is read as a scene with no title; the program gives it an id when it takes the file in. A file whose front matter cannot be read is reported and left out, never written over.
 
 | Key | Meaning |
 | --- | --- |

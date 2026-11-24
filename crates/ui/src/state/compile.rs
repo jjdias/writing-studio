@@ -483,6 +483,51 @@ mod tests {
     }
 
     #[test]
+    fn a_folder_has_text_of_its_own_that_is_context_and_never_compiled() {
+        let (mut state, dir) = open_state("folder-text");
+        state.apply_editor_text("The harbor was quiet.".into());
+        let words = state.compile_book_word_count();
+
+        // A folder under Notes is a page: its text is the first context of
+        // what it holds.
+        let notes = state.binder.notes_root().unwrap().id;
+        let research = state.binder.children(Some(notes))[1].id;
+        state.select_node(research);
+        assert!(state.session.is_some(), "a folder opens in the page");
+        state.apply_editor_markdown("Sources on the **harbor** town.");
+        state.flush_editor();
+        let context = state.level_context(research).unwrap();
+        assert_eq!(context.about, "Sources on the harbor town.");
+        assert!(context.to_markdown(16_000).contains("## About\n\nSources on the harbor town."));
+
+        // A folder in the manuscript can say what it holds, too; the book
+        // does not print or count it.
+        let book = state.compile_book_id().unwrap();
+        let chapter = state.binder.children(Some(book))[0].id;
+        state.select_node(chapter);
+        state.add_node(NodeKind::Folder);
+        let folder = state.selected.unwrap();
+        state.select_node(folder);
+        state.apply_editor_markdown("Scenes cut from the draft, kept for later.");
+        state.flush_editor();
+        assert_eq!(state.compile_book_word_count(), words);
+        let page = state.preview_compile().unwrap();
+        assert!(!page.contains("kept for later") && page.contains("The harbor was quiet."), "{page}");
+
+        // A file added to a note is copied into the project and linked.
+        state.select_node(research);
+        state.add_node(NodeKind::Note);
+        let note = state.selected.unwrap();
+        let source = dir.join("map.png");
+        std::fs::write(&source, b"not really a picture").unwrap();
+        let link = state.attach_file_to_note(note, source).unwrap();
+        assert!(link.starts_with("[map.png](../attachments/") && link.ends_with(".png)"), "{link}");
+        let stored = link.trim_start_matches("[map.png](../").trim_end_matches(')');
+        assert_eq!(std::fs::read(state.project_root().unwrap().join(stored)).unwrap(), b"not really a picture");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn the_preview_is_the_web_page_for_any_profile_and_writes_nothing() {
         let (mut state, dir) = open_state("preview");
         state.apply_editor_text("The harbor was quiet.".into());

@@ -1,6 +1,6 @@
 # Phase 14 — Notes
 
-In progress: stage 1 is done.
+In progress: stages 1 and 2 are done.
 
 Characters, places, cultures, lore, timeline events, research notes, and the binder's story notes become one thing: a **note**. A note is a Markdown file the writer writes as they like, in the same page as a scene, in folders the writer makes and names. Nothing about it is a form. The program knows a note's title, its keywords, and what it links to; everything else is the writer's text.
 
@@ -52,8 +52,11 @@ Recommended in this plan:
 ### 2. A note is a page
 
 - Choosing a note opens it in the Markdown page, with everything the page does: live preview, spelling, notes and highlights, keeping one's place.
+- **A folder is a page too**, decided by the maintainer: a folder (of notes, or in the manuscript) is a Markdown file with text of its own, where the writer says what the folder is about and what is in it, as a first context for what is nested inside. It is never compiled or counted, and it is part of the folder's context (Phase 13): **Copy context** gives it first, under **About**.
 - Context shows its title, keywords, notes, and links, and what links to it (below).
 - A file can be added to a note: it is copied into `attachments/` and a link to it is put in the text, as research files are kept now.
+
+**Done.** A note, and now a folder, opens in the page when chosen, with everything the page does. A folder holds text (`NodeKind::can_hold_document`), in the manuscript or under Notes: compile walks into a folder without printing its text, and the word counts read chapters and scenes only, so it is never compiled or counted. A folder's context (Phase 13) shows its text, and **Copy context** gives it first, under **About** (`LevelContext::about`, filled by `StudioState::level_context`); Context shows a level's context for folders under Notes as well as in the manuscript. **Add a file…** in Context, for the open note, copies a file into `attachments/<note id>/` (`ProjectStore::attach_file`) and puts a Markdown link to it at the caret (`wsEditor.insertText`). A note's links and backlinks in Context come with stage 4. Test: `a_folder_has_text_of_its_own_that_is_context_and_never_compiled` (a folder's page and About, a manuscript folder left out of compile and the count, and a file added to a note).
 
 ### 3. Templates
 

@@ -215,6 +215,20 @@ function release() {
   return true;
 }
 
+// Put `text` where the selection is, as typing would, and keep the focus.
+function insertText(text) {
+  if (!view) return false;
+  const range = view.state.selection.main;
+  view.dispatch({
+    changes: { from: range.from, to: range.to, insert: text },
+    selection: { anchor: range.from + text.length },
+    scrollIntoView: true,
+    userEvent: "input",
+  });
+  view.focus();
+  return true;
+}
+
 function pasted(from, to, text) {
   return view ? insertPasted(view, from, to, text) : false;
 }
@@ -232,6 +246,7 @@ window.wsEditor = {
   hold,
   release,
   pasted,
+  insertText,
   active: () => !!view,
   // What the page holds before the caret, for splitting the scene there.
   textBeforeCaret: () => (view ? view.state.doc.sliceString(0, view.state.selection.main.head) : null),

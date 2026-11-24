@@ -74,9 +74,22 @@ pub(super) fn Inspector() -> Element {
                 SceneContextView { id: node.id }
             }
             if matches!(node.kind, NodeKind::Chapter | NodeKind::Part | NodeKind::Book | NodeKind::Folder)
-                && state.read().binder.in_manuscript(node.id)
+                && (state.read().binder.in_manuscript(node.id) || state.read().binder.is_in_notes(node.id))
             {
                 LevelContextView { id: node.id }
+            }
+            if node.kind == NodeKind::Note && state.read().session.as_ref().is_some_and(|session| Some(session.document_id()) == node.document_id) {
+                button {
+                    title: "Copy a file into the project and link to it where the caret is in this note",
+                    onclick: move |_| {
+                        let Some(path) = pick_file("Add a file to this note") else { return };
+                        if let Some(link) = state.write().attach_file_to_note(node.id, path) {
+                            let link = serde_json::to_string(&link).unwrap_or_else(|_| "\"\"".into());
+                            page_call(format!("wsEditor.insertText({link})"));
+                        }
+                    },
+                    "Add a file…"
+                }
             }
             if !node.kind.is_root() && !state.read().binder.is_in_notes(node.id) && !state.read().binder.is_in_trash(node.id) {
                 label { class: "check-label compile-check",
@@ -779,6 +792,9 @@ fn LevelContextView(id: Id) -> Element {
     rsx! {
         details { class: "inspector-section context",
             summary { "Context" }
+            if !context.about.is_empty() {
+                p { class: "context-text", "{short_summary(&context.about)}" }
+            }
             if context.outline.is_empty() {
                 p { class: "hint", "Nothing in this {noun} yet." }
             } else {

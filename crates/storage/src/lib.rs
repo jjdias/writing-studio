@@ -737,6 +737,22 @@ impl ProjectStore {
         files::inside(&self.root, "research file", &format!("attachments/{item}/{file}"))
     }
 
+    /// Copy a file into `attachments/`, for the binder item `owner`, and say
+    /// where it went, from the project folder: `attachments/<owner>/<id>.ext`.
+    pub fn attach_file(&self, owner: Id, source: &Path) -> Result<String> {
+        if !source.is_file() {
+            return Err(Error::message("choose a file to attach"));
+        }
+        let original = source.file_name().and_then(|name| name.to_str()).unwrap_or("file");
+        let stored_name = writing_studio_research::stored_attachment_name(owner, Id::new(), original);
+        let destination = self.attachment_path(&stored_name)?;
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::copy(source, &destination)?;
+        Ok(format!("attachments/{stored_name}"))
+    }
+
     /// Where a research file is on disk, checked like every path from the
     /// project's files.
     pub fn research_file_path(&self, stored_name: &str) -> Result<PathBuf> {

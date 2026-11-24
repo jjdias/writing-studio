@@ -47,7 +47,7 @@ A `.writingstudio` folder is the whole project, kept as plain files you can open
 
 ## Notes
 
-**Notes**, at the bottom of the binder, holds notes and folders of notes, as the Manuscript holds the book. A new project has two folders, yours to rename or delete: **Footnotes** and **Research**. A note is written in the page, as a scene is. A folder of notes has **Compile as footnotes** in Context: on for Footnotes, off for Research. Each note and folder is a file in `notes/`. See [Phase 14](../roadmap/todo/phase-14.md) for what notes become as the phase goes on.
+**Notes**, at the bottom of the binder, holds notes and folders of notes, as the Manuscript holds the book. A new project has two folders, yours to rename or delete: **Footnotes** and **Research**. A note is written in the page, as a scene is, and so is a folder: a folder's own text says what it is about and what is in it, and it comes first in the folder's **Copy context**, under **About**. A folder in the manuscript can have text of its own too; it is never compiled or counted. **Add a file…** in Context, for the open note, copies a file into `attachments/` and puts a link to it where the caret is. A folder of notes has **Compile as footnotes** in Context: on for Footnotes, off for Research. Each note and folder is a file in `notes/`. See [Phase 14](../roadmap/todo/phase-14.md) for what notes become as the phase goes on.
 
 ## Search
 

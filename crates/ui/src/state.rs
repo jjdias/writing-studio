@@ -3247,7 +3247,47 @@ impl StudioState {
             library: &self.library,
             plot: &self.plot,
         };
-        writing_studio_context::level_context(&sources, id)
+        let mut context = writing_studio_context::level_context(&sources, id)?;
+        // A folder's own text is its first context.
+        if context.kind == NodeKind::Folder {
+            context.about = self.item_text(id).trim().to_string();
+        }
+        Some(context)
+    }
+
+    /// The plain text of an item with text: the open one as it is on the page,
+    /// any other as saved.
+    fn item_text(&self, id: Id) -> String {
+        let Some(document_id) = self.binder.get(id).and_then(|node| node.document_id) else {
+            return String::new();
+        };
+        if let Some(session) = self.session.as_ref().filter(|session| session.document_id() == document_id) {
+            return session.plain_text();
+        }
+        self.store
+            .as_ref()
+            .and_then(|store| store.borrow().load_document(document_id).ok())
+            .map(|document| document.to_plain_text())
+            .unwrap_or_default()
+    }
+
+    /// Copy a file into the project for the open note, and give the Markdown
+    /// that links to it from the note's file in `notes/`.
+    pub fn attach_file_to_note(&mut self, id: Id, source: PathBuf) -> Option<String> {
+        let store = self.store.clone()?;
+        let name = source.file_name().and_then(|name| name.to_str()).unwrap_or("file").to_string();
+        let copied = store.borrow().attach_file(id, &source);
+        match copied {
+            Ok(path) => {
+                self.status = format!("{name} copied into attachments/.");
+                let label: String = name.chars().filter(|ch| !matches!(ch, '[' | ']' | '\\')).collect();
+                Some(format!("[{label}](../{path})"))
+            }
+            Err(err) => {
+                self.status = format!("Could not attach {name}: {err}");
+                None
+            }
+        }
     }
 
     /// The entries linked to an item itself, and those linked to what it is

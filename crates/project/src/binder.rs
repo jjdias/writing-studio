@@ -45,8 +45,10 @@ impl NodeKind {
         })
     }
 
+    /// Whether an item has text of its own. A folder's is what the writer
+    /// says about what it holds: never compiled or counted.
     pub fn can_hold_document(self) -> bool {
-        matches!(self, Self::Scene | Self::Note | Self::Chapter)
+        matches!(self, Self::Scene | Self::Note | Self::Chapter | Self::Folder)
     }
 
     pub fn is_root(self) -> bool {
