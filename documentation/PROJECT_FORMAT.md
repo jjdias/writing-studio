@@ -63,7 +63,7 @@ A scene is written as "One scene" under "Markdown export and import" shows: fron
 | `goal`, `conflict`, `outcome` | The scene's three beats |
 | `tags` | Its keywords, a list, nested with `/`, spelled exactly as they are |
 | `notes` | What the writer wants to remember about it, on any level; never compiled or counted |
-| `footnotes` | `"true"` on a folder of notes compiled as footnotes (Phase 14) |
+| `footnotes` | `"true"` on a note compiled as footnotes, and on a folder of notes set so, whose notes each have it too (Phase 14) |
 | `links` | A note's links to binder items made from Context, a list of their ids |
 
 ### The text

@@ -235,7 +235,7 @@ fn Workspace() -> Element {
     let chrome = use_context::<Signal<PanelChrome>>();
     let arrangement = *chrome.read();
     let fold = current_fold();
-    let inspector_mode = mode.shows_inspector();
+    let inspector_mode = state.read().context_shown();
     // The binder is on screen in every mode, and Context on the right where
     // there is something to say about what is chosen. In a narrow window
     // Context folds away first, then the binder.
@@ -870,13 +870,13 @@ fn KeepPlaceSettings() -> Element {
         label { class: "check-label",
             input {
                 r#type: "checkbox",
-                checked: keep.quiet_bars,
+                checked: keep.hide_while_typing,
                 onchange: move |event| {
                     let current = state.read().keep_place();
-                    set(KeepPlace { quiet_bars: event.checked(), ..current });
+                    set(KeepPlace { hide_while_typing: event.checked(), ..current });
                 },
             }
-            "Fade the bars while I type"
+            "Hide everything but the page while I type"
         }
     }
 }

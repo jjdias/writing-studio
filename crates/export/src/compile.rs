@@ -230,7 +230,7 @@ impl<'a> Walker<'a> {
 }
 
 /// The documents with every `[[link]]` resolved for a reader. A link to a
-/// note in a folder of notes compiled as footnotes becomes a footnote: on the
+/// note compiled as footnotes becomes a footnote: on the
 /// link's own words with `[[Title|words]]`, or after the words before it
 /// with `[[Title]]`, and its text is the note's opening, up to its first
 /// heading. Any other link reads as its words, the title when it has none.
@@ -239,19 +239,8 @@ pub fn resolve_note_links(tree: &BinderTree, documents: &[Document]) -> Vec<Docu
     let texts: HashMap<Id, &Document> = documents.iter().map(|document| (document.id, document)).collect();
     let mut footnotes: HashMap<String, String> = HashMap::new();
     for node in &tree.nodes {
-        if node.kind != NodeKind::Note || node.deleted_at.is_some() || !tree.is_in_notes(node.id) {
-            continue;
-        }
-        let mut up = node.parent_id;
-        let mut compiled = false;
-        while let Some(folder) = up.and_then(|id| tree.get(id)) {
-            if folder.kind == NodeKind::Folder && folder.footnotes {
-                compiled = true;
-                break;
-            }
-            up = folder.parent_id;
-        }
-        if !compiled {
+        // Each note has its own setting; setting a folder sets what is in it.
+        if node.kind != NodeKind::Note || node.deleted_at.is_some() || !tree.is_in_notes(node.id) || !node.footnotes {
             continue;
         }
         let opening = node.document_id.and_then(|id| texts.get(&id)).map(|document| opening_text(document)).unwrap_or_default();

@@ -306,8 +306,8 @@ pub struct MarkdownOptions {
 }
 
 /// Helps for keeping one's place on the page while writing. Fixed
-/// scrolling, the marker, and fading are off until chosen; the bars stepping
-/// back while one types is on until turned off. Missing on older projects.
+/// scrolling, the marker, fading, and hiding everything but the page while
+/// one types are off until chosen. Missing on older projects.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeepPlace {
     #[serde(default)]
@@ -317,14 +317,11 @@ pub struct KeepPlace {
     pub line_marker: bool,
     #[serde(default)]
     pub fade: Fade,
-    /// The format toolbar, the bar over the page, and the status bar fade
-    /// while one types, and come back when the pointer moves.
-    #[serde(default = "default_quiet_bars")]
-    pub quiet_bars: bool,
-}
-
-fn default_quiet_bars() -> bool {
-    true
+    /// Everything but the page (the bars, the binder, and Context) fades
+    /// while one types, and comes back when the pointer moves. Under a new
+    /// key: `quiet_bars`, written when this was on by default, is not read.
+    #[serde(default)]
+    pub hide_while_typing: bool,
 }
 
 impl Default for KeepPlace {
@@ -333,7 +330,7 @@ impl Default for KeepPlace {
             scroll: FixedScroll::Off,
             line_marker: false,
             fade: Fade::Off,
-            quiet_bars: default_quiet_bars(),
+            hide_while_typing: false,
         }
     }
 }
@@ -914,7 +911,10 @@ mod keep_place_tests {
         assert_eq!(settings.keep_place.scroll, FixedScroll::Middle);
         assert_eq!(settings.keep_place.fade, Fade::Sentence);
         assert!(!settings.keep_place.line_marker);
-        assert!(settings.keep_place.quiet_bars, "the bars step back unless turned off");
+        assert!(!settings.keep_place.hide_while_typing, "nothing hides unless chosen");
+        let older = r#"{"daily_word_goal":1,"project_word_goal":2,"compile_title_page":true,"autosave_seconds":2,"keep_place":{"quiet_bars":true}}"#;
+        let settings: ProjectSettings = serde_json::from_str(older).unwrap();
+        assert!(!settings.keep_place.hide_while_typing, "the old default on is not taken");
         assert_eq!(FixedScroll::from_id("bottom"), Some(FixedScroll::Bottom));
         assert_eq!(Fade::from_id("word"), None);
     }

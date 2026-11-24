@@ -34,7 +34,7 @@ pub(super) fn EditorPane() -> Element {
         keep.scroll.as_str(),
         keep.line_marker,
         keep.fade.as_str(),
-        keep.quiet_bars
+        keep.hide_while_typing
     );
 
     rsx! {

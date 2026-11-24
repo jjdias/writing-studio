@@ -99,6 +99,16 @@ Recommended in this plan:
 
 **Done.** `crates/characters`, `crates/worldbuilding`, and `crates/research` are gone, with `bible.json`, its tables in the cache, and the Characters, World, and Research views; History is **Ctrl+5**. Gone with them: the library's Story and Worldbuilding sections, Context's entry page and connections, the mind map's story entries and its worldbuilding map (its other middle is Notes), and narrowing the views to an entry. What stays, on notes: a saved filter's **With** lists notes, and a scene matches when the note reaches it (`StudioState::note_reaches`: linked to it or to what it is in, or mentioned in its text); merging two scenes gives the kept scene the joined one's note links, as it did characters' and places'; emptying the trash takes notes' links to what it deleted away. A file added to a note is named by the store (`attachments/<note id>/<id>.<ext>`). The diagnostics' "No character named" is "No note is named". `USAGE.md`, `PROJECT_FORMAT.md`, and `ARCHITECTURE.md` describe notes, folders, templates, links, and footnotes, and the bonus entry "Keywords on the story's entries" is gone, as notes carry keywords. Tests: `a_note_linked_to_a_chapter_reaches_its_scenes`, and the merge, map, and sync tests on notes.
 
+### After the build
+
+Asked for by the maintainer after trying the phase:
+
+- Context is not beside a note or a folder of notes, which are context themselves (`StudioState::context_shown`). **Add a file…** is on the open note's right-click menu; a note's **Linked to** and **Mentioned in** went with Context, and a note is linked from the scene's or chapter's Context.
+- **Compile as footnotes** is on the right-click menu of a note and of a folder of notes, and belongs to each note (`BinderNode::footnotes`): setting a folder sets everything in it (`set_footnotes`), a new note takes its folder's setting, and compile reads the note's own. Moving a note keeps its setting.
+- Hiding everything but the page while typing is **Hide everything but the page while I type** in Settings, off by default, under a new key (`hide_while_typing`), so a project where the old `quiet_bars` was saved on starts off.
+
+Test: `footnotes_cascade_from_a_folder_and_context_stays_off_notes`.
+
 ## How changes are checked
 
 - A note, a folder, and a template are written and read back with their front matter, and keys the program does not know are kept.

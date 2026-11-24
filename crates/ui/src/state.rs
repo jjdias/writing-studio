@@ -3782,7 +3782,9 @@ impl StudioState {
             NodeKind::Book => format!("Book {}", self.binder.manuscript_books().len() + 1),
             other => other.icon_label().to_string(),
         };
-        let node = BinderNode::new(kind, title, parent_id, sort);
+        let mut node = BinderNode::new(kind, title, parent_id, sort);
+        // Under Notes, a new item is compiled as footnotes when its folder is.
+        node.footnotes = parent_id.and_then(|parent| self.binder.get(parent)).is_some_and(|parent| parent.footnotes);
         let new_id = node.id;
         if let Some(store) = &self.store {
             if let Err(err) = store.borrow().upsert_node(&node) {
@@ -4556,9 +4558,24 @@ impl StudioState {
         self.edit_node(id, |node| node.notes = notes);
     }
 
-    /// Whether a folder of notes is compiled as footnotes.
-    pub fn set_folder_footnotes(&mut self, id: Id, on: bool) {
-        self.edit_node(id, |node| node.footnotes = on);
+    /// Whether a note, or a folder of notes and everything in it, is
+    /// compiled as footnotes. Saved at once.
+    pub fn set_footnotes(&mut self, id: Id, on: bool) {
+        if !self.binder.is_in_notes(id) {
+            return;
+        }
+        let mut ids = vec![id];
+        ids.extend(self.items_inside(id));
+        for item in ids {
+            self.edit_node(item, |node| node.footnotes = on);
+        }
+        self.save_all();
+    }
+
+    /// Whether Context is beside the page: never for a note or a folder of
+    /// notes, which are context themselves.
+    pub fn context_shown(&self) -> bool {
+        self.mode.shows_inspector() && !self.selected.is_some_and(|id| self.binder.is_in_notes(id))
     }
 
     pub fn update_node_status(&mut self, id: Id, status: String) {
@@ -4941,6 +4958,36 @@ mod tests {
         state.empty_trash();
         state.empty_trash();
         assert!(state.mindmap.lines.is_empty());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// "Compile as footnotes" belongs to each note: setting it on a folder
+    /// sets everything in it, a new note takes its folder's, and Context is
+    /// never beside a note or a folder of notes.
+    #[test]
+    fn footnotes_cascade_from_a_folder_and_context_stays_off_notes() {
+        let (mut state, dir) = open_state("footnote-cascade");
+        let scene = state.selected.unwrap();
+        assert!(state.context_shown(), "beside a scene");
+        let notes = state.binder.notes_root().unwrap().id;
+        let (footnotes, research) = (state.binder.children(Some(notes))[0].id, state.binder.children(Some(notes))[1].id);
+        let cited = state.new_note_from_template(footnotes, "source.md").unwrap();
+        assert!(state.binder.get(cited).unwrap().footnotes, "made in Footnotes");
+        assert!(!state.context_shown(), "not beside a note");
+        state.select_node(research);
+        assert!(!state.context_shown(), "nor a folder of notes");
+        state.select_node(research);
+        state.add_node(NodeKind::Folder);
+        let inner = state.selected.unwrap();
+        let deep = state.new_note_from_template(inner, "research.md").unwrap();
+        assert!(!state.binder.get(deep).unwrap().footnotes);
+
+        state.set_footnotes(research, true);
+        assert!([research, inner, deep].iter().all(|id| state.binder.get(*id).unwrap().footnotes), "the folder and all in it");
+        state.set_footnotes(deep, false);
+        assert!(state.binder.get(inner).unwrap().footnotes && !state.binder.get(deep).unwrap().footnotes, "one note apart");
+        state.set_footnotes(scene, true);
+        assert!(!state.binder.get(scene).unwrap().footnotes, "only under Notes");
         let _ = std::fs::remove_dir_all(dir);
     }
 

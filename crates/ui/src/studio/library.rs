@@ -957,6 +957,9 @@ pub(super) fn ItemMenuView() -> Element {
     let many = state.read().picked_with(id).len();
     let scene = node.kind == NodeKind::Scene;
     let open_here = scene && state.read().selected == Some(id) && state.read().mode == WorkspaceMode::Writing;
+    let note_open = node.kind == NodeKind::Note
+        && state.read().mode == WorkspaceMode::Writing
+        && state.read().session.as_ref().is_some_and(|session| Some(session.document_id()) == node.document_id);
     let has_next = scene && state.read().binder.scene_after(id).is_some();
     let current = status_name(&node.status);
     let close = move |_| state.write().item_menu = None;
@@ -1058,6 +1061,22 @@ pub(super) fn ItemMenuView() -> Element {
                 }
                 if node.kind == NodeKind::Note && in_research {
                     div { class: "menu-rule" }
+                    if note_open {
+                        button {
+                            role: "menuitem",
+                            class: "menu-item",
+                            title: "Copy a file into the project and link to it where the caret is in this note",
+                            onclick: move |_| {
+                                state.write().item_menu = None;
+                                let Some(path) = pick_file("Add a file to this note") else { return };
+                                if let Some(link) = state.write().attach_file_to_note(id, path) {
+                                    let link = serde_json::to_string(&link).unwrap_or_else(|_| "\"\"".into());
+                                    page_call(format!("wsEditor.insertText({link})"));
+                                }
+                            },
+                            "Add a file\u{2026}"
+                        }
+                    }
                     button {
                         role: "menuitem",
                         class: "menu-item",
@@ -1099,6 +1118,26 @@ pub(super) fn ItemMenuView() -> Element {
                         disabled: !has_next,
                         onclick: move |_| state.write().merge_item_with_next(id),
                         "Merge with next scene"
+                    }
+                }
+                if in_research && !node.kind.is_root() {
+                    div { class: "menu-rule" }
+                    button {
+                        role: "menuitemcheckbox",
+                        aria_checked: "{node.footnotes}",
+                        class: if node.footnotes { "menu-item checked" } else { "menu-item" },
+                        title: if node.kind == NodeKind::Folder {
+                            "A link in the text to a note in this folder becomes a numbered footnote with the note's text when the book is compiled. Sets every note in it."
+                        } else {
+                            "A link in the text to this note becomes a numbered footnote with its text when the book is compiled"
+                        },
+                        onclick: move |_| {
+                            let next = !node.footnotes;
+                            let mut current = state.write();
+                            current.item_menu = None;
+                            current.set_footnotes(id, next);
+                        },
+                        "Compile as footnotes"
                     }
                 }
                 if !in_research {
