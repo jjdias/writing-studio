@@ -193,16 +193,15 @@ fn commit_message(root: &Path, staged: &str) -> String {
         let (Some(kind), Some(path)) = (parts.next(), parts.last()) else {
             continue;
         };
-        if !(path.starts_with("manuscript/") && path.ends_with(".html")) {
+        if !(path.starts_with("manuscript/") && path.ends_with(".md")) {
             other = true;
             continue;
         }
         let title = fs::read_to_string(root.join(path))
             .ok()
             .and_then(|text| {
-                let start = text.find("<title>")? + "<title>".len();
-                let end = text[start..].find("</title>")? + start;
-                Some(text[start..end].replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\""))
+                let (header, _) = writing_studio_format::split_header(&text).ok()?;
+                header.text("title").map(str::to_owned).filter(|title| !title.trim().is_empty())
             })
             .unwrap_or_else(|| path.trim_start_matches("manuscript/").to_string());
         let slot = match kind.chars().next() {

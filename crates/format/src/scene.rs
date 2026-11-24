@@ -1,15 +1,13 @@
 //! A scene file.
 //!
-//! On disk a scene is an HTML file: its title and the rest of what the
-//! inspector shows in the `<head>`, and the text in the `<body>`. Any browser
-//! opens it. The same scene can be written as Markdown with a front-matter
-//! header, for taking a book to another program, and read from one.
+//! On disk a scene is a Markdown file: its title and the rest of what Context
+//! shows as front matter, then its text. The same file is what the Markdown
+//! export writes and what the import reads.
 
 use writing_studio_core::Id;
 use writing_studio_document::Block;
 
-use crate::header::{split_header, Header, HeaderError, Value};
-use crate::html::{attribute, blocks_to_html, decode, find, html_to_blocks, tokens, Token};
+use crate::header::{split_header, Header, HeaderError};
 use crate::{blocks_to_markdown, markdown_to_blocks};
 
 /// What a scene file says about its scene, besides the text.
@@ -35,10 +33,6 @@ pub struct SceneFile {
     pub header: SceneHeader,
     pub blocks: Vec<Block>,
 }
-
-/// The stylesheet every scene file points at, so that a browser shows a
-/// scene as a page. It sits in the project folder, one level up.
-pub const STYLESHEET: &str = "../scene.css";
 
 impl SceneHeader {
     /// The entries other than the title, in the order they are written.
@@ -80,85 +74,8 @@ impl SceneHeader {
 }
 
 impl SceneFile {
-    /// The scene as the HTML file that is stored. It holds the document
-    /// exactly.
-    pub fn to_html(&self) -> String {
-        let mut out = String::from("<!doctype html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n");
-        out.push_str(&format!("<title>{}</title>\n", attribute(&self.header.title)));
-        for (key, value) in &self.header.entries().entries {
-            let values: &[String] = match value {
-                Value::Text(text) => std::slice::from_ref(text),
-                Value::List(items) => items,
-            };
-            for value in values {
-                out.push_str(&format!(
-                    "<meta name=\"{}\" content=\"{}\">\n",
-                    attribute(key),
-                    attribute(value)
-                ));
-            }
-        }
-        out.push_str(&format!("<link rel=\"stylesheet\" href=\"{STYLESHEET}\">\n"));
-        out.push_str("</head>\n<body>\n");
-        out.push_str(&blocks_to_html(&self.blocks));
-        out.push_str("</body>\n</html>\n");
-        out
-    }
-
-    /// Read a stored scene. A file that is only the text, with no `<head>`
-    /// or `<body>`, is read as a scene with no title.
-    pub fn parse_html(file: &str) -> Self {
-        let file = file.strip_prefix('\u{feff}').unwrap_or(file);
-        let lower = file.to_ascii_lowercase();
-        let (head, body) = match lower.find("<body") {
-            Some(at) => {
-                let start = file[at..].find('>').map_or(file.len(), |end| at + end + 1);
-                let end = lower.rfind("</body").filter(|end| *end >= start).unwrap_or(file.len());
-                (&file[..at], &file[start..end])
-            }
-            None => ("", file),
-        };
-
-        let mut title = String::new();
-        let mut in_title = false;
-        let mut header = Header::default();
-        for token in tokens(head) {
-            match token {
-                Token::Open(name, _) if name == "title" => in_title = true,
-                Token::Close(name) if name == "title" => in_title = false,
-                Token::Text(text) if in_title => title.push_str(&decode(&text)),
-                Token::Open(name, attributes) if name == "meta" => {
-                    let (Some(key), Some(value)) = (find(&attributes, "name"), find(&attributes, "content"))
-                    else {
-                        continue;
-                    };
-                    // The same name twice is a list.
-                    let value = match header.list(key).map(<[String]>::to_vec) {
-                        Some(mut items) => {
-                            items.push(value.to_string());
-                            Value::List(items)
-                        }
-                        None => match header.text(key) {
-                            Some(first) => Value::List(vec![first.to_string(), value.to_string()]),
-                            None => Value::Text(value.to_string()),
-                        },
-                    };
-                    match header.entries.iter_mut().find(|(name, _)| name == key) {
-                        Some(entry) => entry.1 = value,
-                        None => header.entries.push((key.to_string(), value)),
-                    }
-                }
-                _ => {}
-            }
-        }
-        Self {
-            header: SceneHeader::from_entries(title, header),
-            blocks: html_to_blocks(body),
-        }
-    }
-
-    /// The scene as a Markdown file, for another program to read. A few
-    /// things HTML holds and Markdown cannot are left out; see
+    /// The scene as the Markdown file that is stored, and exported. The few
+    /// things Markdown cannot say are left out; see
     /// [`crate::canonical_blocks`].
     pub fn to_markdown(&self) -> String {
         let mut header = Header::default();
@@ -174,6 +91,7 @@ impl SceneFile {
 
     /// Read a scene from a Markdown file, with or without a header.
     pub fn parse_markdown(file: &str) -> Result<Self, HeaderError> {
+        let file = file.strip_prefix('\u{feff}').unwrap_or(file);
         let (mut header, body) = split_header(file)?;
         let title = header.take_text("title");
         Ok(Self {
@@ -187,12 +105,12 @@ impl SceneFile {
 const NAME_LENGTH: usize = 40;
 
 /// The file name for an item: its title made safe for any file system, then
-/// the first four characters of its id, as in `the-harbor-3f9a.html`. The name
+/// the first four characters of its id, as in `the-harbor-3f9a.md`. The name
 /// is chosen once, when the file is made. It does not follow later changes
 /// to the title, so that a rename never moves a file.
 pub fn file_name(title: &str, id: Id) -> String {
     let id = id.to_string();
-    format!("{}-{}.html", slug(title), &id[..4])
+    format!("{}-{}.md", slug(title), &id[..4])
 }
 
 /// The readable part of a file name: the title in lowercase, with anything
@@ -254,7 +172,8 @@ fn plain_letter(ch: char) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{canonical_blocks, same_content, stored_blocks};
+    use crate::header::Value;
+    use crate::{canonical_blocks, same_content};
     use writing_studio_document::Document;
 
     fn harbor() -> SceneFile {
@@ -282,37 +201,7 @@ mod tests {
     }
 
     #[test]
-    fn a_stored_scene_is_an_html_file_that_reads_back_exactly() {
-        let file = harbor();
-        let text = file.to_html();
-        assert_eq!(
-            text,
-            concat!(
-                "<!doctype html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n",
-                "<title>The Harbor &amp; the &quot;Tide&quot;</title>\n",
-                "<meta name=\"id\" content=\"3f9a2c1e-0b7d-4e55-9a10-6c2f8d4b1a77\">\n",
-                "<meta name=\"synopsis\" content=\"Mara is late.&#10;The boat is leaving.\">\n",
-                "<meta name=\"status\" content=\"draft\">\n",
-                "<meta name=\"goal\" content=\"Reach the boat before the tide\">\n",
-                "<meta name=\"outcome\" content=\"The boat has gone\">\n",
-                "<meta name=\"mood\" content=\"grey\">\n",
-                "<meta name=\"also\" content=\"Mara\">\n",
-                "<meta name=\"also\" content=\"the pilot\">\n",
-                "<link rel=\"stylesheet\" href=\"../scene.css\">\n",
-                "</head>\n<body>\n",
-                "<p>Mara ran for the <strong>north </strong>quay.</p>\n",
-                "<p>“Wait,” said the pilot.</p>\n",
-                "</body>\n</html>\n",
-            )
-        );
-        let read = SceneFile::parse_html(&text);
-        assert_eq!(read.header, file.header);
-        assert!(same_content(&read.blocks, &stored_blocks(&file.blocks)));
-        assert_eq!(read.to_html(), text);
-    }
-
-    #[test]
-    fn the_same_scene_exports_to_markdown_and_comes_back() {
+    fn a_scene_is_stored_as_markdown_and_reads_back() {
         let file = harbor();
         let text = file.to_markdown();
         assert!(text.starts_with(concat!(
@@ -326,13 +215,16 @@ mod tests {
         let read = SceneFile::parse_markdown(&text).unwrap();
         assert_eq!(read.header, file.header);
         assert!(same_content(&read.blocks, &canonical_blocks(&file.blocks)));
+        assert_eq!(read.to_markdown(), text, "a stored file is written the same again");
+        // Keys this program does not know are kept, a list as a list.
+        assert!(text.contains("mood: grey\n") && text.contains("also:\n  - Mara\n  - the pilot\n"), "{text}");
+        // A byte-order mark from another editor is not part of the file.
+        let marked = format!("\u{feff}{text}");
+        assert_eq!(SceneFile::parse_markdown(&marked).unwrap().header, file.header);
     }
 
     #[test]
     fn a_file_written_by_hand_needs_no_head() {
-        let read = SceneFile::parse_html("<h1>One</h1>\n<p>Just a scene.</p>\n");
-        assert_eq!(read.header, SceneHeader::default());
-        assert_eq!(read.blocks.len(), 2);
         let read = SceneFile::parse_markdown("# One\n\nJust a scene.\n").unwrap();
         assert_eq!(read.header, SceneHeader::default());
         assert_eq!(read.blocks.len(), 2);
@@ -341,18 +233,18 @@ mod tests {
     #[test]
     fn file_names_are_readable_and_safe() {
         let id: Id = "3f9a2c1e-0b7d-4e55-9a10-6c2f8d4b1a77".parse().unwrap();
-        assert_eq!(file_name("The Harbor", id), "the-harbor-3f9a.html");
-        assert_eq!(file_name("  Où est / l'Été? ", id), "ou-est-l-ete-3f9a.html");
-        assert_eq!(file_name("Größe Straße", id), "grosse-strasse-3f9a.html");
-        assert_eq!(file_name("Cafe\u{301} noir", id), "cafe-noir-3f9a.html");
-        assert_eq!(file_name("Ἀθῆναι", id), "untitled-3f9a.html");
-        assert_eq!(file_name("東京の夜", id), "untitled-3f9a.html");
-        assert_eq!(file_name("Rain 🌧 again", id), "rain-again-3f9a.html");
+        assert_eq!(file_name("The Harbor", id), "the-harbor-3f9a.md");
+        assert_eq!(file_name("  Où est / l'Été? ", id), "ou-est-l-ete-3f9a.md");
+        assert_eq!(file_name("Größe Straße", id), "grosse-strasse-3f9a.md");
+        assert_eq!(file_name("Cafe\u{301} noir", id), "cafe-noir-3f9a.md");
+        assert_eq!(file_name("Ἀθῆναι", id), "untitled-3f9a.md");
+        assert_eq!(file_name("東京の夜", id), "untitled-3f9a.md");
+        assert_eq!(file_name("Rain 🌧 again", id), "rain-again-3f9a.md");
         assert_ne!(file_name("Été", id), file_name("Ete 2", id));
-        assert_eq!(file_name("", id), "untitled-3f9a.html");
-        assert_eq!(file_name("../..", id), "untitled-3f9a.html");
+        assert_eq!(file_name("", id), "untitled-3f9a.md");
+        assert_eq!(file_name("../..", id), "untitled-3f9a.md");
         let long = file_name(&"word ".repeat(30), id);
-        assert!(long.len() <= NAME_LENGTH + ".html".len() + 5);
+        assert!(long.len() <= NAME_LENGTH + ".md".len() + 5);
         assert!(file_name(&"é".repeat(60), id).is_ascii());
         assert!(!long.contains("--"));
     }

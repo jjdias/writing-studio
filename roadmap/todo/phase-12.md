@@ -1,6 +1,6 @@
 # Phase 12 — A Markdown editor
 
-In progress: stages 1 to 7 are done. Stage 8, the project's text as `.md` files, is decided and next.
+All stages are done. Trying the page in the window, by hand, is left before the phase closes.
 
 The page is a rich-text editor today: a `contenteditable` element that the program's own scripts (`crates/ui/assets/review.js`, `spell.js`, `place.js`) and `crates/ui/src/studio/editor.rs` keep in step with the document model. This phase makes the page a Markdown editor: the writer types and sees Markdown, shown as the best Markdown editors show it, while everything the page does now keeps working.
 
@@ -118,8 +118,10 @@ Decided by the maintainer, with Phase 13 in view: every file of the project that
 - **What stays where it is.** `binder.json` keeps the order and nesting of the book, and each item's keywords until Phase 13; `bible.json`, `plot.json`, and `mindmap.json` keep links, plotlines, and the map. A file names nothing it would have to keep in step with another file: no list of children, no copied plot points.
 - **What a Markdown file cannot hold** is what canonical form already removes, the same as the page does since stage 2: formatting on the spaces at a run's edges, formatting inside a code block, an empty list. Nothing else is lost; the round-trip tests in `crates/format` say so for every kind of block and mark.
 - **The format is 3.** `FORMAT` says `writing-studio-project 3`. A format 2 project is refused with a message that says it was made by an earlier version, as the roadmap's rule asks; it is not converted.
-- **Before the first release.** The rule holds only while nobody has downloaded the program. If v0.1.0 is released with format 2 first, refusing format 2 would lock its users out of their books. So either this stage is merged before v0.1.0 is tagged, or a one-time conversion from format 2 is written and the rule is changed; the maintainer chooses before this stage starts.
+- **Before the first release.** The rule holds only while nobody has downloaded the program, so the maintainer decided that v0.1.0 is tagged after this stage is merged, and no conversion from format 2 is written.
 - **Everywhere that reads files follows:** storage's reading and writing, the SQLite cache's rebuild on open, a file changed outside the program (kept beside as `name.conflict-<time>.md`), sync's merge of two versions of a file, backups and restore, and the Markdown export, which no longer needs to convert scenes. `documentation/PROJECT_FORMAT.md` is rewritten for format 3, and the project's `README.md` and `scene.css` change with it (`scene.css` goes: a browser no longer opens a scene; any Markdown reader does).
+
+**Done.** `FORMAT` is 3 (`PROJECT_FORMAT_VERSION`, which storage's `FILES_FORMAT_VERSION` now follows). Scenes, chapters with text, and the bible's entries are written with `SceneFile::to_markdown` and read with `parse_markdown`, as `<name>-<id>.md`; a file whose front matter cannot be read is reported and left out, never written over (`read_scene_file`), and an earlier version's file from git or a kept copy is read as text if its front matter is broken (`scene_document`). A format 2 project is refused with its own message and nothing in it is written. The HTML scene file is gone from `crates/format` (`html.rs`, `to_html`, `parse_html`, the stylesheet) with its tests and the `check_project` example, which checked format 2 projects; `scene.css` is no longer written. Sync compares paragraphs by their Markdown and takes a commit message's titles from the front matter. The project's `README.md`, `PROJECT_FORMAT.md`, `USAGE.md`, `ARCHITECTURE.md`, and the top-level README describe format 3. Tests: the scene file and project round trips in Markdown, `a_project_with_html_scene_files_is_refused_and_left_alone`, and storage's and the window state's tests, now on Markdown files.
 
 ## How changes are checked
 

@@ -6828,8 +6828,8 @@ Nobody spoke.");
         let binder = root.join("binder.json");
         let scene = state.selected.unwrap();
         let file = open_scene_file(&state);
-        let html = std::fs::read_to_string(&file).unwrap();
-        std::fs::write(&file, html.replace("<title>Mine</title>", "<title>From git</title>")).unwrap();
+        let text = std::fs::read_to_string(&file).unwrap();
+        std::fs::write(&file, text.replace("\ntitle: Mine\n", "\ntitle: From git\n")).unwrap();
         let listed = std::fs::read_to_string(&binder).unwrap();
         std::fs::write(&binder, listed.replace("\"kind\"", "\"x\":1,\"kind\"")).unwrap();
         state.check_files_on_disk();
@@ -6846,7 +6846,7 @@ Nobody spoke.");
         assert_eq!(state.editor_text, "Typing, not saved.");
 
         // A scene changed outside and saved over is listed, and comes back.
-        let outside = std::fs::read_to_string(&file).unwrap().replace("<body>", "<body><p>Outside.</p>");
+        let outside = format!("{}\nOutside.\n", std::fs::read_to_string(&file).unwrap());
         std::fs::write(&file, &outside).unwrap();
         state.flush_editor();
         let kept = state.kept_files();
@@ -6875,7 +6875,7 @@ Nobody spoke.");
 
         // Changed outside, nothing unsaved: the window shows the change.
         let text = std::fs::read_to_string(&file).unwrap().replace("Written here.", "Written in git.");
-        std::fs::write(&file, text.replace("<title>Scene 1</title>", "<title>Pulled</title>")).unwrap();
+        std::fs::write(&file, text.replace("\ntitle: Scene 1\n", "\ntitle: Pulled\n")).unwrap();
         state.check_files_on_disk();
         assert_eq!(state.editor_text, "Written in git.");
         assert_eq!(state.binder.get(scene).unwrap().title, "Pulled");

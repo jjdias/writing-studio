@@ -17,8 +17,9 @@ pub use id::{Id, NodeId};
 pub use image::ImageKind;
 pub use time::{days_between, local_day, local_year, Timestamp};
 
-/// Current on-disk project format. Bump only with a documented migration.
-pub const PROJECT_FORMAT_VERSION: u32 = 2;
+/// Current on-disk project format. A change to it is described in
+/// `documentation/PROJECT_FORMAT.md`; an older format is refused, not converted.
+pub const PROJECT_FORMAT_VERSION: u32 = 3;
 
 /// Marker filename stored beside the SQLite database.
 pub const PROJECT_FORMAT_FILE: &str = "FORMAT";

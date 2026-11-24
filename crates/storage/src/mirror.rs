@@ -23,7 +23,6 @@ use writing_studio_core::{
 };
 use writing_studio_diagnostics::SceneBeats;
 use writing_studio_document::Document;
-use writing_studio_format::SceneFile;
 use writing_studio_plotting::PlotGrid;
 use writing_studio_project::{BinderNode, BinderTree, MindMap, ProjectMeta};
 use writing_studio_research::ResearchLibrary;
@@ -31,10 +30,11 @@ use writing_studio_templates::blank_novel;
 use writing_studio_worldbuilding::World;
 
 use crate::files::{
+    read_scene_file,
     text_fingerprint, unknown_head, with_a_run_in_every_block, write_project_files_noted,
     bible_files, Extras, Problem, binder_json, inside, mindmap_json, place, plot_json, read_mindmap, read_project_files,
     scene_text, settings_json, MINDMAP_FILE,
-    write_atomic, write_format_2_marker, ProjectContent,
+    write_atomic, write_format_marker, ProjectContent,
     LOCAL_SETTINGS,
 };
 use crate::{open_connection, row_to_node, schema, sqlite, ProjectStore};
@@ -102,7 +102,7 @@ fn head_fingerprint(node: &BinderNode, beats: &SceneBeats) -> u64 {
 }
 
 /// The folders a kept file can be in: the project folder, and each folder
-/// of HTML files.
+/// of Markdown files.
 const KEPT_FOLDERS: [&str; 8] = ["", "manuscript", "characters", "places", "cultures", "lore", "timeline", "research"];
 
 /// Whether `path` is a project folder, of this format or an earlier one.
@@ -199,20 +199,26 @@ impl ProjectStore {
             store.save_document_cached(document)?;
         }
         store.write_files_from_cache()?;
-        write_format_2_marker(&store.root)?;
+        write_format_marker(&store.root)?;
         store.mirror.paused.set(false);
         Ok(store)
     }
 
     /// Open a project to work in it. A folder made by an earlier version of
-    /// the program, which kept the whole project in one database, is refused:
-    /// this version does not convert projects.
+    /// the program is refused: this version does not convert projects.
     pub fn open(root: impl AsRef<Path>) -> Result<Self> {
         let root = root.as_ref().to_path_buf();
-        if format_version(&root)? < 2 || (root.join(PROJECT_DB_FILE).exists() && !root.join("project.json").exists()) {
+        let version = format_version(&root)?;
+        if version < 2 || (root.join(PROJECT_DB_FILE).exists() && !root.join("project.json").exists()) {
             return Err(Error::message(
                 "this project was made by an earlier test version of Writing Studio, which kept it in one database; \
                  this version keeps each scene as a file and cannot open it",
+            ));
+        }
+        if version < PROJECT_FORMAT_VERSION {
+            return Err(Error::message(
+                "this project was made by an earlier test version of Writing Studio, which kept each scene as an HTML file; \
+                 this version keeps each scene as a Markdown file and cannot open it",
             ));
         }
         if !root.join("project.json").exists() {
@@ -449,7 +455,7 @@ impl ProjectStore {
             .filter(|(path, _)| {
                 !path.starts_with("manuscript/")
                     && !path.starts_with(".local/")
-                    && (path.ends_with(".json") || path.ends_with(".html"))
+                    && (path.ends_with(".json") || path.ends_with(".md"))
             })
             .map(|(path, print)| (path.clone(), *print))
             .collect();
@@ -491,7 +497,7 @@ impl ProjectStore {
             return Ok(None);
         };
         let text = fs::read_to_string(inside(&self.root, "the project", &path)?)?;
-        let file = SceneFile::parse_html(&text);
+        let file = read_scene_file(&text).map_err(|why| Error::message(format!("{path}: {why}")))?;
         if file.header.id.is_some_and(|found| found != id) {
             return Err(Error::message(format!(
                 "{path}: the id in the file is not the one it is listed under"
@@ -570,7 +576,7 @@ impl ProjectStore {
         let (entries, bible) = bible_files(cast, world, library, &known, &mut used, &self.mirror.extras.borrow());
         let mut present = HashSet::new();
         for (id, path, file) in &entries {
-            self.write_small(path, &file.to_html())?;
+            self.write_small(path, &file.to_markdown())?;
             self.mirror.paths.borrow_mut().insert(*id, path.clone());
             present.insert(*id);
         }
@@ -809,7 +815,7 @@ mod tests {
         let store = ProjectStore::create(&dir, "New Novel").unwrap();
         assert_eq!(
             fs::read_to_string(dir.join(PROJECT_FORMAT_FILE)).unwrap(),
-            "writing-studio-project 2\n"
+            "writing-studio-project 3\n"
         );
         for name in ["project.json", "binder.json", "bible.json", "plot.json", "README.md", ".gitignore"] {
             assert!(dir.join(name).exists(), "{name}");
@@ -976,7 +982,7 @@ mod tests {
         let mut document = store.load_document(scene.id).unwrap();
         document.replace_plain_text("She opened the door.");
         store.save_document(&document).unwrap();
-        assert!(fs::read_to_string(&path).unwrap().contains("<p>She opened the door.</p>"));
+        assert!(fs::read_to_string(&path).unwrap().contains("\n\nShe opened the door.\n"));
 
         // A new title is written into the scene's file. The file keeps its
         // name, and the binder file, which holds no titles of scenes, is
@@ -985,7 +991,7 @@ mod tests {
         tree.nodes.iter_mut().find(|node| node.id == scene.id).unwrap().title = "The Door".into();
         store.persist_binder(&tree).unwrap();
         let text = fs::read_to_string(&path).unwrap();
-        assert!(text.contains("<title>The Door</title>") && text.contains("She opened the door."));
+        assert!(text.contains("\ntitle: The Door\n") && text.contains("She opened the door."));
         assert_eq!(fs::read_to_string(dir.join("binder.json")).unwrap(), binder_before);
 
         // Beats go into the same file.
@@ -998,7 +1004,7 @@ mod tests {
             },
         );
         store.persist_scene_beats(&beats).unwrap();
-        assert!(fs::read_to_string(&path).unwrap().contains("<meta name=\"goal\" content=\"Get in\">"));
+        assert!(fs::read_to_string(&path).unwrap().contains("\ngoal: Get in\n"));
 
         // A new scene gets a file and a line in the binder.
         let chapter = scene.parent_id;
@@ -1068,10 +1074,25 @@ mod tests {
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[test]
+    fn a_project_with_html_scene_files_is_refused_and_left_alone() {
+        let dir = temp("format-2");
+        let store = ProjectStore::create(&dir, "Older").unwrap();
+        drop(store);
+        fs::write(dir.join(PROJECT_FORMAT_FILE), "writing-studio-project 2\n").unwrap();
+        let before = fs::read_to_string(dir.join("binder.json")).unwrap();
+        let error = ProjectStore::open(&dir).err().expect("refused").to_string();
+        assert!(error.contains("HTML file") && error.contains("cannot open it"), "{error}");
+        assert_eq!(fs::read_to_string(dir.join("binder.json")).unwrap(), before);
+        assert_eq!(fs::read_to_string(dir.join(PROJECT_FORMAT_FILE)).unwrap(), "writing-studio-project 2\n");
+        let _ = fs::remove_dir_all(dir);
+    }
+
     /// The text of a scene file for `id`, as a person might write one.
-    fn scene_html(id: Option<Id>, title: &str, text: &str) -> String {
-        let id = id.map(|id| format!("<meta name=\"id\" content=\"{id}\">\n")).unwrap_or_default();
-        format!("<html><head><title>{title}</title>\n{id}</head><body>\n<p>{text}</p>\n</body></html>\n")
+    /// A scene file as a person or another program might write it.
+    fn scene_file(id: Option<Id>, title: &str, text: &str) -> String {
+        let id = id.map(|id| format!("id: {id}\n")).unwrap_or_default();
+        format!("---\n{id}title: {title}\n---\n\n{text}\n")
     }
 
     fn titles_in(store: &ProjectStore, folder: Id) -> Vec<String> {
@@ -1096,7 +1117,7 @@ mod tests {
 
         fs::remove_file(&path).unwrap();
         // A file that holds another item's id is not this item's either.
-        fs::write(&other, scene_html(Some(Id::new()), "Someone else", "Not mine.")).unwrap();
+        fs::write(&other, scene_file(Some(Id::new()), "Someone else", "Not mine.")).unwrap();
         let store = ProjectStore::open(&dir).unwrap();
         assert!(store.is_missing(scene.id) && store.is_missing(note.id));
         assert_eq!(store.problems().len(), 2, "{:?}", store.problems());
@@ -1119,12 +1140,12 @@ mod tests {
         let scene = scene_of(&store);
         drop(store);
         let fresh = Id::new();
-        fs::write(dir.join("manuscript/a-new.html"), scene_html(Some(fresh), "With an id", "One.")).unwrap();
-        fs::write(dir.join("manuscript/b-plain.html"), "<p>Two.</p>\n").unwrap();
-        fs::write(dir.join("manuscript/c-copy.html"), scene_html(Some(scene.id), "A copy", "Three.")).unwrap();
-        fs::write(dir.join("manuscript/x.conflict-2026.html"), scene_html(None, "Set aside", "Skip.")).unwrap();
+        fs::write(dir.join("manuscript/a-new.md"), scene_file(Some(fresh), "With an id", "One.")).unwrap();
+        fs::write(dir.join("manuscript/b-plain.md"), "Two.\n").unwrap();
+        fs::write(dir.join("manuscript/c-copy.md"), scene_file(Some(scene.id), "A copy", "Three.")).unwrap();
+        fs::write(dir.join("manuscript/x.conflict-2026.md"), scene_file(None, "Set aside", "Skip.")).unwrap();
         fs::create_dir_all(dir.join("characters")).unwrap();
-        fs::write(dir.join("characters/rose.html"), scene_html(None, "Rose", "A pilot.")).unwrap();
+        fs::write(dir.join("characters/rose.md"), scene_file(None, "Rose", "A pilot.")).unwrap();
 
         let store = ProjectStore::open(&dir).unwrap();
         assert_eq!(store.problems().len(), 4, "{:?}", store.problems());
@@ -1136,7 +1157,7 @@ mod tests {
         assert_eq!(store.load_document(copy.id).unwrap().to_plain_text(), "Three.");
         assert_eq!(store.load_cast().unwrap().characters[0].name, "Rose");
         // The copy's file now carries its own id, and the binder lists all three.
-        assert!(fs::read_to_string(dir.join("manuscript/c-copy.html")).unwrap().contains(&copy.id.to_string()));
+        assert!(fs::read_to_string(dir.join("manuscript/c-copy.md")).unwrap().contains(&copy.id.to_string()));
         assert!(!fs::read_to_string(dir.join("binder.json")).unwrap().contains("conflict"));
         drop(store);
         let again = ProjectStore::open(&dir).unwrap();
@@ -1230,11 +1251,11 @@ mod tests {
         let store = ProjectStore::create(&dir, "Linked").unwrap();
         let file = file_of(&store, scene_of(&store).id);
         drop(store);
-        fs::rename(&file, outside.join("secret.html")).unwrap();
-        symlink(outside.join("secret.html"), &file).unwrap();
+        fs::rename(&file, outside.join("secret.md")).unwrap();
+        symlink(outside.join("secret.md"), &file).unwrap();
         refused(&dir);
         fs::remove_file(&file).unwrap();
-        symlink(outside.join("nothing.html"), &file).unwrap();
+        symlink(outside.join("nothing.md"), &file).unwrap();
         refused(&dir);
 
         // `.local`, where the cache is written, is a link outside.
@@ -1252,8 +1273,8 @@ mod tests {
         let scene = scene_of(&store);
         let file = file_of(&store, scene.id);
         drop(store);
-        fs::rename(&file, dir.join("kept.html")).unwrap();
-        symlink(dir.join("kept.html"), &file).unwrap();
+        fs::rename(&file, dir.join("kept.md")).unwrap();
+        symlink(dir.join("kept.md"), &file).unwrap();
         assert!(ProjectStore::open(&dir).unwrap().load_document(scene.id).is_ok());
         let _ = fs::remove_dir_all(outside);
     }
@@ -1285,7 +1306,7 @@ mod tests {
         cast.set_name(mara, "Mara Vance".into());
         store.persist_cast(&cast).unwrap();
         let path = file_of(&store, mara);
-        assert!(fs::read_to_string(&path).unwrap().contains("<title>Mara Vance</title>"));
+        assert!(fs::read_to_string(&path).unwrap().contains("\ntitle: Mara Vance\n"));
         let scene_file = file_of(&store, scene_of(&store).id);
 
         store.persist_cast(&Cast::new()).unwrap();
@@ -1322,8 +1343,9 @@ mod tests {
         let scene_file = file_of(&reopened, scene.id);
         let mara_file = file_of(&reopened, mara);
         drop(reopened);
-        edit(&scene_file, "<link rel=", "<meta name=\"pov\" content=\"Mara\">\n<link rel=");
-        edit(&mara_file, "<link rel=", "<meta name=\"eyes\" content=\"grey\">\n<link rel=");
+        // A key of its own at the end of the front matter.
+        edit(&scene_file, "\n---\n", "\npov: Mara\n---\n");
+        edit(&mara_file, "\n---\n", "\neyes: grey\n---\n");
         let id = format!("\"id\":\"{}\"", scene.id);
         edit(&dir.join("binder.json"), &id, &format!("{id},\"tag\":\"draft-2\""));
         let line_id = format!("\"id\": \"{line}\"");
@@ -1357,10 +1379,10 @@ mod tests {
         store.persist_plot(&grid).unwrap();
 
         let scene_text = fs::read_to_string(&scene_file).unwrap();
-        assert!(scene_text.contains("<meta name=\"pov\" content=\"Mara\">"));
-        assert!(scene_text.contains("<title>Renamed</title>") && scene_text.contains("New text."));
+        assert!(scene_text.contains("\npov: Mara\n"));
+        assert!(scene_text.contains("\ntitle: Renamed\n") && scene_text.contains("New text."));
         let mara_text = fs::read_to_string(&mara_file).unwrap();
-        assert!(mara_text.contains("<meta name=\"eyes\" content=\"grey\">") && mara_text.contains("Changed."));
+        assert!(mara_text.contains("\neyes: grey\n") && mara_text.contains("Changed."));
         assert!(fs::read_to_string(dir.join("binder.json")).unwrap().contains("\"tag\":\"draft-2\""));
         let plot = fs::read_to_string(dir.join("plot.json")).unwrap();
         assert!(plot.contains("\"arc\": \"rising\"") && plot.contains("Escape"));
@@ -1374,7 +1396,7 @@ mod tests {
         let mut store = store;
         let backup = store.backup().unwrap();
         store.restore_backup(&backup).unwrap();
-        assert!(fs::read_to_string(&scene_file).unwrap().contains("name=\"pov\""));
+        assert!(fs::read_to_string(&scene_file).unwrap().contains("\npov: Mara\n"));
         assert!(fs::read_to_string(dir.join("binder.json")).unwrap().contains("draft-2"));
         let _ = fs::remove_dir_all(dir);
     }
@@ -1412,7 +1434,7 @@ mod tests {
         assert!(store.others_changed_outside().unwrap());
 
         assert!(store.remove_kept_file("binder.json").is_err());
-        assert!(store.read_kept_file("../outside.conflict-1Z.html").is_err());
+        assert!(store.read_kept_file("../outside.conflict-1Z.md").is_err());
         store.remove_kept_file(&kept[0].kept_as).unwrap();
         assert!(store.kept_files().unwrap().is_empty());
         let _ = fs::remove_dir_all(dir);
@@ -1476,11 +1498,10 @@ mod tests {
 
         let text = fs::read_to_string(&scene_file).unwrap();
         let text = text
-            .replace("<title>Scene 1</title>", "<title>Harbor</title>")
-            .replace("<link rel=", "<meta name=\"goal\" content=\"Leave\">\n<link rel=");
-        let body_at = text.find("<body>").unwrap() + "<body>\n".len();
-        let end_at = text.find("</body>").unwrap();
-        let text = format!("{}<p>From git.</p>\n{}", &text[..body_at], &text[end_at..]);
+            .replace("\ntitle: Scene 1\n", "\ntitle: Harbor\n")
+            .replacen("\n---\n", "\ngoal: Leave\n---\n", 1);
+        let body_at = text.find("\n---\n").unwrap() + "\n---\n".len();
+        let text = format!("{}\nFrom git.\n", &text[..body_at]);
         fs::write(&scene_file, &text).unwrap();
         assert!(store.changed_outside(scene.id).unwrap());
 

@@ -13,7 +13,7 @@ use serde_json::Value;
 use writing_studio_core::{Id, Result};
 use writing_studio_diagnostics::SceneBeats;
 use writing_studio_document::{Block, Document};
-use writing_studio_format::blocks_to_html;
+use writing_studio_format::blocks_to_markdown;
 use writing_studio_project::{BinderNode, BinderTree};
 use writing_studio_storage::{repair_binder, ProjectContent};
 
@@ -353,7 +353,7 @@ fn merge_node(b: &BinderNode, o: &BinderNode, t: &BinderNode, conflicts: &mut Ve
 
 /// One string for each paragraph, so that paragraphs can be compared.
 fn paragraphs(document: &Document) -> Vec<String> {
-    document.blocks.iter().map(|block| blocks_to_html(std::slice::from_ref(block))).collect()
+    document.blocks.iter().map(|block| blocks_to_markdown(std::slice::from_ref(block))).collect()
 }
 
 fn same_text(a: Option<&Document>, b: Option<&Document>) -> bool {

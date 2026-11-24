@@ -31,7 +31,7 @@ use writing_studio_worldbuilding::{Culture, Location, LoreEntry, TimelineEvent, 
 use crate::ProjectStore;
 
 /// The format number a folder of files carries in `FORMAT`.
-pub const FILES_FORMAT_VERSION: u32 = 2;
+pub const FILES_FORMAT_VERSION: u32 = writing_studio_core::PROJECT_FORMAT_VERSION;
 
 /// Settings that every machine working on the project shares. Every other
 /// setting is about one machine's window and writing habits, and stays in
@@ -47,7 +47,6 @@ const SHARED_SETTINGS: [&str; 7] = [
 ];
 
 const README: &str = include_str!("../assets/project_readme.md");
-const STYLESHEET: &str = include_str!("../assets/scene.css");
 
 /// Everything a project holds, in memory.
 #[derive(Clone, Debug)]
@@ -309,7 +308,7 @@ pub(crate) fn place(
     }
     let mut path = format!("{folder}/{}", file_name(title, id));
     if used.contains(&path) || files.values().any(|taken| *taken == path) {
-        path = format!("{folder}/{}-{id}.html", file_name(title, id).trim_end_matches(".html"));
+        path = format!("{folder}/{}-{id}.md", file_name(title, id).trim_end_matches(".md"));
     }
     used.insert(path.clone());
     path
@@ -471,12 +470,11 @@ pub(crate) fn write_project_files_noted(
         written.insert(path.clone(), text_fingerprint(text));
     }
     // What makes the folder readable and safe to share. The reader's guide
-    // and the stylesheet are not overwritten, so they can be changed.
+    // is not overwritten, so it can be changed.
     // `.gitattributes` keeps git on any system from changing line endings,
     // and from treating research files as text.
     for (name, text) in [
         ("README.md", README),
-        ("scene.css", STYLESHEET),
         (".gitignore", ".local/\n"),
         (".gitattributes", "* text=auto eol=lf\nattachments/** -text\n"),
     ] {
@@ -487,9 +485,9 @@ pub(crate) fn write_project_files_noted(
     Ok((rendered.files, written))
 }
 
-/// Mark the folder as a format 2 project. This is the last step of making
-/// one, so that a folder that says 2 always has its files.
-pub fn write_format_2_marker(root: &Path) -> Result<()> {
+/// Mark the folder as a project of this format. This is the last step of
+/// making one, so that a folder that says so always has its files.
+pub fn write_format_marker(root: &Path) -> Result<()> {
     write_atomic(
         &root.join(PROJECT_FORMAT_FILE),
         format!("writing-studio-project {FILES_FORMAT_VERSION}\n").as_bytes(),
@@ -521,7 +519,7 @@ pub(crate) fn scene_text(
         },
         blocks: blocks.to_vec(),
     }
-    .to_html()
+    .to_markdown()
 }
 
 /// `binder.json`. `paths` has the file of every item with text.
@@ -835,7 +833,7 @@ fn render(content: &ProjectContent) -> Result<Rendered> {
         &content.extras,
     );
     for (id, path, file) in entries {
-        contents.push((path.clone(), file.to_html()));
+        contents.push((path.clone(), file.to_markdown()));
         files.insert(id, path);
     }
     contents.push(("bible.json".into(), bible));
@@ -917,10 +915,13 @@ fn read_entry(
     seen: &RefCell<HashMap<String, u64>>,
 ) -> Result<std::result::Result<SceneFile, String>> {
     let full = inside(root, listed_in, path)?;
-    let Ok(html) = read_noted(&full, path, seen) else {
+    let Ok(text) = read_noted(&full, path, seen) else {
         return Ok(Err("the file is missing or could not be read".into()));
     };
-    let file = SceneFile::parse_html(&html);
+    let file = match read_scene_file(&text) {
+        Ok(file) => file,
+        Err(problem) => return Ok(Err(problem)),
+    };
     Ok(match file.header.id {
         Some(found) if found != id => Err("the id in the file is not the one it is listed under".into()),
         _ => Ok(file),
@@ -1106,7 +1107,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
         let id = file.header.id.filter(|id| !ids.contains(id)).unwrap_or_else(Id::new);
         ids.insert(id);
         let parent = recovered_folder(&mut nodes);
-        let fallback = path.rsplit('/').next().unwrap_or(&path).trim_end_matches(".html").to_string();
+        let fallback = path.rsplit('/').next().unwrap_or(&path).trim_end_matches(".md").to_string();
         let title = if file.header.title.trim().is_empty() { fallback } else { file.header.title.clone() };
         let mut node = BinderNode::new(NodeKind::Scene, title, parent, i64::MAX);
         node.id = id;
@@ -1469,15 +1470,19 @@ fn unlisted(
         .flatten()
         .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_file()))
         .map(|entry| entry.file_name().to_string_lossy().into_owned())
-        .filter(|name| name.ends_with(".html") && !name.starts_with('.') && !name.contains(".conflict-"))
+        .filter(|name| name.ends_with(".md") && !name.starts_with('.') && !name.contains(".conflict-"))
         .map(|name| format!("{folder}/{name}"))
         .filter(|path| !listed.contains(path))
         .collect();
     names.sort();
     Ok(names
         .into_iter()
-        .filter_map(|path| match read_noted(&root.join(&path), &path, seen) {
-            Ok(text) => Some((path, SceneFile::parse_html(&text))),
+        .filter_map(|path| match read_noted(&root.join(&path), &path, seen).map(|text| read_scene_file(&text)) {
+            Ok(Ok(file)) => Some((path, file)),
+            Ok(Err(why)) => {
+                problem(&path, &format!("{why}, and was left out"));
+                None
+            }
             Err(_) => {
                 problem(&path, "could not be read, and was left out");
                 None
@@ -1564,11 +1569,22 @@ fn check_binder(nodes: &mut Vec<BinderNode>, problem: &mut impl FnMut(&str, &str
 /// The rest of the program expects a block to hold at least one run, as the
 /// editor leaves it. A stored empty paragraph has none.
 /// The text of a scene file, such as one from an earlier commit, as the
-/// document with the id `id`.
-pub fn scene_document(html: &str, id: Id) -> Document {
+/// document with the id `id`. A file whose front matter cannot be read is
+/// read as text, so nothing in it is lost.
+pub fn scene_document(text: &str, id: Id) -> Document {
+    let blocks = match SceneFile::parse_markdown(text) {
+        Ok(file) => file.blocks,
+        Err(_) => writing_studio_format::markdown_to_blocks(text),
+    };
     let mut document = Document::new(id);
-    document.blocks = with_a_run_in_every_block(SceneFile::parse_html(html).blocks);
+    document.blocks = with_a_run_in_every_block(blocks);
     document
+}
+
+/// A file of the project with text, read: its front matter and its text, or
+/// why its front matter could not be read.
+pub(crate) fn read_scene_file(text: &str) -> std::result::Result<SceneFile, String> {
+    SceneFile::parse_markdown(text).map_err(|err| format!("its details at the top could not be read ({err})"))
 }
 
 pub(crate) fn with_a_run_in_every_block(mut blocks: Vec<Block>) -> Vec<Block> {
@@ -1799,10 +1815,10 @@ mod tests {
         assert_eq!(all_files(&first), all_files(&second));
 
         let files = all_files(&first);
-        write_format_2_marker(&first).unwrap();
-        assert_eq!(fs::read_to_string(first.join("FORMAT")).unwrap(), "writing-studio-project 2\n");
+        write_format_marker(&first).unwrap();
+        assert_eq!(fs::read_to_string(first.join("FORMAT")).unwrap(), "writing-studio-project 3\n");
         assert_eq!(files[".gitignore"], ".local/\n");
-        assert!(files.contains_key("README.md") && files.contains_key("scene.css"));
+        assert!(files.contains_key("README.md") && !files.contains_key("scene.css"));
         assert!(!files.keys().any(|name| name.ends_with(".tmp")));
 
         // The binder is in reading order: the scene put in front comes first.
@@ -1950,7 +1966,7 @@ mod tests {
         let dir = temp("escape");
         write_project_files(&dir, &content).unwrap();
         let binder = fs::read_to_string(dir.join("binder.json")).unwrap();
-        for path in ["../outside.html", "/etc/passwd", "manuscript/../../x.html", ""] {
+        for path in ["../outside.md", "/etc/passwd", "manuscript/../../x.md", ""] {
             let mut lines: Vec<String> = binder.lines().map(str::to_string).collect();
             let at = lines.iter().position(|line| line.contains("\"file\"")).unwrap();
             let start = lines[at].find("\"file\":\"").unwrap() + 8;
@@ -1968,7 +1984,7 @@ mod tests {
     #[test]
     fn an_atomic_write_replaces_the_file_and_leaves_nothing_behind() {
         let dir = temp("atomic");
-        let path = dir.join("deep").join("scene.html");
+        let path = dir.join("deep").join("scene.md");
         write_atomic(&path, b"first").unwrap();
         write_atomic(&path, b"second").unwrap();
         assert_eq!(fs::read_to_string(&path).unwrap(), "second");

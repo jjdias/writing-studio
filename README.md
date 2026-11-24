@@ -9,7 +9,7 @@ A free, open-source writing app for novels and series. Plan the book, write it s
 - **Keep track.** Daily and book word targets, a deadline with the pace that meets it, keywords and saved filters, and a status for each scene.
 - **Develop the story.** Characters, world notes, a plot grid, and research, shared by every book in a series.
 - **Revise.** Notes, highlights, tracked changes, snapshots to compare, spellcheck, and checks on each scene's goal, conflict, and outcome.
-- **Never lose work.** Autosave, snapshots, and backups. Each scene is a plain HTML file that any browser can open.
+- **Never lose work.** Autosave, snapshots, and backups. Each scene is a plain Markdown file that any Markdown or text editor can open.
 - **Compile.** Export a book as Word (DOCX), an ebook (EPUB), a web page (HTML), or Markdown, with a title page, contents, and the rest of the front and back matter.
 - **Sync if you want to.** Keep a project on several computers through git, with any host you choose ([how](documentation/SYNC.md)). It is never needed to write.
 

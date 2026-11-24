@@ -1,39 +1,30 @@
 # Writing Studio project format
 
-Version: **2**, written in `FORMAT` as `writing-studio-project 2`. A project made by an earlier test version, in format 1, is not opened; see the end of this page.
+Version: **3**, written in `FORMAT` as `writing-studio-project 3`. A project made by an earlier test version, in format 1 or 2, is not opened; see the end of this page.
 
 The files in the project folder are the project. The code that writes a scene is in `crates/format`; the code that writes the folder and keeps it in step with every save is in `crates/storage` (`files.rs`, `mirror.rs`).
 
 ## What the format is for
 
-1. **The book can be read without this program.** A scene is an HTML file. Any browser opens it as a page, and the words are there, in order, with their formatting. For another writing tool, the program also writes each scene as Markdown.
+1. **The book can be read without this program.** A scene is a Markdown file: its details at the top, then its text. Any Markdown editor (Obsidian, Typora, iA Writer) or any text editor opens it, and the words are there, in order, with their formatting.
 2. **The book can be kept with git.** Text files can be compared and merged. One database file cannot.
-3. **Nothing is lost.** A scene file holds the scene exactly. What the program writes, it reads back as the same document.
+3. **What the page shows is what is stored.** The manuscript page edits a scene in this Markdown, and each file is its level's context (title, synopsis, status, beats) above its text.
 
-### Why HTML is stored, and Markdown is exported
+### Why Markdown is stored
 
-Markdown was the first choice and was built and tested. It reads well as plain text, but it cannot hold a scene exactly: it has no way to say a few things the editor produces, and other Markdown readers disagree about what `**` means next to punctuation. HTML can say all of it, with one spelling for each thing, and needs nothing escaped but `&`, `<`, and `>`.
-
-So the stored file is HTML, and Markdown is an export: it has to be good to read and good for other programs, and it does not have to be exact. The Markdown reader stays, for bringing text in.
-
-| | Stored: HTML | Export: Markdown |
-| --- | --- | --- |
-| Holds the scene exactly | Yes | No; see the list below |
-| Opens without this program | In any browser | In any text editor or Markdown tool |
-| Read by the program | Always | To bring text in |
+Format 2 stored HTML, because Markdown cannot hold a few things a rich-text page could make: formatting on the spaces at a run's edges, formatting inside a code block, an empty list. Since Phase 12 the page itself is Markdown and never makes them, so storing the same Markdown loses nothing the writer can see, and the files are readable as they are by every Markdown tool. See [Phase 12](../roadmap/todo/phase-12.md), stage 8.
 
 ## The folder
 
 ```text
 MyNovel.writingstudio/
-  FORMAT                  writing-studio-project 2
+  FORMAT                  writing-studio-project 3
   README.md               what these files are, for someone without this program
-  scene.css               how a scene file looks in a browser
   project.json            the project's id and title, and settings every machine shares
   binder.json             every binder item: its kind, parent, order, and file
-  manuscript/             one HTML file for each scene, and each chapter that holds text
-    the-harbor-3f9a.html
-  characters/             one HTML file for each character
+  manuscript/             one Markdown file for each scene, and each chapter that holds text
+    the-harbor-3f9a.md
+  characters/             one Markdown file for each character
   places/  cultures/  lore/  timeline/  research/
   bible.json              the order of those entries, which scenes and chapters they point at, who is related to whom
   plot.json               plotlines and plot points
@@ -49,109 +40,49 @@ MyNovel.writingstudio/
     backups/
 ```
 
-The HTML and JSON files are the project. `.local/` can be deleted; the program rebuilds what it can from the files, and what it cannot rebuild (snapshots, backups, writing sessions) was only ever on this machine.
+The Markdown and JSON files are the project. `.local/` can be deleted; the program rebuilds what it can from the files, and what it cannot rebuild (snapshots, backups, writing sessions) was only ever on this machine.
 
-**Markdown folder** in the window exports the whole project as Markdown, for reading it or for another program; see "Markdown export and import".
+**Markdown folder** in the window exports the whole project as Markdown in the order of the book, for reading it or for another program; see "Markdown export and import".
 
 ## Scene files
 
-```html
-<!doctype html>
-<html>
-<head>
-<meta charset="utf-8">
-<title>The Harbor</title>
-<meta name="id" content="3f9a2c1e-0b7d-4e55-9a10-6c2f8d4b1a77">
-<meta name="synopsis" content="Mara is late.&#10;The boat is leaving.">
-<meta name="status" content="draft">
-<meta name="goal" content="Reach the boat before the tide">
-<link rel="stylesheet" href="../scene.css">
-</head>
-<body>
-<p>Mara ran for the <strong>north</strong> quay. <em>Not again</em>, she thought.</p>
-<p>The <span class="note" data-note="which one?" data-kind="question">harbor</span> was quiet.</p>
-<p>“Wait,” said the pilot.<br>Nobody waited.</p>
-</body>
-</html>
-```
+A scene is written as "One scene" under "Markdown export and import" shows: front matter between two `---` lines, then the text.
 
-### The head
+### The front matter
 
-- `<title>` is the scene's title.
-- Everything else is a `<meta name="…" content="…">` line, one to a line. A line break inside a value is written `&#10;`.
-- A name with nothing to say is left out. Missing and empty mean the same.
-- Names the program does not know are kept, after the ones it does, and written back on every save. The same name twice is a list. A name the program does know always comes from the program.
-- The stylesheet line is the same in every file. It only affects how a browser shows the scene.
-- A file with no head, only the text, is read as a scene with no title. The program gives it an id when it takes the file in.
+- `title` is the scene's title, and `id` the binder item the file is the text of.
+- Each other detail is a `key: value` line. Text of several lines is written under `|-`, indented.
+- A key with nothing to say is left out. Missing and empty mean the same.
+- Keys the program does not know are kept, after the ones it does, and written back on every save; a list stays a list. A key the program knows always comes from the program.
+- A file with no front matter, only text, is read as a scene with no title; the program gives it an id when it takes the file in. A file whose front matter cannot be read is reported and left out, never written over.
 
-| Name | Meaning |
+| Key | Meaning |
 | --- | --- |
 | `id` | The binder item this file is the text of |
-| `synopsis`, `status`, `label`, `color` | As in the inspector |
+| `title` | Its title |
+| `synopsis`, `status`, `label`, `color` | As in Context |
 | `goal`, `conflict`, `outcome` | The scene's three beats |
 
 ### The text
 
-Every block is on its own line, so a change to one paragraph changes one line of the file. A list has a line for each item. A code block has a line for each of its lines.
-
-| In the editor | In the file |
-| --- | --- |
-| Paragraph | `<p>…</p>`; an empty one is `<p></p>` |
-| Line break inside a block | `<br>` |
-| Heading 1 to 6 | `<h1>` to `<h6>` |
-| Quote | `<blockquote>…</blockquote>` |
-| List | `<ul>` or `<ol>` on a line, then one `<li>…</li>` line for each item |
-| Code | `<pre>`, a line break, the code as typed, `</pre>` |
-| Scene break | `<hr>` |
-| Bold, italic, strikethrough, underline | `<strong>`, `<em>`, `<s>`, `<u>` |
-| Link | `<a href="address">` |
-| Highlight, yellow | `<mark>` |
-| Highlight, another color | `<mark class="green">` — `green`, `blue`, or `pink` |
-| Note on text | `<span class="note" data-note="the note">` |
-| Note with a kind | `data-kind="question"` — `question`, `revise`, or `check` |
-| Resolved note | `data-resolved="true"` |
-
-- Formatting nests in one fixed order, outermost first: note, highlight, link, bold, italic, strikethrough, underline. A note over text that is partly bold or partly highlighted is written once, around all of it.
-- In the text, only `&`, `<`, and `>` are written differently: `&amp;`, `&lt;`, `&gt;`. A non-breaking space is written `&nbsp;` so that it can be seen.
-- Spaces are kept as typed, including several in a row and at the ends of a paragraph. The stylesheet tells a browser to show them.
-- There is no line break inside a block other than in code. A browser's view and the file agree.
+The text is Markdown as "Markdown export and import" describes: blocks apart by a blank line, notes and highlights in CriticMarkup, underline as `<u>`, a scene break as `* * *`, an empty paragraph as `<br>` on a line, and what the writer typed never read as formatting. A change to one paragraph changes that paragraph of the file.
 
 ### What a scene file does not hold
 
 - The ids of paragraphs and runs. Nothing uses them.
 - The time of the last save. Git has it.
-- A link whose address is not `http`, `https`, `mailto`, or a plain path: the link is taken off and its text is kept. A file that a browser opens must not carry a `javascript:` address.
-
-Everything else is stored exactly, including the things Markdown cannot say.
-
-### Reading files changed by hand
-
-The reader accepts more than the writer produces:
-
-- A file that was tidied or indented: a line break and the spaces around it, inside a block, read as one space, and as nothing at the edge of a block.
-- `<b>`, `<i>`, `<del>`, and `<strike>`; `<div>` as a paragraph; text outside any block as a paragraph; tags and attributes in capitals; an attribute with no value.
-- A tag it does not know is passed over and its text is kept.
-- `&copy;` and other named characters it does not know stay as typed.
-
-Nothing in a scene file is ever run. `<script>` and `<style>` are skipped with everything inside them, and attributes such as `onclick` are ignored.
-
-It does not read lists inside lists, or blocks inside a quote; their text comes in as paragraphs.
+- What Markdown cannot say, which the page never makes: see "What the export, and a scene file, leave out".
+- A link whose address is not `http`, `https`, `mailto`, or a plain path: the link is taken off and its text is kept.
 
 ### File names
 
-`the-harbor-3f9a.html`: the title in lowercase, with accented Latin letters made plain (`été` → `ete`, `ß` → `ss`) and everything else but ASCII letters and digits turned into `-`, at most 40 characters (`untitled` when nothing is left, as for a title in Greek or Japanese), then the first four characters of the id. A file gets its name when it is made. Changing the title, or moving the scene, does not rename the file; the `<title>` is the title.
+`the-harbor-3f9a.md`: the title in lowercase, with accented Latin letters made plain (`été` → `ete`, `ß` → `ss`) and everything else but ASCII letters and digits turned into `-`, at most 40 characters (`untitled` when nothing is left, as for a title in Greek or Japanese), then the first four characters of the id. A file gets its name when it is made. Changing the title, or moving the scene, does not rename the file; the `title` in the front matter is the title.
 
 ### What has been checked
 
-- Every kind of block and every piece of formatting is written and read back, with their awkward cases, including the ones Markdown drops.
-- Randomly built documents, made of the characters most likely to break HTML or Markdown, are written, read back, and compared. 2,000 run with every test run; 300,000 were run once when the HTML reader was written.
-- A project on disk is checked scene by scene. To check one of your own (opening it fills its cache in `.local/`; no scene or project file is written):
-
-  ```bash
-  cargo run -p writing-studio-format --example check_project -- path/to/Novel.writingstudio
-  ```
-
-  Add `--write some/folder` to save each scene file, with its Markdown export beside it, and look at them.
+- Every kind of block and every piece of formatting is written and read back, with their awkward cases.
+- Randomly built documents, made of the characters most likely to break Markdown, are written, read back, and compared, 2,000 with every test run.
+- A project on disk is written and read back scene by scene (`crates/format/tests/project.rs`). Set `WS_KEEP_PROJECT` to a folder to keep that project and look at its files.
 
 ## Markdown export and import
 
@@ -173,7 +104,7 @@ The numbers keep files in the order of the book in any file list. An item with t
 
 **Bringing scenes in.** **Import** in the binder brings `.md` files in as new scenes where a new scene would go, in the order chosen, each with a new id. The front matter gives the title and details; with none, the file's name is the title.
 
-**One scene**, as both the export and the import write and read it:
+**One scene**, as its file in the project holds it, and as the export and the import write and read it:
 
 ```markdown
 ---
@@ -204,7 +135,7 @@ Nobody waited.
 - What the writer typed is never read as formatting: characters that mean something to Markdown are written with a backslash.
 - Where another Markdown reader would misread `**`, `*`, or `~~`, the file uses `<strong>`, `<em>`, or `<s>`.
 
-**What the export leaves out**, because Markdown cannot say it:
+**What the export, and a scene file, leave out**, because Markdown cannot say it (the page never makes these):
 
 - Bold, italic, and strikethrough on the spaces at the start or end of the formatted stretch.
 - A line break at the very end of a paragraph, heading, quote, or list item.
@@ -214,7 +145,7 @@ Nobody waited.
 
 **Import.** The reader takes the export back, and reads Markdown written elsewhere: wrapped paragraphs, `***` or `---` as a scene break, `*` list items, `<b>` and `<i>`. It reads `_italic_` and `__bold__` (not inside a word, as in `snake_case`), `==text==` as a yellow highlight, and footnotes: `word[^1]` with a line `[^1]: text` becomes a note on the word before the mark, and that line goes. It does not read lists inside lists, quotes inside quotes, inline code, or images; those come in as text.
 
-**The page.** The manuscript page edits a scene in this Markdown: it shows the scene as the export writes it, and reads each change back with this reader. The scene file stays HTML.
+**The page.** The manuscript page edits a scene in this Markdown: it shows the scene as its file holds it, and reads each change back with this reader.
 
 **Checked against another reader.** The export is read with an independent Markdown reader (`pulldown-cmark`):
 
@@ -222,13 +153,13 @@ Nobody waited.
 - Formatted prose, 20,000 paragraphs: the same words with the same bold, italic, and links every time.
 - Formatting pressed against awkward characters, 20,000 paragraphs: no letter or digit is ever lost. About one paragraph in three hundred shows different bold or italic.
 
-## Other HTML files
+## Other Markdown files
 
-Characters, places, cultures, lore, timeline events, and research notes are files of the same kind: a head, then the entry's text, written and read by the same code as a scene. The name or title is the `<title>`.
+Characters, places, cultures, lore, timeline events, and research notes are files of the same kind: front matter, then the entry's text, written and read by the same code as a scene. The name or title is `title`.
 
-| Folder | Names in the head | Text |
+| Folder | Keys in the front matter | Text |
 | --- | --- | --- |
-| `characters/` | `id`, `role`, `motivation` (once for each, in order) | Summary |
+| `characters/` | `id`, `role`, `motivation` (a list, in order) | Summary |
 | `places/` | `id`, `culture` (an id) | Summary |
 | `cultures/` | `id` | Summary |
 | `lore/` | `id`, `place`, `culture` (ids) | Body |
@@ -270,9 +201,9 @@ JSON is for structure that is not read as prose. Where a file is a list, each it
 - Every file is written whole under a temporary name and then renamed over the old one. A crash during a save leaves the old file or the new one.
 - Saving a scene writes that scene's file. Changing a title, synopsis, status, label, color, or beat writes the file of that item. Other scene files are not read or written.
 - `binder.json`, `bible.json`, `plot.json`, `project.json`, and the bible's files are written only when what they hold has changed.
-- `README.md`, `scene.css`, `.gitignore`, and `.gitattributes` are written when they are missing and then left alone, so they can be edited.
+- `README.md`, `.gitignore`, and `.gitattributes` are written when they are missing and then left alone, so they can be edited.
 - **A file changed outside the program is never written over.** Before writing or deleting a file, the program checks that it still holds what the program last read or wrote. If not, what it holds is kept beside it as `name.conflict-<time>.ext`. When the window comes back to the front, the files are checked and read again if one changed and nothing is unsaved: the open scene's file alone, or the whole project when a list or a bible entry changed.
-- **Opening copes with files changed outside.** A scene whose file is missing, or holds another item's id, stays in the binder marked missing, and its file is never written over. A bible entry whose file is missing leaves the bible. An HTML file in `manuscript/` or a bible folder that no list names comes in, a scene into a Recovered folder at the top of the manuscript. An item whose parent is missing, or that is in a loop, moves to Recovered. What was repaired is written back at once, and History lists it. A JSON file that cannot be read, a path that leaves the project, or a binder without its three roots stops the project from opening, and the message names the file.
+- **Opening copes with files changed outside.** A scene whose file is missing, or holds another item's id, stays in the binder marked missing, and its file is never written over. A bible entry whose file is missing leaves the bible. A Markdown file in `manuscript/` or a bible folder that no list names comes in, a scene into a Recovered folder at the top of the manuscript. An item whose parent is missing, or that is in a loop, moves to Recovered. What was repaired is written back at once, and History lists it. A JSON file that cannot be read, a path that leaves the project, or a binder without its three roots stops the project from opening, and the message names the file.
 - **Opening reads the files.** The cache is filled from them each time, so a scene edited in a text editor, or brought in by git, is what opens. A file that cannot be read stops the project from opening, and the message names the file.
 
 ## What deletes a file
@@ -326,13 +257,13 @@ A scene's text, as the program holds it and as the cache stores it, is a list of
 }
 ```
 
-The scene file holds the same document as HTML; see "Scene files".
+The scene file holds the same document as Markdown; see "Scene files".
 
 ## Projects from earlier versions
 
-Test versions released before format 2 kept a project in one SQLite file (format 1). There were no downloads of them, so this version does not convert such a project. Opening one says it was made by an earlier test version, and writes nothing in the folder. Making a new project in that folder is refused too, so the old database is never written over.
+Test versions kept a project in one SQLite file (format 1), and then each scene as an HTML file (format 2). There were no downloads of either, so this version does not convert such a project. Opening a format 2 project says it was made by an earlier test version that kept each scene as an HTML file, and writes nothing in the folder. For format 1: Opening one says it was made by an earlier test version, and writes nothing in the folder. Making a new project in that folder is refused too, so the old database is never written over.
 
-A format 2 project made before saved filters took several keywords has filters with `keyword`, a single word, in `binder.json`. Those are not converted either: the project is refused with a message naming the change (`"keyword": "Flashback"` becomes `"keywords": ["Flashback"]`). The same goes for a link in `bible.json`'s `scene_links` with `scene`, from before links could point at a chapter: it becomes `item`, with the same value.
+Within format 2, a project made before saved filters took several keywords has filters with `keyword`, a single word, in `binder.json`. Those are not converted either: the project is refused with a message naming the change (`"keyword": "Flashback"` becomes `"keywords": ["Flashback"]`). The same goes for a link in `bible.json`'s `scene_links` with `scene`, from before links could point at a chapter: it becomes `item`, with the same value.
 
 ## Questions still open
 

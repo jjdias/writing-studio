@@ -7,7 +7,7 @@ The program is open source and free for community use. The architecture is local
 ```text
 Dioxus UI
     → editor session, binder, compile input
-        → project folder (*.writingstudio): HTML and JSON files, with a SQLite cache in .local/
+        → project folder (*.writingstudio): Markdown and JSON files, with a SQLite cache in .local/
 ```
 
 Compile (Markdown / DOCX) reads the binder and `documents` table. It does not go through the page's editor.
@@ -26,7 +26,7 @@ Binder + stored documents → writing-studio-export → .md / .docx on disk
 | `writing-studio-project` | Binder tree, settings, drag-and-drop, trash/restore |
 | `writing-studio-manuscript` | Book/chapter/scene outline |
 | `writing-studio-templates` | Blank novel seed |
-| `writing-studio-storage` | The project folder: HTML and JSON files as the project, a SQLite cache beside them, snapshots, backups, and restore; the project exported as a folder of Markdown, and Markdown brought in |
+| `writing-studio-storage` | The project folder: Markdown and JSON files as the project, a SQLite cache beside them, snapshots, backups, and restore; the project exported as a folder of Markdown, and Markdown brought in |
 | `writing-studio-plotting` | Plotlines, plot points, and scene links |
 | `writing-studio-characters` | Profiles, motivations, and relationships |
 | `writing-studio-worldbuilding` | Locations, cultures, lore, and timelines |
@@ -34,7 +34,7 @@ Binder + stored documents → writing-studio-export → .md / .docx on disk
 | `writing-studio-search` | In-memory full-text index of manuscript text, rebuilt from SQLite when a project opens |
 | `writing-studio-diagnostics` | Scene goal, conflict, and outcome, and the counts and checks made on a scene's text. No dependencies |
 | `writing-studio-context` | A scene's context: the scene, where it sits, the scenes around it, its plot points, and the characters, places, and notes linked to it or to what it is in; as Markdown, capped to a length. Reads the model crates only, not the window or the files |
-| `writing-studio-format` | A scene as an HTML file, and back, exactly; and as Markdown for export and import. See [PROJECT_FORMAT.md](PROJECT_FORMAT.md) |
+| `writing-studio-format` | A scene as a Markdown file with front matter, and back; the same Markdown for the page, export, and import. See [PROJECT_FORMAT.md](PROJECT_FORMAT.md) |
 | `writing-studio-spellcheck` | Checks words against a Hunspell dictionary (English US is compiled in) and the project's own words; suggests replacements. No network |
 | `writing-studio-synchronization` | Merging two copies of a project by paragraph and by field, and sync through the `git` program. See [SYNC.md](SYNC.md) |
 | `writing-studio-export` | Manuscript compile to Markdown (with the format crate's writer) and DOCX |

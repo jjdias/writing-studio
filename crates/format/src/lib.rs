@@ -1,14 +1,13 @@
-//! Project format 2: the parts of a project that are plain text.
+//! Project format 3: the parts of a project that are plain text.
 //!
-//! A scene is stored as an HTML file, which holds the document exactly and
-//! opens in any browser. The same scene can be written as Markdown, for
-//! taking a book to another program, and read from Markdown.
+//! A scene, and every other item with text, is stored as a Markdown file:
+//! its details as front matter, then its text. It is what the page edits, and
+//! any Markdown reader opens it.
 //!
 //! The format is described in `documentation/PROJECT_FORMAT.md`.
 
 mod canonical;
 mod header;
-mod html;
 mod read;
 mod scene;
 #[cfg(test)]
@@ -17,7 +16,6 @@ mod write;
 
 pub use canonical::{canonical_blocks, same_content};
 pub use header::{split_header, Header, HeaderError, Value};
-pub use html::{blocks_to_html, html_to_blocks, stored_blocks};
 pub use read::markdown_to_blocks;
-pub use scene::{file_name, slug, SceneFile, SceneHeader, STYLESHEET};
+pub use scene::{file_name, slug, SceneFile, SceneHeader};
 pub use write::{blocks_to_markdown, write_markdown, NoteStyle};

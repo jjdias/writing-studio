@@ -44,7 +44,7 @@ The last three items were cleared at the end of Phase 5: a check used only by it
 
 ## What to do next
 
-The first release. The maintainer goes through the check in [documentation/RELEASING.md](../documentation/RELEASING.md) with the installer on Windows and the `.deb` in WSL2, then pushes the tag `v0.1.0`. Then [Phase 12](todo/phase-12.md): the page becomes a Markdown editor, on CodeMirror 6, and the project's text is stored as Markdown files (stage 8; it should be merged before v0.1.0 is tagged, or format 2 needs a conversion). Then [Phase 13](todo/phase-13.md): context at every level. Phase 10 has no plan. macOS, iOS, Android, and the web were dropped: see [done/phase-7.md](done/phase-7.md).
+First [Phase 12](todo/phase-12.md): the page is a Markdown editor (stages 1 to 7, done) and the project's text is stored as Markdown files (stage 8, format 3, done). The first release waits for it, so no one who downloads the program has a format 2 project: then the maintainer goes through the check in [documentation/RELEASING.md](../documentation/RELEASING.md) with the installer on Windows and the `.deb` in WSL2, and pushes the tag `v0.1.0`. Then [Phase 13](todo/phase-13.md): context at every level. Phase 10 has no plan. macOS, iOS, Android, and the web were dropped: see [done/phase-7.md](done/phase-7.md).
 
 ## Product principles
 
