@@ -6,7 +6,7 @@ mod epub;
 mod html;
 mod markdown;
 
-pub use compile::CompileInput;
+pub use compile::{resolve_note_links, CompileInput};
 pub use docx::compile_docx;
 pub use epub::{compile_epub, EpubExtras};
 pub use html::compile_html;

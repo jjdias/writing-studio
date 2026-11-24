@@ -24,7 +24,8 @@ impl Document {
         let mut reader = self.clone();
         reader.edit_marks(|marks| {
             marks.highlight = None;
-            marks.comment = marks.compile_note();
+            marks.comment = marks.reader_note();
+            marks.footnote = None;
             marks.comment_kind = NoteKind::Comment;
             marks.comment_resolved = false;
         });

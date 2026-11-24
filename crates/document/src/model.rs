@@ -60,6 +60,10 @@ pub struct Marks {
     /// Highlighter color on this run, with or without a note.
     #[serde(default)]
     pub highlight: Option<Highlight>,
+    /// A footnote after this run, from a `[[link]]` to a note compiled as a
+    /// footnote. Only compile sets it; it is never saved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub footnote: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -154,6 +158,15 @@ impl Marks {
 
     /// The note as compile writes it: open notes only, with the kind in
     /// front when it is not a plain comment.
+    /// What a reader is given after this run: its footnote, then its open
+    /// note, as compile writes them.
+    pub fn reader_note(&self) -> Option<String> {
+        match (self.footnote.clone(), self.compile_note()) {
+            (Some(footnote), Some(note)) => Some(format!("{footnote} {note}")),
+            (footnote, note) => footnote.or(note),
+        }
+    }
+
     pub fn compile_note(&self) -> Option<String> {
         let note = self.note()?;
         if self.comment_resolved {
@@ -574,7 +587,7 @@ fn inline_runs(kind: &BlockKind) -> Vec<&[Inline]> {
     }
 }
 
-fn inline_runs_mut(kind: &mut BlockKind) -> Vec<&mut Vec<Inline>> {
+pub fn inline_runs_mut(kind: &mut BlockKind) -> Vec<&mut Vec<Inline>> {
     match kind {
         BlockKind::Paragraph { inlines }
         | BlockKind::Heading { inlines, .. }

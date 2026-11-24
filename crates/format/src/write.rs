@@ -283,8 +283,9 @@ fn for_a_reader(blocks: &[Block]) -> Vec<Block> {
     document.blocks = blocks.to_vec();
     document.edit_marks(|marks| {
         marks.highlight = None;
-        let note = marks.compile_note();
+        let note = marks.reader_note();
         marks.comment = note;
+        marks.footnote = None;
         marks.comment_kind = NoteKind::Comment;
         marks.comment_resolved = false;
     });

@@ -1,5 +1,5 @@
 use writing_studio_core::Id;
-use writing_studio_document::{BlockKind, Document};
+use writing_studio_document::{BlockKind, Document, Inline, Marks};
 use writing_studio_project::{BinderTree, CompileProfile, NodeKind, SceneSeparator};
 
 pub struct CompileInput<'a> {
@@ -227,4 +227,121 @@ impl<'a> Walker<'a> {
             self.walk(node.id, depth.saturating_add(1).min(6));
         }
     }
+}
+
+/// The documents with every `[[link]]` resolved for a reader. A link to a
+/// note in a folder of notes compiled as footnotes becomes a footnote: on the
+/// link's own words with `[[Title|words]]`, or after the words before it
+/// with `[[Title]]`, and its text is the note's opening, up to its first
+/// heading. Any other link reads as its words, the title when it has none.
+pub fn resolve_note_links(tree: &BinderTree, documents: &[Document]) -> Vec<Document> {
+    use std::collections::HashMap;
+    let texts: HashMap<Id, &Document> = documents.iter().map(|document| (document.id, document)).collect();
+    let mut footnotes: HashMap<String, String> = HashMap::new();
+    for node in &tree.nodes {
+        if node.kind != NodeKind::Note || node.deleted_at.is_some() || !tree.is_in_notes(node.id) {
+            continue;
+        }
+        let mut up = node.parent_id;
+        let mut compiled = false;
+        while let Some(folder) = up.and_then(|id| tree.get(id)) {
+            if folder.kind == NodeKind::Folder && folder.footnotes {
+                compiled = true;
+                break;
+            }
+            up = folder.parent_id;
+        }
+        if !compiled {
+            continue;
+        }
+        let opening = node.document_id.and_then(|id| texts.get(&id)).map(|document| opening_text(document)).unwrap_or_default();
+        if !opening.is_empty() {
+            footnotes.entry(node.title.trim().to_lowercase()).or_insert(opening);
+        }
+    }
+    documents
+        .iter()
+        .map(|document| {
+            let mut resolved = document.clone();
+            for block in &mut resolved.blocks {
+                for inlines in writing_studio_document::inline_runs_mut(&mut block.kind) {
+                    *inlines = resolve_inlines(inlines, &footnotes);
+                }
+            }
+            resolved
+        })
+        .collect()
+}
+
+/// A note's opening: its text up to its first heading, as one paragraph,
+/// with its own links read as their words.
+fn opening_text(document: &Document) -> String {
+    let mut parts = Vec::new();
+    for block in &document.blocks {
+        if matches!(block.kind, BlockKind::Heading { .. }) {
+            break;
+        }
+        let text = block.plain_text();
+        if !text.trim().is_empty() {
+            parts.push(words_of_links(text.trim()));
+        }
+    }
+    parts.join(" ")
+}
+
+fn words_of_links(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::new();
+    let mut at = 0;
+    for link in writing_studio_format::wikilinks(text) {
+        out.extend(&chars[at..link.start]);
+        out.push_str(&link.shown);
+        at = link.end;
+    }
+    out.extend(&chars[at..]);
+    out
+}
+
+fn resolve_inlines(inlines: &[Inline], footnotes: &std::collections::HashMap<String, String>) -> Vec<Inline> {
+    let mut out: Vec<Inline> = Vec::new();
+    for inline in inlines {
+        let links = writing_studio_format::wikilinks(&inline.text);
+        if links.is_empty() {
+            out.push(inline.clone());
+            continue;
+        }
+        let chars: Vec<char> = inline.text.chars().collect();
+        let mut at = 0;
+        let piece = |text: String, marks: Marks| Inline { id: Id::new(), text, marks };
+        for link in links {
+            let before: String = chars[at..link.start].iter().collect();
+            if !before.is_empty() {
+                out.push(piece(before, inline.marks.clone()));
+            }
+            let footnote = footnotes.get(&link.title.trim().to_lowercase());
+            let has_words = link.shown != link.title;
+            match footnote {
+                // `[[Title]]`: the number goes after the words before it.
+                Some(text) if !has_words && out.last().is_some_and(|last| !last.text.trim().is_empty()) => {
+                    let last = out.last_mut().expect("checked above");
+                    last.marks.footnote = Some(match last.marks.footnote.take() {
+                        Some(earlier) => format!("{earlier} {text}"),
+                        None => text.clone(),
+                    });
+                }
+                Some(text) => {
+                    let mut marks = inline.marks.clone();
+                    marks.footnote = Some(text.clone());
+                    out.push(piece(link.shown.clone(), marks));
+                }
+                None => out.push(piece(link.shown.clone(), inline.marks.clone())),
+            }
+            at = link.end;
+        }
+        let after: String = chars[at..].iter().collect();
+        if !after.is_empty() {
+            out.push(piece(after, inline.marks.clone()));
+        }
+    }
+    out
 }

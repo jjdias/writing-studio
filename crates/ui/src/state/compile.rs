@@ -18,12 +18,21 @@ pub enum CheckFinding {
     OpenNotes(usize),
     WaitingChanges(usize),
     UnknownWords(usize),
+    /// `[[links]]` to a title no note has: they print as their words.
+    MissingNotes(usize),
 }
 
 impl CheckFinding {
     /// The kinds in the order the dialog lists them.
-    pub const GROUPS: [&'static str; 6] =
-        ["Left out of the compile", "No words yet", "No title", "Open notes", "Tracked changes waiting", "Unknown words"];
+    pub const GROUPS: [&'static str; 7] = [
+        "Left out of the compile",
+        "No words yet",
+        "No title",
+        "Open notes",
+        "Tracked changes waiting",
+        "Unknown words",
+        "Links to notes that are not there",
+    ];
 
     pub fn group(self) -> &'static str {
         let at = match self {
@@ -33,6 +42,7 @@ impl CheckFinding {
             CheckFinding::OpenNotes(_) => 3,
             CheckFinding::WaitingChanges(_) => 4,
             CheckFinding::UnknownWords(_) => 5,
+            CheckFinding::MissingNotes(_) => 6,
         };
         Self::GROUPS[at]
     }
@@ -41,7 +51,10 @@ impl CheckFinding {
     /// than the group does.
     pub fn count(self) -> Option<usize> {
         match self {
-            CheckFinding::OpenNotes(n) | CheckFinding::WaitingChanges(n) | CheckFinding::UnknownWords(n) => Some(n),
+            CheckFinding::OpenNotes(n)
+            | CheckFinding::WaitingChanges(n)
+            | CheckFinding::UnknownWords(n)
+            | CheckFinding::MissingNotes(n) => Some(n),
             _ => None,
         }
     }
@@ -150,6 +163,13 @@ impl StudioState {
                         push(node, CheckFinding::WaitingChanges(waiting));
                     }
                 }
+            }
+            let missing = writing_studio_format::wikilinks(&document.to_plain_text())
+                .iter()
+                .filter(|link| self.note_titled(&link.title).is_none())
+                .count();
+            if missing > 0 {
+                push(node, CheckFinding::MissingNotes(missing));
             }
             if let Some(speller) = &self.speller {
                 let unknown = speller.unknown_words(&document.to_plain_text(), &accepted).len();
@@ -438,6 +458,9 @@ impl StudioState {
         };
         let title = self.binder.get(book_id).map(|node| node.title.clone()).unwrap_or_else(|| self.project_title());
         let (author, subtitle) = self.compile_author_and_subtitle();
+        // `[[links]]` read as their words, or as footnotes from a folder of
+        // notes compiled as footnotes.
+        let documents = writing_studio_export::resolve_note_links(&self.binder, &documents);
         Some(Gathered { profile, documents, book_id, title, author, subtitle })
     }
 }
@@ -590,6 +613,50 @@ mod tests {
         assert_eq!(state.selected, Some(mara));
         state.open_note_titled("Nobody");
         assert!(state.status.contains("No note is called “Nobody”"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_link_to_a_footnote_note_is_a_footnote_and_other_links_are_their_words() {
+        use std::io::Read;
+        let (mut state, dir) = open_state("footnotes");
+        let scene = state.selected.unwrap();
+        let notes = state.binder.notes_root().unwrap().id;
+        let (footnotes, research) = (state.binder.children(Some(notes))[0].id, state.binder.children(Some(notes))[1].id);
+        let smith = state.new_note_from_template(footnotes, "source.md").unwrap();
+        state.rename_item(smith, "Smith 1990");
+        state.apply_editor_markdown("Smith, *Tides* (Harbor Press, 1990), p. 3.\n\n## What it says\n\nNot for the reader.");
+        state.flush_editor();
+        let mara = state.new_note_from_template(research, "character.md").unwrap();
+        state.rename_item(mara, "Mara");
+        state.select_node(scene);
+        state.apply_editor_markdown("The tide rose fast[[Smith 1990]]. Ask [[Mara]], or [[Nobody|someone]], as [[Smith 1990|Smith says]].");
+        state.flush_editor();
+
+        // Markdown: numbered footnotes with the note's opening only.
+        let plain = state.compile_profiles()[1].id;
+        state.choose_compile_profile(plain);
+        let text = String::from_utf8(state.prepare_compile().unwrap().bytes).unwrap();
+        assert!(text.contains("The tide rose fast[^1]. Ask Mara, or someone, as Smith says[^2]."), "{text}");
+        assert!(text.contains("[^1]: Smith, Tides (Harbor Press, 1990), p. 3."), "{text}");
+        assert!(!text.contains("Not for the reader") && !text.contains("[["), "{text}");
+
+        // The web page: endnotes.
+        let page = state.preview_compile().unwrap();
+        assert!(page.contains("note-ref") && page.contains("Harbor Press"), "{page}");
+
+        // Word: real footnotes.
+        let manuscript = state.compile_profiles()[0].id;
+        state.choose_compile_profile(manuscript);
+        let file = state.prepare_compile().unwrap();
+        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(file.bytes)).unwrap();
+        let mut footnotes_xml = String::new();
+        archive.by_name("word/footnotes.xml").unwrap().read_to_string(&mut footnotes_xml).unwrap();
+        assert!(footnotes_xml.contains("Harbor Press"), "{footnotes_xml}");
+
+        // The check names the link to a note that is not there.
+        let check = state.check_compile();
+        assert!(check.lines.iter().any(|line| line.id == scene && line.finding == CheckFinding::MissingNotes(1)), "{:?}", check.lines);
         let _ = std::fs::remove_dir_all(dir);
     }
 

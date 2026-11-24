@@ -1,6 +1,6 @@
 # Phase 14 — Notes
 
-In progress: stages 1 to 4 are done.
+In progress: stages 1 to 5 are done.
 
 Characters, places, cultures, lore, timeline events, research notes, and the binder's story notes become one thing: a **note**. A note is a Markdown file the writer writes as they like, in the same page as a scene, in folders the writer makes and names. Nothing about it is a form. The program knows a note's title, its keywords, and what it links to; everything else is the writer's text.
 
@@ -80,6 +80,8 @@ Recommended in this plan:
 - A `[[Title]]` whose note is in a folder compiled as footnotes is a footnote mark. Compile writes a number there and the note's opening text, up to its first heading, as the footnote, so what is under a heading stays the writer's (the Source template is laid out so): a Word footnote in DOCX, an endnote in the ebook and the web page, `[^n]` in Markdown. Each mark is its own footnote.
 - Other `[[Title]]` links compile as their text.
 - The check before compiling lists a mark whose note is missing.
+
+**Done.** `resolve_note_links` (`crates/export`) resolves every `[[link]]` in the documents compile reads: a link to a note under a folder compiled as footnotes (the folder or one it is in) sets `Marks::footnote`, compile-only and never saved, on the link's words, or with no words of its own on the text before it, so the number follows that word; its text is the note's opening, up to its first heading, as one paragraph with its own links read as their words. Any other link reads as its words. `Marks::reader_note` gives a reader a run's footnote and then its open note, so the Markdown compile writes `[^n]` and the web page and the ebook their numbered notes as before; DOCX writes a real Word footnote (`docx_rs::Footnote`), and open notes stay bracketed. Each mark is its own footnote. The check before compiling lists **Links to notes that are not there** (`CheckFinding::MissingNotes`). A footnote is plain text: italics in a citation are not kept. Test: `a_link_to_a_footnote_note_is_a_footnote_and_other_links_are_their_words` (Markdown, the web page, Word, and the check).
 
 ### 6. Everything that read the bible reads notes
 

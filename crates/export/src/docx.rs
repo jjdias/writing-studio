@@ -239,6 +239,13 @@ fn add_inlines(
         } else {
             paragraph = paragraph.add_run(run);
         }
+        // A footnote from a `[[link]]` is a Word footnote; an open note
+        // stays bracketed text after its run.
+        if let Some(text) = inline.marks.footnote.as_deref() {
+            let mut footnote = docx_rs::Footnote::new();
+            footnote.add_content(Paragraph::new().add_run(Run::new().add_text(text).fonts(style.fonts())));
+            paragraph = paragraph.add_run(Run::new().add_footnote_reference(footnote));
+        }
         if let Some(note) = inline.marks.compile_note() {
             paragraph = paragraph.add_run(
                 Run::new()
