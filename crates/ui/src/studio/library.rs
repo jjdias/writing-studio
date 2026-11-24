@@ -1122,6 +1122,25 @@ pub(super) fn ItemMenuView() -> Element {
                 }
                 if in_research && !node.kind.is_root() {
                     div { class: "menu-rule" }
+                    div { class: "menu-label", "Color" }
+                    div { class: "menu-swatches", role: "group", aria_label: "Color",
+                        for swatch in BINDER_COLORS {
+                            button {
+                                role: "menuitemradio",
+                                aria_checked: "{node.color == swatch.id}",
+                                class: if node.color == swatch.id { "swatch-btn active" } else { "swatch-btn" },
+                                title: "{swatch.name}",
+                                style: if swatch.hex.is_empty() { String::new() } else { format!("background: {}; color: #1c1915", swatch.hex) },
+                                onclick: move |_| {
+                                    let mut current = state.write();
+                                    current.item_menu = None;
+                                    current.set_item_color(id, swatch.id);
+                                },
+                                "{swatch.name}"
+                            }
+                        }
+                    }
+                    div { class: "menu-rule" }
                     button {
                         role: "menuitemcheckbox",
                         aria_checked: "{node.footnotes}",

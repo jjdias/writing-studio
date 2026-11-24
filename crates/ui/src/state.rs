@@ -4596,6 +4596,13 @@ impl StudioState {
         }
     }
 
+    /// An item's color, from its right-click menu, saved at once.
+    pub fn set_item_color(&mut self, id: Id, color: &str) {
+        let color = normalize_binder_color(color);
+        self.edit_node(id, |node| node.color = color);
+        self.save_all();
+    }
+
     fn edit_node(&mut self, id: Id, apply: impl FnOnce(&mut BinderNode)) {
         let Some(node) = self.binder.get_mut(id) else {
             return;
@@ -4988,6 +4995,10 @@ mod tests {
         assert!(state.binder.get(inner).unwrap().footnotes && !state.binder.get(deep).unwrap().footnotes, "one note apart");
         state.set_footnotes(scene, true);
         assert!(!state.binder.get(scene).unwrap().footnotes, "only under Notes");
+        state.set_item_color(deep, "blue");
+        assert_eq!(state.binder.get(deep).unwrap().color, "blue");
+        state.set_item_color(deep, "plaid");
+        assert_eq!(state.binder.get(deep).unwrap().color, "", "not a binder color");
         let _ = std::fs::remove_dir_all(dir);
     }
 
