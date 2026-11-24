@@ -38,6 +38,7 @@ pub(super) fn Library() -> Element {
         scenes: 0,
         finished: 0,
         compiles: None,
+        color: String::new(),
     });
     let widths = use_context::<Signal<PanelWidths>>();
     let width = widths.read().sidebar;
@@ -351,7 +352,14 @@ fn LibraryRow(row: BinderRow, active: bool) -> Element {
             if kind == NodeKind::Scene && !row.status.trim().is_empty() {
                 StatusPill { status: row.status.clone() }
             }
-            if !row.keywords.is_empty() {
+            // Under Notes, one dot in the note's own color, none without one.
+            if row.compiles.is_some() {
+                if !row.color.is_empty() {
+                    span { class: "card-keywords",
+                        span { class: "keyword-dot small", style: "background: {row.color}", title: "Its color" }
+                    }
+                }
+            } else if !row.keywords.is_empty() {
                 span { class: "card-keywords",
                     for (word, hex) in row.keywords.iter() {
                         span {

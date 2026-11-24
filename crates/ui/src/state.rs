@@ -102,6 +102,9 @@ pub struct BinderRow {
     /// Under Notes: whether it is compiled with the book, as footnotes.
     /// `None` elsewhere.
     pub compiles: Option<bool>,
+    /// Its own color's hex, or `""` for none. Under Notes the row's dot is
+    /// this color, in place of its keywords'.
+    pub color: String,
 }
 
 /// A binder search: does the item, or something in it, match the words, by
@@ -2432,6 +2435,7 @@ impl StudioState {
             scenes: held.len(),
             finished,
             compiles: (!node.kind.is_root() && self.binder.is_in_notes(node.id)).then_some(node.footnotes),
+            color: binder_color_hex(&node.color).to_string(),
         }
     }
 
@@ -5011,6 +5015,8 @@ mod tests {
         assert!(state.binder_rows().iter().all(|row| row.compiles.is_none()), "none in the manuscript");
         state.set_item_color(deep, "blue");
         assert_eq!(state.binder.get(deep).unwrap().color, "blue");
+        let row = state.note_rows().into_iter().find(|row| row.id == deep).unwrap();
+        assert_eq!(row.color, binder_color_hex("blue"), "the row's dot is the note's color");
         state.set_item_color(deep, "plaid");
         assert_eq!(state.binder.get(deep).unwrap().color, "", "not a binder color");
         let _ = std::fs::remove_dir_all(dir);
