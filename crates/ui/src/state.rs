@@ -581,7 +581,7 @@ impl StudioState {
         let Some(store) = &self.store else {
             return 0;
         };
-        let store = store.borrow();
+        let stored = store.borrow().document_word_counts();
         let open = if include_open_edits {
             self.session
                 .as_ref()
@@ -591,7 +591,7 @@ impl StudioState {
         };
         self.binder.total_word_count(|id| match open {
             Some((open_id, words)) if open_id == id => words,
-            _ => store.document_word_count(id),
+            _ => stored.get(&id).copied().unwrap_or(0),
         })
     }
 
@@ -666,8 +666,16 @@ impl StudioState {
     }
 
     fn outline_words(&self, book: Id, include_open_edits: bool) -> u32 {
-        book_outline_words(&self.binder, book, |id| {
-            self.document_words(id, include_open_edits)
+        // One query for the stored counts, not one for each scene.
+        let stored = self.store.as_ref().map(|store| store.borrow().document_word_counts()).unwrap_or_default();
+        let open = self
+            .session
+            .as_ref()
+            .filter(|_| include_open_edits)
+            .map(|session| (session.document_id(), session.word_count()));
+        book_outline_words(&self.binder, book, |id| match open {
+            Some((open_id, words)) if open_id == id => words,
+            _ => stored.get(&id).copied().unwrap_or(0),
         })
     }
 
@@ -1291,8 +1299,6 @@ impl StudioState {
             .unwrap_or_default()
     }
 
-    /// Words spellcheck accepts besides the dictionary: the project's own
-    /// list, and every word in a character, place, or culture name.
     /// Every note's title, under Notes and not in the trash: the names the
     /// spelling accepts, the diagnostics look for, and "Named here" offers.
     pub fn note_titles(&self) -> Vec<String> {
@@ -5072,6 +5078,7 @@ mod tests {
         state.flush_editor();
         note
     }
+
 
     fn open_state(tag: &str) -> (StudioState, PathBuf) {
         let dir = std::env::temp_dir().join(format!("ws-ui-{tag}-{}", Id::new()));

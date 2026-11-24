@@ -3,7 +3,9 @@ use super::*;
 #[component]
 pub(super) fn EditorPane() -> Element {
     let state = use_context::<Signal<StudioState>>();
-    let snapshot = state.read().clone();
+    // Read, not copied: a copy of the state is a copy of the open scene's
+    // whole undo history, and this runs on every keystroke.
+    let snapshot = state.read();
     let node = snapshot.selected_node().cloned();
     let words = snapshot.word_count();
     let focus = snapshot.focus_mode;
@@ -36,6 +38,7 @@ pub(super) fn EditorPane() -> Element {
         keep.fade.as_str(),
         keep.hide_while_typing
     );
+    drop(snapshot);
 
     rsx! {
         div { class: "editor-pane",

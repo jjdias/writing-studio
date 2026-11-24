@@ -17,6 +17,26 @@ pub struct Block {
     pub kind: BlockKind,
 }
 
+/// Whether two lists of blocks say the same: the same kinds, text, and
+/// marks in the same order, whatever their ids.
+pub fn same_blocks(left: &[Block], right: &[Block]) -> bool {
+    fn same_inlines(left: &[Inline], right: &[Inline]) -> bool {
+        left.len() == right.len() && left.iter().zip(right).all(|(a, b)| a.text == b.text && a.marks == b.marks)
+    }
+    left.len() == right.len()
+        && left.iter().zip(right).all(|(a, b)| match (&a.kind, &b.kind) {
+            (BlockKind::Paragraph { inlines: x }, BlockKind::Paragraph { inlines: y })
+            | (BlockKind::Quote { inlines: x }, BlockKind::Quote { inlines: y })
+            | (BlockKind::Code { inlines: x }, BlockKind::Code { inlines: y }) => same_inlines(x, y),
+            (BlockKind::Heading { level: l, inlines: x }, BlockKind::Heading { level: m, inlines: y }) => l == m && same_inlines(x, y),
+            (BlockKind::List { ordered: o, items: x }, BlockKind::List { ordered: p, items: y }) => {
+                o == p && x.len() == y.len() && x.iter().zip(y).all(|(a, b)| same_inlines(&a.inlines, &b.inlines))
+            }
+            (BlockKind::SceneBreak, BlockKind::SceneBreak) => true,
+            _ => false,
+        })
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum BlockKind {

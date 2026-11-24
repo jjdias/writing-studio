@@ -14,7 +14,7 @@ mod track;
 pub use diff::{
     compare_documents, compare_text, DiffOp, DiffParagraph, DiffSpan, DocumentDiff, ParagraphChange,
 };
-pub use model::{
+pub use model::{same_blocks, 
     inline_runs_mut, normalize_link, Block, BlockKind, Document, Highlight, Inline, InlineNote, ListItem, Marks, NavItem, NavKind,
     NoteKind, ReviewItem, ReviewKind, ReviewTarget,
 };

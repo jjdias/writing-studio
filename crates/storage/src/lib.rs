@@ -593,6 +593,24 @@ impl ProjectStore {
         Ok(dest)
     }
 
+    /// Every document's word count, in one query, for a count that sums
+    /// many of them.
+    pub fn document_word_counts(&self) -> std::collections::HashMap<Id, u32> {
+        let mut counts = std::collections::HashMap::new();
+        let Ok(mut statement) = self.conn.prepare("SELECT id, word_count FROM documents") else {
+            return counts;
+        };
+        let rows = statement.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)));
+        if let Ok(rows) = rows {
+            for (id, words) in rows.flatten() {
+                if let Ok(id) = id.parse() {
+                    counts.insert(id, words.max(0) as u32);
+                }
+            }
+        }
+        counts
+    }
+
     pub fn document_word_count(&self, id: Id) -> u32 {
         self.conn
             .query_row(

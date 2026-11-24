@@ -3,6 +3,8 @@
 //! Phase 1 uses snapshot undo. Later phases can switch to operational transforms
 //! or Yrs CRDTs without changing the document schema.
 
+use std::collections::VecDeque;
+
 use writing_studio_core::Id;
 use writing_studio_document::Document;
 
@@ -11,18 +13,24 @@ const MAX_UNDO: usize = 100;
 #[derive(Clone, Debug)]
 pub struct EditorSession {
     document: Document,
-    undo: Vec<Document>,
+    /// Oldest first; the oldest goes when there are more than `MAX_UNDO`.
+    undo: VecDeque<Document>,
     redo: Vec<Document>,
     dirty: bool,
+    /// The document's word count, kept as it changes: the window asks for
+    /// it several times on every keystroke.
+    words: u32,
 }
 
 impl EditorSession {
     pub fn new(document: Document) -> Self {
+        let words = document.word_count();
         Self {
             document,
-            undo: Vec::new(),
+            undo: VecDeque::new(),
             redo: Vec::new(),
             dirty: false,
+            words,
         }
     }
 
@@ -51,7 +59,7 @@ impl EditorSession {
     }
 
     pub fn word_count(&self) -> u32 {
-        self.document.word_count()
+        self.words
     }
 
     pub fn char_count(&self) -> u32 {
@@ -64,20 +72,20 @@ impl EditorSession {
         }
         self.push_undo();
         self.document.replace_plain_text(text);
-        self.dirty = true;
+        self.changed();
     }
 
     /// Take blocks read from the Markdown page as the text, as one undo
     /// step, unless they say what the document already says.
     pub fn apply_blocks(&mut self, blocks: Vec<writing_studio_document::Block>) -> bool {
-        let mut next = self.document.clone();
-        next.replace_blocks(blocks);
-        if next.to_html() == self.document.to_html() {
+        // Compared by what they say, so the page's every keystroke costs one
+        // copy of the document (for undo) and no rendering of it.
+        if writing_studio_document::same_blocks(&self.document.blocks, &blocks) {
             return false;
         }
         self.push_undo();
-        self.document = next;
-        self.dirty = true;
+        self.document.replace_blocks(blocks);
+        self.changed();
         true
     }
 
@@ -88,17 +96,17 @@ impl EditorSession {
         if !change(&mut next) {
             return false;
         }
-        self.push_undo();
-        self.document = next;
-        self.dirty = true;
+        let previous = std::mem::replace(&mut self.document, next);
+        self.keep_for_undo(previous);
+        self.changed();
         true
     }
 
     pub fn undo(&mut self) -> bool {
-        if let Some(previous) = self.undo.pop() {
-            self.redo.push(self.document.clone());
-            self.document = previous;
-            self.dirty = true;
+        if let Some(previous) = self.undo.pop_back() {
+            let current = std::mem::replace(&mut self.document, previous);
+            self.redo.push(current);
+            self.changed();
             true
         } else {
             false
@@ -107,9 +115,9 @@ impl EditorSession {
 
     pub fn redo(&mut self) -> bool {
         if let Some(next) = self.redo.pop() {
-            self.undo.push(self.document.clone());
-            self.document = next;
-            self.dirty = true;
+            let current = std::mem::replace(&mut self.document, next);
+            self.undo.push_back(current);
+            self.changed();
             true
         } else {
             false
@@ -118,7 +126,7 @@ impl EditorSession {
 
     /// The text the next undo goes back to.
     pub fn undo_target(&self) -> Option<&Document> {
-        self.undo.last()
+        self.undo.back()
     }
 
     /// Forget what redo would bring back, for an undo that also changed
@@ -128,11 +136,20 @@ impl EditorSession {
     }
 
     fn push_undo(&mut self) {
-        self.undo.push(self.document.clone());
+        self.keep_for_undo(self.document.clone());
+    }
+
+    fn keep_for_undo(&mut self, previous: Document) {
+        self.undo.push_back(previous);
         if self.undo.len() > MAX_UNDO {
-            self.undo.remove(0);
+            self.undo.pop_front();
         }
         self.redo.clear();
+    }
+
+    fn changed(&mut self) {
+        self.dirty = true;
+        self.words = self.document.word_count();
     }
 }
 
@@ -145,10 +162,13 @@ mod tests {
         let mut session = EditorSession::empty(Id::new());
         session.apply_plain_text("Hello");
         session.apply_plain_text("Hello world");
+        assert_eq!(session.word_count(), 2);
         assert!(session.undo());
         assert_eq!(session.plain_text(), "Hello");
+        assert_eq!(session.word_count(), 1, "the kept count follows undo");
         assert!(session.redo());
         assert_eq!(session.plain_text(), "Hello world");
+        assert_eq!(session.word_count(), 2);
     }
 
     /// The scene with this HTML, as storage reads it.
