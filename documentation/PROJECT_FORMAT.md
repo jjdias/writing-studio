@@ -24,6 +24,7 @@ MyNovel.writingstudio/
   binder.json             every binder item: its kind, parent, order, and file
   manuscript/             one Markdown file for each item of the manuscript: scene, chapter, part, book, folder
   notes/                  one Markdown file for each note and folder of notes, under the binder's Notes
+  templates/              note templates, one Markdown file each, written once when the project is made
     the-harbor-3f9a.md
   characters/             one Markdown file for each character
   places/  cultures/  lore/  timeline/  research/

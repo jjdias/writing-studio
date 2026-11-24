@@ -528,6 +528,33 @@ mod tests {
     }
 
     #[test]
+    fn notes_start_from_templates_and_a_note_can_become_one() {
+        let (mut state, dir) = open_state("templates");
+        let titles: Vec<String> = state.note_templates().into_iter().map(|(_, title)| title).collect();
+        assert_eq!(titles, ["New character", "New place", "New research note", "New source"]);
+
+        let notes = state.binder.notes_root().unwrap().id;
+        let research = state.binder.children(Some(notes))[1].id;
+        let note = state.new_note_from_template(research, "character.md").unwrap();
+        let node = state.binder.get(note).unwrap().clone();
+        assert_eq!((node.kind, node.parent_id, node.title.as_str()), (NodeKind::Note, Some(research), "New character"));
+        assert_eq!(node.keywords, ["character"]);
+        assert_eq!(state.selected, Some(note));
+        assert!(state.editor_markdown().contains("## What they want"), "{}", state.editor_markdown());
+
+        // A note kept as a template is offered for the next note.
+        state.update_node_title(note, "Mara".into());
+        state.apply_editor_markdown("A pilot.\n\n## Fears\n\nThe open sea.");
+        state.save_note_as_template(note);
+        assert!(state.status.contains("templates/mara.md"), "{}", state.status);
+        let (name, _) = state.note_templates().into_iter().find(|(_, title)| title == "Mara").unwrap();
+        let copy = state.new_note_from_template(research, &name).unwrap();
+        assert_eq!(state.binder.get(copy).unwrap().keywords, ["character"]);
+        assert!(state.editor_markdown().contains("## Fears"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn the_preview_is_the_web_page_for_any_profile_and_writes_nothing() {
         let (mut state, dir) = open_state("preview");
         state.apply_editor_text("The harbor was quiet.".into());

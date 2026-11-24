@@ -19,6 +19,7 @@ pub use files::{
 };
 pub use recovery::{BackupInfo, SnapshotInfo};
 
+use writing_studio_format::SceneFile;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -737,6 +738,48 @@ impl ProjectStore {
         files::inside(&self.root, "research file", &format!("attachments/{item}/{file}"))
     }
 
+    /// The note templates in `templates/`: each file's name and what it holds,
+    /// by name. A file whose front matter cannot be read is left out.
+    pub fn note_templates(&self) -> Vec<(String, SceneFile)> {
+        let Ok(folder) = files::inside(&self.root, "templates", TEMPLATES_DIR) else {
+            return Vec::new();
+        };
+        let Ok(entries) = fs::read_dir(folder) else {
+            return Vec::new();
+        };
+        let mut found: Vec<(String, SceneFile)> = entries
+            .flatten()
+            .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_file()))
+            .filter_map(|entry| {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                if !name.ends_with(".md") || name.starts_with('.') {
+                    return None;
+                }
+                let text = fs::read_to_string(entry.path()).ok()?;
+                SceneFile::parse_markdown(&text).ok().map(|file| (name, file))
+            })
+            .collect();
+        found.sort_by(|a, b| a.1.header.title.to_lowercase().cmp(&b.1.header.title.to_lowercase()).then(a.0.cmp(&b.0)));
+        found
+    }
+
+    /// Keep `file` as a new template in `templates/`, named from its title,
+    /// and say its file's name. A template of that name already there is not
+    /// written over.
+    pub fn save_note_template(&self, file: &SceneFile) -> Result<String> {
+        let folder = files::inside(&self.root, "templates", TEMPLATES_DIR)?;
+        fs::create_dir_all(&folder)?;
+        let stem = writing_studio_format::slug(&file.header.title);
+        let mut name = format!("{stem}.md");
+        let mut count = 2;
+        while folder.join(&name).exists() {
+            name = format!("{stem}-{count}.md");
+            count += 1;
+        }
+        files::write_atomic(&folder.join(&name), file.to_markdown().as_bytes())?;
+        Ok(name)
+    }
+
     /// Copy a file into `attachments/`, for the binder item `owner`, and say
     /// where it went, from the project folder: `attachments/<owner>/<id>.ext`.
     pub fn attach_file(&self, owner: Id, source: &Path) -> Result<String> {
@@ -994,6 +1037,9 @@ pub(crate) fn open_connection(path: &Path) -> Result<Connection> {
     conn.pragma_update(None, "foreign_keys", "ON").map_err(sqlite)?;
     Ok(conn)
 }
+
+/// The folder of note templates, in the project.
+pub const TEMPLATES_DIR: &str = "templates";
 
 pub(crate) fn row_to_node(row: &rusqlite::Row<'_>) -> BinderNode {
     let parent: Option<String> = row.get(1).unwrap_or(None);

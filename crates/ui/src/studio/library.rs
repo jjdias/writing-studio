@@ -1214,6 +1214,46 @@ pub(super) fn ItemMenuView() -> Element {
                         "Rename"
                     }
                 }
+                if node.kind == NodeKind::Folder && in_research {
+                    div { class: "menu-rule" }
+                    div { class: "menu-label", "New note from template" }
+                    for (name, title) in state.read().note_templates() {
+                        button {
+                            role: "menuitem",
+                            class: "menu-item",
+                            key: "{name}",
+                            title: "templates/{name}",
+                            onclick: move |_| {
+                                state.write().item_menu = None;
+                                state.write().new_note_from_template(id, &name);
+                            },
+                            "{title}"
+                        }
+                    }
+                    button {
+                        role: "menuitem",
+                        class: "menu-item",
+                        onclick: move |_| {
+                            state.write().item_menu = None;
+                            state.write().select_node(id);
+                            state.write().add_node(NodeKind::Note);
+                        },
+                        "Empty note"
+                    }
+                }
+                if node.kind == NodeKind::Note && in_research {
+                    div { class: "menu-rule" }
+                    button {
+                        role: "menuitem",
+                        class: "menu-item",
+                        title: "Keep this note's title, keywords, and text in templates/, for new notes to start from",
+                        onclick: move |_| {
+                            state.write().item_menu = None;
+                            state.write().save_note_as_template(id);
+                        },
+                        "Save as template"
+                    }
+                }
                 if scene {
                     div { class: "menu-rule" }
                     div { class: "menu-label", "Status" }

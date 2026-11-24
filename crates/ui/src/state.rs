@@ -3271,6 +3271,68 @@ impl StudioState {
             .unwrap_or_default()
     }
 
+    /// The note templates in the project's `templates/`: each file's name and
+    /// the title a note made from it starts with.
+    pub fn note_templates(&self) -> Vec<(String, String)> {
+        self.store
+            .as_ref()
+            .map(|store| store.borrow().note_templates())
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(name, file)| (name, file.header.title))
+            .collect()
+    }
+
+    /// A new note in `folder`, a copy of the template in `templates/<name>`:
+    /// its title, keywords, and text. It is chosen and opened in the page.
+    pub fn new_note_from_template(&mut self, folder: Id, name: &str) -> Option<Id> {
+        let store = self.store.clone()?;
+        let template = store.borrow().note_templates().into_iter().find(|(file, _)| file == name).map(|(_, file)| file);
+        let Some(template) = template else {
+            self.status = format!("The template {name} is no longer in templates/.");
+            return None;
+        };
+        self.flush_editor();
+        let id = self.create_node(NodeKind::Note, Some(folder))?;
+        let title = if template.header.title.trim().is_empty() { "New note".to_string() } else { template.header.title.clone() };
+        self.edit_node(id, |node| node.title = title.clone());
+        for word in template.header.other.list("tags").map(<[String]>::to_vec).unwrap_or_default() {
+            self.binder.add_keyword(id, &word);
+        }
+        self.persist_binder();
+        self.select_node(id);
+        let text = writing_studio_format::blocks_to_markdown(&template.blocks);
+        self.apply_editor_markdown(&text);
+        self.flush_editor();
+        self.status = format!("Made “{title}” from a template. Rename it, then write.");
+        Some(id)
+    }
+
+    /// Keep a note as a template in `templates/`: its title, keywords, and
+    /// text, for new notes to start from.
+    pub fn save_note_as_template(&mut self, id: Id) {
+        self.flush_editor();
+        let (Some(store), Some(node)) = (self.store.clone(), self.binder.get(id).cloned()) else {
+            return;
+        };
+        let blocks = node
+            .document_id
+            .and_then(|document_id| store.borrow().load_document(document_id).ok())
+            .map(|document| document.blocks)
+            .unwrap_or_default();
+        let mut other = writing_studio_format::Header::default();
+        other.set_list("tags", &node.keywords);
+        let file = writing_studio_format::SceneFile {
+            header: writing_studio_format::SceneHeader { title: node.title.clone(), other, ..Default::default() },
+            blocks,
+        };
+        let saved = store.borrow().save_note_template(&file);
+        self.status = match saved {
+            Ok(name) => format!("“{}” is a template now, in templates/{name}.", node.title),
+            Err(err) => format!("Could not keep it as a template: {err}"),
+        };
+    }
+
     /// Copy a file into the project for the open note, and give the Markdown
     /// that links to it from the note's file in `notes/`.
     pub fn attach_file_to_note(&mut self, id: Id, source: PathBuf) -> Option<String> {

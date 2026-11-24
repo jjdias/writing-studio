@@ -1,6 +1,6 @@
 # Phase 14 — Notes
 
-In progress: stages 1 and 2 are done.
+In progress: stages 1 to 3 are done.
 
 Characters, places, cultures, lore, timeline events, research notes, and the binder's story notes become one thing: a **note**. A note is a Markdown file the writer writes as they like, in the same page as a scene, in folders the writer makes and names. Nothing about it is a form. The program knows a note's title, its keywords, and what it links to; everything else is the writer's text.
 
@@ -64,6 +64,8 @@ Recommended in this plan:
 - A new project gets a few: Character, Place, Source, and Research note, each a title and headings with a line under each saying what goes there.
 - Right-click a notes folder for **New note from template**, with the templates listed; right-click a note for **Save as template**. **New note** with no template is an empty page.
 
+**Done.** `templates/` in the project holds the note templates, one `.md` file each, written once when the project is made (`NOTE_TEMPLATES` in `crates/templates`: Character, Place, Source, and Research note, each a title, a keyword, an opening line, and headings with a line under each), so a template the writer deletes stays deleted. Right-click a folder of notes for **New note from template**, with the templates by title, or **Empty note**: the new note takes the template's title, keywords, and text, and opens in the page (`StudioState::new_note_from_template`). Right-click a note for **Save as template** (`save_note_as_template`), which writes `templates/<title>.md` and never over another template. `ProjectStore::note_templates` reads the folder when the menu opens, leaving out a file whose front matter cannot be read. Test: `notes_start_from_templates_and_a_note_can_become_one`.
+
 ### 4. Links between anything
 
 - `[[Title]]` anywhere (a scene, a note, a chapter's text) links to the note of that title. On the page it reads as a link, with the note's first lines as its title; clicking it, or Ctrl+Enter on it, opens the note; typing `[[` offers the notes' titles. A link to a title no note has is shown as such.
@@ -73,7 +75,7 @@ Recommended in this plan:
 
 ### 5. Footnotes in the compiled book
 
-- A `[[Title]]` whose note is in a folder compiled as footnotes is a footnote mark. Compile writes a number there and the note's text as the footnote: a Word footnote in DOCX, an endnote in the ebook and the web page, `[^n]` in Markdown. Each mark is its own footnote.
+- A `[[Title]]` whose note is in a folder compiled as footnotes is a footnote mark. Compile writes a number there and the note's opening text, up to its first heading, as the footnote, so what is under a heading stays the writer's (the Source template is laid out so): a Word footnote in DOCX, an endnote in the ebook and the web page, `[^n]` in Markdown. Each mark is its own footnote.
 - Other `[[Title]]` links compile as their text.
 - The check before compiling lists a mark whose note is missing.
 

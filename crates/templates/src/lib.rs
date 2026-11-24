@@ -41,3 +41,44 @@ pub fn blank_novel(title: &str) -> SeededProject {
         documents: vec![scene_doc],
     }
 }
+
+/// The note templates a new project starts with, as files in `templates/`:
+/// a title, then headings with a line under each saying what goes there, so
+/// a note has a shape a writer, and an AI reading the notes, can follow. The
+/// writer changes, adds, or deletes them. A note made from one starts as a
+/// copy, with the template's title and keywords.
+pub const NOTE_TEMPLATES: [(&str, &str); 4] = [
+    (
+        "character.md",
+        "---\ntitle: New character\ntags:\n  - character\n---\n\n\
+Who they are, in a line or two: their place in the story.\n\n\
+## What they want\n\nWhat they are after, and what they would never admit to wanting.\n\n\
+## What stands in their way\n\nPeople, fears, or flaws that keep them from it.\n\n\
+## How they change\n\nWho they are at the start, and at the end.\n\n\
+## Details\n\nAppearance, voice, habits, history, and the people around them.\n",
+    ),
+    (
+        "place.md",
+        "---\ntitle: New place\ntags:\n  - place\n---\n\n\
+What this place is, in a line or two, and where it is.\n\n\
+## What happens here\n\nThe scenes set here, and why the story comes here.\n\n\
+## The senses\n\nWhat a person sees, hears, smells, and feels here.\n\n\
+## Who is here\n\nWho lives or works here, and who comes and goes.\n\n\
+## History\n\nWhat happened here before the story, and what is left of it.\n",
+    ),
+    (
+        "source.md",
+        "---\ntitle: New source\ntags:\n  - source\n---\n\n\
+The citation, as the reader should see it in a footnote: Author, *Title* (Publisher, Year), page.\n\n\
+## What it says\n\nThe passage or the facts this source gives. Under a heading, this is never printed.\n\n\
+## Why it matters here\n\nWhere it is used in the book, and what it supports.\n",
+    ),
+    (
+        "research.md",
+        "---\ntitle: New research note\ntags:\n  - research\n---\n\n\
+What this is about, in a line or two.\n\n\
+## Key points\n\nWhat was found, one point to a line.\n\n\
+## Sources\n\nWhere it came from: books, articles, links, people.\n\n\
+## Open questions\n\nWhat is still not known, and where to look.\n",
+    ),
+];

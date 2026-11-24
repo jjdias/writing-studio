@@ -197,6 +197,13 @@ impl ProjectStore {
         let cache = cache_path(&root);
         let store = Self::with_cache(root, &cache, true)?;
         let seeded = blank_novel(title);
+        // The note templates, once, when the project is made: a template the
+        // writer deletes stays deleted.
+        let templates = inside(&store.root, "templates", crate::TEMPLATES_DIR)?;
+        fs::create_dir_all(&templates)?;
+        for (name, text) in writing_studio_templates::NOTE_TEMPLATES {
+            write_atomic(&templates.join(name), text.as_bytes())?;
+        }
         store.persist_meta_cached(&seeded.meta)?;
         for node in &seeded.nodes {
             store.upsert_node_cached(node)?;
