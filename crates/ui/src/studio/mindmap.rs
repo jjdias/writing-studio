@@ -23,8 +23,10 @@ pub(super) fn MindMapPane() -> Element {
     let Some((root, map)) = state.read().current_map() else {
         return rsx! {};
     };
-    let world = state.read().map_world;
-    let has_scenes = world || !state.read().binder.scenes_under(root).is_empty();
+    // The notes view is the book's map with Notes at its middle.
+    let notes_view = state.read().map_world;
+    let world = false;
+    let has_scenes = notes_view || !state.read().binder.scenes_under(root).is_empty();
     let query = state.read().map_query.clone();
     let zoom = state.read().map_zoom;
     let chosen = state.read().map_chosen().filter(|id| map.get(*id).is_some());
@@ -83,15 +85,15 @@ pub(super) fn MindMapPane() -> Element {
             div { class: "view-tools",
                 select {
                     aria_label: "The map's middle",
-                    title: "The book, or the story's worldbuilding",
+                    title: "The book, or your notes",
                     onchange: move |event| {
                         let world = event.value() == "world";
                         let mut current = state.write();
                         current.map_world = world;
                         current.map_focus = None;
                     },
-                    option { value: "book", selected: !world, "The book" }
-                    option { value: "world", selected: world, "Worldbuilding" }
+                    option { value: "book", selected: !notes_view, "The book" }
+                    option { value: "world", selected: notes_view, "Notes" }
                 }
                 if world {
                     div { class: "map-kinds", role: "group", aria_label: "Kinds shown",
@@ -724,7 +726,7 @@ fn map_key(mut state: Signal<StudioState>, event: KeyboardEvent) {
     let Some((root, map)) = state.read().current_map() else {
         return;
     };
-    let world = state.read().map_world;
+    let world = false;
     let from = state.read().map_chosen().filter(|id| map.get(*id).is_some()).unwrap_or(root);
     if let Some(key) = key {
         event.prevent_default();

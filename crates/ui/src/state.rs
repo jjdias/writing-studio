@@ -10,7 +10,7 @@ use writing_studio_document::{
     NavItem, NoteKind, ReviewItem, ReviewKind, ReviewTarget, TrackedChange,
 };
 use writing_studio_diagnostics::{
-    findings, mentions, phrases_in, scene_facts, typical_words, BookContext, Finding, SceneBeats, SceneFacts,
+    findings, mentions, scene_facts, typical_words, BookContext, Finding, SceneBeats, SceneFacts,
 };
 use writing_studio_core::{autosave_due, autosave_wait, local_day, Id, Timestamp, PRODUCT_NAME};
 use writing_studio_editor::EditorSession;
@@ -1448,15 +1448,21 @@ impl StudioState {
 
     /// Words spellcheck accepts besides the dictionary: the project's own
     /// list, and every word in a character, place, or culture name.
+    /// Every note's title, under Notes and not in the trash: the names the
+    /// spelling accepts, the diagnostics look for, and "Named here" offers.
+    pub fn note_titles(&self) -> Vec<String> {
+        self.binder
+            .nodes
+            .iter()
+            .filter(|node| node.kind == NodeKind::Note && node.deleted_at.is_none() && self.binder.is_in_notes(node.id))
+            .map(|node| node.title.clone())
+            .filter(|title| !title.trim().is_empty())
+            .collect()
+    }
+
     fn accepted_words(&self) -> HashSet<String> {
-        let mut words = name_words(
-            self.cast
-                .characters
-                .iter()
-                .map(|character| character.name.as_str())
-                .chain(self.world.locations.iter().map(|place| place.name.as_str()))
-                .chain(self.world.cultures.iter().map(|culture| culture.name.as_str())),
-        );
+        let titles = self.note_titles();
+        let mut words = name_words(titles.iter().map(String::as_str));
         words.extend(self.project_words());
         words
     }
@@ -1633,7 +1639,7 @@ impl StudioState {
             .map(|document_id| self.document_words(document_id, true));
         BookContext {
             typical_words: typical_words(counts),
-            has_cast: self.cast.characters.iter().any(|c| !c.name.trim().is_empty()),
+            has_cast: !self.note_titles().is_empty(),
         }
     }
 
@@ -1646,12 +1652,7 @@ impl StudioState {
     /// The same, when the caller already has the book's context.
     pub fn scene_report_in(&self, node_id: Id, context: &BookContext) -> Option<SceneReport> {
         let document_id = self.binder.get(node_id)?.document_id?;
-        let names: Vec<String> = self
-            .cast
-            .characters
-            .iter()
-            .map(|character| character.name.clone())
-            .collect();
+        let names = self.note_titles();
         let beats = self.scene_beats(node_id);
         let facts = scene_facts(&self.document_text(document_id), &names);
         let findings = findings(&beats, &facts, context);
@@ -1954,30 +1955,30 @@ impl StudioState {
     /// by any capitalized part of the name, as diagnostics find them; places,
     /// cultures, and lore by the whole name.
     pub fn named_in(&self, scene: Id, text: &str) -> Vec<Id> {
-        let entries: Vec<StoryEntry> = self
-            .story_entries()
-            .into_iter()
-            .filter(|entry| !self.story_reaches(entry, scene))
-            .filter(|entry| !self.hidden_named.contains(&(scene, entry.id)))
-            .collect();
-        let (people, others): (Vec<&StoryEntry>, Vec<&StoryEntry>) =
-            entries.iter().partition(|entry| entry.kind == BibleLink::Character);
-        let others: Vec<&StoryEntry> = others
-            .into_iter()
-            .filter(|entry| matches!(entry.kind, BibleLink::Location | BibleLink::Culture | BibleLink::Lore))
-            .collect();
-        let names: Vec<String> = people.iter().map(|entry| entry.name.clone()).collect();
-        let found = mentions(text, &names);
-        let mut named: Vec<Id> = people
+        let mentioned = self.link_index.get(&scene).cloned().unwrap_or_default();
+        let notes: Vec<(Id, String)> = self
+            .binder
+            .nodes
             .iter()
-            .filter(|entry| found.iter().any(|mention| mention.name == entry.name))
-            .map(|entry| entry.id)
+            .filter(|node| node.kind == NodeKind::Note && node.deleted_at.is_none() && self.binder.is_in_notes(node.id))
+            .filter(|node| !node.title.trim().is_empty())
+            .filter(|node| !self.hidden_named.contains(&(scene, node.id)))
+            .filter(|node| !mentioned.iter().any(|seen| seen.trim() == node.title.trim().to_lowercase()))
+            .filter(|node| {
+                let mut at = Some(scene);
+                while let Some(id) = at {
+                    if node.links.contains(&id) {
+                        return false;
+                    }
+                    at = self.binder.get(id).and_then(|item| item.parent_id);
+                }
+                true
+            })
+            .map(|node| (node.id, node.title.clone()))
             .collect();
-        let phrases: Vec<String> = others.iter().map(|entry| entry.name.clone()).collect();
-        named.extend(
-            others.iter().zip(phrases_in(text, &phrases)).filter(|(_, found)| *found).map(|(entry, _)| entry.id),
-        );
-        named
+        let titles: Vec<String> = notes.iter().map(|(_, title)| title.clone()).collect();
+        let found = mentions(text, &titles);
+        notes.iter().filter(|(_, title)| found.iter().any(|mention| mention.name == *title)).map(|(id, _)| *id).collect()
     }
 
     /// Look again for what the open scene names, after it is opened or saved
@@ -1994,9 +1995,51 @@ impl StudioState {
     }
 
     /// Link the open scene to an entry its text names.
-    pub fn link_named(&mut self, entry: Id) {
+    /// Link a note the open scene names to the scene.
+    pub fn link_named(&mut self, note: Id) {
         if let Some(scene) = self.selected {
-            self.link_story(scene, entry);
+            self.set_note_link(note, scene, true);
+            self.refresh_named_here();
+        }
+    }
+
+    /// The notes that reach an item: those linked to it from Context or
+    /// mentioned in its text (with whether the link is one to take away), and
+    /// apart, those linked to what it is in, with what that is.
+    pub fn notes_reaching(&self, item: Id) -> (Vec<(Id, String, bool)>, Vec<(Id, String, String)>) {
+        let mentioned = self.link_index.get(&item).cloned().unwrap_or_default();
+        let mut own = Vec::new();
+        let mut through = Vec::new();
+        for node in &self.binder.nodes {
+            if node.kind != NodeKind::Note || node.deleted_at.is_some() || !self.binder.is_in_notes(node.id) || node.id == item {
+                continue;
+            }
+            let linked = node.links.contains(&item);
+            if linked || mentioned.iter().any(|seen| seen.trim() == node.title.trim().to_lowercase()) {
+                own.push((node.id, node.title.clone(), linked));
+                continue;
+            }
+            let mut up = self.binder.get(item).and_then(|found| found.parent_id);
+            while let Some(id) = up {
+                if node.links.contains(&id) {
+                    let from = self.binder.get(id).map(|found| found.title.clone()).unwrap_or_default();
+                    through.push((node.id, node.title.clone(), from));
+                    break;
+                }
+                up = self.binder.get(id).and_then(|found| found.parent_id);
+            }
+        }
+        (own, through)
+    }
+
+    /// Link the note of this title to an item, from the item's Context.
+    pub fn link_note_titled(&mut self, item: Id, title: &str) {
+        match self.note_titled(title) {
+            Some(note) => {
+                self.set_note_link(note, item, true);
+                self.refresh_named_here();
+            }
+            None => self.status = format!("No note is called “{}”.", title.trim()),
         }
     }
 
@@ -2412,6 +2455,69 @@ impl StudioState {
             self.push_rows(draft.id, 0, shown.as_ref(), &mut rows);
         }
         rows
+    }
+
+    /// The Notes' rows: its folders and notes, each at its depth, leaving out
+    /// what is inside a folded folder. A search narrows them, as it does the
+    /// manuscript: to the notes that match and the folders they are in.
+    pub fn note_rows(&self) -> Vec<BinderRow> {
+        let Some(root) = self.binder.notes_root() else {
+            return Vec::new();
+        };
+        let query = self.search.trim().to_string();
+        let hits = if query.is_empty() { HashSet::new() } else { self.manuscript_index.borrow().search(&query) };
+        let mut rows = Vec::new();
+        self.push_note_rows(root.id, 0, &query, &hits, &mut rows);
+        rows
+    }
+
+    fn push_note_rows(&self, parent: Id, depth: u32, query: &str, hits: &HashSet<Id>, rows: &mut Vec<BinderRow>) {
+        let in_notes = |node: &&BinderNode| matches!(node.kind, NodeKind::Folder | NodeKind::Note);
+        let matches = |id: Id| binder_matches(&self.binder, id, query, hits);
+        for node in self.binder.children(Some(parent)).into_iter().filter(in_notes) {
+            if depth > 64 {
+                continue;
+            }
+            let inside = self.items_inside(node.id);
+            let visible = query.is_empty() || matches(node.id) || inside.iter().any(|id| matches(*id));
+            if !visible {
+                continue;
+            }
+            let has_children = self.binder.children(Some(node.id)).into_iter().any(|child| in_notes(&child));
+            let collapsed = has_children && query.is_empty() && self.is_collapsed(node.id);
+            rows.push(self.binder_row(node, depth, has_children, collapsed));
+            if has_children && !collapsed {
+                self.push_note_rows(node.id, depth + 1, query, hits, rows);
+            }
+        }
+    }
+
+    /// Everything inside an item, at any depth.
+    fn items_inside(&self, id: Id) -> Vec<Id> {
+        let mut found = Vec::new();
+        let mut open = vec![id];
+        while let Some(at) = open.pop() {
+            for child in self.binder.children(Some(at)) {
+                found.push(child.id);
+                open.push(child.id);
+            }
+        }
+        found
+    }
+
+    /// A note or a folder of notes, in the chosen folder of notes or at the
+    /// top of Notes. It is chosen and opened in the page.
+    pub fn add_in_notes(&mut self, kind: NodeKind) -> Option<Id> {
+        let root = self.binder.notes_root()?.id;
+        let parent = self
+            .selected
+            .filter(|id| self.binder.get(*id).is_some_and(|node| node.kind == NodeKind::Folder) && self.binder.is_in_notes(*id))
+            .unwrap_or(root);
+        self.flush_editor();
+        let id = self.create_node(kind, Some(parent))?;
+        self.select_node(id);
+        self.mode = WorkspaceMode::Writing;
+        Some(id)
     }
 
     /// The trash's contents, under its row when it is open.
@@ -3158,9 +3264,11 @@ impl StudioState {
     /// The mind map as drawn now, the book's or the worldbuilding's, with
     /// its middle.
     pub fn current_map(&self) -> Option<(Id, crate::mindmap::MapLayout)> {
+        // The notes view: the Notes root and what is under it, on the same
+        // map as the book.
         if self.map_world {
-            let map = self.world_layout();
-            return Some((map.nodes.first()?.id, map));
+            let root = self.binder.notes_root()?.id;
+            return Some((root, self.map_layout(root)));
         }
         let root = self.map_root()?;
         Some((root, self.map_layout(root)))
@@ -3241,6 +3349,8 @@ impl StudioState {
             world: &self.world,
             library: &self.library,
             plot: &self.plot,
+            note_text: &|id| self.item_text(id),
+            mentions: &|id| self.link_index.get(&id).cloned().unwrap_or_default(),
         };
         writing_studio_context::scene_context(&sources, scene)
     }
@@ -3254,6 +3364,8 @@ impl StudioState {
             world: &self.world,
             library: &self.library,
             plot: &self.plot,
+            note_text: &|id| self.item_text(id),
+            mentions: &|id| self.link_index.get(&id).cloned().unwrap_or_default(),
         };
         let mut context = writing_studio_context::level_context(&sources, id)?;
         // A folder's own text is its first context.
@@ -3989,6 +4101,7 @@ impl StudioState {
             }
         });
         self.save_all();
+        self.refresh_named_here();
     }
 
     pub fn backup(&mut self) {
@@ -4392,6 +4505,9 @@ impl StudioState {
             let kind = match node.kind {
                 NodeKind::DraftRoot => NodeKind::Book,
                 NodeKind::Book | NodeKind::Part => NodeKind::Chapter,
+                // Under Notes, a folder or the root holds notes.
+                NodeKind::NotesRoot => NodeKind::Note,
+                NodeKind::Folder if self.binder.is_in_notes(from) => NodeKind::Note,
                 NodeKind::Chapter | NodeKind::Folder => NodeKind::Scene,
                 _ => return None,
             };
@@ -6052,39 +6168,31 @@ mod tests {
     fn names_in_a_saved_scene_are_offered_as_links() {
         let (mut state, dir) = open_state("named-here");
         let scene = state.selected.unwrap();
-        state.add_character();
-        let mara = state.selected_character.unwrap();
-        state.set_character_name(mara, "Mara Vance".into());
-        state.add_character();
-        let rose = state.selected_character.unwrap();
-        state.set_character_name(rose, "Rose".into());
-        state.set_world_section(WorldSection::Locations);
-        state.add_world_item();
-        let port = state.selected_world.unwrap();
-        state.set_location_name(port, "Port Ely".into());
-        state.set_world_section(WorldSection::Lore);
-        state.add_world_item();
-        let war = state.selected_world.unwrap();
-        state.set_lore_title(war, "The Old War".into());
+        let mara = add_note(&mut state, "Mara Vance", "");
+        add_note(&mut state, "Rose", "");
+        let port = add_note(&mut state, "Port Ely", "");
+        add_note(&mut state, "The Old War", "");
         state.select_node(scene);
 
         state.apply_editor_text("Vance ran down to port Ely as the sun rose.".into());
         assert!(state.named_here.is_empty(), "nothing is looked for before the save");
         state.flush_editor();
         assert_eq!(state.named_here, [mara, port], "Rose is not in “rose”; the war is not named");
-        assert!(state.bible_linked_ids(BibleLink::Character, mara).is_empty(), "nothing is linked by itself");
+        assert!(state.binder.get(mara).unwrap().links.is_empty(), "nothing is linked by itself");
 
         state.link_named(mara);
-        assert_eq!(state.bible_linked_ids(BibleLink::Character, mara), [scene]);
+        assert_eq!(state.binder.get(mara).unwrap().links, [scene]);
         assert_eq!(state.named_here, [port]);
         state.hide_named(port);
         assert!(state.named_here.is_empty());
-        state.unlink_story(scene, mara);
+        state.set_note_link(mara, scene, false);
+        state.flush_editor();
         assert_eq!(state.named_here, [mara], "unlinked, it is offered again");
 
         // Linked through its chapter, it is not offered.
         let chapter = state.binder.get(scene).unwrap().parent_id.unwrap();
-        state.link_story(chapter, mara);
+        state.set_note_link(mara, chapter, true);
+        state.flush_editor();
         assert!(state.named_here.is_empty());
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -6096,23 +6204,32 @@ mod tests {
         let (mut state, dir) = open_state("scene-context");
         let scene = state.selected.unwrap();
         let chapter = state.binder.get(scene).unwrap().parent_id.unwrap();
-        state.add_character();
-        let mara = state.selected_character.unwrap();
-        state.set_character_name(mara, "Mara".into());
-        state.link_story(chapter, mara);
+        let mara = add_note(&mut state, "Mara", "Always late.");
+        let port = add_note(&mut state, "Port Ely", "A harbor town.");
+        state.set_note_link(mara, chapter, true);
+        state.select_node(scene);
+        state.apply_editor_markdown("They sailed from [[Port Ely]].");
+        state.flush_editor();
         let context = state.scene_context(scene).unwrap();
-        assert_eq!(context.entries.len(), 1);
-        assert_eq!(context.entries[0].through.as_deref(), Some("Chapter 1"));
+        let entries: Vec<(&str, Option<&str>)> = context.entries.iter().map(|entry| (entry.name.as_str(), entry.through.as_deref())).collect();
+        assert_eq!(entries, [("Mara", Some("Chapter 1")), ("Port Ely", None)]);
         let markdown = context.to_markdown(16_000);
-        assert!(markdown.contains("## Characters") && markdown.contains("### Mara"), "{markdown}");
+        assert!(markdown.contains("## Research") && markdown.contains("### Mara") && markdown.contains("Always late."), "{markdown}");
         assert!(state.scene_context(chapter).is_none());
 
-        // The chapter has its own: Mara, linked to it, is in its scene.
+        // The chapter has its own: both notes are in its scene.
         let level = state.level_context(chapter).unwrap();
-        assert_eq!(level.entries.len(), 1);
-        assert_eq!(level.entries[0].scenes, 1);
+        assert_eq!(level.entries.len(), 2);
+        assert!(level.entries.iter().all(|entry| entry.scenes == 1));
         assert!(level.outline.iter().any(|item| item.depth == 0 && Some(item.title.as_str()) == state.binder.get(scene).map(|node| node.title.as_str())));
         assert!(state.level_context(scene).is_none());
+
+        // Context on the scene lists them, and links one by its title.
+        let (own, through) = state.notes_reaching(scene);
+        assert_eq!(own.iter().map(|(id, _, linked)| (*id, *linked)).collect::<Vec<_>>(), [(port, false)]);
+        assert_eq!(through.iter().map(|(id, _, from)| (*id, from.as_str())).collect::<Vec<_>>(), [(mara, "Chapter 1")]);
+        state.link_note_titled(scene, "port ely");
+        assert_eq!(state.binder.get(port).unwrap().links, [scene]);
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -6345,61 +6462,52 @@ mod tests {
     /// trees, connections as named lines, a filter on kinds and names, one
     /// entry to center on, and adding, joining, and nesting from the map.
     #[test]
-    fn the_worldbuilding_map_shows_trees_connections_and_a_center() {
-        let (mut state, dir) = open_state("world-map");
-        state.mode = WorkspaceMode::MindMap;
-        state.map_world = true;
-        let places = state.world_group(BibleLink::Location);
-        let country = state.add_on_world_map(places, true).unwrap();
-        assert_eq!((state.mode, state.map_focus), (WorkspaceMode::MindMap, Some(country)), "it stays on the map");
-        state.rename_item(country, "Valdora");
-        let city = state.add_on_world_map(country, true).unwrap();
-        state.rename_item(city, "Port Ely");
-        let people = state.world_group(BibleLink::Character);
-        let ivo = state.add_on_world_map(people, true).unwrap();
-        state.rename_item(ivo, "Ivo");
-        assert_eq!(state.entry_shown().unwrap().id, ivo, "chosen on the map, it shows in Context");
+    fn the_library_lists_notes_and_a_search_narrows_them() {
+        let (mut state, dir) = open_state("note-rows");
+        let mara = add_note(&mut state, "Mara", "A pilot's daughter.");
+        add_note(&mut state, "Port Ely", "A harbor town.");
+        let rows: Vec<(String, u32)> = state.note_rows().into_iter().map(|row| (row.title, row.depth)).collect();
+        assert_eq!(rows[0], ("Footnotes".to_string(), 0));
+        assert_eq!(rows[1], ("Research".to_string(), 0));
+        assert!(rows.contains(&("Mara".to_string(), 1)) && rows.contains(&("Port Ely".to_string(), 1)), "{rows:?}");
 
-        let (root, map) = state.current_map().unwrap();
-        assert_eq!(root, state.world_root());
-        assert_eq!(map.get(city).unwrap().parent, Some(country), "nesting is a branch");
-        assert_eq!(map.get(country).unwrap().parent, Some(places));
+        state.search = "harbor".into();
+        let found: Vec<String> = state.note_rows().into_iter().map(|row| row.title).collect();
+        assert_eq!(found, ["Research", "Port Ely"], "the note that matches and its folder");
+        state.search.clear();
 
-        // Joined on the map, two entries are connected; the line carries its name.
-        state.start_join(ivo);
-        state.choose_on_map(city);
-        let relation = state.cast.relationships[0].id;
-        state.set_relationship_kind(relation, "lives in".into());
-        let (_, map) = state.current_map().unwrap();
-        let lines = state.world_lines(&map);
-        assert_eq!((lines[0].from, lines[0].to, lines[0].name.as_str()), (ivo, city, "lives in"));
-        state.world_ties = TieFilter::Named("knows".into());
-        assert!(state.world_lines(&map).is_empty());
-        state.world_ties = TieFilter::All;
-
-        // Only places shown: Ivo and his line go.
-        state.world_kinds = vec![BibleLink::Location];
-        let (_, map) = state.current_map().unwrap();
-        assert!(map.get(ivo).is_none() && map.get(people).is_none() && state.world_lines(&map).is_empty());
-        state.world_kinds = STORY_KINDS.to_vec();
-
-        // Centered on Port Ely: what it is inside, and what it is connected to.
-        state.map_center = Some(city);
-        let (root, map) = state.current_map().unwrap();
-        assert_eq!(root, city);
-        assert!(map.get(country).is_some() && map.get(ivo).is_some());
-        assert!(map.get(places).is_none());
-        state.map_center = None;
-
-        // Dropped on the city, a second place nests in it.
-        let quay = state.add_on_world_map(places, true).unwrap();
-        state.begin_drag(quay);
-        state.set_binder_drop(city, DropPlace::Inside);
-        assert!(state.map_drop_allowed(quay, city));
-        assert!(!state.map_drop_allowed(quay, ivo), "not inside a character");
-        state.drop_on_map(city);
-        assert_eq!(state.entry_parent(quay), Some(city));
+        // + Note adds inside the chosen folder of notes.
+        let research = state.binder.get(mara).unwrap().parent_id.unwrap();
+        state.select_node(research);
+        let added = state.add_in_notes(NodeKind::Note).unwrap();
+        assert_eq!(state.binder.get(added).unwrap().parent_id, Some(research));
+        assert_eq!(state.selected, Some(added));
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn the_notes_map_is_the_notes_and_tab_adds_a_note() {
+        let (mut state, dir) = open_state("notes-map");
+        state.map_world = true;
+        let (root, map) = state.current_map().unwrap();
+        assert_eq!(Some(root), state.binder.notes_root().map(|node| node.id));
+        let research = state.binder.children(Some(root))[1].id;
+        assert!(map.get(research).is_some(), "its folders are on it");
+        let added = state.add_from_map(research, true).unwrap();
+        let node = state.binder.get(added).unwrap();
+        assert_eq!((node.kind, node.parent_id), (NodeKind::Note, Some(research)));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A note in the Research folder, with this title and text.
+    fn add_note(state: &mut StudioState, title: &str, text: &str) -> Id {
+        let notes = state.binder.notes_root().unwrap().id;
+        let research = state.binder.children(Some(notes))[1].id;
+        let note = state.new_note_from_template(research, "research.md").unwrap();
+        state.rename_item(note, title);
+        state.apply_editor_markdown(text);
+        state.flush_editor();
+        note
     }
 
     fn open_state(tag: &str) -> (StudioState, PathBuf) {
@@ -6599,7 +6707,7 @@ Nobody spoke.");
     }
 
     #[test]
-    fn spelling_uses_the_dictionary_project_words_and_bible_names() {
+    fn spelling_uses_the_dictionary_project_words_and_note_titles() {
         let (mut state, dir) = open_state("spell");
         assert_eq!(state.spelling_language().as_deref(), Some("en_US"));
         state.apply_editor_markdown("Maravance did not recieve teh letter. Teh end, said Zhul.");
@@ -6610,9 +6718,9 @@ Nobody spoke.");
         state.add_project_word("Zhul");
         state.add_project_word("zhul");
         assert_eq!(state.project_words(), ["zhul"]);
-        state.add_character();
-        let id = state.cast.characters.last().unwrap().id;
-        state.set_character_name(id, "Maravance Oduya".into());
+        let scene = state.selected.unwrap();
+        add_note(&mut state, "Maravance Oduya", "A pilot.");
+        state.select_node(scene);
         state.replace_misspelling("recieve", "receive");
         state.replace_misspelling("teh", "the");
         let words: Vec<String> = state.unknown_words().into_iter().map(|item| item.word).collect();
@@ -6658,9 +6766,8 @@ Nobody spoke.");
             [Finding::NoGoal, Finding::NoConflict, Finding::NoOutcome]
         );
 
-        state.add_character();
-        let id = state.cast.characters.last().unwrap().id;
-        state.set_character_name(id, "Mara Vance".into());
+        add_note(&mut state, "Mara Vance", "A pilot's daughter.");
+        state.select_node(scene);
         state.apply_editor_markdown("Mara ran for the harbor. “Wait,” said the pilot.");
         state.set_scene_beat(scene, Beat::Goal, "Reach the harbor".into());
         state.set_scene_beat(scene, Beat::Outcome, "The boat has gone".into());

@@ -1,6 +1,6 @@
 # Phase 14 — Notes
 
-In progress: stages 1 to 5 are done.
+In progress: stages 1 to 6 are done.
 
 Characters, places, cultures, lore, timeline events, research notes, and the binder's story notes become one thing: a **note**. A note is a Markdown file the writer writes as they like, in the same page as a scene, in folders the writer makes and names. Nothing about it is a form. The program knows a note's title, its keywords, and what it links to; everything else is the writer's text.
 
@@ -89,6 +89,8 @@ Recommended in this plan:
 - "Named here", the diagnostics, and spelling's accepted names use every note's title.
 - The mind map's worldbuilding view becomes a notes view: notes, their folders, and the links between them.
 - Search finds notes, as it finds scenes.
+
+**Done.** `crates/context` reads notes: `Sources` gives a note's text and the titles an item's text links to, and a scene's or a level's context lists the notes linked to it, mentioned in it, or linked to what it is in, grouped by their folder (`ContextEntry::folder`), so a folder named Characters is the Characters of the context. The spelling's accepted names, the diagnostics' names, and "Named here" are every note's title (`StudioState::note_titles`); "Named here" finds a title by any capitalized part of it, as the diagnostics find a character, so a note called Rose is not named by "rose". Context on a scene or chapter is **Notes in this …** (`NotesHere`, `notes_reaching`, `link_note_titled`): the story links' place, for notes. The mind map's other view is **Notes**: the book's map with the Notes root at its middle, where Tab adds a note. Found on the way: the library never showed Notes, since the old Research root's notes used to be moved into the research library on opening; it now has a **Notes** section (`note_rows`, `add_in_notes`), narrowed by the search, and a click opens a note or a folder in the page. Tests: `a_note_mentioned_in_a_scene_is_in_its_context` (`crates/context`, whose fixture is now notes), and in the window's state the spelling, diagnostics, "Named here", scene context, notes map, and `the_library_lists_notes_and_a_search_narrows_them`.
 
 ### 7. What goes
 

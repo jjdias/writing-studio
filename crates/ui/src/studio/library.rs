@@ -19,6 +19,7 @@ pub(super) fn Library() -> Element {
     let syncing = state.read().syncing;
     let selected = state.read().selected;
     let rows = state.read().binder_rows();
+    let note_rows = state.read().note_rows();
     let search = state.read().search.clone();
     let narrowed = state.read().shown_scenes().is_some();
     // The trash, as a row of its own, and what is in it when it is open.
@@ -151,6 +152,24 @@ pub(super) fn Library() -> Element {
                             button { class: "menu-item", role: "menuitem", onclick: add(NodeKind::Folder), "Folder" }
                         }
                     }
+                }
+                div { class: "library-heading library-notes-head",
+                    span { "Notes" }
+                    button {
+                        class: "library-add-btn",
+                        title: "A new note, in the chosen folder of notes",
+                        onclick: move |_| { state.write().add_in_notes(NodeKind::Note); },
+                        "+ Note"
+                    }
+                    button {
+                        class: "library-add-btn",
+                        title: "A new folder of notes, in the chosen one",
+                        onclick: move |_| { state.write().add_in_notes(NodeKind::Folder); },
+                        "+ Folder"
+                    }
+                }
+                for row in note_rows {
+                    LibraryRow { key: "{row.id}", active: selected == Some(row.id), row: row.clone() }
                 }
                 div { class: "library-heading", "Views" }
                 for candidate in WorkspaceMode::LIBRARY_VIEWS {
@@ -361,9 +380,11 @@ fn choose_row(mut state: Signal<StudioState>, id: Id, kind: NodeKind, event: &Mo
     }
     let mut current = state.write();
     current.clear_picked();
-    if kind == NodeKind::Scene || current.binder.is_in_trash(id) && kind != NodeKind::TrashRoot {
+    // A scene, a note, or a folder of notes opens in the page.
+    let page = kind == NodeKind::Scene || current.binder.is_in_notes(id);
+    if page || current.binder.is_in_trash(id) && kind != NodeKind::TrashRoot {
         current.select_node(id);
-        if kind == NodeKind::Scene {
+        if page {
             current.mode = WorkspaceMode::Writing;
         }
     } else {

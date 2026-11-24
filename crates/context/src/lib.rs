@@ -283,7 +283,9 @@ pub fn move_entry<T: Nested>(items: &mut [T], id: Id, parent: Option<Id>, after:
     true
 }
 
-/// What a scene's context is read from: the project's models.
+/// What a context is read from: the project's models, and, from the caller
+/// that has the files, a note's text and the note titles an item's text
+/// links to with `[[…]]`, in lowercase.
 #[derive(Clone, Copy)]
 pub struct Sources<'a> {
     pub binder: &'a BinderTree,
@@ -291,6 +293,43 @@ pub struct Sources<'a> {
     pub world: &'a World,
     pub library: &'a ResearchLibrary,
     pub plot: &'a PlotGrid,
+    pub note_text: &'a dyn Fn(Id) -> String,
+    pub mentions: &'a dyn Fn(Id) -> Vec<String>,
+}
+
+/// The notes in binder order, folder by folder: each with its folder's title.
+fn notes_in_order(binder: &BinderTree) -> Vec<(&writing_studio_project::BinderNode, String)> {
+    fn walk<'b>(binder: &'b BinderTree, parent: Id, folder: &str, out: &mut Vec<(&'b writing_studio_project::BinderNode, String)>) {
+        for child in binder.children(Some(parent)) {
+            match child.kind {
+                NodeKind::Note => out.push((child, folder.to_string())),
+                NodeKind::Folder => walk(binder, child.id, &child.title, out),
+                _ => {}
+            }
+        }
+    }
+    let mut out = Vec::new();
+    if let Some(root) = binder.notes_root() {
+        walk(binder, root.id, "Notes", &mut out);
+    }
+    out
+}
+
+/// How a note reaches an item: linked to it from Context, or mentioned in
+/// its text (`Some(None)`), or linked to something it is in (`Some(Some(that))`).
+fn note_reaches(sources: &Sources<'_>, note: &writing_studio_project::BinderNode, item: Id) -> Option<Option<Id>> {
+    let title = note.title.trim().to_lowercase();
+    if note.links.contains(&item) || (sources.mentions)(item).iter().any(|seen| seen.trim() == title) {
+        return Some(None);
+    }
+    let mut up = sources.binder.get(item).and_then(|node| node.parent_id);
+    while let Some(id) = up {
+        if note.links.contains(&id) {
+            return Some(Some(id));
+        }
+        up = sources.binder.get(id).and_then(|node| node.parent_id);
+    }
+    None
 }
 
 /// The scene before or after, by its title and synopsis.
@@ -308,10 +347,10 @@ pub struct PlotPointNote {
     pub summary: String,
 }
 
-/// An entry as the scene's context holds it.
+/// A note as the scene's context holds it, with the folder it is in.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ContextEntry {
-    pub kind: EntryKind,
+    pub folder: String,
     pub id: Id,
     pub name: String,
     pub text: String,
@@ -401,16 +440,16 @@ pub fn scene_context(sources: &Sources<'_>, scene: Id) -> Option<SceneContext> {
         }));
     }
 
-    let entries = story_entries(sources.cast, sources.world, sources.library)
+    let entries = notes_in_order(binder)
         .into_iter()
-        .filter_map(|entry| {
-            let through = reached_through(binder, &entry, scene)?;
+        .filter_map(|(note, folder)| {
+            let through = note_reaches(sources, note, scene)?;
             Some(ContextEntry {
-                kind: entry.kind,
-                id: entry.id,
-                name: entry.name,
-                text: entry.text,
-                through: (through != scene).then(|| binder.get(through).map(|node| node.title.clone()).unwrap_or_default()),
+                folder,
+                id: note.id,
+                name: note.title.clone(),
+                text: (sources.note_text)(note.id).trim().to_string(),
+                through: through.map(|id| binder.get(id).map(|node| node.title.clone()).unwrap_or_default()),
             })
         })
         .collect();
@@ -500,11 +539,11 @@ impl SceneContext {
             }
             out.push('\n');
         }
-        let mut heading = None;
+        let mut heading: Option<&str> = None;
         for (index, entry) in self.entries.iter().enumerate() {
-            if heading != Some(entry.kind) {
-                out.push_str(&format!("## {}\n\n", entry.kind.heading()));
-                heading = Some(entry.kind);
+            if heading != Some(entry.folder.as_str()) {
+                out.push_str(&format!("## {}\n\n", entry.folder));
+                heading = Some(entry.folder.as_str());
             }
             out.push_str(&format!("### {}\n\n", entry.name));
             if let Some(from) = &entry.through {
@@ -531,10 +570,10 @@ pub struct OutlineItem {
     pub synopsis: String,
 }
 
-/// An entry linked to the level or to anything in it.
+/// A note linked to the level or to anything in it, with its folder.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LevelEntry {
-    pub kind: EntryKind,
+    pub folder: String,
     pub name: String,
     pub text: String,
     /// How many of the level's scenes it reaches.
@@ -594,15 +633,16 @@ pub fn level_context(sources: &Sources<'_>, id: Id) -> Option<LevelContext> {
         }));
     }
 
-    let entries = story_entries(sources.cast, sources.world, sources.library)
+    let entries = notes_in_order(binder)
         .into_iter()
-        .filter_map(|entry| {
-            let reached = scenes.iter().filter(|scene| reaches(binder, &entry, **scene)).count();
-            let linked_here = reaches(binder, &entry, id);
+        .filter(|(note, _)| note.id != id)
+        .filter_map(|(note, folder)| {
+            let reached = scenes.iter().filter(|scene| note_reaches(sources, note, **scene).is_some()).count();
+            let linked_here = note_reaches(sources, note, id).is_some();
             (reached > 0 || linked_here).then(|| LevelEntry {
-                kind: entry.kind,
-                name: entry.name,
-                text: entry.text,
+                folder,
+                name: note.title.clone(),
+                text: (sources.note_text)(note.id).trim().to_string(),
                 scenes: reached,
             })
         })
@@ -736,11 +776,11 @@ impl LevelContext {
             }
             out.push('\n');
         }
-        let mut heading = None;
+        let mut heading: Option<&str> = None;
         for (index, entry) in self.entries.iter().enumerate() {
-            if heading != Some(entry.kind) {
-                out.push_str(&format!("## {}\n\n", entry.kind.heading()));
-                heading = Some(entry.kind);
+            if heading != Some(entry.folder.as_str()) {
+                out.push_str(&format!("## {}\n\n", entry.folder));
+                heading = Some(entry.folder.as_str());
             }
             out.push_str(&format!("### {}\n\n", entry.name));
             match entry.scenes {
@@ -769,6 +809,8 @@ mod tests {
         plot: PlotGrid,
         scenes: [Id; 3],
         chapter: Id,
+        note_text: Box<dyn Fn(Id) -> String>,
+        mentions: Box<dyn Fn(Id) -> Vec<String>>,
     }
 
     /// Tide: chapter One holds Arrival and Harbor, chapter Two holds Dawn.
@@ -824,11 +866,47 @@ mod tests {
         plot.set_point_title(point, "She finds him".into());
         plot.set_point_scene(point, Some(scenes[1]));
 
-        Story { binder, cast, world, library, plot, scenes, chapter }
+        // The same entries as notes, in folders, linked as the entries are;
+        // the lore is in its folder, linked to nothing.
+        let mut binder = binder;
+        let notes_root = BinderNode::new(NodeKind::NotesRoot, "Notes", None, 1);
+        let root = notes_root.id;
+        binder.nodes.push(notes_root);
+        let mut texts = std::collections::HashMap::new();
+        for (index, (folder, items)) in [
+            ("Characters", vec![("Mara Vance", "Always late.", vec![chapter]), ("The Pilot", "", vec![scenes[1]])]),
+            ("Places", vec![("Port Ely", "A harbor town.", vec![scenes[1]])]),
+            ("Lore", vec![("The Old War", "", vec![])]),
+            ("Research", vec![("Tides", &"x".repeat(400)[..], vec![scenes[1]])]),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let folder_node = BinderNode::new(NodeKind::Folder, folder, Some(root), index as i64);
+            let folder_id = folder_node.id;
+            binder.nodes.push(folder_node);
+            for (at, (title, text, links)) in items.into_iter().enumerate() {
+                let mut note = BinderNode::new(NodeKind::Note, title, Some(folder_id), at as i64);
+                note.links = links;
+                texts.insert(note.id, text.to_string());
+                binder.nodes.push(note);
+            }
+        }
+        let note_text: Box<dyn Fn(Id) -> String> = Box::new(move |id| texts.get(&id).cloned().unwrap_or_default());
+        let mentions: Box<dyn Fn(Id) -> Vec<String>> = Box::new(|_| Vec::new());
+        Story { binder, cast, world, library, plot, scenes, chapter, note_text, mentions }
     }
 
     fn sources(story: &Story) -> Sources<'_> {
-        Sources { binder: &story.binder, cast: &story.cast, world: &story.world, library: &story.library, plot: &story.plot }
+        Sources {
+            binder: &story.binder,
+            cast: &story.cast,
+            world: &story.world,
+            library: &story.library,
+            plot: &story.plot,
+            note_text: &*story.note_text,
+            mentions: &*story.mentions,
+        }
     }
 
     #[test]
@@ -906,6 +984,17 @@ mod tests {
         assert!(short.contains("Always late.") && !short.contains(&"x".repeat(400)), "{short}");
         let tiny = context.to_markdown(120);
         assert!(tiny.chars().count() <= 120 && tiny.contains("Cut here"), "{tiny}");
+    }
+
+    #[test]
+    fn a_note_mentioned_in_a_scene_is_in_its_context() {
+        let mut story = story();
+        let dawn = story.scenes[2];
+        story.mentions = Box::new(move |item| if item == dawn { vec!["port ely".into()] } else { Vec::new() });
+        let context = scene_context(&sources(&story), dawn).unwrap();
+        let entries: Vec<(&str, &str, Option<&str>)> =
+            context.entries.iter().map(|entry| (entry.folder.as_str(), entry.name.as_str(), entry.through.as_deref())).collect();
+        assert_eq!(entries, [("Places", "Port Ely", None)]);
     }
 
     #[test]

@@ -68,7 +68,7 @@ pub(super) fn Inspector() -> Element {
             if matches!(node.kind, NodeKind::Scene | NodeKind::Chapter | NodeKind::Part | NodeKind::Book)
                 && state.read().binder.in_manuscript(node.id)
             {
-                StoryLinks { id: node.id, kind: node.kind }
+                NotesHere { id: node.id, kind: node.kind }
             }
             if node.kind == NodeKind::Scene && state.read().binder.in_manuscript(node.id) {
                 SceneContextView { id: node.id }
@@ -511,26 +511,30 @@ fn Keywords(id: Id) -> Element {
 /// same read, so the split cuts exactly what is on the page. The place is
 /// counted in characters, as the document counts them, not in the page's
 /// UTF-16 units.
-/// The characters, places, and notes an item is linked to, as chips that
-/// open their entry, and those that reach it through the chapter, part, or
-/// book it is in, apart. A typed name, with suggestions of every kind, links
-/// another.
+/// The notes that reach an item, as chips that open them: those linked to
+/// it or mentioned in its text, and apart, those linked to what it is in.
+/// For the open scene, the notes its text names without linking them, to link
+/// with one click. A typed title links another.
 #[component]
-fn StoryLinks(id: Id, kind: NodeKind) -> Element {
+fn NotesHere(id: Id, kind: NodeKind) -> Element {
     let mut state = use_context::<Signal<StudioState>>();
-    let (own, through) = state.read().story_links_of(id);
+    let (own, through) = state.read().notes_reaching(id);
     let offered: Vec<String> = state
         .read()
-        .story_entries()
-        .iter()
-        .filter(|entry| !own.iter().any(|kept| kept.id == entry.id))
-        .map(story_choice)
+        .note_titles()
+        .into_iter()
+        .filter(|title| !own.iter().any(|(_, kept, _)| kept == title))
         .collect();
     let mut draft = use_signal(String::new);
-    let heading = format!("In this {}", kind.icon_label().to_lowercase());
+    let heading = format!("Notes in this {}", kind.icon_label().to_lowercase());
     // Found when the scene was opened or last saved, for the open scene only.
-    let named: Vec<StoryEntry> = if state.read().selected == Some(id) {
-        state.read().named_here.iter().filter_map(|entry| state.read().story_entry(*entry)).collect()
+    let named: Vec<(Id, String)> = if state.read().selected == Some(id) {
+        state
+            .read()
+            .named_here
+            .iter()
+            .filter_map(|note| state.read().binder.get(*note).map(|node| (*note, node.title.clone())))
+            .collect()
     } else {
         Vec::new()
     };
@@ -538,21 +542,22 @@ fn StoryLinks(id: Id, kind: NodeKind) -> Element {
         div { class: "dash-heading", "{heading}" }
         if !own.is_empty() {
             div { class: "keyword-chips",
-                for entry in own {
-                    span { class: "keyword-chip story-chip", key: "{entry.id}",
+                for (note, title, linked) in own {
+                    span { class: "keyword-chip story-chip", key: "{note}",
                         button {
                             class: "story-open",
-                            title: "Open the {entry.kind.noun()} “{entry.name}”",
-                            onclick: move |_| state.write().open_story_entry(entry.id),
-                            "{entry.name}"
+                            title: if linked { "Open “{title}”, linked here" } else { "Open “{title}”, mentioned in the text" },
+                            onclick: move |_| state.write().select_node(note),
+                            "{title}"
                         }
-                        span { class: "story-kind", "{entry.kind.noun()}" }
-                        button {
-                            class: "keyword-remove",
-                            title: "Unlink “{entry.name}” from here",
-                            aria_label: "Unlink {entry.name}",
-                            onclick: move |_| state.write().unlink_story(id, entry.id),
-                            "×"
+                        if linked {
+                            button {
+                                class: "keyword-remove",
+                                title: "Take the link to “{title}” away",
+                                aria_label: "Unlink {title}",
+                                onclick: move |_| state.write().set_note_link(note, id, false),
+                                "×"
+                            }
                         }
                     }
                 }
@@ -560,14 +565,9 @@ fn StoryLinks(id: Id, kind: NodeKind) -> Element {
         }
         if !through.is_empty() {
             div { class: "keyword-chips",
-                for (entry, from) in through {
-                    span { class: "keyword-chip story-chip from", key: "{entry.id}", title: "Linked to {from}, which holds this",
-                        button {
-                            class: "story-open",
-                            title: "Open the {entry.kind.noun()} “{entry.name}”",
-                            onclick: move |_| state.write().open_story_entry(entry.id),
-                            "{entry.name}"
-                        }
+                for (note, title, from) in through {
+                    span { class: "keyword-chip story-chip from", key: "{note}", title: "Linked to {from}, which holds this",
+                        button { class: "story-open", onclick: move |_| state.write().select_node(note), "{title}" }
                         span { class: "story-kind", "from {from}" }
                     }
                 }
@@ -576,52 +576,52 @@ fn StoryLinks(id: Id, kind: NodeKind) -> Element {
         if !named.is_empty() {
             div { class: "story-named",
                 span { class: "hint", "Named here:" }
-                for entry in named {
-                    span { class: "keyword-chip story-chip named", key: "{entry.id}",
+                for (note, title) in named {
+                    span { class: "keyword-chip story-chip named", key: "{note}",
                         button {
                             class: "story-open",
-                            title: "Link the {entry.kind.noun()} “{entry.name}” to this scene",
-                            onclick: move |_| state.write().link_named(entry.id),
-                            "+ {entry.name}"
+                            title: "Link “{title}” to this scene",
+                            onclick: move |_| state.write().link_named(note),
+                            "+ {title}"
                         }
                         button {
                             class: "keyword-remove",
-                            title: "Stop suggesting “{entry.name}” for this scene",
-                            aria_label: "Hide {entry.name}",
-                            onclick: move |_| state.write().hide_named(entry.id),
+                            title: "Stop suggesting “{title}” for this scene",
+                            aria_label: "Hide {title}",
+                            onclick: move |_| state.write().hide_named(note),
                             "×"
                         }
                     }
                 }
             }
         }
-        // Enter submits; a suggestion picked from the list is not a key press.
         form {
             class: "keyword-form",
             onsubmit: move |event| {
                 event.prevent_default();
-                state.write().link_story_named(id, &draft());
-                draft.set(String::new());
+                let title = draft();
+                if !title.trim().is_empty() {
+                    state.write().link_note_titled(id, &title);
+                    draft.set(String::new());
+                }
             },
             input {
                 class: "keyword-field",
-                list: "story-entries-{id}",
-                placeholder: "Link a character, place, or note",
-                aria_label: "Link a character, place, or note",
+                list: "note-titles",
+                placeholder: "Link a note",
+                aria_label: "Link a note by its title",
                 value: "{draft}",
                 oninput: move |event| draft.set(event.value()),
             }
         }
-        datalist { id: "story-entries-{id}",
-            for choice in offered {
-                option { value: "{choice}" }
+        datalist { id: "note-titles",
+            for title in offered {
+                option { value: "{title}" }
             }
         }
     }
 }
 
-/// What is said about an entry beside its page: where it is in the
-/// manuscript (scenes, and chapters, parts, and books for all their scenes).
 #[component]
 fn EntryContext(entry: StoryEntry) -> Element {
     let mut state = use_context::<Signal<StudioState>>();
@@ -755,14 +755,14 @@ fn SceneContextView(id: Id) -> Element {
         details { class: "inspector-section context",
             summary { "Context" }
             if context.entries.is_empty() {
-                p { class: "hint", "No character, place, or note reaches this scene yet. Link them above, or to its chapter." }
+                p { class: "hint", "No note reaches this scene yet. Write [[its title]] in the text, or link one to the scene or its chapter." }
             }
             for entry in context.entries.clone() {
                 details { class: "context-entry", key: "{entry.id}",
                     summary {
                         span { "{entry.name}" }
                         span { class: "story-kind",
-                            if let Some(from) = &entry.through { "{entry.kind.noun()}, from {from}" } else { "{entry.kind.noun()}" }
+                            if let Some(from) = &entry.through { "{entry.folder}, from {from}" } else { "{entry.folder}" }
                         }
                     }
                     if entry.text.is_empty() {
@@ -818,9 +818,9 @@ fn LevelContextView(id: Id) -> Element {
                         span { "{entry.name}" }
                         span { class: "story-kind",
                             match entry.scenes {
-                                0 => format!("{}, linked here", entry.kind.noun()),
-                                1 => format!("{}, in 1 scene", entry.kind.noun()),
-                                many => format!("{}, in {many} scenes", entry.kind.noun()),
+                                0 => format!("{}, linked here", entry.folder),
+                                1 => format!("{}, in 1 scene", entry.folder),
+                                many => format!("{}, in {many} scenes", entry.folder),
                             }
                         }
                     }
