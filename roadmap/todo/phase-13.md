@@ -1,6 +1,6 @@
 # Phase 13 — Context at every level
 
-In progress: stages 1 to 3 are done. It comes after [Phase 12](../done/phase-12.md), whose stage 8 makes every text file of the project Markdown with front matter.
+In progress: stages 1 to 4 are done. Stage 5 waits for the maintainer's choice. It comes after [Phase 12](../done/phase-12.md), whose stage 8 makes every text file of the project Markdown with front matter.
 
 A scene, a chapter, a part, and a book each have a **context** and a **body**. The context is what the writer knows about that level: its synopsis, keywords, status, goal, and notes, and what it is linked to. The body is its text: a scene's prose, a chapter's own text if it has any. For a chapter, part, or book, what it holds (its scenes or chapters, each with its synopsis) is part of what is read about it, in order.
 
@@ -56,6 +56,8 @@ In `crates/context`, beside `scene_context`:
 - Context shows the context of a chosen chapter, part, or book, as it shows a scene's, with its notes to edit.
 - **Copy context** for any level, as for a scene.
 - The mind map's chosen node shows the same.
+
+**Done.** Context, for a chosen chapter, part, book, or folder in the manuscript, shows its outline with each synopsis and the entries in it with how many of its scenes each is in, and **Copy context** puts `LevelContext::to_markdown` on the clipboard (`LevelContextView`, `StudioState::level_context`). The mind map's chosen node is the chosen item, so it shows the same. Context's heading names the item's kind. Its notes are edited above (stage 2). Test: the scene context's state test also reads its chapter's.
 
 ### 5. Context files for other tools (to decide first)
 

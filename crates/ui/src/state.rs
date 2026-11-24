@@ -3239,6 +3239,19 @@ impl StudioState {
         writing_studio_context::scene_context(&sources, scene)
     }
 
+    /// A chapter's, part's, book's, or folder's context: its own details,
+    /// the synopses of what it holds, and the plot points and entries in it.
+    pub fn level_context(&self, id: Id) -> Option<writing_studio_context::LevelContext> {
+        let sources = writing_studio_context::Sources {
+            binder: &self.binder,
+            cast: &self.cast,
+            world: &self.world,
+            library: &self.library,
+            plot: &self.plot,
+        };
+        writing_studio_context::level_context(&sources, id)
+    }
+
     /// The entries linked to an item itself, and those linked to what it is
     /// in, each with the title of the chapter, part, or book that brings it.
     /// An entry linked both ways is listed once, as the item's own.
@@ -5907,6 +5920,13 @@ mod tests {
         let markdown = context.to_markdown(16_000);
         assert!(markdown.contains("## Characters") && markdown.contains("### Mara"), "{markdown}");
         assert!(state.scene_context(chapter).is_none());
+
+        // The chapter has its own: Mara, linked to it, is in its scene.
+        let level = state.level_context(chapter).unwrap();
+        assert_eq!(level.entries.len(), 1);
+        assert_eq!(level.entries[0].scenes, 1);
+        assert!(level.outline.iter().any(|item| item.depth == 0 && Some(item.title.as_str()) == state.binder.get(scene).map(|node| node.title.as_str())));
+        assert!(state.level_context(scene).is_none());
         let _ = std::fs::remove_dir_all(dir);
     }
 

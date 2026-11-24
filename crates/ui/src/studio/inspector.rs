@@ -35,7 +35,7 @@ pub(super) fn Inspector() -> Element {
         if let Some(node) = node {
             // The title is the heading on the page, so it is renamed there.
             Progress {}
-            div { class: "dash-heading", "Scene" }
+            div { class: "dash-heading", "{node.kind.icon_label()}" }
             label { "Synopsis" }
             textarea {
                 class: "synopsis",
@@ -72,6 +72,11 @@ pub(super) fn Inspector() -> Element {
             }
             if node.kind == NodeKind::Scene && state.read().binder.in_manuscript(node.id) {
                 SceneContextView { id: node.id }
+            }
+            if matches!(node.kind, NodeKind::Chapter | NodeKind::Part | NodeKind::Book | NodeKind::Folder)
+                && state.read().binder.in_manuscript(node.id)
+            {
+                LevelContextView { id: node.id }
             }
             if !node.kind.is_root() && !state.read().binder.is_in_research(node.id) && !state.read().binder.is_in_trash(node.id) {
                 label { class: "check-label compile-check",
@@ -738,6 +743,62 @@ fn SceneContextView(id: Id) -> Element {
             }
             button {
                 title: "The scene, where it sits, its plot points, and everything linked to it, as Markdown",
+                onclick: move |_| copy_to_clipboard(state, markdown.clone(), "Context copied."),
+                "Copy context"
+            }
+        }
+    }
+}
+
+/// A chapter's, part's, book's, or folder's context: what it holds, each
+/// with its synopsis, and the entries in it, with how many of its scenes each
+/// is in. **Copy context** gives the whole of it as Markdown.
+#[component]
+fn LevelContextView(id: Id) -> Element {
+    let state = use_context::<Signal<StudioState>>();
+    let Some(context) = state.read().level_context(id) else {
+        return rsx! {};
+    };
+    let markdown = context.to_markdown(CONTEXT_LIMIT);
+    let noun = context.kind.icon_label().to_lowercase();
+    rsx! {
+        details { class: "inspector-section context",
+            summary { "Context" }
+            if context.outline.is_empty() {
+                p { class: "hint", "Nothing in this {noun} yet." }
+            } else {
+                ul { class: "context-outline",
+                    for (index, item) in context.outline.iter().enumerate() {
+                        li { key: "{index}", class: if item.depth == 0 { "outline-top" } else { "outline-inner" },
+                            span { class: "outline-title", "{item.title}" }
+                            if !item.synopsis.is_empty() {
+                                span { class: "context-text", " — {short_summary(&item.synopsis)}" }
+                            }
+                        }
+                    }
+                }
+            }
+            for (index, entry) in context.entries.iter().enumerate() {
+                details { class: "context-entry", key: "{index}",
+                    summary {
+                        span { "{entry.name}" }
+                        span { class: "story-kind",
+                            match entry.scenes {
+                                0 => format!("{}, linked here", entry.kind.noun()),
+                                1 => format!("{}, in 1 scene", entry.kind.noun()),
+                                many => format!("{}, in {many} scenes", entry.kind.noun()),
+                            }
+                        }
+                    }
+                    if entry.text.is_empty() {
+                        p { class: "hint", "Nothing written about it yet." }
+                    } else {
+                        p { class: "context-text", "{short_summary(&entry.text)}" }
+                    }
+                }
+            }
+            button {
+                title: "This {noun}, what it holds with each synopsis, its plot points, and everything in it, as Markdown",
                 onclick: move |_| copy_to_clipboard(state, markdown.clone(), "Context copied."),
                 "Copy context"
             }

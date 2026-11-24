@@ -1214,6 +1214,12 @@ body[data-typing] .sash { opacity: 0; }
 .story-chip .story-kind { font-size: 11px; color: var(--muted); }
 .context-entry summary { display: flex; gap: 6px; align-items: baseline; cursor: pointer; }
 .context-text { margin: 4px 0 8px 14px; font-size: 12px; white-space: pre-wrap; }
+/* A level's outline in Context: what it holds, with each synopsis. */
+.context-outline { list-style: none; padding: 0; margin: 4px 0 8px; font-size: 12px; }
+.context-outline li { margin: 2px 0; }
+.context-outline .outline-inner { padding-left: 14px; }
+.context-outline .outline-title { font-weight: 600; }
+.context-outline .context-text { margin: 0; white-space: normal; color: var(--muted); }
 .story-named { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; }
 .story-chip.named { border-style: dotted; }
 .story-chip.from { opacity: 0.85; border-style: dashed; }
