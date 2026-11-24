@@ -341,7 +341,7 @@ fn merge_node(b: &BinderNode, o: &BinderNode, t: &BinderNode, conflicts: &mut Ve
             clash |= c;
         )*};
     }
-    take!(parent_id, title, synopsis, status, label, color, keywords, notes, left_out, deleted_at, restore_parent_id);
+    take!(parent_id, title, synopsis, status, label, color, keywords, notes, footnotes, left_out, deleted_at, restore_parent_id);
     if clash {
         conflicts.push(Conflict {
             item: o.id,

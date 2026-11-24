@@ -201,7 +201,7 @@ mod tests {
     fn draft_only_walk_uses_binder_order() {
         let draft = BinderNode::new(NodeKind::DraftRoot, "Manuscript", None, 0);
         let trash = BinderNode::new(NodeKind::TrashRoot, "Trash", None, 1);
-        let research = BinderNode::new(NodeKind::ResearchRoot, "Research", None, 2);
+        let research = BinderNode::new(NodeKind::NotesRoot, "Research", None, 2);
         let book = BinderNode::new(NodeKind::Book, "Book", Some(draft.id), 0);
         let chapter = BinderNode::new(NodeKind::Chapter, "Ch 1", Some(book.id), 0);
         let scene = BinderNode::new(NodeKind::Scene, "Scene", Some(chapter.id), 0);

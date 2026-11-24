@@ -9,7 +9,7 @@ pub(super) fn KindGlyph(kind: NodeKind) -> Element {
         NodeKind::Part => "M2.5 4h11M2.5 8h11M2.5 12h11",
         NodeKind::Chapter => "M3.5 2.5h9v11h-9zM6 5.5h4M6 8h4",
         NodeKind::Scene | NodeKind::Note => "M4 2.5h5.2L12 5.3v8.2H4zM9 2.7v2.8h2.8",
-        NodeKind::Folder | NodeKind::ResearchRoot => "M2 4.5h4l1.2 1.5H14v6.5H2z",
+        NodeKind::Folder | NodeKind::NotesRoot => "M2 4.5h4l1.2 1.5H14v6.5H2z",
         NodeKind::TrashRoot => "M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.7 9h5.6l.7-9",
     };
     rsx! {

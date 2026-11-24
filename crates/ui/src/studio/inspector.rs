@@ -78,7 +78,7 @@ pub(super) fn Inspector() -> Element {
             {
                 LevelContextView { id: node.id }
             }
-            if !node.kind.is_root() && !state.read().binder.is_in_research(node.id) && !state.read().binder.is_in_trash(node.id) {
+            if !node.kind.is_root() && !state.read().binder.is_in_notes(node.id) && !state.read().binder.is_in_trash(node.id) {
                 label { class: "check-label compile-check",
                     input {
                         r#type: "checkbox",
@@ -86,6 +86,21 @@ pub(super) fn Inspector() -> Element {
                         onchange: move |event| state.write().set_left_out(node.id, !event.checked()),
                     }
                     "Include in compile"
+                }
+            }
+            if node.kind == NodeKind::Folder && state.read().binder.is_in_notes(node.id) && !state.read().binder.is_in_trash(node.id) {
+                label {
+                    class: "check-label compile-check",
+                    title: "A link in the text to a note in this folder becomes a numbered footnote with the note's text when the book is compiled",
+                    input {
+                        r#type: "checkbox",
+                        checked: node.footnotes,
+                        onchange: move |event| {
+                            state.write().set_folder_footnotes(node.id, event.checked());
+                            state.write().save_all();
+                        },
+                    }
+                    "Compile as footnotes"
                 }
             }
             if !node.kind.is_root() {

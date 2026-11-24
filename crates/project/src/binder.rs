@@ -5,7 +5,7 @@ use writing_studio_core::{Error, Id, Result, Timestamp};
 #[serde(rename_all = "snake_case")]
 pub enum NodeKind {
     DraftRoot,
-    ResearchRoot,
+    NotesRoot,
     TrashRoot,
     Folder,
     Book,
@@ -19,7 +19,7 @@ impl NodeKind {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::DraftRoot => "draft_root",
-            Self::ResearchRoot => "research_root",
+            Self::NotesRoot => "notes_root",
             Self::TrashRoot => "trash_root",
             Self::Folder => "folder",
             Self::Book => "book",
@@ -33,7 +33,7 @@ impl NodeKind {
     pub fn parse(value: &str) -> Option<Self> {
         Some(match value {
             "draft_root" => Self::DraftRoot,
-            "research_root" => Self::ResearchRoot,
+            "notes_root" => Self::NotesRoot,
             "trash_root" => Self::TrashRoot,
             "folder" => Self::Folder,
             "book" => Self::Book,
@@ -52,7 +52,7 @@ impl NodeKind {
     pub fn is_root(self) -> bool {
         matches!(
             self,
-            Self::DraftRoot | Self::ResearchRoot | Self::TrashRoot
+            Self::DraftRoot | Self::NotesRoot | Self::TrashRoot
         )
     }
 
@@ -62,7 +62,7 @@ impl NodeKind {
             Self::Book => matches!(child, Self::Part | Self::Chapter | Self::Folder | Self::Scene),
             Self::Part => matches!(child, Self::Part | Self::Chapter | Self::Folder | Self::Scene),
             Self::Chapter => matches!(child, Self::Scene | Self::Folder),
-            Self::ResearchRoot => matches!(child, Self::Note | Self::Folder),
+            Self::NotesRoot => matches!(child, Self::Note | Self::Folder),
             // Location decides whether a folder holds notes or manuscript items.
             Self::Folder => matches!(
                 child,
@@ -76,7 +76,7 @@ impl NodeKind {
     pub fn icon_label(self) -> &'static str {
         match self {
             Self::DraftRoot => "Manuscript",
-            Self::ResearchRoot => "Research",
+            Self::NotesRoot => "Notes",
             Self::TrashRoot => "Trash",
             Self::Folder => "Folder",
             Self::Book => "Book",
@@ -145,6 +145,10 @@ pub struct BinderNode {
     /// never counted.
     #[serde(default)]
     pub notes: String,
+    /// A folder of notes whose notes are compiled as footnotes where the text
+    /// links to them. Meaningless on anything else.
+    #[serde(default)]
+    pub footnotes: bool,
     /// Left out of compile, with what it holds. Missing on older items,
     /// which are compiled.
     #[serde(default)]
@@ -179,6 +183,7 @@ impl BinderNode {
             color: String::new(),
             keywords: Vec::new(),
             notes: String::new(),
+            footnotes: false,
             left_out: false,
             deleted_at: None,
             restore_parent_id: None,
@@ -190,7 +195,7 @@ impl BinderNode {
     pub fn is_root(&self) -> bool {
         matches!(
             self.kind,
-            NodeKind::DraftRoot | NodeKind::ResearchRoot | NodeKind::TrashRoot
+            NodeKind::DraftRoot | NodeKind::NotesRoot | NodeKind::TrashRoot
         )
     }
 }
@@ -329,10 +334,10 @@ impl BinderTree {
         None
     }
 
-    pub fn research_root(&self) -> Option<&BinderNode> {
+    pub fn notes_root(&self) -> Option<&BinderNode> {
         self.nodes
             .iter()
-            .find(|node| node.kind == NodeKind::ResearchRoot)
+            .find(|node| node.kind == NodeKind::NotesRoot)
     }
 
     pub fn trash_root(&self) -> Option<&BinderNode> {
@@ -343,8 +348,8 @@ impl BinderTree {
         self.ancestor_is(id, NodeKind::TrashRoot)
     }
 
-    pub fn is_in_research(&self, id: Id) -> bool {
-        self.ancestor_is(id, NodeKind::ResearchRoot)
+    pub fn is_in_notes(&self, id: Id) -> bool {
+        self.ancestor_is(id, NodeKind::NotesRoot)
     }
 
     fn ancestor_is(&self, id: Id, kind: NodeKind) -> bool {
@@ -371,7 +376,7 @@ impl BinderTree {
         if node.deleted_at.is_some() || (self.is_in_trash(parent) && node.kind != NodeKind::TrashRoot) {
             return false;
         }
-        if node.kind == NodeKind::Folder && self.is_in_research(parent) {
+        if node.kind == NodeKind::Folder && self.is_in_notes(parent) {
             return matches!(child, NodeKind::Note | NodeKind::Folder);
         }
         if node.kind == NodeKind::Folder {
@@ -659,7 +664,7 @@ impl BinderTree {
 
     pub fn default_parent(&self, kind: NodeKind) -> Option<Id> {
         match kind {
-            NodeKind::Note => self.research_root().map(|node| node.id),
+            NodeKind::Note => self.notes_root().map(|node| node.id),
             NodeKind::Folder => self
                 .manuscript_books()
                 .first()
@@ -672,7 +677,7 @@ impl BinderTree {
                 .find(|node| {
                     node.deleted_at.is_none()
                         && !self.is_in_trash(node.id)
-                        && !self.is_in_research(node.id)
+                        && !self.is_in_notes(node.id)
                         && self.accepts(node.id, NodeKind::Scene)
                 })
                 .map(|node| node.id),
@@ -683,37 +688,6 @@ impl BinderTree {
                 .map(|node| node.id),
             NodeKind::Book => self.draft_root().map(|node| node.id),
             _ => self.draft_root().map(|node| node.id),
-        }
-    }
-
-    /// Notes under the research root, outside the trash, parents before nested notes.
-    pub fn research_notes(&self) -> Vec<Id> {
-        let Some(root) = self.research_root() else {
-            return Vec::new();
-        };
-        let mut notes = Vec::new();
-        self.collect_research(root.id, NodeKind::Note, &mut notes);
-        notes
-    }
-
-    /// Folders under the research root, outside the trash, children before parents.
-    pub fn research_folders(&self) -> Vec<Id> {
-        let Some(root) = self.research_root() else {
-            return Vec::new();
-        };
-        let mut folders = Vec::new();
-        self.collect_research(root.id, NodeKind::Folder, &mut folders);
-        folders
-    }
-
-    fn collect_research(&self, parent: Id, kind: NodeKind, found: &mut Vec<Id>) {
-        for child in self.children(Some(parent)) {
-            if child.kind == NodeKind::Folder {
-                self.collect_research(child.id, kind, found);
-            }
-            if child.kind == kind {
-                found.push(child.id);
-            }
         }
     }
 
@@ -891,7 +865,7 @@ mod tests {
 
     fn tree() -> (BinderTree, Id, Id, Id, Id) {
         let draft = BinderNode::new(NodeKind::DraftRoot, "Manuscript", None, 0);
-        let research = BinderNode::new(NodeKind::ResearchRoot, "Research", None, 1);
+        let research = BinderNode::new(NodeKind::NotesRoot, "Research", None, 1);
         let trash = BinderNode::new(NodeKind::TrashRoot, "Trash", None, 2);
         let book = BinderNode::new(NodeKind::Book, "Book", Some(draft.id), 0);
         let chapter = BinderNode::new(NodeKind::Chapter, "Chapter 1", Some(book.id), 0);
@@ -1060,7 +1034,7 @@ mod tests {
         binder.nodes.push(nested);
         binder.drop_at(scene, nested_id, DropPlace::Inside).unwrap();
         assert_eq!(binder.get(scene).unwrap().parent_id, Some(nested_id));
-        let research = binder.research_root().unwrap().id;
+        let research = binder.notes_root().unwrap().id;
         let notes = BinderNode::new(NodeKind::Folder, "Clippings", Some(research), 0);
         let notes_id = notes.id;
         binder.nodes.push(notes);
@@ -1109,7 +1083,7 @@ mod tests {
         assert_eq!(binder.book_of(chapter), Some(first));
         assert_eq!(binder.subtree_word_count(first, words), 14);
         assert_eq!(binder.subtree_word_count(second_id, words), 7);
-        let research = binder.research_root().unwrap().id;
+        let research = binder.notes_root().unwrap().id;
         assert!(!binder.in_manuscript(research));
         assert!(binder.in_manuscript(first));
     }
@@ -1156,13 +1130,13 @@ mod tests {
         );
         assert_eq!(
             binder.parent_for_new_item(NodeKind::Note, Some(later_id), Some(second_id)),
-            binder.research_root().map(|node| node.id)
+            binder.notes_root().map(|node| node.id)
         );
         assert_eq!(
             binder.parent_for_new_item(NodeKind::Folder, None, None),
             Some(first)
         );
-        let research = binder.research_root().unwrap().id;
+        let research = binder.notes_root().unwrap().id;
         let clippings = BinderNode::new(NodeKind::Folder, "Clippings", Some(research), 0);
         let clippings_id = clippings.id;
         let map = BinderNode::new(NodeKind::Note, "Map", Some(clippings_id), 0);
@@ -1173,8 +1147,7 @@ mod tests {
         binder.nodes.push(map);
         binder.nodes.push(loose);
         binder.trash(loose_id).unwrap();
-        assert_eq!(binder.research_notes(), vec![map_id]);
-        assert_eq!(binder.research_folders(), vec![clippings_id]);
+        assert!(binder.is_in_notes(map_id) && binder.is_in_notes(clippings_id));
         assert_eq!(
             binder.parent_for_new_item(NodeKind::Book, None, Some(second_id)),
             Some(draft)

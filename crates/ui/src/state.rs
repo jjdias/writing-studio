@@ -1303,9 +1303,7 @@ impl StudioState {
                 self.map_focus = None;
                 self.map_join = None;
                 self.store = Some(Rc::new(RefCell::new(store)));
-                if self.absorb_binder_research() {
-                    self.status = status.into();
-                }
+                self.status = status.into();
                 if let Some(id) = self.opening_scene() {
                     self.select_node(id);
                 }
@@ -4123,13 +4121,10 @@ impl StudioState {
                     .selected_research
                     .filter(|id| self.library.items.iter().any(|item| item.id == *id));
                 self.confirm_research = None;
-                let moved = self.absorb_binder_research();
                 self.session = None;
                 self.editor_text.clear();
                     self.editor_epoch += 1;
-                if moved {
-                    self.status = status.into();
-                }
+                self.status = status.into();
                 if let Some(id) = previous.filter(|id| self.binder.get(*id).is_some()) {
                     self.select_node(id);
                 } else if let Some(id) = self.opening_scene() {
@@ -5033,77 +5028,6 @@ impl StudioState {
         }
     }
 
-    /// Move binder research notes into the research library, then drop those binder items.
-    fn absorb_binder_research(&mut self) -> bool {
-        let note_ids = self.binder.research_notes();
-        let folder_ids = self.binder.research_folders();
-        if note_ids.is_empty() && folder_ids.is_empty() {
-            return true;
-        }
-        let Some(store) = self.store.clone() else {
-            return true;
-        };
-        let mut library = self.library.clone();
-        let mut changed_library = false;
-        for id in &note_ids {
-            let Some(node) = self.binder.get(*id).cloned() else {
-                continue;
-            };
-            let from_document = node.document_id.and_then(|doc_id| {
-                store
-                    .borrow()
-                    .load_document(doc_id)
-                    .ok()
-                    .map(|document| document.to_plain_text())
-            });
-            let text = match from_document {
-                Some(text) if !text.trim().is_empty() => text,
-                _ => node.synopsis,
-            };
-            if library.import_note(node.title, text) {
-                changed_library = true;
-            }
-        }
-        if changed_library {
-            match store.borrow().persist_library(&library) {
-                Ok(()) => {
-                    self.library = library;
-                    self.library_dirty = false;
-                }
-                Err(err) => {
-                    self.status = format!("Could not move research notes: {err}");
-                    return false;
-                }
-            }
-        }
-        let mut remove_ids = note_ids;
-        remove_ids.extend(folder_ids);
-        {
-            let store = store.borrow();
-            for id in &remove_ids {
-                if let Some(document_id) = self.binder.get(*id).and_then(|node| node.document_id) {
-                    if let Err(err) = store.delete_document(document_id) {
-                        self.status = format!("Could not move research notes: {err}");
-                        return false;
-                    }
-                }
-                if let Err(err) = store.delete_node(*id) {
-                    self.status = format!("Could not move research notes: {err}");
-                    return false;
-                }
-            }
-        }
-        self.binder
-            .nodes
-            .retain(|node| !remove_ids.contains(&node.id));
-        if self.selected.is_some_and(|id| remove_ids.contains(&id)) {
-            self.selected = None;
-            self.session = None;
-            self.editor_text.clear();
-        }
-        self.persist_binder()
-    }
-
     fn persist_library_now(&mut self) -> bool {
         let Some(store) = &self.store else {
             return false;
@@ -5629,6 +5553,11 @@ impl StudioState {
     /// The writer's notes on an item: kept in its file, never compiled.
     pub fn update_node_notes(&mut self, id: Id, notes: String) {
         self.edit_node(id, |node| node.notes = notes);
+    }
+
+    /// Whether a folder of notes is compiled as footnotes.
+    pub fn set_folder_footnotes(&mut self, id: Id, on: bool) {
+        self.edit_node(id, |node| node.footnotes = on);
     }
 
     pub fn update_node_status(&mut self, id: Id, status: String) {
@@ -6952,9 +6881,8 @@ Nobody spoke.");
         let parent = dir.join("exports");
         std::fs::create_dir_all(&parent).unwrap();
         state.export_markdown_folder(parent.clone());
-        // The two scenes, and the seed research note, which opening moved into
-        // the research library.
-        assert!(state.status.starts_with("Exported 3 files"), "{}", state.status);
+        // The two scenes. A new project's notes are two empty folders.
+        assert!(state.status.starts_with("Exported 2 files"), "{}", state.status);
         let _ = std::fs::remove_dir_all(dir);
     }
 

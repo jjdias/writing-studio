@@ -1,6 +1,6 @@
 # Writing Studio project format
 
-Version: **3**, written in `FORMAT` as `writing-studio-project 3`. A project made by an earlier test version, in format 1 or 2, is not opened; see the end of this page.
+Version: **4**, written in `FORMAT` as `writing-studio-project 4`. A project made by an earlier test version, in format 1, 2, or 3, is not opened; see the end of this page.
 
 The files in the project folder are the project. The code that writes a scene is in `crates/format`; the code that writes the folder and keeps it in step with every save is in `crates/storage` (`files.rs`, `mirror.rs`).
 
@@ -18,11 +18,12 @@ Format 2 stored HTML, because Markdown cannot hold a few things a rich-text page
 
 ```text
 MyNovel.writingstudio/
-  FORMAT                  writing-studio-project 3
+  FORMAT                  writing-studio-project 4
   README.md               what these files are, for someone without this program
   project.json            the project's id and title, and settings every machine shares
   binder.json             every binder item: its kind, parent, order, and file
-  manuscript/             one Markdown file for each binder item: scene, chapter, part, book, folder, note
+  manuscript/             one Markdown file for each item of the manuscript: scene, chapter, part, book, folder
+  notes/                  one Markdown file for each note and folder of notes, under the binder's Notes
     the-harbor-3f9a.md
   characters/             one Markdown file for each character
   places/  cultures/  lore/  timeline/  research/
@@ -54,7 +55,7 @@ A scene is written as "One scene" under "Markdown export and import" shows: fron
 - Each other detail is a `key: value` line. Text of several lines is written under `|-`, indented.
 - A key with nothing to say is left out. Missing and empty mean the same.
 - Keys the program does not know are kept, after the ones it does, and written back on every save; a list stays a list. A key the program knows always comes from the program.
-- A file with no front matter, only text, is read as a scene with no title; the program gives it an id when it takes the file in. A file whose front matter cannot be read is reported and left out, never written over.
+- An item with no text, such as a book or a folder, has a file of only front matter. A file with no front matter, only text, is read as a scene with no title; the program gives it an id when it takes the file in. A file whose front matter cannot be read is reported and left out, never written over.
 
 | Key | Meaning |
 | --- | --- |
@@ -64,6 +65,7 @@ A scene is written as "One scene" under "Markdown export and import" shows: fron
 | `goal`, `conflict`, `outcome` | The scene's three beats |
 | `tags` | Its keywords, a list, nested with `/`, spelled exactly as they are |
 | `notes` | What the writer wants to remember about it, on any level; never compiled or counted |
+| `footnotes` | `"true"` on a folder of notes compiled as footnotes (Phase 14) |
 
 ### The text
 
@@ -263,7 +265,7 @@ The scene file holds the same document as Markdown; see "Scene files".
 
 ## Projects from earlier versions
 
-Test versions kept a project in one SQLite file (format 1), and then each scene as an HTML file (format 2). There were no downloads of either, so this version does not convert such a project. Opening a format 2 project says it was made by an earlier test version that kept each scene as an HTML file, and writes nothing in the folder. For format 1: Opening one says it was made by an earlier test version, and writes nothing in the folder. Making a new project in that folder is refused too, so the old database is never written over.
+Test versions kept a project in one SQLite file (format 1), then each scene as an HTML file (format 2), then characters, places, and research apart from notes (format 3). There were no downloads of either, so this version does not convert such a project. Opening a format 2 project says it was made by an earlier test version that kept each scene as an HTML file, and writes nothing in the folder. For format 1: Opening one says it was made by an earlier test version, and writes nothing in the folder. Making a new project in that folder is refused too, so the old database is never written over.
 
 Within format 2, a project made before saved filters took several keywords has filters with `keyword`, a single word, in `binder.json`. Those are not converted either: the project is refused with a message naming the change (`"keyword": "Flashback"` becomes `"keywords": ["Flashback"]`). The same goes for a link in `bible.json`'s `scene_links` with `scene`, from before links could point at a chapter: it becomes `item`, with the same value.
 

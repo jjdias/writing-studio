@@ -149,8 +149,8 @@ const LINK_KEYS: [&str; 2] = ["from", "item"];
 const PROJECT_KEYS: [&str; 5] = ["format", "id", "title", "created", "settings"];
 /// Names in a scene's head that the program writes. `title` is the `<title>`;
 /// a `<meta name="title">` beside it is not kept.
-const SCENE_HEAD: [&str; 11] = [
-    "id", "title", "synopsis", "status", "label", "color", "goal", "conflict", "outcome", "tags", "notes",
+const SCENE_HEAD: [&str; 12] = [
+    "id", "title", "synopsis", "status", "label", "color", "goal", "conflict", "outcome", "tags", "notes", "footnotes",
 ];
 
 fn unknown_keys(item: &Value, known: &[&str]) -> Map<String, Value> {
@@ -497,6 +497,12 @@ pub fn write_format_marker(root: &Path) -> Result<()> {
     )
 }
 
+/// The folder an item's file goes in: `notes/` for what is under the Notes
+/// root, `manuscript/` for the rest.
+pub(crate) fn folder_of(tree: &BinderTree, id: Id) -> &'static str {
+    if tree.is_in_notes(id) { "notes" } else { "manuscript" }
+}
+
 /// Whether a binder item has a file of its own: every item but the three
 /// roots. A scene, a chapter, or a note keeps its text there; a book, a part,
 /// or a folder its details.
@@ -517,6 +523,9 @@ pub(crate) fn scene_text(
         other.set_list("tags", &node.keywords);
     }
     other.set_text("notes", &node.notes);
+    if node.footnotes {
+        other.set_text("footnotes", "true");
+    }
     add_head_extras(&mut other, extras, &[]);
     // A book, a part, or a folder has no text; what a person wrote under its
     // front matter is kept.
@@ -837,7 +846,8 @@ fn render(content: &ProjectContent) -> Result<Rendered> {
     let documents: HashMap<Id, &Document> = content.documents.iter().map(|doc| (doc.id, doc)).collect();
 
     for node in content.binder.nodes.iter().filter(|node| has_own_file(node)) {
-        let path = place(&content.files, &mut used, "manuscript", &node.title, node.id);
+        let folder = folder_of(&content.binder, node.id);
+        let path = place(&content.files, &mut used, folder, &node.title, node.id);
         if content.missing.contains(&node.id) {
             files.insert(node.id, path);
             continue;
@@ -1116,6 +1126,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
                 node.keywords = tags;
             }
             node.notes = file.header.other.text("notes").unwrap_or_default().to_string();
+            node.footnotes = file.header.other.text("footnotes").is_some_and(|value| value.trim() == "true");
             node.title = file.header.title;
             node.synopsis = file.header.synopsis;
             node.status = file.header.status;
@@ -1146,14 +1157,26 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
         nodes.push(node);
     }
 
-    // Scene files no line of the binder names: added by hand, or by git.
-    for (path, file) in unlisted(root, "manuscript", &files, &seen, &mut problem)? {
+    // Files no line of the binder names, added by hand or by git: a scene
+    // into Recovered, a note into the Notes root.
+    let found_scenes = unlisted(root, "manuscript", &files, &seen, &mut problem)?
+        .into_iter()
+        .map(|found| (NodeKind::Scene, found));
+    let found_notes = unlisted(root, "notes", &files, &seen, &mut problem)?
+        .into_iter()
+        .map(|found| (NodeKind::Note, found));
+    let found: Vec<_> = found_scenes.chain(found_notes).collect();
+    for (kind, (path, file)) in found {
         let id = file.header.id.filter(|id| !ids.contains(id)).unwrap_or_else(Id::new);
         ids.insert(id);
-        let parent = recovered_folder(&mut nodes);
+        let (parent, put_in) = if kind == NodeKind::Note {
+            (nodes.iter().find(|node| node.kind == NodeKind::NotesRoot).map(|node| node.id), "Notes")
+        } else {
+            (recovered_folder(&mut nodes), RECOVERED)
+        };
         let fallback = path.rsplit('/').next().unwrap_or(&path).trim_end_matches(".md").to_string();
         let title = if file.header.title.trim().is_empty() { fallback } else { file.header.title.clone() };
-        let mut node = BinderNode::new(NodeKind::Scene, title, parent, i64::MAX);
+        let mut node = BinderNode::new(kind, title, parent, i64::MAX);
         node.id = id;
         node.document_id = Some(id);
         node.synopsis = file.header.synopsis.clone();
@@ -1175,7 +1198,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
         documents.push(document);
         nodes.push(node);
         files.insert(id, path.clone());
-        problem(&path, "was not in the binder; it was added to Recovered");
+        problem(&path, &format!("was not in the binder; it was added to {put_in}"));
         repaired = true;
     }
     if check_binder(&mut nodes, &mut problem)? {
@@ -1570,7 +1593,7 @@ pub fn repair_binder(nodes: &mut Vec<BinderNode>) -> Result<Vec<Problem>> {
 /// parents, is moved into Recovered. Returns whether anything was moved.
 /// A binder without exactly one of each root is not a project.
 fn check_binder(nodes: &mut Vec<BinderNode>, problem: &mut impl FnMut(&str, &str)) -> Result<bool> {
-    for kind in [NodeKind::DraftRoot, NodeKind::ResearchRoot, NodeKind::TrashRoot] {
+    for kind in [NodeKind::DraftRoot, NodeKind::NotesRoot, NodeKind::TrashRoot] {
         let count = nodes.iter().filter(|node| node.kind == kind).count();
         if count != 1 {
             return Err(bad(
@@ -1860,7 +1883,7 @@ mod tests {
 
         let files = all_files(&first);
         write_format_marker(&first).unwrap();
-        assert_eq!(fs::read_to_string(first.join("FORMAT")).unwrap(), "writing-studio-project 3\n");
+        assert_eq!(fs::read_to_string(first.join("FORMAT")).unwrap(), "writing-studio-project 4\n");
         assert_eq!(files[".gitignore"], ".local/\n");
         assert!(files.contains_key("README.md") && !files.contains_key("scene.css"));
         assert!(!files.keys().any(|name| name.ends_with(".tmp")));

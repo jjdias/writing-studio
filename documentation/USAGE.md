@@ -45,6 +45,10 @@ A `.writingstudio` folder is the whole project, kept as plain files you can open
 - Changes save a few seconds after you stop typing, when you leave the field, or with **Ctrl+S**.
 - **Ctrl+Z** undoes. **Ctrl+Y** or **Ctrl+Shift+Z** redoes in the document session.
 
+## Notes
+
+**Notes**, at the bottom of the binder, holds notes and folders of notes, as the Manuscript holds the book. A new project has two folders, yours to rename or delete: **Footnotes** and **Research**. A note is written in the page, as a scene is. A folder of notes has **Compile as footnotes** in Context: on for Footnotes, off for Research. Each note and folder is a file in `notes/`. See [Phase 14](../roadmap/todo/phase-14.md) for what notes become as the phase goes on.
+
 ## Search
 
 The search field at the top of the binder searches the scenes' titles, statuses, keywords, and text, and the names of their chapters; the binder then shows the scenes that match and what they are in. Every word typed must be there, and the last may be unfinished: "finch des" finds a scene with "Finch" and "desert". **Ctrl+F** focuses it. `#plot` asks for scenes with the keyword plot (or one nested under it, such as `plot/subplot`), and `-#plot` leaves them out; the other words are searched as before. On the mind map, **Ctrl+F** focuses the map's filter instead.

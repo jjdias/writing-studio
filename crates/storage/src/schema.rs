@@ -193,6 +193,11 @@ pub fn install(conn: &Connection) -> rusqlite::Result<()> {
         "ALTER TABLE binder_nodes ADD COLUMN notes TEXT NOT NULL DEFAULT ''",
         [],
     );
+    // Whether a folder of notes is compiled as footnotes, 1 or 0 (Phase 14).
+    let _ = conn.execute(
+        "ALTER TABLE binder_nodes ADD COLUMN footnotes INTEGER NOT NULL DEFAULT 0",
+        [],
+    );
     // Whether an item is left out of compile, 1 or 0.
     let _ = conn.execute(
         "ALTER TABLE binder_nodes ADD COLUMN left_out INTEGER NOT NULL DEFAULT 0",

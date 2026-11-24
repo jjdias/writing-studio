@@ -1,6 +1,6 @@
 # Phase 14 — Notes
 
-Not started.
+In progress: stage 1 is done.
 
 Characters, places, cultures, lore, timeline events, research notes, and the binder's story notes become one thing: a **note**. A note is a Markdown file the writer writes as they like, in the same page as a scene, in folders the writer makes and names. Nothing about it is a form. The program knows a note's title, its keywords, and what it links to; everything else is the writer's text.
 
@@ -46,6 +46,8 @@ Recommended in this plan:
 - Each note is `notes/<name>-<id>.md`: front matter (`id`, `title`, `tags`, `notes`, and `links`, the binder items it is linked to from Context), then its text. A folder's file holds its title and setting, as a book's does since Phase 13.
 - A new project's Notes root holds Footnotes (compiled) and Research (not compiled).
 - `FORMAT` is 4. A format 3 project is refused with a message, and nothing in it is written.
+
+**Done.** The binder's Research root is the Notes root (`NodeKind::NotesRoot`, `notes_root` in `binder.json`, "Notes" in the binder); it holds notes and folders, as it did. A folder has `footnotes` (`BinderNode::footnotes`, `footnotes: "true"` in its front matter, a cache column, merged by sync), set by **Compile as footnotes** in Context for a folder under Notes. Files of what is under Notes are in `notes/` (`folder_of`), and a note file that no line names comes into the Notes root when the project opens. A new project's Notes hold Footnotes (compiled) and Research, and no longer the Story notes note. Opening a project no longer moves the binder's notes into the research library (`absorb_binder_research` is gone), which would have taken every note out of the binder. An item with no text, such as a folder or a book, now has a file of front matter only, without the `<br>` of an empty paragraph. `FORMAT` is 4, and a format 3 project is refused with its own message. The bible's entries are still there until stage 7. Test: `notes_are_files_in_notes_and_a_new_project_has_two_folders`.
 
 ### 2. A note is a page
 

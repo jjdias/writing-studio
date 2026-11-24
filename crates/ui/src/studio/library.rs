@@ -1138,7 +1138,7 @@ pub(super) fn ItemMenuView() -> Element {
         return rsx! {};
     };
     let in_trash = state.read().binder.is_in_trash(id);
-    let in_research = state.read().binder.is_in_research(id);
+    let in_research = state.read().binder.is_in_notes(id);
     let many = state.read().picked_with(id).len();
     let scene = node.kind == NodeKind::Scene;
     let open_here = scene && state.read().selected == Some(id) && state.read().mode == WorkspaceMode::Writing;

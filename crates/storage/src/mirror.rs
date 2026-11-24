@@ -30,6 +30,7 @@ use writing_studio_templates::blank_novel;
 use writing_studio_worldbuilding::World;
 
 use crate::files::{
+    folder_of,
     has_own_file,
     read_scene_file,
     text_fingerprint, unknown_head, with_a_run_in_every_block, write_project_files_noted,
@@ -94,6 +95,7 @@ fn head_fingerprint(node: &BinderNode, beats: &SceneBeats) -> u64 {
     fingerprint(&[
         &keywords,
         &node.notes,
+        if node.footnotes { "footnotes" } else { "" },
         &node.title,
         &node.synopsis,
         &node.status,
@@ -107,7 +109,7 @@ fn head_fingerprint(node: &BinderNode, beats: &SceneBeats) -> u64 {
 
 /// The folders a kept file can be in: the project folder, and each folder
 /// of Markdown files.
-const KEPT_FOLDERS: [&str; 8] = ["", "manuscript", "characters", "places", "cultures", "lore", "timeline", "research"];
+const KEPT_FOLDERS: [&str; 9] = ["", "manuscript", "notes", "characters", "places", "cultures", "lore", "timeline", "research"];
 
 /// Whether `path` is a project folder, of this format or an earlier one.
 fn is_project(path: &Path) -> bool {
@@ -219,10 +221,16 @@ impl ProjectStore {
                  this version keeps each scene as a file and cannot open it",
             ));
         }
-        if version < PROJECT_FORMAT_VERSION {
+        if version == 2 {
             return Err(Error::message(
                 "this project was made by an earlier test version of Writing Studio, which kept each scene as an HTML file; \
                  this version keeps each scene as a Markdown file and cannot open it",
+            ));
+        }
+        if version < PROJECT_FORMAT_VERSION {
+            return Err(Error::message(
+                "this project was made by an earlier test version of Writing Studio, which kept characters, places, and research apart; \
+                 this version keeps them all as notes and cannot open it",
             ));
         }
         if !root.join("project.json").exists() {
@@ -556,7 +564,7 @@ impl ProjectStore {
                 .and_then(|document_id| self.load_document(document_id).ok())
                 .map(|document| document.blocks)
                 .unwrap_or_default();
-            let path = self.mirror.path_for(node.id, "manuscript", &node.title);
+            let path = self.mirror.path_for(node.id, folder_of(tree, node.id), &node.title);
             let text = scene_text(node, scene_beats, &blocks, self.mirror.extras.borrow().get(&node.id));
             self.write_file(&path, &text)?;
             self.mirror.heads.borrow_mut().insert(node.id, mark);
@@ -883,7 +891,7 @@ mod tests {
         let store = ProjectStore::create(&dir, "New Novel").unwrap();
         assert_eq!(
             fs::read_to_string(dir.join(PROJECT_FORMAT_FILE)).unwrap(),
-            "writing-studio-project 3\n"
+            "writing-studio-project 4\n"
         );
         for name in ["project.json", "binder.json", "bible.json", "plot.json", "README.md", ".gitignore"] {
             assert!(dir.join(name).exists(), "{name}");
@@ -1143,6 +1151,46 @@ mod tests {
     }
 
     #[test]
+    fn notes_are_files_in_notes_and_a_new_project_has_two_folders() {
+        let dir = temp("notes-folder");
+        let store = ProjectStore::create(&dir, "Noted").unwrap();
+        let tree = store.load_binder().unwrap();
+        let root = tree.notes_root().unwrap().id;
+        let folders: Vec<(String, bool)> = tree.children(Some(root)).iter().map(|node| (node.title.clone(), node.footnotes)).collect();
+        assert_eq!(folders, [("Footnotes".to_string(), true), ("Research".to_string(), false)]);
+        let footnotes = tree.children(Some(root))[0].id;
+        let folder_file = file_of(&store, footnotes);
+        assert!(folder_file.starts_with(dir.join("notes")), "{}", folder_file.display());
+        let folder_text = fs::read_to_string(&folder_file).unwrap();
+        assert!(folder_text.contains("\nfootnotes: \"true\"\n"), "{folder_text}");
+        assert!(folder_text.ends_with("---\n"), "a folder has no text: {folder_text}");
+
+        // A note's file is in notes/ too.
+        let mut tree = tree;
+        let note = BinderNode::new(NodeKind::Note, "Smith 2019", Some(footnotes), 0);
+        let note_id = note.id;
+        tree.nodes.push(note);
+        store.persist_binder(&tree).unwrap();
+        assert!(file_of(&store, note_id).starts_with(dir.join("notes")));
+        drop(store);
+
+        // A note added by hand comes into Notes.
+        fs::write(dir.join("notes/by-hand.md"), scene_file(None, "Found", "A source.")).unwrap();
+        let store = ProjectStore::open(&dir).unwrap();
+        let tree = store.load_binder().unwrap();
+        let found = tree.nodes.iter().find(|node| node.title == "Found").unwrap();
+        assert_eq!((found.kind, found.parent_id), (NodeKind::Note, Some(root)));
+        drop(store);
+
+        // A format 3 project is refused, and left alone.
+        fs::write(dir.join(PROJECT_FORMAT_FILE), "writing-studio-project 3\n").unwrap();
+        let error = ProjectStore::open(&dir).err().expect("refused").to_string();
+        assert!(error.contains("as notes") && error.contains("cannot open it"), "{error}");
+        assert_eq!(fs::read_to_string(dir.join(PROJECT_FORMAT_FILE)).unwrap(), "writing-studio-project 3\n");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn a_project_with_html_scene_files_is_refused_and_left_alone() {
         let dir = temp("format-2");
         let store = ProjectStore::create(&dir, "Older").unwrap();
@@ -1179,7 +1227,7 @@ mod tests {
         let store = ProjectStore::create(&dir, "Gaps").unwrap();
         let scene = scene_of(&store);
         let path = file_of(&store, scene.id);
-        let note = store.load_binder().unwrap().nodes.into_iter().find(|node| node.kind == NodeKind::Note).unwrap();
+        let note = store.load_binder().unwrap().nodes.into_iter().find(|node| node.kind == NodeKind::Chapter).unwrap();
         let other = file_of(&store, note.id);
         drop(store);
 

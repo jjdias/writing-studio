@@ -86,6 +86,15 @@ impl SceneFile {
             let id = header.entries.remove(at);
             header.entries.insert(0, id);
         }
+        // No text is no body, not the `<br>` of one empty paragraph: a book's
+        // or a folder's file is only its front matter. It reads back the same.
+        let empty = self.blocks.iter().all(|block| match &block.kind {
+            writing_studio_document::BlockKind::Paragraph { inlines } => inlines.iter().all(|inline| inline.text.is_empty()),
+            _ => false,
+        });
+        if empty {
+            return header.to_text();
+        }
         format!("{}\n{}", header.to_text(), blocks_to_markdown(&self.blocks))
     }
 
