@@ -23,7 +23,7 @@ Writing Studio is **open source** (MIT OR Apache-2.0) and **free for the communi
 | 9 | Writing comfort, from Ulysses: a brighter layout, page settings, deadlines, keywords | Done | [done/phase-9.md](done/phase-9.md) |
 | 11 | Tags, story links, and a mind map: nested keywords, entries linked from the scene, a scene context, views in the library; worldbuilding in the binder | Done (the look in the window waits for a later phase) | [done/phase-11.md](done/phase-11.md) |
 | 12 | A Markdown editor: live preview, Markdown shortcuts, notes and footnotes, what the page does now | Done | [done/phase-12.md](done/phase-12.md) |
-| 13 | Context at every level: a file for each scene, chapter, part, and book, its context above its text, and the context of each level for a reader or an AI | Not started | [todo/phase-13.md](todo/phase-13.md) |
+| 13 | Context at every level: a file for each scene, chapter, part, and book, its context above its text, and the context of each level for a reader or an AI | Stages done; to try in the window | [todo/phase-13.md](todo/phase-13.md) |
 | Bonus | Work with no phase yet | Not started | [todo/bonus.md](todo/bonus.md) |
 
 Phases 1 to 9, 11, and 12 are on `master`.

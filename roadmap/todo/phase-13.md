@@ -1,6 +1,6 @@
 # Phase 13 — Context at every level
 
-In progress: stages 1 to 4 are done. Stage 5 waits for the maintainer's choice. It comes after [Phase 12](../done/phase-12.md), whose stage 8 makes every text file of the project Markdown with front matter.
+Stages 1 to 4 are done, and stage 5 was skipped by the maintainer. Trying it in the window, by hand, is left before the phase closes. It comes after [Phase 12](../done/phase-12.md), whose stage 8 makes every text file of the project Markdown with front matter.
 
 A scene, a chapter, a part, and a book each have a **context** and a **body**. The context is what the writer knows about that level: its synopsis, keywords, status, goal, and notes, and what it is linked to. The body is its text: a scene's prose, a chapter's own text if it has any. For a chapter, part, or book, what it holds (its scenes or chapters, each with its synopsis) is part of what is read about it, in order.
 
@@ -59,15 +59,17 @@ In `crates/context`, beside `scene_context`:
 
 **Done.** Context, for a chosen chapter, part, book, or folder in the manuscript, shows its outline with each synopsis and the entries in it with how many of its scenes each is in, and **Copy context** puts `LevelContext::to_markdown` on the clipboard (`LevelContextView`, `StudioState::level_context`). The mind map's chosen node is the chosen item, so it shows the same. Context's heading names the item's kind. Its notes are edited above (stage 2). Test: the scene context's state test also reads its chapter's.
 
-### 5. Context files for other tools (to decide first)
+### 5. Context files for other tools (skipped)
 
 - The project's files are made for reading, but a level's whole context (what it holds, its links) is made, not stored. A tool that reads folders, such as an AI working in the project, would need the program to give it that.
 - The choice: a setting, off until chosen, that keeps `.local/context/` up to date, one `.md` file of context for each level, rebuilt when something it reads is saved. `.local/` is this machine's only and never synced, so these files never conflict and never go stale on another machine.
 - The other way is to leave it to the optional local assistance in [bonus.md](bonus.md), which asks `crates/context` directly.
 
+**Skipped.** The maintainer chose not to keep context files in `.local/context/`. A tool that wants a level's context gets it from the program: **Copy context** now, and the optional local assistance in [bonus.md](bonus.md), which asks `crates/context` directly, later.
+
 ## Format
 
-This changes the project's files again: books, parts, and folders have files, and keywords move out of `binder.json`. If it is merged before a release with Phase 12's format 3, it stays format 3, and the two changes are one; otherwise it is format 4, and the rule on older formats in [../README.md](../README.md) applies, with the caution in Phase 12 stage 8 about projects people already have.
+It stays format 3. Books, parts, and folders have files, and keywords and notes are in the files' front matter, but a project written before (books without files, keywords on the binder lines) is still read as it is, and its next save writes the new layout. So a project made with Phase 12 opens, and so would one made with a release before this phase.
 
 ## How changes are checked
 
