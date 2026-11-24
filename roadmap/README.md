@@ -24,10 +24,10 @@ Writing Studio is **open source** (MIT OR Apache-2.0) and **free for the communi
 | 11 | Tags, story links, and a mind map: nested keywords, entries linked from the scene, a scene context, views in the library; worldbuilding in the binder | Done (the look in the window waits for a later phase) | [done/phase-11.md](done/phase-11.md) |
 | 12 | A Markdown editor: live preview, Markdown shortcuts, notes and footnotes, what the page does now | Done | [done/phase-12.md](done/phase-12.md) |
 | 13 | Context at every level: a file for each scene, chapter, part, and book, its context above its text, and the context of each level for a reader or an AI | Done | [done/phase-13.md](done/phase-13.md) |
-| 14 | Notes: characters, places, lore, research, and story notes become one kind of note, in folders the writer controls, written freely in the page, with templates, `[[links]]`, and footnotes | Not started | [todo/phase-14.md](todo/phase-14.md) |
+| 14 | Notes: characters, places, lore, research, and story notes become one kind of note, in folders the writer controls, written freely in the page, with templates, `[[links]]`, and footnotes | Done | [done/phase-14.md](done/phase-14.md) |
 | Bonus | Work with no phase yet | Not started | [todo/bonus.md](todo/bonus.md) |
 
-Phases 1 to 9 and 11 to 13 are on `master`.
+Phases 1 to 9 and 11 to 14 are on `master`.
 
 ## How the work is done now
 
@@ -45,7 +45,7 @@ The last three items were cleared at the end of Phase 5: a check used only by it
 
 ## What to do next
 
-First [Phase 14](todo/phase-14.md): notes in place of the bible, which changes the format to 4. The first release waits for it, so no one who downloads the program has an earlier format: then the maintainer goes through the check in [documentation/RELEASING.md](../documentation/RELEASING.md) with the installer on Windows and the `.deb` in WSL2, and pushes the tag `v0.1.0`. Phase 10 has no plan. macOS, iOS, Android, and the web were dropped: see [done/phase-7.md](done/phase-7.md).
+The first release. [Phase 14](done/phase-14.md), notes in place of the bible, is merged, so no one who downloads the program has an earlier format than 4: the maintainer goes through the check in [documentation/RELEASING.md](../documentation/RELEASING.md) with the installer on Windows and the `.deb` in WSL2, and pushes the tag `v0.1.0`. Phase 10 has no plan. macOS, iOS, Android, and the web were dropped: see [done/phase-7.md](done/phase-7.md).
 
 ## Product principles
 

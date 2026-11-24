@@ -1,6 +1,6 @@
 # Phase 14 — Notes
 
-In progress: stages 1 to 6 are done.
+Done: stages 1 to 7, and the changes asked for after the build. The maintainer tried it in the window.
 
 Characters, places, cultures, lore, timeline events, research notes, and the binder's story notes become one thing: a **note**. A note is a Markdown file the writer writes as they like, in the same page as a scene, in folders the writer makes and names. Nothing about it is a form. The program knows a note's title, its keywords, and what it links to; everything else is the writer's text.
 
