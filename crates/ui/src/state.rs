@@ -3081,8 +3081,15 @@ impl StudioState {
         let id = self.create_node(NodeKind::Note, Some(folder))?;
         let title = if template.header.title.trim().is_empty() { "New note".to_string() } else { template.header.title.clone() };
         self.edit_node(id, |node| node.title = title.clone());
+        // A template's keyword new to the project comes without a color, so
+        // a note's color is only what the writer gives it.
         for word in template.header.other.list("tags").map(<[String]>::to_vec).unwrap_or_default() {
-            self.binder.add_keyword(id, &word);
+            let known = self.binder.keywords.iter().any(|kept| same_keyword(&kept.name, &word));
+            if self.binder.add_keyword(id, &word) && !known {
+                if let Some(added) = self.binder.keywords.iter_mut().find(|kept| same_keyword(&kept.name, &word)) {
+                    added.color.clear();
+                }
+            }
         }
         self.persist_binder();
         self.select_node(id);

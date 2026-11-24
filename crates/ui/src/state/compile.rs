@@ -562,6 +562,7 @@ mod tests {
         let node = state.binder.get(note).unwrap().clone();
         assert_eq!((node.kind, node.parent_id, node.title.as_str()), (NodeKind::Note, Some(research), "New character"));
         assert_eq!(node.keywords, ["character"]);
+        assert_eq!(state.binder.keyword_color("character"), "", "a template gives no color");
         assert_eq!(state.selected, Some(note));
         assert!(state.editor_markdown().contains("## What they want"), "{}", state.editor_markdown());
 
