@@ -4,7 +4,6 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Instant;
 
-use writing_studio_characters::Cast;
 use writing_studio_document::{
     accept_change, compare_documents, BlockKind, reject_change, tracked_changes, Document, DocumentDiff,
     NavItem, NoteKind, ReviewItem, ReviewKind, ReviewTarget, TrackedChange,
@@ -16,7 +15,6 @@ use writing_studio_core::{autosave_due, autosave_wait, local_day, Id, Timestamp,
 use writing_studio_editor::EditorSession;
 use writing_studio_manuscript::{book_outline_words, outline_rows};
 use writing_studio_plotting::PlotGrid;
-use writing_studio_research::ResearchLibrary;
 use writing_studio_project::{
     binder_color_hex, format_elapsed, keyword_covers, normalize_binder_color, MindMap, same_keyword, KeywordQuery, KeywordRow, KeywordSort, pace, tidy_keyword, BinderNode, BinderTree, NodeKind, Pace, PanelLayout,
     DropPlace, KeepPlace, MarkdownOptions, PageStyle, ProjectMeta, ProseFont, SavedFilter, StoredSession, Theme,
@@ -28,7 +26,6 @@ use writing_studio_spellcheck::{
 };
 use writing_studio_synchronization::git::{self, Revision, SyncReport, SyncStatus};
 use writing_studio_storage::{scene_document, BackupInfo, ProjectStore, SetAside, SnapshotInfo};
-use writing_studio_worldbuilding::World;
 
 mod compile;
 mod restructure;
@@ -41,32 +38,23 @@ pub enum WorkspaceMode {
     MindMap,
     Outliner,
     Plot,
-    Characters,
-    World,
-    Research,
     History,
 }
 
 impl WorkspaceMode {
-    /// The activity bar's order, which Ctrl+1 to Ctrl+8 follow.
-    pub const ALL: [WorkspaceMode; 8] = [
+    /// The activity bar's order, which Ctrl+1 to Ctrl+5 follow.
+    pub const ALL: [WorkspaceMode; 5] = [
         WorkspaceMode::Writing,
         WorkspaceMode::MindMap,
         WorkspaceMode::Outliner,
         WorkspaceMode::Plot,
-        WorkspaceMode::Characters,
-        WorkspaceMode::World,
-        WorkspaceMode::Research,
         WorkspaceMode::History,
     ];
 
     /// The views listed in the binder under "Views". The page opens from a
-    /// scene, and an entry's page from Worldbuilding.
+    /// scene or a note.
     pub const LIBRARY_VIEWS: [WorkspaceMode; 4] =
         [WorkspaceMode::MindMap, WorkspaceMode::Outliner, WorkspaceMode::Plot, WorkspaceMode::History];
-
-    /// The modes that are an entry's page, opened from Worldbuilding.
-    pub const ENTRY_PAGES: [WorkspaceMode; 3] = [WorkspaceMode::Characters, WorkspaceMode::World, WorkspaceMode::Research];
 
     /// The scene list is beside the page in Writing, and in History, which
     /// is about the scene chosen there. The mind map and the outliner show the
@@ -78,7 +66,7 @@ impl WorkspaceMode {
     /// Context shows the item being written, or the node chosen on the
     /// mind map or in the outline.
     pub fn shows_inspector(self) -> bool {
-        matches!(self, Self::Writing | Self::MindMap | Self::Outliner | Self::Characters | Self::World | Self::Research)
+        matches!(self, Self::Writing | Self::MindMap | Self::Outliner)
     }
 
     pub fn label(self) -> &'static str {
@@ -87,9 +75,6 @@ impl WorkspaceMode {
             Self::MindMap => "Mind map",
             Self::Outliner => "Outline",
             Self::Plot => "Plot",
-            Self::Characters => "Characters",
-            Self::World => "World",
-            Self::Research => "Research",
             Self::History => "History",
         }
     }
@@ -233,74 +218,6 @@ pub enum FoldedPanel {
     Inspector,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum WorldSection {
-    #[default]
-    Locations,
-    Cultures,
-    Lore,
-    Timeline,
-}
-
-impl WorldSection {
-    pub const ALL: [WorldSection; 4] = [
-        WorldSection::Locations,
-        WorldSection::Cultures,
-        WorldSection::Lore,
-        WorldSection::Timeline,
-    ];
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Locations => "Locations",
-            Self::Cultures => "Cultures",
-            Self::Lore => "Lore",
-            Self::Timeline => "Timeline",
-        }
-    }
-
-    pub fn add_label(self) -> &'static str {
-        match self {
-            Self::Locations => "Add location",
-            Self::Cultures => "Add culture",
-            Self::Lore => "Add lore",
-            Self::Timeline => "Add event",
-        }
-    }
-}
-
-/// Which project-level bible record a scene link belongs to, and the
-/// story's entries as the context crate reads them.
-pub use writing_studio_context::{EntryKind as BibleLink, StoryEntry};
-
-/// The kinds of entry, in the order they are listed.
-pub const STORY_KINDS: [BibleLink; 6] = [
-    BibleLink::Character,
-    BibleLink::Location,
-    BibleLink::Culture,
-    BibleLink::Lore,
-    BibleLink::Timeline,
-    BibleLink::Research,
-];
-
-/// Which connections the worldbuilding map draws.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum TieFilter {
-    All,
-    Hidden,
-    /// Only those with this name ("lives in").
-    Named(String),
-}
-
-/// Which story entries the mind map shows.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum MapStory {
-    Hidden,
-    All,
-    Kind(BibleLink),
-}
-
-/// The World section a kind of entry is edited in.
 /// Rich text pasted on the Markdown page, as Markdown: read as the
 /// rich-text page read what was pasted into it, and written as the Markdown
 /// export writes it. Only what was copied is read: the fragment a browser
@@ -350,20 +267,6 @@ fn without_element(html: &str, tag: &str) -> String {
     }
     out.push_str(&html[at..]);
     out
-}
-
-pub fn world_section_of(kind: BibleLink) -> WorldSection {
-    match kind {
-        BibleLink::Culture => WorldSection::Cultures,
-        BibleLink::Lore => WorldSection::Lore,
-        BibleLink::Timeline => WorldSection::Timeline,
-        _ => WorldSection::Locations,
-    }
-}
-
-/// How an entry is offered when linking it: "Mara · character".
-pub fn story_choice(entry: &StoryEntry) -> String {
-    format!("{} · {}", entry.name, entry.kind.noun())
 }
 
 /// An earlier version of the selected scene that is not a snapshot: the
@@ -440,30 +343,18 @@ pub struct StudioState {
     pub map_zoom: Option<f64>,
     /// The mind map's ideas, lines, and hand-placed nodes (`mindmap.json`).
     pub mindmap: MindMap,
-    /// Which story entries the mind map shows: none, every kind, or one.
-    pub map_story: MapStory,
-    /// The idea or story entry chosen on the mind map; a binder node chosen
+    /// The idea chosen on the mind map; a binder node chosen
     /// there is `selected`, as anywhere.
     pub map_focus: Option<Id>,
     /// The node a line is being drawn from, until the next node clicked.
     pub map_join: Option<Id>,
     /// Where on screen a drag on the map began, to tell it from a click.
     pub map_drag_start: Option<(f64, f64)>,
-    /// Whether the mind map shows the worldbuilding instead of the book.
-    pub map_world: bool,
-    /// On the worldbuilding map: the kinds shown, which connections are
-    /// drawn, and the entry it is centered on, if one.
-    pub world_kinds: Vec<BibleLink>,
-    pub world_ties: TieFilter,
-    pub map_center: Option<Id>,
-    /// The worldbuilding map's own nodes: its middle, and one for each kind.
-    world_ids: (Id, [Id; 6]),
+    /// Whether the mind map shows the notes instead of the book.
+    pub map_notes: bool,
     pub plot: PlotGrid,
     pub plot_dirty: bool,
     pub confirm_plotline: Option<Id>,
-    pub cast: Cast,
-    pub cast_dirty: bool,
-    pub selected_character: Option<Id>,
     /// The plotline open beside the list in Plot.
     pub selected_plotline: Option<Id>,
     /// The book, part, chapter, folder, or trash chosen in the library,
@@ -477,9 +368,6 @@ pub struct StudioState {
     /// The keyword the scene list, the mind map, and the outliner are
     /// narrowed to, chosen in the library or their keyword menu.
     pub keyword_filter: Option<String>,
-    /// The story entry the same views are narrowed to, from the library's
-    /// Story group.
-    pub story_filter: Option<Id>,
     /// Entries the open scene's text names that it is not linked to, found
     /// when it is opened or saved (`refresh_named_here`).
     pub named_here: Vec<Id>,
@@ -495,16 +383,6 @@ pub struct StudioState {
     confirm_keyword_merge: Option<(String, String)>,
     /// What the last keyword rename changed, for the status line's Undo.
     keyword_undo: Option<KeywordSnapshot>,
-    pub confirm_character: Option<Id>,
-    pub world: World,
-    pub world_dirty: bool,
-    pub world_section: WorldSection,
-    pub selected_world: Option<Id>,
-    pub confirm_world: Option<Id>,
-    pub library: ResearchLibrary,
-    pub library_dirty: bool,
-    pub selected_research: Option<Id>,
-    pub confirm_research: Option<Id>,
     pub mode: WorkspaceMode,
     pub focus_mode: bool,
     pub open_menu: Option<FrameMenu>,
@@ -602,27 +480,18 @@ impl Default for StudioState {
             folded_map: Vec::new(),
             map_zoom: None,
             mindmap: MindMap::default(),
-            map_story: MapStory::Hidden,
             map_focus: None,
             map_join: None,
             map_drag_start: None,
-            map_world: false,
-            world_kinds: STORY_KINDS.to_vec(),
-            world_ties: TieFilter::All,
-            map_center: None,
-            world_ids: (Id::new(), [Id::new(), Id::new(), Id::new(), Id::new(), Id::new(), Id::new()]),
+            map_notes: false,
             plot: PlotGrid::new(),
             plot_dirty: false,
             confirm_plotline: None,
-            cast: Cast::new(),
-            cast_dirty: false,
-            selected_character: None,
             selected_plotline: None,
             library_selection: None,
             filter_selection: None,
             editing_filter: None,
             keyword_filter: None,
-            story_filter: None,
             named_here: Vec::new(),
             hidden_named: Vec::new(),
             keyword_sort: KeywordSort::Name,
@@ -630,16 +499,6 @@ impl Default for StudioState {
             renaming_keyword: None,
             confirm_keyword_merge: None,
             keyword_undo: None,
-            confirm_character: None,
-            world: World::new(),
-            world_dirty: false,
-            world_section: WorldSection::Locations,
-            selected_world: None,
-            confirm_world: None,
-            library: ResearchLibrary::new(),
-            library_dirty: false,
-            selected_research: None,
-            confirm_research: None,
             mode: WorkspaceMode::Writing,
             focus_mode: false,
             open_menu: None,
@@ -1279,28 +1138,13 @@ impl StudioState {
             store.load_meta(),
             store.load_binder(),
             store.load_plot(),
-            store.load_cast(),
-            store.load_world(),
-            store.load_library(),
         ) {
-            (Ok(meta), Ok(binder), Ok(plot), Ok(cast), Ok(world), Ok(library)) => {
+            (Ok(meta), Ok(binder), Ok(plot)) => {
                 self.meta = Some(meta);
                 self.binder = binder;
                 self.plot = plot;
                 self.plot_dirty = false;
                 self.confirm_plotline = None;
-                self.cast = cast;
-                self.cast_dirty = false;
-                self.selected_character = None;
-                self.confirm_character = None;
-                self.world = world;
-                self.world_dirty = false;
-                self.selected_world = None;
-                self.confirm_world = None;
-                self.library = library;
-                self.library_dirty = false;
-                self.selected_research = None;
-                self.confirm_research = None;
                 self.mindmap = match store.load_mindmap() {
                     Ok(map) => map,
                     Err(err) => {
@@ -1321,12 +1165,7 @@ impl StudioState {
                 self.load_beats();
                 self.note_open_problems();
             }
-            (Err(err), _, _, _, _, _)
-            | (_, Err(err), _, _, _, _)
-            | (_, _, Err(err), _, _, _)
-            | (_, _, _, Err(err), _, _)
-            | (_, _, _, _, Err(err), _)
-            | (_, _, _, _, _, Err(err)) => {
+            (Err(err), _, _) | (_, Err(err), _) | (_, _, Err(err)) => {
                 self.status = format!("Project load failed: {err}");
             }
         }
@@ -1630,7 +1469,7 @@ impl StudioState {
     }
 
     /// What a scene is compared with: the usual scene length in its book,
-    /// and whether the bible has characters to look for.
+    /// and whether there are notes whose titles to look for.
     pub fn book_context(&self, book_id: Id) -> BookContext {
         let counts = outline_rows(&self.binder)
             .into_iter()
@@ -2032,6 +1871,33 @@ impl StudioState {
         (own, through)
     }
 
+    /// A note, by its id, while it is in Notes and not in the trash.
+    pub fn note_of(&self, id: Id) -> Option<&BinderNode> {
+        self.binder
+            .get(id)
+            .filter(|node| node.kind == NodeKind::Note && node.deleted_at.is_none() && self.binder.is_in_notes(node.id))
+    }
+
+    /// Whether a note reaches an item: mentioned in its text, or linked to
+    /// it or to what it is in.
+    pub fn note_reaches(&self, note: Id, item: Id) -> bool {
+        let Some(node) = self.note_of(note) else {
+            return false;
+        };
+        let title = node.title.trim().to_lowercase();
+        if self.link_index.get(&item).is_some_and(|seen| seen.iter().any(|seen| seen.trim() == title)) {
+            return true;
+        }
+        let mut at = Some(item);
+        while let Some(id) = at {
+            if node.links.contains(&id) {
+                return true;
+            }
+            at = self.binder.get(id).and_then(|found| found.parent_id);
+        }
+        false
+    }
+
     /// Link the note of this title to an item, from the item's Context.
     pub fn link_note_titled(&mut self, item: Id, title: &str) {
         match self.note_titled(title) {
@@ -2205,7 +2071,7 @@ impl StudioState {
 
     /// Take in files changed outside the program, by a text editor or by
     /// git. Called when the window comes back to the front, so the change is
-    /// seen before the writer types over it. A list or a bible entry changed
+    /// seen before the writer types over it. A list or another file changed
     /// opens the project again; otherwise only the open scene's file is read.
     /// With anything unsaved nothing is replaced: the next save keeps the
     /// writer's version and the other beside it.
@@ -2217,7 +2083,7 @@ impl StudioState {
         match others {
             Ok(false) => {}
             Ok(true) if self.has_unsaved() => {
-                self.status = "The binder or the bible was changed outside the program. When you save, your version stays and the other is kept beside it.".into();
+                self.status = "The binder or a note was changed outside the program. When you save, your version stays and the other is kept beside it.".into();
                 return;
             }
             Ok(true) => {
@@ -2294,15 +2160,6 @@ impl StudioState {
         if self.plot_dirty && self.store.is_some() && !self.persist_plot_now() {
             return;
         }
-        if self.cast_dirty && self.store.is_some() && !self.persist_cast_now() {
-            return;
-        }
-        if self.world_dirty && self.store.is_some() && !self.persist_world_now() {
-            return;
-        }
-        if self.library_dirty && self.store.is_some() && !self.persist_library_now() {
-            return;
-        }
         if self.beats_dirty && self.store.is_some() && !self.persist_beats_now() {
             return;
         }
@@ -2320,9 +2177,6 @@ impl StudioState {
         }
         self.binder_dirty = false;
         self.plot_dirty = false;
-        self.cast_dirty = false;
-        self.world_dirty = false;
-        self.library_dirty = false;
         self.beats_dirty = false;
         self.settings_dirty = false;
         self.last_edit = None;
@@ -2445,8 +2299,8 @@ impl StudioState {
 
     /// The binder's rows: the manuscript's books, parts, chapters, folders,
     /// and the scenes in them, each at its depth, leaving out what is inside
-    /// a folded one. Narrowed by a search, a saved filter, or a keyword or
-    /// story entry chosen in the library, it holds the scenes that match and
+    /// a folded one. Narrowed by a search, a saved filter, or a keyword
+    /// chosen in the library, it holds the scenes that match and
     /// what they are in, unfolded.
     pub fn binder_rows(&self) -> Vec<BinderRow> {
         let mut rows = Vec::new();
@@ -2579,7 +2433,7 @@ impl StudioState {
 
     /// The scenes the binder shows while it is narrowed, or `None` when it
     /// shows them all: a saved filter's matches from every book, those of a
-    /// chosen keyword or story entry, and those the search finds (`#plot`
+    /// chosen keyword, and those the search finds (`#plot`
     /// and `-#plot` are keywords; a chapter whose name matches keeps its
     /// scenes).
     pub fn shown_scenes(&self) -> Option<HashSet<Id>> {
@@ -2661,15 +2515,12 @@ impl StudioState {
     fn filter_matches(&self, filter: &SavedFilter) -> Vec<(Id, Id)> {
         let with_text = (!filter.text.trim().is_empty())
             .then(|| self.manuscript_index.borrow().search(&filter.text));
-        // An entry no longer in the bible matches nothing, so the filter
-        // shows that rather than everything.
-        let entries: Vec<Option<StoryEntry>> = filter.entries.iter().map(|id| self.story_entry(*id)).collect();
+        // A note no longer there matches nothing, so the filter shows that
+        // rather than everything.
         self.binder
             .scenes_matching(filter)
             .into_iter()
-            .filter(|scene| {
-                entries.iter().all(|entry| entry.as_ref().is_some_and(|entry| self.story_reaches(entry, *scene)))
-            })
+            .filter(|scene| filter.entries.iter().all(|note| self.note_reaches(*note, *scene)))
             .filter(|scene| {
                 with_text.as_ref().is_none_or(|hits| {
                     self.binder
@@ -2692,7 +2543,7 @@ impl StudioState {
         }
         parts.extend(filter.without.iter().map(|word| format!("not {word}")));
         parts.extend(
-            filter.entries.iter().filter_map(|id| self.story_entry(*id)).map(|entry| format!("with {}", entry.name)),
+            filter.entries.iter().filter_map(|id| self.note_of(*id)).map(|note| format!("with {}", note.title)),
         );
         if !filter.status.trim().is_empty() {
             parts.push(filter.status.trim().to_string());
@@ -2900,37 +2751,21 @@ impl StudioState {
         self.map_zoom = by.map(|by| (self.map_zoom.unwrap_or(1.0) * by).clamp(0.25, 3.0));
     }
 
-    /// The ideas and story entries the mind map shows besides the binder,
-    /// each with the nodes it is drawn joined to. An entry shows when it
-    /// reaches something on the map, joined to what it is linked to.
-    pub fn map_extras(&self, shown: &[Id]) -> Vec<crate::mindmap::Extra> {
+    /// The ideas the mind map shows besides the binder, each with the node
+    /// it hangs from.
+    pub fn map_extras(&self) -> Vec<crate::mindmap::Extra> {
         use crate::mindmap::{Extra, MapKind};
-        let mut extras: Vec<Extra> = self
-            .mindmap
+        self.mindmap
             .ideas
             .iter()
             .map(|idea| Extra { id: idea.id, kind: MapKind::Idea, joined: idea.attached.into_iter().collect() })
-            .collect();
-        let wanted = |kind: BibleLink| match self.map_story {
-            MapStory::Hidden => false,
-            MapStory::All => true,
-            MapStory::Kind(one) => one == kind,
-        };
-        for entry in self.story_entries().into_iter().filter(|entry| wanted(entry.kind)) {
-            let joined: Vec<Id> = entry.links.iter().copied().filter(|id| shown.contains(id)).collect();
-            if !joined.is_empty() {
-                extras.push(Extra { id: entry.id, kind: MapKind::Entry, joined });
-            }
-        }
-        extras
+            .collect()
     }
 
     /// The whole mind map as it is drawn: the binder from `root`, ideas,
-    /// story entries, and the nodes placed by hand.
+    /// and the nodes placed by hand.
     pub fn map_layout(&self, root: Id) -> crate::mindmap::MapLayout {
-        let tree = crate::mindmap::layout(&self.binder, root, &self.folded_map);
-        let shown: Vec<Id> = tree.nodes.iter().map(|node| node.id).collect();
-        let extras = self.map_extras(&shown);
+        let extras = self.map_extras();
         let placed: Vec<(Id, f64, f64)> = self.mindmap.positions.iter().map(|kept| (kept.id, kept.x, kept.y)).collect();
         crate::mindmap::layout_all(&self.binder, root, &self.folded_map, &extras, &placed)
     }
@@ -2955,20 +2790,11 @@ impl StudioState {
     }
 
     /// Choose a node on the map: a binder node is opened in the inspector
-    /// as anywhere; an idea or story entry is the map's own choice. While a
+    /// as anywhere; an idea is the map's own choice. While a
     /// line is being drawn, the node is where it ends.
     pub fn choose_on_map(&mut self, id: Id) {
         if let Some(from) = self.map_join.take() {
-            if self.map_world {
-                if from != id && self.story_entry(from).is_some() && self.story_entry(id).is_some() {
-                    let mut cast = self.cast.clone();
-                    if cast.connect(from, id, String::new()).is_some() {
-                        self.store_cast(cast, true);
-                        self.map_focus = Some(from);
-                        self.status = "Connected. Name the connection in Context.".into();
-                    }
-                }
-            } else if from != id && self.edit_map(|map| map.add_line(from, id).is_some()) {
+            if from != id && self.edit_map(|map| map.add_line(from, id).is_some()) {
                 self.status = "Joined. Write a word on the line under the map if it needs one.".into();
             }
             return;
@@ -3103,8 +2929,7 @@ impl StudioState {
 
     /// Whether what is dragged on the map can be let go on `target`: a
     /// binder node where the binder allows it, an idea on any node (onto a
-    /// chapter or folder it becomes a scene there), a story entry on a book,
-    /// part, chapter, or scene.
+    /// chapter or folder it becomes a scene there).
     pub fn map_drop_allowed(&self, dragged: Id, target: Id) -> bool {
         if dragged == target {
             return false;
@@ -3115,24 +2940,12 @@ impl StudioState {
         if self.mindmap.idea(dragged).is_some() {
             return true;
         }
-        if let Some(moving) = self.story_entry(dragged) {
-            if let Some(onto) = self.story_entry(target) {
-                return onto.kind == moving.kind;
-            }
-            if let Some(kind) = self.group_kind(target) {
-                return kind == moving.kind;
-            }
-        }
-        self.story_entry(dragged).is_some()
-            && self
-                .binder
-                .get(target)
-                .is_some_and(|node| matches!(node.kind, NodeKind::Book | NodeKind::Part | NodeKind::Chapter | NodeKind::Scene))
+        false
     }
 
     /// Let go of what is dragged on the map over `target`: a binder node
     /// moves there; an idea becomes a scene in a chapter or folder, or hangs
-    /// from anything else; a story entry is linked there.
+    /// from anything else.
     pub fn drop_on_map(&mut self, target: Id) {
         let Some(dragged) = self.dragging else {
             return;
@@ -3158,115 +2971,14 @@ impl StudioState {
             }) {
                 self.status = "The idea hangs from there now.".into();
             }
-        } else if let (Some(_), Some(_)) = (self.story_entry(dragged), self.story_entry(target)) {
-            self.nest_entry(dragged, Some(target), None);
-        } else if let (Some(_), Some(kind)) = (self.story_entry(dragged), self.group_kind(target)) {
-            let last = self.entry_children(kind, None).last().copied();
-            self.nest_entry(dragged, None, last);
-        } else if let Some(entry) = self.story_entry(dragged) {
-            self.link_story(target, dragged);
-            let title = self.binder.get(target).map(|node| node.title.clone()).unwrap_or_default();
-            self.status = format!("Linked {} to “{title}”.", entry.name);
         }
     }
 
-    /// The worldbuilding map's middle, and the node of each kind.
-    pub fn world_root(&self) -> Id {
-        self.world_ids.0
-    }
-
-    pub fn world_group(&self, kind: BibleLink) -> Id {
-        let at = STORY_KINDS.iter().position(|one| *one == kind).unwrap_or(0);
-        self.world_ids.1[at]
-    }
-
-    /// The kind a worldbuilding map node stands for, when it is one.
-    pub fn group_kind(&self, id: Id) -> Option<BibleLink> {
-        STORY_KINDS.into_iter().find(|kind| self.world_group(*kind) == id)
-    }
-
-    /// The worldbuilding map: the shown kinds' trees under its middle, or,
-    /// centered on an entry, that entry with what it is inside, what it
-    /// holds, and what it is connected to around it.
-    pub fn world_layout(&self) -> crate::mindmap::MapLayout {
-        use crate::mindmap::{layout_tree, place_by_hand, MapKind, Tree};
-        let root = self.world_root();
-        let entries = self.story_entries();
-        let ties = self.story_connections();
-        let kinds = self.world_kinds.clone();
-        let center = self.map_center.filter(|id| entries.iter().any(|entry| entry.id == *id));
-        let kind_of_entry = |id: Id| entries.iter().find(|entry| entry.id == id).map(|entry| entry.kind);
-        let within = |id: Id, ancestor: Id| {
-            let mut at = Some(id);
-            let mut guard = 0;
-            while let Some(here) = at {
-                if here == ancestor {
-                    return true;
-                }
-                at = entries.iter().find(|entry| entry.id == here).and_then(|entry| entry.parent);
-                guard += 1;
-                if guard > 10_000 {
-                    break;
-                }
-            }
-            false
-        };
-        let under = |id: Id| -> Vec<Id> {
-            if let Some(center) = center {
-                let kind = kind_of_entry(center).unwrap_or(BibleLink::Character);
-                if id == center {
-                    let mut around: Vec<Id> = entries.iter().filter(|entry| entry.id == center).filter_map(|entry| entry.parent).collect();
-                    around.extend(self.entry_children(kind, Some(center)));
-                    for tie in ties.iter().filter(|tie| tie.from == center || tie.to == center) {
-                        let other = if tie.from == center { tie.to } else { tie.from };
-                        if !around.contains(&other) && other != center {
-                            around.push(other);
-                        }
-                    }
-                    return around.into_iter().filter(|other| kind_of_entry(*other).is_some_and(|kind| kinds.contains(&kind))).collect();
-                }
-                return match kind_of_entry(id) {
-                    Some(kind) if within(id, center) => self.entry_children(kind, Some(id)),
-                    _ => Vec::new(),
-                };
-            }
-            if id == root {
-                return kinds.iter().map(|kind| self.world_group(*kind)).collect();
-            }
-            if let Some(kind) = self.group_kind(id) {
-                return self.entry_children(kind, None);
-            }
-            kind_of_entry(id).map(|kind| self.entry_children(kind, Some(id))).unwrap_or_default()
-        };
-        let kind_of = |id: Id| if id == root || self.group_kind(id).is_some() { MapKind::Group } else { MapKind::Entry };
-        let mut map = layout_tree(&Tree { under: &under, kind_of: &kind_of }, center.unwrap_or(root), &self.folded_map);
-        let placed: Vec<(Id, f64, f64)> = self.mindmap.positions.iter().map(|kept| (kept.id, kept.x, kept.y)).collect();
-        place_by_hand(&mut map, &placed);
-        map
-    }
-
-    /// The connections the worldbuilding map draws as lines between the
-    /// nodes it shows: named ones and fields, as the filter allows. Being
-    /// inside another is a branch, not a line.
-    pub fn world_lines(&self, map: &crate::mindmap::MapLayout) -> Vec<writing_studio_context::Connection> {
-        self.story_connections()
-            .into_iter()
-            .filter(|tie| tie.tie != writing_studio_context::Tie::Inside)
-            .filter(|tie| match &self.world_ties {
-                TieFilter::All => true,
-                TieFilter::Hidden => false,
-                TieFilter::Named(name) => same_keyword(&tie.name, name),
-            })
-            .filter(|tie| map.get(tie.from).is_some() && map.get(tie.to).is_some())
-            .collect()
-    }
-
-    /// The mind map as drawn now, the book's or the worldbuilding's, with
-    /// its middle.
+    /// The mind map as drawn now, the book's or the notes', with its middle.
     pub fn current_map(&self) -> Option<(Id, crate::mindmap::MapLayout)> {
         // The notes view: the Notes root and what is under it, on the same
         // map as the book.
-        if self.map_world {
+        if self.map_notes {
             let root = self.binder.notes_root()?.id;
             return Some((root, self.map_layout(root)));
         }
@@ -3274,40 +2986,15 @@ impl StudioState {
         Some((root, self.map_layout(root)))
     }
 
-    /// On the worldbuilding map: Tab adds an entry inside the chosen one
-    /// (or at the top of the chosen kind), Enter one beside it. It stays on
-    /// the map, chosen, its name ready to type.
-    pub fn add_on_world_map(&mut self, from: Id, child: bool) -> Option<Id> {
-        let (kind, inside, after) = if let Some(kind) = self.group_kind(from) {
-            (kind, None, None)
-        } else {
-            let entry = self.story_entry(from)?;
-            if child {
-                (entry.kind, Some(from), None)
-            } else {
-                (entry.kind, entry.parent, Some(from))
-            }
-        };
-        let id = self.add_entry(kind, inside)?;
-        if after.is_some() {
-            self.nest_entry(id, inside, after);
-        }
-        self.mode = WorkspaceMode::MindMap;
-        self.map_focus = Some(id);
-        self.folded_map.retain(|folded| Some(*folded) != inside && *folded != from);
-        Some(id)
-    }
-
-    /// Let go of the chosen keyword and story entry. Returns whether one
-    /// was chosen.
+    /// Let go of the chosen keyword. Returns whether one was chosen.
     pub fn clear_keyword_filter(&mut self) -> bool {
-        self.keyword_filter.take().is_some() | self.story_filter.take().is_some()
+        self.keyword_filter.take().is_some()
     }
 
     /// Whether the scene list, the mind map, and the outliner are narrowed
-    /// to a keyword or a story entry chosen in the library.
+    /// to a keyword chosen in the library.
     pub fn narrowed(&self) -> bool {
-        self.keyword_filter.is_some() || self.story_filter.is_some()
+        self.keyword_filter.is_some()
     }
 
     /// Whether a scene shows while they are narrowed: it carries the chosen
@@ -3315,29 +3002,9 @@ impl StudioState {
     /// or book it is in, as a saved filter matches; and the chosen story
     /// entry reaches it.
     pub fn chosen_allows(&self, id: Id) -> bool {
-        let keyword = self
-            .keyword_filter
+        self.keyword_filter
             .as_deref()
-            .is_none_or(|wanted| self.binder.keywords_through(id).iter().any(|word| keyword_covers(wanted, word)));
-        let story = self
-            .story_filter
-            .is_none_or(|entry| self.story_entry(entry).is_some_and(|entry| self.story_reaches(&entry, id)));
-        keyword && story
-    }
-
-    /// Every entry of the story, kind by kind, each kind in its own order.
-    pub fn story_entries(&self) -> Vec<StoryEntry> {
-        writing_studio_context::story_entries(&self.cast, &self.world, &self.library)
-    }
-
-    pub fn story_entry(&self, id: Id) -> Option<StoryEntry> {
-        self.story_entries().into_iter().find(|entry| entry.id == id)
-    }
-
-    /// Whether an entry reaches a binder item: linked to it, or to the
-    /// chapter, part, or book it is in.
-    pub fn story_reaches(&self, entry: &StoryEntry, id: Id) -> bool {
-        writing_studio_context::reaches(&self.binder, entry, id)
+            .is_none_or(|wanted| self.binder.keywords_through(id).iter().any(|word| keyword_covers(wanted, word)))
     }
 
     /// The open scene's context: the scene, where it sits, its plot points,
@@ -3345,9 +3012,6 @@ impl StudioState {
     pub fn scene_context(&self, scene: Id) -> Option<writing_studio_context::SceneContext> {
         let sources = writing_studio_context::Sources {
             binder: &self.binder,
-            cast: &self.cast,
-            world: &self.world,
-            library: &self.library,
             plot: &self.plot,
             note_text: &|id| self.item_text(id),
             mentions: &|id| self.link_index.get(&id).cloned().unwrap_or_default(),
@@ -3360,9 +3024,6 @@ impl StudioState {
     pub fn level_context(&self, id: Id) -> Option<writing_studio_context::LevelContext> {
         let sources = writing_studio_context::Sources {
             binder: &self.binder,
-            cast: &self.cast,
-            world: &self.world,
-            library: &self.library,
             plot: &self.plot,
             note_text: &|id| self.item_text(id),
             mentions: &|id| self.link_index.get(&id).cloned().unwrap_or_default(),
@@ -3472,417 +3133,6 @@ impl StudioState {
         }
     }
 
-    /// The entries linked to an item itself, and those linked to what it is
-    /// in, each with the title of the chapter, part, or book that brings it.
-    /// An entry linked both ways is listed once, as the item's own.
-    pub fn story_links_of(&self, id: Id) -> (Vec<StoryEntry>, Vec<(StoryEntry, String)>) {
-        let entries = self.story_entries();
-        let own: Vec<StoryEntry> = entries.iter().filter(|entry| entry.links.contains(&id)).cloned().collect();
-        let mut through: Vec<(StoryEntry, String)> = Vec::new();
-        let mut at = self.binder.get(id).and_then(|node| node.parent_id);
-        let mut guard = 0;
-        while let Some(node) = at.and_then(|up| self.binder.get(up)) {
-            if node.kind.is_root() || guard > 10_000 {
-                break;
-            }
-            for entry in entries.iter().filter(|entry| entry.links.contains(&node.id)) {
-                let listed = own.iter().any(|kept| kept.id == entry.id) || through.iter().any(|(kept, _)| kept.id == entry.id);
-                if !listed {
-                    through.push((entry.clone(), node.title.clone()));
-                }
-            }
-            at = node.parent_id;
-            guard += 1;
-        }
-        (own, through)
-    }
-
-    /// Link a binder item (a scene, or a chapter, part, or book for all its
-    /// scenes) to a story entry. The entry's page shows the same link.
-    pub fn link_story(&mut self, item: Id, entry: Id) {
-        if let Some(found) = self.story_entry(entry) {
-            self.link_bible_scene(found.kind, entry, item);
-            self.refresh_named_here();
-        }
-    }
-
-    /// The entry typed in a field: as offered, "Mara · character", or a
-    /// name only one entry has. Says so when none or several match.
-    pub fn entry_named(&mut self, typed: &str) -> Option<Id> {
-        let typed = typed.trim();
-        if typed.is_empty() {
-            return None;
-        }
-        let entries = self.story_entries();
-        let offered: Vec<&StoryEntry> =
-            entries.iter().filter(|entry| same_keyword(&story_choice(entry), typed)).collect();
-        let named: Vec<&StoryEntry> = entries.iter().filter(|entry| same_keyword(&entry.name, typed)).collect();
-        match (offered.as_slice(), named.as_slice()) {
-            ([entry], _) | ([], [entry]) => return Some(entry.id),
-            ([], []) => self.status = format!("No character, place, or note is called “{typed}”."),
-            _ => self.status = format!("More than one entry is called “{typed}”: choose one from the list."),
-        }
-        None
-    }
-
-    /// Link a binder item to the entry typed in its Context.
-    pub fn link_story_named(&mut self, item: Id, typed: &str) {
-        if let Some(id) = self.entry_named(typed) {
-            self.link_story(item, id);
-        }
-    }
-
-    /// Give an entry its label: what it is, "Country", "Father".
-    pub fn set_entry_label(&mut self, id: Id, label: String) {
-        let label = label.trim().to_string();
-        let Some(entry) = self.story_entry(id) else {
-            return;
-        };
-        if entry.label == label {
-            return;
-        }
-        match entry.kind {
-            BibleLink::Character => {
-                let mut cast = self.cast.clone();
-                if let Some(item) = cast.characters.iter_mut().find(|item| item.id == id) {
-                    item.label = label;
-                }
-                self.store_cast(cast, true);
-            }
-            BibleLink::Research => {
-                let mut library = self.library.clone();
-                if let Some(item) = library.items.iter_mut().find(|item| item.id == id) {
-                    item.label = label;
-                }
-                self.store_library(library, true);
-            }
-            kind => {
-                let mut world = self.world.clone();
-                match kind {
-                    BibleLink::Location => world.locations.iter_mut().find(|item| item.id == id).map(|item| item.label = label),
-                    BibleLink::Culture => world.cultures.iter_mut().find(|item| item.id == id).map(|item| item.label = label),
-                    BibleLink::Lore => world.lore.iter_mut().find(|item| item.id == id).map(|item| item.label = label),
-                    _ => world.events.iter_mut().find(|item| item.id == id).map(|item| item.label = label),
-                };
-                self.store_world(world, true);
-            }
-        }
-    }
-
-    /// The labels a kind of entry already uses, for suggestions.
-    pub fn labels_in_use(&self, kind: BibleLink) -> Vec<String> {
-        let mut labels: Vec<String> = Vec::new();
-        for entry in self.story_entries().into_iter().filter(|entry| entry.kind == kind) {
-            if !entry.label.is_empty() && !labels.iter().any(|kept| same_keyword(kept, &entry.label)) {
-                labels.push(entry.label);
-            }
-        }
-        labels
-    }
-
-    /// Every connection between the story's entries.
-    pub fn story_connections(&self) -> Vec<writing_studio_context::Connection> {
-        writing_studio_context::connections(&self.cast, &self.world, &self.library)
-    }
-
-    /// The names connections already use, for suggestions.
-    pub fn connection_names(&self) -> Vec<String> {
-        let mut names: Vec<String> = Vec::new();
-        for item in &self.cast.relationships {
-            let name = item.kind.trim();
-            if !name.is_empty() && !names.iter().any(|kept| same_keyword(kept, name)) {
-                names.push(name.to_string());
-            }
-        }
-        names
-    }
-
-    /// Connect an entry to the one typed, with a name: "lives in".
-    pub fn connect_entries(&mut self, from: Id, typed: &str, name: &str) {
-        let Some(to) = self.entry_named(typed) else {
-            return;
-        };
-        let mut cast = self.cast.clone();
-        if cast.connect(from, to, name.to_string()).is_some() {
-            self.store_cast(cast, true);
-        } else {
-            self.status = "They are already connected that way.".into();
-        }
-    }
-
-    pub fn unlink_story(&mut self, item: Id, entry: Id) {
-        if let Some(found) = self.story_entry(entry) {
-            self.unlink_bible_scene(found.kind, entry, item);
-            self.refresh_named_here();
-        }
-    }
-
-    /// The entry whose page is open, if one is.
-    pub fn entry_shown(&self) -> Option<StoryEntry> {
-        let id = match self.mode {
-            WorkspaceMode::Characters => self.selected_character,
-            WorkspaceMode::World => self.selected_world,
-            WorkspaceMode::Research => self.selected_research,
-            // An entry chosen on the mind map shows in Context too.
-            WorkspaceMode::MindMap => self.map_focus,
-            _ => None,
-        }?;
-        self.story_entry(id)
-    }
-
-    /// One kind's entries as rows of the binder's Worldbuilding trees: each
-    /// with its depth and whether it holds others, leaving out what is
-    /// inside a folded one.
-    pub fn entry_rows(&self, kind: BibleLink) -> Vec<(Id, u32, bool)> {
-        use writing_studio_context::tree_rows;
-        let folded: Vec<Id> = self.meta.as_ref().map(|meta| meta.settings.collapsed.clone()).unwrap_or_default();
-        match kind {
-            BibleLink::Character => tree_rows(&self.cast.characters, &folded),
-            BibleLink::Location => tree_rows(&self.world.locations, &folded),
-            BibleLink::Culture => tree_rows(&self.world.cultures, &folded),
-            BibleLink::Lore => tree_rows(&self.world.lore, &folded),
-            BibleLink::Timeline => tree_rows(&self.world.events, &folded),
-            BibleLink::Research => tree_rows(&self.library.items, &folded),
-        }
-    }
-
-    /// A new entry of a kind, inside `inside` (an entry of that kind) or at
-    /// the top, last among what is there. It is opened on its page and its
-    /// name in the binder is ready to type.
-    pub fn add_entry(&mut self, kind: BibleLink, inside: Option<Id>) -> Option<Id> {
-        let before: Vec<Id> = self.story_entries().iter().map(|entry| entry.id).collect();
-        match kind {
-            BibleLink::Character => self.add_character(),
-            BibleLink::Research => self.add_research_item(),
-            _ => {
-                self.world_section = world_section_of(kind);
-                self.add_world_item();
-            }
-        }
-        let id = self.story_entries().into_iter().find(|entry| !before.contains(&entry.id))?.id;
-        if inside.is_some() {
-            self.nest_entry(id, inside, None);
-        }
-        self.open_story_entry(id);
-        self.renaming = Some(id);
-        Some(id)
-    }
-
-    /// Rename an entry, whatever its kind.
-    pub fn rename_entry(&mut self, id: Id, name: &str) {
-        let name = name.trim().to_string();
-        let Some(entry) = self.story_entry(id) else {
-            return;
-        };
-        if name.is_empty() {
-            self.status = "A name cannot be empty.".into();
-            return;
-        }
-        match entry.kind {
-            BibleLink::Character => self.set_character_name(id, name),
-            BibleLink::Location => self.set_location_name(id, name),
-            BibleLink::Culture => self.set_culture_name(id, name),
-            BibleLink::Lore => self.set_lore_title(id, name),
-            BibleLink::Timeline => self.set_event_title(id, name),
-            BibleLink::Research => self.set_research_title(id, name),
-        }
-        self.save_all();
-    }
-
-    /// Put an entry inside `parent` (of its kind, or the top), after
-    /// `after` among what it holds. Saved at once. Returns whether it moved.
-    pub fn nest_entry(&mut self, id: Id, parent: Option<Id>, after: Option<Id>) -> bool {
-        use writing_studio_context::move_entry;
-        let Some(entry) = self.story_entry(id) else {
-            return false;
-        };
-        if parent.is_some_and(|parent| self.story_entry(parent).is_none_or(|up| up.kind != entry.kind)) {
-            self.status = "An entry goes inside another of its own kind.".into();
-            return false;
-        }
-        let moved = match entry.kind {
-            BibleLink::Character => {
-                let mut cast = self.cast.clone();
-                let moved = move_entry(&mut cast.characters, id, parent, after);
-                if moved {
-                    self.store_cast(cast, true);
-                }
-                moved
-            }
-            BibleLink::Research => {
-                let mut library = self.library.clone();
-                let moved = move_entry(&mut library.items, id, parent, after);
-                if moved {
-                    self.store_library(library, true);
-                }
-                moved
-            }
-            kind => {
-                let mut world = self.world.clone();
-                let moved = match kind {
-                    BibleLink::Location => move_entry(&mut world.locations, id, parent, after),
-                    BibleLink::Culture => move_entry(&mut world.cultures, id, parent, after),
-                    BibleLink::Lore => move_entry(&mut world.lore, id, parent, after),
-                    _ => move_entry(&mut world.events, id, parent, after),
-                };
-                if moved {
-                    self.store_world(world, true);
-                }
-                moved
-            }
-        };
-        if !moved {
-            self.status = "An entry cannot go inside itself or what it holds.".into();
-        }
-        moved
-    }
-
-    /// Drop a dragged entry on another of its kind in the binder: before or
-    /// after it, or inside it.
-    pub fn drop_entry(&mut self, target: Id) {
-        let place = self.drop_place;
-        let Some(dragged) = self.dragging.take() else {
-            return;
-        };
-        self.drop_target = None;
-        let (Some(moving), Some(onto)) = (self.story_entry(dragged), self.story_entry(target)) else {
-            return;
-        };
-        if moving.kind != onto.kind {
-            self.status = "An entry goes inside another of its own kind.".into();
-            return;
-        }
-        let parent = self.entry_parent(target);
-        let siblings = self.entry_children(moving.kind, parent);
-        let (parent, after) = match place {
-            DropPlace::Inside => (Some(target), self.entry_children(moving.kind, Some(target)).last().copied()),
-            DropPlace::After => (parent, Some(target)),
-            DropPlace::Before => {
-                let at = siblings.iter().position(|id| *id == target).unwrap_or(0);
-                let before = siblings[..at].iter().rev().find(|id| **id != dragged).copied();
-                (parent, before)
-            }
-        };
-        if self.nest_entry(dragged, parent, after) {
-            self.status = format!("Moved “{}”.", moving.name);
-        }
-    }
-
-    /// The entry of its kind an entry is inside.
-    pub fn entry_parent(&self, id: Id) -> Option<Id> {
-        self.story_entry(id).and_then(|entry| entry.parent)
-    }
-
-    /// What one entry of a kind holds directly (the top with `None`), in order.
-    pub fn entry_children(&self, kind: BibleLink, parent: Option<Id>) -> Vec<Id> {
-        use writing_studio_context::children_of;
-        match kind {
-            BibleLink::Character => children_of(&self.cast.characters, parent),
-            BibleLink::Location => children_of(&self.world.locations, parent),
-            BibleLink::Culture => children_of(&self.world.cultures, parent),
-            BibleLink::Lore => children_of(&self.world.lore, parent),
-            BibleLink::Timeline => children_of(&self.world.events, parent),
-            BibleLink::Research => children_of(&self.library.items, parent),
-        }
-    }
-
-    /// Delete an entry, after a second click, as each kind did. What it
-    /// held moves up to where it was.
-    pub fn remove_entry(&mut self, id: Id) {
-        let Some(entry) = self.story_entry(id) else {
-            return;
-        };
-        let confirmed = match entry.kind {
-            BibleLink::Character => self.confirm_character == Some(id),
-            BibleLink::Research => self.confirm_research == Some(id),
-            _ => self.confirm_world == Some(id),
-        };
-        if confirmed {
-            let up = self.entry_parent(id);
-            let mut after = Some(id);
-            for child in self.entry_children(entry.kind, Some(id)) {
-                self.nest_entry(child, up, after);
-                after = Some(child);
-            }
-        }
-        match entry.kind {
-            BibleLink::Character => self.remove_character(id),
-            BibleLink::Research => self.remove_research_item(id),
-            kind => {
-                self.world_section = world_section_of(kind);
-                self.remove_world_item(id);
-            }
-        }
-        // A character's go with it; a place's or a note's go here.
-        if self.story_entry(id).is_none() && entry.kind != BibleLink::Character {
-            let mut cast = self.cast.clone();
-            if cast.disconnect_all(id) {
-                self.store_cast(cast, true);
-            }
-        }
-    }
-
-    /// Show a story entry on its own page.
-    pub fn open_story_entry(&mut self, entry: Id) {
-        let Some(found) = self.story_entry(entry) else {
-            return;
-        };
-        let section = match found.kind {
-            BibleLink::Character => {
-                self.select_character(entry);
-                self.mode = WorkspaceMode::Characters;
-                return;
-            }
-            BibleLink::Research => {
-                self.select_research_item(entry);
-                self.mode = WorkspaceMode::Research;
-                return;
-            }
-            BibleLink::Location => WorldSection::Locations,
-            BibleLink::Culture => WorldSection::Cultures,
-            BibleLink::Lore => WorldSection::Lore,
-            BibleLink::Timeline => WorldSection::Timeline,
-        };
-        self.set_world_section(section);
-        self.select_world_item(entry);
-        self.mode = WorkspaceMode::World;
-    }
-
-    /// The entries that have links, for the library's Story group, each with
-    /// how many manuscript scenes outside the trash it reaches. A link to an
-    /// item in the trash does not count; it goes when the trash is emptied.
-    pub fn story_list(&self) -> Vec<(StoryEntry, usize)> {
-        let scenes: Vec<Id> = self
-            .binder
-            .draft_root()
-            .map(|draft| self.binder.scenes_under(draft.id).into_iter().map(|(_, scene)| scene).collect())
-            .unwrap_or_default();
-        self.story_entries()
-            .into_iter()
-            .filter(|entry| {
-                entry.links.iter().any(|id| self.binder.get(*id).is_some() && !self.binder.is_in_trash(*id))
-            })
-            .map(|entry| {
-                let count = scenes.iter().filter(|scene| self.story_reaches(&entry, **scene)).count();
-                (entry, count)
-            })
-            .collect()
-    }
-
-    /// Narrow the scene list, the mind map, and the outliner to the scenes
-    /// a story entry reaches; choosing it again lets it go.
-    pub fn choose_story(&mut self, entry: Id) {
-        if self.story_filter == Some(entry) {
-            self.story_filter = None;
-            return;
-        }
-        self.story_filter = Some(entry);
-        self.open_menu = None;
-        if !matches!(self.mode, WorkspaceMode::Writing | WorkspaceMode::MindMap | WorkspaceMode::Outliner) {
-            self.mode = WorkspaceMode::Writing;
-        }
-    }
-
     /// Open a menu, or close it when it is the one already open.
     pub fn toggle_menu(&mut self, menu: FrameMenu) {
         self.open_menu = if self.open_menu == Some(menu) { None } else { Some(menu) };
@@ -3910,9 +3160,6 @@ impl StudioState {
     /// Returns whether one was waiting.
     pub fn cancel_confirmation(&mut self) -> bool {
         let waiting = self.confirm_plotline.take().is_some()
-            | self.confirm_character.take().is_some()
-            | self.confirm_world.take().is_some()
-            | self.confirm_research.take().is_some()
             | self.confirm_backup.take().is_some()
             | self.confirm_kept.take().is_some()
             | std::mem::take(&mut self.confirm_empty_trash)
@@ -3928,9 +3175,6 @@ impl StudioState {
         self.settings_dirty
             || self.binder_dirty
             || self.plot_dirty
-            || self.cast_dirty
-            || self.world_dirty
-            || self.library_dirty
             || self.beats_dirty
             || self.session.as_ref().is_some_and(EditorSession::is_dirty)
     }
@@ -4402,41 +3646,22 @@ impl StudioState {
         let Some(store) = self.store.clone() else {
             return;
         };
-        let (meta, binder, plot, cast, world, library) = {
+        let (meta, binder, plot) = {
             let store = store.borrow();
             (
                 store.load_meta(),
                 store.load_binder(),
                 store.load_plot(),
-                store.load_cast(),
-                store.load_world(),
-                store.load_library(),
             )
         };
-        match (meta, binder, plot, cast, world, library) {
-            (Ok(meta), Ok(binder), Ok(plot), Ok(cast), Ok(world), Ok(library)) => {
+        match (meta, binder, plot) {
+            (Ok(meta), Ok(binder), Ok(plot)) => {
                 let previous = self.selected;
                 self.meta = Some(meta);
                 self.binder = binder;
                 self.plot = plot;
                 self.plot_dirty = false;
                 self.confirm_plotline = None;
-                self.cast = cast;
-                self.cast_dirty = false;
-                self.selected_character = self
-                    .selected_character
-                    .filter(|id| self.cast.characters.iter().any(|character| character.id == *id));
-                self.confirm_character = None;
-                self.world = world;
-                self.world_dirty = false;
-                self.selected_world = self.selected_world.filter(|id| self.world_contains(*id));
-                self.confirm_world = None;
-                self.library = library;
-                self.library_dirty = false;
-                self.selected_research = self
-                    .selected_research
-                    .filter(|id| self.library.items.iter().any(|item| item.id == *id));
-                self.confirm_research = None;
                 self.session = None;
                 self.editor_text.clear();
                     self.editor_epoch += 1;
@@ -4452,12 +3677,7 @@ impl StudioState {
                 self.load_beats();
                 self.note_open_problems();
             }
-            (Err(err), _, _, _, _, _)
-            | (_, Err(err), _, _, _, _)
-            | (_, _, Err(err), _, _, _)
-            | (_, _, _, Err(err), _, _)
-            | (_, _, _, _, Err(err), _)
-            | (_, _, _, _, _, Err(err)) => {
+            (Err(err), _, _) | (_, Err(err), _) | (_, _, Err(err)) => {
                 self.status = format!("Backup restored, but reload failed: {err}");
             }
         }
@@ -4784,582 +4004,6 @@ impl StudioState {
         }
     }
 
-    pub fn add_character(&mut self) {
-        self.confirm_character = None;
-        let mut cast = self.cast.clone();
-        let id = cast.add_character();
-        self.selected_character = Some(id);
-        self.store_cast(cast, true);
-    }
-
-    pub fn select_character(&mut self, id: Id) {
-        if self.cast.characters.iter().any(|character| character.id == id) {
-            self.confirm_character = None;
-            self.selected_character = Some(id);
-        }
-    }
-
-    pub fn set_character_name(&mut self, id: Id, name: String) {
-        self.edit_character(|cast| cast.set_name(id, name));
-    }
-
-    pub fn set_character_role(&mut self, id: Id, role: String) {
-        self.edit_character(|cast| cast.set_role(id, role));
-    }
-
-    pub fn set_character_summary(&mut self, id: Id, summary: String) {
-        self.edit_character(|cast| cast.set_summary(id, summary));
-    }
-
-    pub fn remove_character(&mut self, id: Id) {
-        if self.confirm_character != Some(id) {
-            self.confirm_character = Some(id);
-            self.status = "Click delete again to remove this character, their motivations, and their relationships.".into();
-            return;
-        }
-        self.confirm_character = None;
-        let mut cast = self.cast.clone();
-        if !cast.remove_character(id) {
-            return;
-        }
-        if self.selected_character == Some(id) {
-            self.selected_character = cast.characters_in_order().first().map(|character| character.id);
-        }
-        self.store_cast(cast, true);
-    }
-
-    pub fn add_motivation(&mut self, character_id: Id) {
-        self.confirm_character = None;
-        let mut cast = self.cast.clone();
-        if cast.add_motivation(character_id).is_some() {
-            self.store_cast(cast, true);
-        }
-    }
-
-    pub fn set_motivation_body(&mut self, id: Id, body: String) {
-        self.confirm_character = None;
-        let mut cast = self.cast.clone();
-        if cast.set_motivation(id, body) {
-            self.store_cast(cast, false);
-        }
-    }
-
-    pub fn shift_motivation(&mut self, id: Id, earlier: bool) {
-        self.confirm_character = None;
-        let mut cast = self.cast.clone();
-        if cast.shift_motivation(id, earlier) {
-            self.store_cast(cast, true);
-        }
-    }
-
-    pub fn remove_motivation(&mut self, id: Id) {
-        self.confirm_character = None;
-        let mut cast = self.cast.clone();
-        if cast.remove_motivation(id) {
-            self.store_cast(cast, true);
-        }
-    }
-
-    pub fn set_relationship_kind(&mut self, id: Id, kind: String) {
-        self.confirm_character = None;
-        let mut cast = self.cast.clone();
-        if cast.set_relationship_kind(id, kind) {
-            self.store_cast(cast, false);
-        }
-    }
-
-    pub fn link_bible_scene(&mut self, kind: BibleLink, owner: Id, scene_id: Id) {
-        match kind {
-            BibleLink::Character => {
-                let mut cast = self.cast.clone();
-                if cast.link_scene(owner, scene_id) {
-                    self.store_cast(cast, true);
-                }
-            }
-            BibleLink::Location => {
-                let mut world = self.world.clone();
-                if world.link_location_scene(owner, scene_id) {
-                    self.store_world(world, true);
-                }
-            }
-            BibleLink::Culture => {
-                let mut world = self.world.clone();
-                if world.link_culture_scene(owner, scene_id) {
-                    self.store_world(world, true);
-                }
-            }
-            BibleLink::Lore => {
-                let mut world = self.world.clone();
-                if world.link_lore_scene(owner, scene_id) {
-                    self.store_world(world, true);
-                }
-            }
-            BibleLink::Timeline => {
-                let mut world = self.world.clone();
-                if world.link_event_scene(owner, scene_id) {
-                    self.store_world(world, true);
-                }
-            }
-            BibleLink::Research => {
-                let mut library = self.library.clone();
-                if library.link_scene(owner, scene_id) {
-                    self.store_library(library, true);
-                }
-            }
-        }
-    }
-
-    pub fn unlink_bible_scene(&mut self, kind: BibleLink, owner: Id, scene_id: Id) {
-        match kind {
-            BibleLink::Character => {
-                let mut cast = self.cast.clone();
-                if cast.unlink_scene(owner, scene_id) {
-                    self.store_cast(cast, true);
-                }
-            }
-            BibleLink::Location => {
-                let mut world = self.world.clone();
-                if world.unlink_location_scene(owner, scene_id) {
-                    self.store_world(world, true);
-                }
-            }
-            BibleLink::Culture => {
-                let mut world = self.world.clone();
-                if world.unlink_culture_scene(owner, scene_id) {
-                    self.store_world(world, true);
-                }
-            }
-            BibleLink::Lore => {
-                let mut world = self.world.clone();
-                if world.unlink_lore_scene(owner, scene_id) {
-                    self.store_world(world, true);
-                }
-            }
-            BibleLink::Timeline => {
-                let mut world = self.world.clone();
-                if world.unlink_event_scene(owner, scene_id) {
-                    self.store_world(world, true);
-                }
-            }
-            BibleLink::Research => {
-                let mut library = self.library.clone();
-                if library.unlink_scene(owner, scene_id) {
-                    self.store_library(library, true);
-                }
-            }
-        }
-    }
-
-    pub fn bible_linked_ids(&self, kind: BibleLink, owner: Id) -> Vec<Id> {
-        match kind {
-            BibleLink::Character => self
-                .cast
-                .characters
-                .iter()
-                .find(|item| item.id == owner)
-                .map(|item| item.linked_ids.clone())
-                .unwrap_or_default(),
-            BibleLink::Location => self
-                .world
-                .locations
-                .iter()
-                .find(|item| item.id == owner)
-                .map(|item| item.linked_ids.clone())
-                .unwrap_or_default(),
-            BibleLink::Culture => self
-                .world
-                .cultures
-                .iter()
-                .find(|item| item.id == owner)
-                .map(|item| item.linked_ids.clone())
-                .unwrap_or_default(),
-            BibleLink::Lore => self
-                .world
-                .lore
-                .iter()
-                .find(|item| item.id == owner)
-                .map(|item| item.linked_ids.clone())
-                .unwrap_or_default(),
-            BibleLink::Timeline => self
-                .world
-                .events
-                .iter()
-                .find(|item| item.id == owner)
-                .map(|item| item.linked_ids.clone())
-                .unwrap_or_default(),
-            BibleLink::Research => self
-                .library
-                .items
-                .iter()
-                .find(|item| item.id == owner)
-                .map(|item| item.linked_ids.clone())
-                .unwrap_or_default(),
-        }
-    }
-
-    pub fn remove_relationship(&mut self, id: Id) {
-        self.confirm_character = None;
-        let mut cast = self.cast.clone();
-        if cast.remove_relationship(id) {
-            self.store_cast(cast, true);
-        }
-    }
-
-    fn edit_character(&mut self, edit: impl FnOnce(&mut Cast) -> bool) {
-        self.confirm_character = None;
-        let mut cast = self.cast.clone();
-        if edit(&mut cast) {
-            self.store_cast(cast, false);
-        }
-    }
-
-    fn store_cast(&mut self, cast: Cast, immediate: bool) {
-        if !immediate {
-            self.cast = cast;
-            self.cast_dirty = true;
-            self.note_edit();
-            return;
-        }
-        let Some(store) = &self.store else {
-            self.cast = cast;
-            self.cast_dirty = false;
-            return;
-        };
-        match store.borrow().persist_cast(&cast) {
-            Ok(()) => {
-                self.cast = cast;
-                self.cast_dirty = false;
-                self.status = "Characters saved locally.".into();
-            }
-            Err(err) => self.status = format!("Could not save characters: {err}"),
-        }
-    }
-
-    fn persist_cast_now(&mut self) -> bool {
-        let Some(store) = &self.store else {
-            return false;
-        };
-        match store.borrow().persist_cast(&self.cast) {
-            Ok(()) => true,
-            Err(err) => {
-                self.status = format!("Could not save characters: {err}");
-                false
-            }
-        }
-    }
-
-    pub fn set_world_section(&mut self, section: WorldSection) {
-        self.world_section = section;
-        self.confirm_world = None;
-    }
-
-    pub fn select_world_item(&mut self, id: Id) {
-        if self.world_contains(id) {
-            self.confirm_world = None;
-            self.selected_world = Some(id);
-        }
-    }
-
-    pub fn add_world_item(&mut self) {
-        self.confirm_world = None;
-        let mut world = self.world.clone();
-        let id = match self.world_section {
-            WorldSection::Locations => world.add_location(),
-            WorldSection::Cultures => world.add_culture(),
-            WorldSection::Lore => world.add_lore(),
-            WorldSection::Timeline => world.add_event(),
-        };
-        self.selected_world = Some(id);
-        self.store_world(world, true);
-    }
-
-    pub fn remove_world_item(&mut self, id: Id) {
-        if self.confirm_world != Some(id) {
-            self.confirm_world = Some(id);
-            self.status = "Click delete again to remove this entry. Links to it are cleared.".into();
-            return;
-        }
-        self.confirm_world = None;
-        let mut world = self.world.clone();
-        let removed = match self.world_section {
-            WorldSection::Locations => world.remove_location(id),
-            WorldSection::Cultures => world.remove_culture(id),
-            WorldSection::Lore => world.remove_lore(id),
-            WorldSection::Timeline => world.remove_event(id),
-        };
-        if !removed {
-            return;
-        }
-        if self.selected_world == Some(id) {
-            self.selected_world = self.first_world_id(&world);
-        }
-        self.store_world(world, true);
-    }
-
-    pub fn set_location_name(&mut self, id: Id, name: String) {
-        self.edit_world(|world| world.set_location_name(id, name));
-    }
-
-    pub fn set_location_summary(&mut self, id: Id, summary: String) {
-        self.edit_world(|world| world.set_location_summary(id, summary));
-    }
-
-    pub fn set_location_culture(&mut self, id: Id, culture_id: Option<Id>) {
-        self.confirm_world = None;
-        let mut world = self.world.clone();
-        if world.set_location_culture(id, culture_id) {
-            self.store_world(world, true);
-        }
-    }
-
-    pub fn set_culture_name(&mut self, id: Id, name: String) {
-        self.edit_world(|world| world.set_culture_name(id, name));
-    }
-
-    pub fn set_culture_summary(&mut self, id: Id, summary: String) {
-        self.edit_world(|world| world.set_culture_summary(id, summary));
-    }
-
-    pub fn set_lore_title(&mut self, id: Id, title: String) {
-        self.edit_world(|world| world.set_lore_title(id, title));
-    }
-
-    pub fn set_lore_body(&mut self, id: Id, body: String) {
-        self.edit_world(|world| world.set_lore_body(id, body));
-    }
-
-    pub fn set_lore_location(&mut self, id: Id, location_id: Option<Id>) {
-        self.confirm_world = None;
-        let mut world = self.world.clone();
-        if world.set_lore_location(id, location_id) {
-            self.store_world(world, true);
-        }
-    }
-
-    pub fn set_lore_culture(&mut self, id: Id, culture_id: Option<Id>) {
-        self.confirm_world = None;
-        let mut world = self.world.clone();
-        if world.set_lore_culture(id, culture_id) {
-            self.store_world(world, true);
-        }
-    }
-
-    pub fn set_event_title(&mut self, id: Id, title: String) {
-        self.edit_world(|world| world.set_event_title(id, title));
-    }
-
-    pub fn set_event_when(&mut self, id: Id, when_label: String) {
-        self.edit_world(|world| world.set_event_when(id, when_label));
-    }
-
-    pub fn set_event_summary(&mut self, id: Id, summary: String) {
-        self.edit_world(|world| world.set_event_summary(id, summary));
-    }
-
-    pub fn set_event_location(&mut self, id: Id, location_id: Option<Id>) {
-        self.confirm_world = None;
-        let mut world = self.world.clone();
-        if world.set_event_location(id, location_id) {
-            self.store_world(world, true);
-        }
-    }
-
-    pub fn shift_world_event(&mut self, id: Id, earlier: bool) {
-        self.confirm_world = None;
-        let mut world = self.world.clone();
-        if world.shift_event(id, earlier) {
-            self.store_world(world, true);
-        }
-    }
-
-    fn edit_world(&mut self, edit: impl FnOnce(&mut World) -> bool) {
-        self.confirm_world = None;
-        let mut world = self.world.clone();
-        if edit(&mut world) {
-            self.store_world(world, false);
-        }
-    }
-
-    fn store_world(&mut self, world: World, immediate: bool) {
-        if !immediate {
-            self.world = world;
-            self.world_dirty = true;
-            self.note_edit();
-            return;
-        }
-        let Some(store) = &self.store else {
-            self.world = world;
-            self.world_dirty = false;
-            return;
-        };
-        match store.borrow().persist_world(&world) {
-            Ok(()) => {
-                self.world = world;
-                self.world_dirty = false;
-                self.status = "World saved locally.".into();
-            }
-            Err(err) => self.status = format!("Could not save world: {err}"),
-        }
-    }
-
-    fn persist_world_now(&mut self) -> bool {
-        let Some(store) = &self.store else {
-            return false;
-        };
-        match store.borrow().persist_world(&self.world) {
-            Ok(()) => true,
-            Err(err) => {
-                self.status = format!("Could not save world: {err}");
-                false
-            }
-        }
-    }
-
-    fn world_contains(&self, id: Id) -> bool {
-        self.world.locations.iter().any(|item| item.id == id)
-            || self.world.cultures.iter().any(|item| item.id == id)
-            || self.world.lore.iter().any(|item| item.id == id)
-            || self.world.events.iter().any(|item| item.id == id)
-    }
-
-    fn first_world_id(&self, world: &World) -> Option<Id> {
-        match self.world_section {
-            WorldSection::Locations => world.locations_in_order().first().map(|item| item.id),
-            WorldSection::Cultures => world.cultures_in_order().first().map(|item| item.id),
-            WorldSection::Lore => world.lore_in_order().first().map(|item| item.id),
-            WorldSection::Timeline => world.events_in_order().first().map(|item| item.id),
-        }
-    }
-
-    pub fn add_research_item(&mut self) {
-        self.confirm_research = None;
-        let mut library = self.library.clone();
-        let id = library.add_item();
-        self.selected_research = Some(id);
-        self.store_library(library, true);
-    }
-
-    pub fn select_research_item(&mut self, id: Id) {
-        if self.library.items.iter().any(|item| item.id == id) {
-            self.confirm_research = None;
-            self.selected_research = Some(id);
-        }
-    }
-
-    pub fn set_research_title(&mut self, id: Id, title: String) {
-        self.edit_library(|library| library.set_title(id, title));
-    }
-
-    pub fn set_research_notes(&mut self, id: Id, notes: String) {
-        self.edit_library(|library| library.set_notes(id, notes));
-    }
-
-    pub fn remove_research_item(&mut self, id: Id) {
-        if self.confirm_research != Some(id) {
-            self.confirm_research = Some(id);
-            self.status = "Click delete again to remove this note and its files from attachments/.".into();
-            return;
-        }
-        self.confirm_research = None;
-        let Some(store) = &self.store else {
-            return;
-        };
-        match store.borrow().forget_research_item(&self.library, id) {
-            Ok(library) => {
-                if self.selected_research == Some(id) {
-                    self.selected_research = library.items_in_order().first().map(|item| item.id);
-                }
-                self.library = library;
-                self.library_dirty = false;
-                self.status = "Research note removed.".into();
-            }
-            Err(err) => self.status = format!("Could not remove research note: {err}"),
-        }
-    }
-
-    pub fn attach_research_file(&mut self, item_id: Id, source: PathBuf) {
-        self.confirm_research = None;
-        let Some(store) = &self.store else {
-            return;
-        };
-        match store.borrow().import_research_file(&self.library, item_id, &source) {
-            Ok(library) => {
-                self.library = library;
-                self.library_dirty = false;
-                self.status = "File copied into attachments/.".into();
-            }
-            Err(err) => self.status = format!("Could not attach file: {err}"),
-        }
-    }
-
-    pub fn remove_research_file(&mut self, id: Id) {
-        if self.confirm_research != Some(id) {
-            self.confirm_research = Some(id);
-            self.status = "Click remove again to delete this file from attachments/.".into();
-            return;
-        }
-        self.confirm_research = None;
-        let Some(store) = &self.store else {
-            return;
-        };
-        match store.borrow().forget_research_file(&self.library, id) {
-            Ok(library) => {
-                self.library = library;
-                self.library_dirty = false;
-                self.status = "Attachment removed.".into();
-            }
-            Err(err) => self.status = format!("Could not remove attachment: {err}"),
-        }
-    }
-
-    pub fn research_file_path(&self, id: Id) -> Option<PathBuf> {
-        let file = self.library.files.iter().find(|file| file.id == id)?;
-        self.store.as_ref()?.borrow().research_file_path(&file.stored_name).ok()
-    }
-
-    fn edit_library(&mut self, edit: impl FnOnce(&mut ResearchLibrary) -> bool) {
-        self.confirm_research = None;
-        let mut library = self.library.clone();
-        if edit(&mut library) {
-            self.store_library(library, false);
-        }
-    }
-
-    fn store_library(&mut self, library: ResearchLibrary, immediate: bool) {
-        if !immediate {
-            self.library = library;
-            self.library_dirty = true;
-            self.note_edit();
-            return;
-        }
-        let Some(store) = &self.store else {
-            self.library = library;
-            self.library_dirty = false;
-            return;
-        };
-        match store.borrow().persist_library(&library) {
-            Ok(()) => {
-                self.library = library;
-                self.library_dirty = false;
-                self.status = "Research saved locally.".into();
-            }
-            Err(err) => self.status = format!("Could not save research: {err}"),
-        }
-    }
-
-    fn persist_library_now(&mut self) -> bool {
-        let Some(store) = &self.store else {
-            return false;
-        };
-        match store.borrow().persist_library(&self.library) {
-            Ok(()) => true,
-            Err(err) => {
-                self.status = format!("Could not save research: {err}");
-                false
-            }
-        }
-    }
-
     fn persist_binder(&mut self) -> bool {
         let Some(store) = &self.store else {
             return false;
@@ -5653,11 +4297,6 @@ impl StudioState {
     /// Rename a binder item from the library. An empty name is refused, so
     /// a row never goes blank.
     pub fn rename_item(&mut self, id: Id, title: &str) {
-        // An entry of the binder's Worldbuilding is renamed as its kind is.
-        if self.binder.get(id).is_none() {
-            self.rename_entry(id, title);
-            return;
-        }
         let title = title.trim();
         if title.is_empty() {
             self.status = "A name cannot be empty.".into();
@@ -5783,6 +4422,10 @@ impl StudioState {
         if self.beats.len() != beats_before && !self.persist_beats_now() {
             self.beats_dirty = true;
         }
+        // A note's links to what is gone go with it.
+        for node in self.binder.nodes.iter_mut().filter(|node| node.links.iter().any(|id| nodes.contains(id))) {
+            node.links.retain(|id| !nodes.contains(id));
+        }
         if !self.persist_binder() {
             return;
         }
@@ -5791,23 +4434,8 @@ impl StudioState {
             self.note_edit();
             return;
         }
-        if self.cast.detach_scenes(&nodes) && !self.persist_cast_now() {
-            self.cast_dirty = true;
-            self.note_edit();
-            return;
-        }
-        if self.world.detach_scenes(&nodes) && !self.persist_world_now() {
-            self.world_dirty = true;
-            self.note_edit();
-            return;
-        }
         if self.mindmap.forget(&nodes) {
             self.persist_mindmap();
-        }
-        if self.library.detach_scenes(&nodes) && !self.persist_library_now() {
-            self.library_dirty = true;
-            self.note_edit();
-            return;
         }
         if !self.forget_deleted_books(&deleted_books) {
             return;
@@ -5991,12 +4619,11 @@ mod tests {
     use writing_studio_document::ParagraphChange;
 
     /// The middle of the window has no view switch: the page opens from a
-    /// scene, an entry's page from Worldbuilding, and every other mode from
-    /// one row under Views, so none is unreachable or listed twice.
+    /// scene or a note, and every other mode from one row under Views, so
+    /// none is unreachable or listed twice.
     #[test]
     fn every_mode_but_the_page_has_one_library_row() {
-        let mut rows: Vec<WorkspaceMode> =
-            WorkspaceMode::LIBRARY_VIEWS.into_iter().chain(WorkspaceMode::ENTRY_PAGES).collect();
+        let mut rows: Vec<WorkspaceMode> = WorkspaceMode::LIBRARY_VIEWS.to_vec();
         rows.push(WorkspaceMode::Writing);
         for mode in WorkspaceMode::ALL {
             assert_eq!(rows.iter().filter(|row| **row == mode).count(), 1, "{mode:?}");
@@ -6020,7 +4647,7 @@ mod tests {
         };
         assert_eq!(shown(&state), [tagged, other]);
 
-        state.mode = WorkspaceMode::Characters;
+        state.mode = WorkspaceMode::Plot;
         state.choose_keyword("Plot");
         assert_eq!(state.mode, WorkspaceMode::Writing, "the list is beside the page");
         assert_eq!(shown(&state), [tagged], "plot brings plot/subplot");
@@ -6082,13 +4709,12 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
-    /// A character linked to a chapter reaches every scene in it: the
-    /// scene's inspector shows it as from the chapter, the character's page
-    /// lists the chapter, the library's Story group counts the scenes and
-    /// narrows to them, and a saved filter can ask for it.
+    /// A note linked to a chapter reaches every scene in it: a saved filter
+    /// "with" the note lists them, and emptying the trash of the chapter
+    /// takes the link away.
     #[test]
-    fn a_story_entry_linked_to_a_chapter_reaches_its_scenes() {
-        let (mut state, dir) = open_state("story-links");
+    fn a_note_linked_to_a_chapter_reaches_its_scenes() {
+        let (mut state, dir) = open_state("note-reach");
         let first = state.selected.unwrap();
         let chapter = state.binder.get(first).unwrap().parent_id.unwrap();
         state.add_node(NodeKind::Scene);
@@ -6096,37 +4722,15 @@ mod tests {
         state.add_node(NodeKind::Chapter);
         state.add_node(NodeKind::Scene);
         let elsewhere = state.selected.unwrap();
-        state.add_character();
-        let mara = state.selected_character.unwrap();
-        state.set_character_name(mara, "Mara".into());
+        let mara = add_note(&mut state, "Mara", "");
+        state.link_note_titled(chapter, "mara");
+        assert!(state.note_reaches(mara, first) && state.note_reaches(mara, second));
+        assert!(!state.note_reaches(mara, elsewhere), "another chapter's scene is not reached");
 
-        state.link_story_named(chapter, "mara");
-        assert_eq!(state.bible_linked_ids(BibleLink::Character, mara), [chapter], "the page lists the chapter");
-        let (own, through) = state.story_links_of(first);
-        assert!(own.is_empty());
-        assert_eq!(through.len(), 1);
-        assert_eq!((through[0].0.name.as_str(), through[0].1.as_str()), ("Mara", "Chapter 1"));
-        assert_eq!(state.story_links_of(chapter).0[0].id, mara);
-        assert!(state.story_links_of(elsewhere).1.is_empty(), "another chapter's scene is not reached");
-
-        // Linked to the scene as well, it is the scene's own, listed once.
-        state.link_story_named(first, "Mara · character");
-        let (own, through) = state.story_links_of(first);
-        assert_eq!((own.len(), through.len()), (1, 0));
-        state.unlink_story(first, mara);
-
-        let listed = state.story_list();
-        assert_eq!(listed.len(), 1);
-        assert_eq!(listed[0].1, 2, "the chapter's two scenes");
         let shown = |state: &StudioState| -> Vec<Id> {
             state.binder_rows().into_iter().filter(|row| row.kind == NodeKind::Scene).map(|row| row.id).collect()
         };
         state.choose_library(state.binder.book_of(first).unwrap());
-        state.choose_story(mara);
-        assert_eq!(shown(&state), [first, second]);
-        assert!(state.clear_keyword_filter(), "Escape lets it go");
-        assert_eq!(shown(&state).len(), 3);
-
         state.add_filter(SavedFilter {
             id: Id::new(),
             name: String::new(),
@@ -6141,24 +4745,11 @@ mod tests {
         assert_eq!(shown(&state), [first, second]);
         state.remove_filter(state.binder.filters[0].id);
 
-        state.link_story_named(first, "Nobody");
-        assert!(state.status.contains("No character"), "{}", state.status);
-        state.add_character();
-        let other = state.selected_character.unwrap();
-        state.set_character_name(other, "Mara".into());
-        state.link_story_named(first, "Mara");
-        assert!(state.status.contains("More than one"), "{}", state.status);
-
-        state.open_story_entry(mara);
-        assert_eq!((state.mode, state.selected_character), (WorkspaceMode::Characters, Some(mara)));
-
-        // In the trash the chapter's link stops counting; emptied, it goes.
         state.select_node(chapter);
         state.trash_selected();
-        assert!(state.story_list().is_empty(), "a link to the trash hides");
         state.empty_trash();
         state.empty_trash();
-        assert!(state.bible_linked_ids(BibleLink::Character, mara).is_empty());
+        assert!(state.binder.get(mara).unwrap().links.is_empty(), "a link to what is gone goes");
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -6303,12 +4894,11 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
-    /// Ideas, lines, story entries, and hand-placed nodes on the mind map,
-    /// saved in `mindmap.json`: an idea becomes a scene with its lines, an
-    /// entry dropped on a chapter is linked there, and emptying the trash
+    /// Ideas, lines, and hand-placed nodes on the mind map, saved in
+    /// `mindmap.json`: an idea becomes a scene with its lines, and emptying the trash
     /// takes away the lines of what it deleted.
     #[test]
-    fn ideas_lines_entries_and_places_on_the_mind_map() {
+    fn ideas_lines_and_places_on_the_mind_map() {
         let (mut state, dir) = open_state("map-ideas");
         let scene = state.selected.unwrap();
         let chapter = state.binder.get(scene).unwrap().parent_id.unwrap();
@@ -6345,20 +4935,6 @@ mod tests {
         assert!(state.mindmap.ideas.is_empty());
         assert_eq!((state.mindmap.lines[0].from, state.mindmap.lines[0].to), (made, scene));
 
-        // A character shown on the map, dropped on the chapter, is linked there.
-        state.add_character();
-        let mara = state.selected_character.unwrap();
-        state.set_character_name(mara, "Mara".into());
-        state.begin_drag(mara);
-        state.set_binder_drop(chapter, DropPlace::Inside);
-        assert!(state.map_drop_allowed(mara, chapter));
-        state.drop_on_map(chapter);
-        assert_eq!(state.bible_linked_ids(BibleLink::Character, mara), [chapter]);
-        state.map_story = MapStory::Kind(BibleLink::Character);
-        assert!(state.map_layout(book).get(mara).is_some(), "shown, linked to what is on the map");
-        state.map_story = MapStory::Hidden;
-        assert!(state.map_layout(book).get(mara).is_none());
-
         // Emptied from the trash, the scene's line goes.
         state.select_node(made);
         state.trash_selected();
@@ -6368,99 +4944,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
-    /// Worldbuilding in the binder: entries nest within their kind, are
-    /// renamed from the binder, moved by dropping before, after, or inside
-    /// another, and deleted with what they held moving up.
-    #[test]
-    fn worldbuilding_entries_nest_move_and_go_in_the_binder() {
-        let (mut state, dir) = open_state("worldbuilding");
-        let country = state.add_entry(BibleLink::Location, None).unwrap();
-        assert_eq!((state.mode, state.renaming), (WorkspaceMode::World, Some(country)), "its page, its name to type");
-        state.rename_item(country, "Valdora");
-        let city = state.add_entry(BibleLink::Location, Some(country)).unwrap();
-        state.rename_item(city, "Port Ely");
-        let pub_ = state.add_entry(BibleLink::Location, Some(city)).unwrap();
-        state.rename_item(pub_, "The Anchor");
-        let rows = state.entry_rows(BibleLink::Location);
-        assert_eq!(rows, [(country, 0, true), (city, 1, true), (pub_, 2, false)]);
-        assert_eq!(state.story_entry(pub_).unwrap().name, "The Anchor");
-        assert_eq!(state.entry_shown().unwrap().id, pub_);
-
-        // A character cannot go inside a place.
-        let father = state.add_entry(BibleLink::Character, None).unwrap();
-        assert!(!state.nest_entry(father, Some(city), None));
-        let son = state.add_entry(BibleLink::Character, Some(father)).unwrap();
-        assert_eq!(state.entry_rows(BibleLink::Character), [(father, 0, true), (son, 1, false)]);
-
-        // Dropped after the country, the pub is at the top; inside the city again.
-        state.begin_drag(pub_);
-        state.set_binder_drop(country, DropPlace::After);
-        state.drop_entry(country);
-        assert_eq!(state.entry_children(BibleLink::Location, None), [country, pub_]);
-        state.begin_drag(pub_);
-        state.set_binder_drop(city, DropPlace::Inside);
-        state.drop_entry(city);
-        assert_eq!(state.entry_parent(pub_), Some(city));
-        state.begin_drag(country);
-        state.set_binder_drop(pub_, DropPlace::Inside);
-        state.drop_entry(pub_);
-        assert_eq!(state.entry_parent(country), None, "never inside what it holds");
-
-        // Folded, the tree hides what the city holds.
-        state.toggle_collapsed(city);
-        assert_eq!(state.entry_rows(BibleLink::Location).len(), 2);
-        state.toggle_collapsed(city);
-
-        // Deleted after a second click, the city leaves the pub in the country.
-        state.remove_entry(city);
-        assert!(state.story_entry(city).is_some(), "the first click asks");
-        state.remove_entry(city);
-        assert!(state.story_entry(city).is_none());
-        assert_eq!(state.entry_parent(pub_), Some(country));
-        let bible = std::fs::read_to_string(state.project_root().unwrap().join("bible.json")).unwrap();
-        assert!(bible.contains(&format!("\"parent\":\"{country}\"")), "{bible}");
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    /// Each entry says what it is, and connects to any other by a name;
-    /// being inside another counts too. A place taken away takes its
-    /// connections with it.
-    #[test]
-    fn entries_have_labels_and_named_connections() {
-        let (mut state, dir) = open_state("connections");
-        let father = state.add_entry(BibleLink::Character, None).unwrap();
-        state.rename_entry(father, "Tomas");
-        let son = state.add_entry(BibleLink::Character, Some(father)).unwrap();
-        state.rename_entry(son, "Ivo");
-        let pub_ = state.add_entry(BibleLink::Location, None).unwrap();
-        state.rename_entry(pub_, "The Anchor");
-        state.set_entry_label(pub_, " Pub ".into());
-        state.set_entry_label(father, "Father".into());
-        assert_eq!(state.story_entry(pub_).unwrap().label, "Pub");
-        assert_eq!(state.labels_in_use(BibleLink::Location), ["Pub"]);
-        let bible = std::fs::read_to_string(state.project_root().unwrap().join("bible.json")).unwrap();
-        assert!(bible.contains("\"label\":\"Pub\""), "{bible}");
-
-        state.connect_entries(son, "The Anchor · place", "works at");
-        state.connect_entries(son, "the anchor", "works at");
-        assert!(state.status.contains("already"), "{}", state.status);
-        state.connect_entries(son, "Nobody", "knows");
-        assert!(state.status.contains("No character"), "{}", state.status);
-        assert_eq!(state.connection_names(), ["works at"]);
-        let ties: Vec<(Id, Id, String)> =
-            state.story_connections().into_iter().map(|tie| (tie.from, tie.to, tie.name)).collect();
-        assert!(ties.contains(&(son, pub_, "works at".to_string())));
-        assert!(ties.contains(&(son, father, "inside".to_string())), "being inside counts");
-
-        state.remove_entry(pub_);
-        state.remove_entry(pub_);
-        assert!(state.story_connections().iter().all(|tie| tie.to != pub_), "gone with the place");
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    /// The worldbuilding map: each shown kind under its middle with its
-    /// trees, connections as named lines, a filter on kinds and names, one
-    /// entry to center on, and adding, joining, and nesting from the map.
+    /// The library's Notes section holds the folders and notes under Notes,
+    /// and the search narrows it.
     #[test]
     fn the_library_lists_notes_and_a_search_narrows_them() {
         let (mut state, dir) = open_state("note-rows");
@@ -6488,7 +4973,7 @@ mod tests {
     #[test]
     fn the_notes_map_is_the_notes_and_tab_adds_a_note() {
         let (mut state, dir) = open_state("notes-map");
-        state.map_world = true;
+        state.map_notes = true;
         let (root, map) = state.current_map().unwrap();
         assert_eq!(Some(root), state.binder.notes_root().map(|node| node.id));
         let research = state.binder.children(Some(root))[1].id;
@@ -6816,15 +5301,15 @@ Nobody spoke.");
     #[test]
     fn escape_cancels_a_delete_waiting_for_its_second_click() {
         let (mut state, dir) = open_state("cancel");
-        state.add_character();
-        let id = state.cast.characters[0].id;
-        state.remove_character(id);
-        assert_eq!(state.confirm_character, Some(id));
+        state.add_plotline();
+        let id = state.plot.lines[0].id;
+        state.remove_plotline(id);
+        assert_eq!(state.confirm_plotline, Some(id));
         assert!(state.cancel_confirmation());
         assert!(!state.cancel_confirmation());
         // The next click asks again instead of deleting.
-        state.remove_character(id);
-        assert_eq!(state.cast.characters.len(), 1);
+        state.remove_plotline(id);
+        assert_eq!(state.plot.lines.len(), 1);
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -7067,19 +5552,8 @@ Nobody spoke.");
             [WorkspaceMode::Writing, WorkspaceMode::History]
         );
         let with_inspector: Vec<_> = WorkspaceMode::ALL.into_iter().filter(|mode| mode.shows_inspector()).collect();
-        // Context shows the node chosen on the mind map and in the outline,
-        // and what is said about an entry beside its page.
-        assert_eq!(
-            with_inspector,
-            [
-                WorkspaceMode::Writing,
-                WorkspaceMode::MindMap,
-                WorkspaceMode::Outliner,
-                WorkspaceMode::Characters,
-                WorkspaceMode::World,
-                WorkspaceMode::Research,
-            ]
-        );
+        // Context shows the node chosen on the mind map and in the outline.
+        assert_eq!(with_inspector, [WorkspaceMode::Writing, WorkspaceMode::MindMap, WorkspaceMode::Outliner]);
     }
 
     #[test]
@@ -7135,7 +5609,7 @@ Nobody spoke.");
         let root = state.project_root().unwrap();
         state.update_selected_title("Mine".into());
         state.set_daily_goal(700);
-        state.add_character();
+        state.add_plotline();
         state.save_all();
         // What the program wrote itself is not taken for a change outside.
         state.status.clear();

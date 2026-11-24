@@ -56,7 +56,7 @@ Not current work. A suggestion replaces every copy of a word in the scene, and a
 - Replace one copy of a word, and ignore a word in this scene only.
 - Two dictionaries at once, for a book that mixes languages.
 - Replace a word that is partly bold or partly linked.
-- Check spelling in the synopsis, the scene beats, and the bible's text fields.
+- Check spelling in the synopsis and the scene beats.
 - Read dictionary files in encodings other than UTF-8 and Latin-1.
 
 ## Diagnostics that fit the book
@@ -97,14 +97,7 @@ Not current work. **Backup** copies the SQLite file and leaves `attachments/` be
 
 - Include `attachments/` in a project backup, beside the SQLite copy.
 - Restore the database and those files together.
-- After restore, every research file row has its file on disk, and files that belonged only to the replaced library are not left behind as the current library.
-
-## Keywords on the story's entries
-
-What is left of the "Tags" entry, which moved to [Phase 11](../done/phase-11.md). There, binder items get Obsidian-style keywords, and characters, places, and notes are linked to scenes and chapters, not tagged.
-
-- A character, place, or note carries keywords from the same list (`antagonist`, `setting/coast`), and the keyword list counts them.
-- It changes `bible.json`, so it is a format change of its own.
+- After restore, every file a note links to in `attachments/` is on disk, and files only the replaced project linked to are not left behind.
 
 ## PDF compile
 

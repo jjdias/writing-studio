@@ -81,100 +81,6 @@ pub fn install(conn: &Connection) -> rusqlite::Result<()> {
 
         CREATE INDEX IF NOT EXISTS idx_plot_points_line ON plot_points(plotline_id);
 
-        CREATE TABLE IF NOT EXISTS characters (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            role TEXT NOT NULL DEFAULT '',
-            summary TEXT NOT NULL DEFAULT '',
-            sort_index INTEGER NOT NULL,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS character_motivations (
-            id TEXT PRIMARY KEY,
-            character_id TEXT NOT NULL,
-            body TEXT NOT NULL DEFAULT '',
-            sort_index INTEGER NOT NULL,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS character_relationships (
-            id TEXT PRIMARY KEY,
-            from_id TEXT NOT NULL,
-            to_id TEXT NOT NULL,
-            kind TEXT NOT NULL DEFAULT '',
-            sort_index INTEGER NOT NULL,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS cultures (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            summary TEXT NOT NULL DEFAULT '',
-            sort_index INTEGER NOT NULL,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS locations (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            summary TEXT NOT NULL DEFAULT '',
-            culture_id TEXT,
-            sort_index INTEGER NOT NULL,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS lore_entries (
-            id TEXT PRIMARY KEY,
-            title TEXT NOT NULL,
-            body TEXT NOT NULL DEFAULT '',
-            location_id TEXT,
-            culture_id TEXT,
-            sort_index INTEGER NOT NULL,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS timeline_events (
-            id TEXT PRIMARY KEY,
-            title TEXT NOT NULL,
-            when_label TEXT NOT NULL DEFAULT '',
-            summary TEXT NOT NULL DEFAULT '',
-            location_id TEXT,
-            sort_index INTEGER NOT NULL,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS research_items (
-            id TEXT PRIMARY KEY,
-            title TEXT NOT NULL,
-            notes TEXT NOT NULL DEFAULT '',
-            sort_index INTEGER NOT NULL,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS research_files (
-            id TEXT PRIMARY KEY,
-            item_id TEXT NOT NULL,
-            file_name TEXT NOT NULL,
-            stored_name TEXT NOT NULL,
-            created_at TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS bible_scene_links (
-            owner_kind TEXT NOT NULL,
-            owner_id TEXT NOT NULL,
-            scene_id TEXT NOT NULL,
-            sort_index INTEGER NOT NULL,
-            PRIMARY KEY (owner_kind, owner_id, scene_id)
-        );
         "#,
     )?;
     let _ = conn.execute(
@@ -209,10 +115,5 @@ pub fn install(conn: &Connection) -> rusqlite::Result<()> {
         [],
     );
     conn.execute_batch("CREATE TABLE IF NOT EXISTS binder_lists (name TEXT PRIMARY KEY, json TEXT NOT NULL);")?;
-    // Which entry of the bible each entry is inside (Phase 11).
-    conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS bible_parents (owner_kind TEXT NOT NULL, id TEXT PRIMARY KEY, parent_id TEXT NOT NULL);
-         CREATE TABLE IF NOT EXISTS bible_labels (owner_kind TEXT NOT NULL, id TEXT PRIMARY KEY, label TEXT NOT NULL);",
-    )?;
     Ok(())
 }

@@ -10,9 +10,6 @@ members = [
     "crates/storage",
     "crates/ui",
     "crates/plotting",
-    "crates/characters",
-    "crates/worldbuilding",
-    "crates/research",
     "crates/search",
     "crates/synchronization",
     "crates/export",
@@ -39,9 +36,6 @@ writing-studio-manuscript = { path = "crates/manuscript" }
 writing-studio-storage = { path = "crates/storage" }
 writing-studio-ui = { path = "crates/ui" }
 writing-studio-plotting = { path = "crates/plotting" }
-writing-studio-characters = { path = "crates/characters" }
-writing-studio-worldbuilding = { path = "crates/worldbuilding" }
-writing-studio-research = { path = "crates/research" }
 writing-studio-search = { path = "crates/search" }
 writing-studio-synchronization = { path = "crates/synchronization" }
 writing-studio-export = { path = "crates/export" }

@@ -15,18 +15,8 @@ use writing_studio_document::Document;
 use writing_studio_format::{slug, Header, SceneFile, SceneHeader};
 use writing_studio_project::{same_keyword, tidy_keyword, BinderNode, BinderTree, NodeKind};
 
-use crate::files::{bible_files, with_a_run_in_every_block, write_atomic, ProjectContent};
+use crate::files::{with_a_run_in_every_block, write_atomic, ProjectContent};
 use crate::ProjectStore;
-
-/// The heading each part of the bible gets in the export's `README.md`.
-const BIBLE_SECTIONS: [(&str, &str); 6] = [
-    ("characters", "Characters"),
-    ("places", "Places"),
-    ("cultures", "Cultures"),
-    ("lore", "Lore"),
-    ("timeline", "Timeline"),
-    ("research", "Research"),
-];
 
 /// An item's keywords as Obsidian's `tags:`, nested with `/` as they are.
 /// A tag cannot hold a space, so one becomes `-`.
@@ -80,7 +70,7 @@ fn link_text(title: &str) -> String {
 impl ProjectStore {
     /// Write the book into `target`, a folder that must be new or empty: the
     /// manuscript in reading order, one Markdown file for each scene, the
-    /// bible one file for each entry, and a `README.md` that lists them all.
+    /// notes one file each, and a `README.md` that lists them all.
     /// The trash is left out. Returns how many Markdown files were written,
     /// not counting `README.md`.
     pub fn export_markdown(&self, target: &Path) -> Result<usize> {
@@ -99,34 +89,13 @@ impl ProjectStore {
             written += export_children(&content, root.id, "manuscript", 0, target, &mut contents)?;
         }
 
-        let (entries, _) = bible_files(
-            &content.cast,
-            &content.world,
-            &content.library,
-            &Default::default(),
-            &mut Default::default(),
-            &Default::default(),
-        );
-        for (folder, heading) in BIBLE_SECTIONS {
-            let here: Vec<&SceneFile> = entries
-                .iter()
-                .filter(|(_, path, _)| path.split('/').next() == Some(folder))
-                .map(|(_, _, file)| file)
-                .collect();
-            if here.is_empty() {
-                continue;
-            }
-            let _ = writeln!(contents, "\n## {heading}\n");
-            for (index, file) in here.iter().enumerate() {
-                let path = format!("{folder}/{}.md", numbered(index, here.len(), &file.header.title));
-                write_atomic(&target.join(&path), file.to_markdown().as_bytes())?;
-                let _ = writeln!(contents, "- [{}]({path})", link_text(&file.header.title));
-                written += 1;
-            }
+        if let Some(root) = content.binder.notes_root() {
+            let _ = writeln!(contents, "\n## Notes\n");
+            written += export_children(&content, root.id, "notes", 0, target, &mut contents)?;
         }
 
         let readme = format!(
-            "# {}\n\nExported from Writing Studio. Each scene and each entry of the bible is a Markdown file; this page lists them in order.\n\n{contents}",
+            "# {}\n\nExported from Writing Studio. Each scene and each note is a Markdown file; this page lists them in order.\n\n{contents}",
             link_text(&content.meta.title)
         );
         write_atomic(&target.join("README.md"), readme.as_bytes())?;
@@ -209,11 +178,13 @@ fn export_children(
             .children(Some(node.id))
             .iter()
             .any(|child| !tree.is_in_trash(child.id));
-        // A chapter that only holds scenes is a folder, not an empty file.
+        // A chapter that only holds scenes is a folder, not an empty file,
+        // and so is a folder with no text of its own.
+        let folder_only = has_children || node.kind == NodeKind::Folder;
         let document = node
             .document_id
             .and_then(|id| content.documents.iter().find(|document| document.id == id))
-            .filter(|document| !(has_children && document.to_plain_text().trim().is_empty()));
+            .filter(|document| !(folder_only && document.to_plain_text().trim().is_empty()));
         match document {
             Some(document) => {
                 let path = format!("{folder}/{name}.md");
@@ -249,8 +220,7 @@ fn export_children(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use writing_studio_characters::Cast;
-    use writing_studio_format::{canonical_blocks, same_content};
+        use writing_studio_format::{canonical_blocks, same_content};
 
     fn temp(tag: &str) -> std::path::PathBuf {
         std::env::temp_dir().join(format!("ws-md-{tag}-{}", Id::new()))
@@ -282,10 +252,10 @@ mod tests {
         let far = BinderNode::new(NodeKind::Scene, "Dust", Some(book.id), 0);
         store.upsert_node(&far).unwrap();
         store.save_document(&Document::from_plain_text(far.id, "Dust on the road.")).unwrap();
-        let mut cast = Cast::new();
-        let mara = cast.add_character();
-        cast.set_name(mara, "Mara".into());
-        store.persist_cast(&cast).unwrap();
+        let notes = store.load_binder().unwrap().notes_root().unwrap().id;
+        let mara = BinderNode::new(NodeKind::Note, "Mara", Some(notes), 5);
+        store.upsert_node(&mara).unwrap();
+        store.save_document(&Document::from_plain_text(mara.id, "A pilot's daughter.")).unwrap();
         store
     }
 
@@ -303,11 +273,12 @@ mod tests {
         // A chapter that only holds scenes is a folder, not an empty file.
         assert!(!target.join("manuscript/01-tide/01-chapter-1.md").exists());
         assert!(target.join("manuscript/02-inland-2/01-dust.md").exists());
-        assert!(target.join("characters/01-mara.md").exists());
+        let notes: Vec<String> = fs::read_dir(target.join("notes")).unwrap().flatten().map(|entry| entry.file_name().to_string_lossy().into_owned()).collect();
+        assert!(notes.iter().any(|name| name.ends_with("mara.md")), "{notes:?}");
 
         let readme = fs::read_to_string(target.join("README.md")).unwrap();
         assert!(readme.starts_with("# Tide\n"));
-        let order: Vec<usize> = ["Scene 1", "The Quay", "Inland \\[2\\]", "## Characters"]
+        let order: Vec<usize> = ["Scene 1", "The Quay", "Inland \\[2\\]", "## Notes", "Mara"]
             .iter()
             .map(|item| readme.find(item).unwrap_or_else(|| panic!("{item} missing: {readme}")))
             .collect();

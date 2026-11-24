@@ -681,7 +681,6 @@ button.danger:hover, button.danger.armed { background: var(--danger-fill); borde
 .map-node.drop-invalid rect:first-of-type { stroke: var(--danger); stroke-dasharray: 2 3; }
 .map-rename { display: flex; align-items: center; gap: 6px; }
 .map-node.kind-idea rect { fill: var(--panel-2); stroke-dasharray: 5 4; }
-.map-node.kind-entry rect { fill: var(--control); stroke: var(--link); }
 .map-join { fill: none; stroke-width: 1.3; }
 .map-join.idea { stroke: var(--muted); stroke-dasharray: 5 4; }
 .map-join.entry { stroke: var(--link); stroke-dasharray: 2 4; opacity: 0.8; }
@@ -748,9 +747,6 @@ button.danger:hover, button.danger.armed { background: var(--danger-fill); borde
 .cast-profile { flex: 1; overflow: auto; padding: 12px 16px 24px; }
 .cast-profile label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 4px; }
 .cast-profile textarea { min-height: 96px; }
-.cast-block { margin-top: 18px; }
-.cast-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
-.cast-row input, .cast-row select { flex: 1; }
 /* Delete sits apart from the fields it would take away. */
 .cast-actions { display: flex; gap: 8px; margin-top: 28px; padding-top: 12px; border-top: 1px solid var(--line); }
 
@@ -1312,19 +1308,6 @@ button.keyword-dot:hover { box-shadow: 0 0 0 2px var(--line); }
 .library-row.picked { box-shadow: inset 3px 0 0 var(--gold); }
 .row-progress { display: inline-grid; place-items: center; margin-left: auto; padding-left: 6px; color: var(--gold); flex: 0 0 auto; }
 .row-progress .ring { width: 14px; height: 14px; }
-/* Worldbuilding in the binder: a heading for each kind, with its tree. */
-.library-kind { display: flex; align-items: center; justify-content: space-between; margin: 8px 10px 2px 30px; font-size: 12px; color: var(--muted); }
-.library-kind-add { background: transparent; border: 0; padding: 0 6px; font-size: 14px; line-height: 1; color: var(--muted); }
-.library-kind-add:hover { color: var(--text); background: transparent; }
-.library-row.entry-row .library-name { font-weight: 400; }
-/* An entry's label in the binder, and its connections in Context. */
-.entry-label { margin-left: 6px; font-size: 11px; color: var(--muted); flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.connection-row { display: flex; align-items: baseline; gap: 6px; padding: 2px 0; }
-.connection-name { color: var(--muted); font-size: 12px; white-space: nowrap; }
-.connection-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; margin-top: 6px; }
-/* The worldbuilding map: its middle and kinds, and the kinds shown. */
-.map-node.kind-group rect { fill: var(--control); stroke-width: 1.5; }
-.map-kinds { display: inline-flex; flex-wrap: wrap; gap: 8px; font-size: 12px; }
 
 /* The Markdown page (Phase 12): CodeMirror inside the manuscript, set in
    the manuscript's own type. The desk scrolls, not the editor. */

@@ -63,7 +63,7 @@ pub struct BookContext {
     /// The middle scene length in this book. Zero when there are too few
     /// scenes to say.
     pub typical_words: u32,
-    /// Whether the bible lists any characters to look for.
+    /// Whether there are any notes whose titles to look for.
     pub has_cast: bool,
 }
 
@@ -97,7 +97,7 @@ impl Finding {
             Finding::MuchShorter { words, typical } => {
                 format!("Short: {words} words, where a scene in this book is usually about {typical}")
             }
-            Finding::NoCharacterNamed => "No character from the bible is named".into(),
+            Finding::NoCharacterNamed => "No note is named".into(),
             Finding::LongSentences { average } => {
                 format!("Long sentences: {average} words on average")
             }
@@ -169,7 +169,7 @@ pub fn findings(beats: &SceneBeats, facts: &SceneFacts, context: &BookContext) -
     found
 }
 
-/// Count what can be counted. `names` are the bible's character names.
+/// Count what can be counted. `names` are the notes' titles.
 pub fn scene_facts(text: &str, names: &[String]) -> SceneFacts {
     let (sentences, longest_sentence, words) = sentence_counts(text);
     let average_sentence = if sentences == 0 {

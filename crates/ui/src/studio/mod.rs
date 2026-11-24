@@ -20,10 +20,9 @@ use writing_studio_diagnostics::{BookContext, SceneFacts};
 use writing_studio_spellcheck::UnknownWord;
 
 use crate::shortcuts::{app_shortcut, AppShortcut, IN_THE_MANUSCRIPT, LISTED};
-use crate::state::{binder_matches, pasted_markdown, story_choice, StoryEntry, 
-    Beat, BibleLink, CheckFinding, CompileCheck, Earlier, FoldedPanel, FrameMenu, QuickMatch, ReviewTab, BinderRow,
+use crate::state::{binder_matches, pasted_markdown,
+    Beat, CheckFinding, CompileCheck, Earlier, FoldedPanel, FrameMenu, QuickMatch, ReviewTab, BinderRow,
     StudioState, WorkspaceMode,
-    WorldSection,
 };
 
 mod layout;
@@ -34,9 +33,6 @@ mod commands;
 mod history;
 mod dialogs;
 mod shared;
-mod world;
-mod research;
-mod characters;
 mod plot;
 mod mindmap;
 mod outliner;
@@ -51,9 +47,6 @@ use commands::*;
 use history::*;
 use dialogs::*;
 use shared::*;
-use world::*;
-use research::*;
-use characters::*;
 use plot::*;
 use mindmap::*;
 use outliner::*;
@@ -306,9 +299,6 @@ fn Workspace() -> Element {
                         WorkspaceMode::MindMap => rsx! { MindMapPane {} },
                         WorkspaceMode::Outliner => rsx! { OutlinerPane {} },
                         WorkspaceMode::Plot => rsx! { PlotPane {} },
-                        WorkspaceMode::Characters => rsx! { CharactersPane {} },
-                        WorkspaceMode::World => rsx! { WorldPane {} },
-                        WorkspaceMode::Research => rsx! { ResearchPane {} },
                         WorkspaceMode::History => rsx! { HistoryPane {} },
                     }}
                 }
@@ -360,7 +350,7 @@ fn ShortcutsDialog() -> Element {
                         }
                     }
                     tr {
-                        td { "Close a menu or a panel, cancel a waiting delete, leave focus mode, clear a search, or let go of a keyword or story entry" }
+                        td { "Close a menu or a panel, cancel a waiting delete, leave focus mode, clear a search, or let go of a keyword" }
                         td { kbd { "Escape" } }
                     }
                 }

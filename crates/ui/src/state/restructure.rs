@@ -58,11 +58,10 @@ struct Joined {
 struct Carried {
     /// Plot points that pointed at the joined scene and now point at the open one.
     points: Vec<Id>,
-    /// Characters, and places, cultures, lore, and events, that were linked
-    /// to the joined scene and were given a link to the open one. The joined
-    /// scene keeps its own links, so restoring it from the trash finds them.
-    characters: Vec<Id>,
-    world: Vec<Id>,
+    /// Notes that were linked to the joined scene and were given a link to
+    /// the open one. The joined scene keeps its own links, so restoring it
+    /// from the trash finds them.
+    notes: Vec<Id>,
     /// The open scene's goal, conflict, and outcome before the joined scene's
     /// were added, when they changed.
     beats: Option<Option<SceneBeats>>,
@@ -120,8 +119,7 @@ fn split_base(title: &str) -> (&str, Option<u32>) {
 
 impl StudioState {
     /// Give the open scene what pointed at the joined one: plot points move
-    /// to it, and characters and world entries linked to the joined scene are
-    /// linked to it too. The goal, conflict, and outcome are joined.
+    /// to it, and notes linked to the joined scene are linked to it too. The goal, conflict, and outcome are joined.
     fn carry_links(&mut self, first: Id, next: Id) -> Carried {
         let mut carried = Carried::default();
         let points: Vec<Id> =
@@ -131,38 +129,17 @@ impl StudioState {
                 carried.points.push(point);
             }
         }
-        let characters: Vec<Id> = self
-            .cast
-            .characters
+        let notes: Vec<Id> = self
+            .binder
+            .nodes
             .iter()
-            .filter(|character| character.linked_ids.contains(&next))
-            .map(|character| character.id)
+            .filter(|node| node.kind == NodeKind::Note && node.links.contains(&next) && !node.links.contains(&first))
+            .map(|node| node.id)
             .collect();
-        for character in characters {
-            if self.cast.link_scene(character, first) {
-                carried.characters.push(character);
-            }
-        }
-        let world = &self.world;
-        let linked = |scenes: &Vec<Id>| scenes.contains(&next);
-        let entries: Vec<(u8, Id)> = world
-            .locations
-            .iter()
-            .filter(|entry| linked(&entry.linked_ids))
-            .map(|entry| (0, entry.id))
-            .chain(world.cultures.iter().filter(|entry| linked(&entry.linked_ids)).map(|entry| (1, entry.id)))
-            .chain(world.lore.iter().filter(|entry| linked(&entry.linked_ids)).map(|entry| (2, entry.id)))
-            .chain(world.events.iter().filter(|entry| linked(&entry.linked_ids)).map(|entry| (3, entry.id)))
-            .collect();
-        for (kind, id) in entries {
-            let added = match kind {
-                0 => self.world.link_location_scene(id, first),
-                1 => self.world.link_culture_scene(id, first),
-                2 => self.world.link_lore_scene(id, first),
-                _ => self.world.link_event_scene(id, first),
-            };
-            if added {
-                carried.world.push(id);
+        for note in notes {
+            if let Some(node) = self.binder.get_mut(note) {
+                node.links.push(first);
+                carried.notes.push(note);
             }
         }
         if let Some(joined) = self.beats.get(&next).filter(|beats| !beats.is_empty()).cloned() {
@@ -189,15 +166,10 @@ impl StudioState {
                 self.plot.set_point_scene(*point, Some(next));
             }
         }
-        for character in &carried.characters {
-            self.cast.unlink_scene(*character, first);
-        }
-        for id in &carried.world {
-            // The id is one kind of entry; the other three find nothing.
-            self.world.unlink_location_scene(*id, first);
-            self.world.unlink_culture_scene(*id, first);
-            self.world.unlink_lore_scene(*id, first);
-            self.world.unlink_event_scene(*id, first);
+        for note in &carried.notes {
+            if let Some(node) = self.binder.get_mut(*note) {
+                node.links.retain(|id| *id != first);
+            }
         }
         if let Some(before) = &carried.beats {
             match before {
@@ -212,11 +184,8 @@ impl StudioState {
         if !carried.points.is_empty() && !self.persist_plot_now() {
             self.plot_dirty = true;
         }
-        if !carried.characters.is_empty() && !self.persist_cast_now() {
-            self.cast_dirty = true;
-        }
-        if !carried.world.is_empty() && !self.persist_world_now() {
-            self.world_dirty = true;
+        if !carried.notes.is_empty() && !self.persist_binder() {
+            self.binder_dirty = true;
         }
         if carried.beats.is_some() && !self.persist_beats_now() {
             self.beats_dirty = true;
@@ -829,18 +798,17 @@ mod tests {
         let line = state.plot.add_line();
         let point = state.plot.add_point(line).unwrap();
         state.plot.set_point_scene(point, Some(second));
-        let hero = state.cast.add_character();
-        state.cast.link_scene(hero, second);
-        let place = state.world.add_location();
-        state.world.link_location_scene(place, second);
+        let notes = state.binder.notes_root().unwrap().id;
+        let research = state.binder.children(Some(notes))[1].id;
+        let hero = state.new_note_from_template(research, "character.md").unwrap();
+        state.set_note_link(hero, second, true);
         state.select_node(first);
 
         state.merge_with_next();
         let point_scene = |state: &StudioState| state.plot.points.iter().find(|kept| kept.id == point).unwrap().scene_id;
         assert_eq!(point_scene(&state), Some(first));
-        let hero_scenes = |state: &StudioState| state.cast.characters.iter().find(|kept| kept.id == hero).unwrap().linked_ids.clone();
+        let hero_scenes = |state: &StudioState| state.binder.get(hero).unwrap().links.clone();
         assert_eq!(hero_scenes(&state), [second, first], "the trashed scene keeps its link for restoring");
-        assert!(state.world.locations.iter().find(|kept| kept.id == place).unwrap().linked_ids.contains(&first));
         let beats = state.beats.get(&first).unwrap();
         assert_eq!(beats.goal, "Find the key
 Open the door");
@@ -849,7 +817,6 @@ Open the door");
         state.undo();
         assert_eq!(point_scene(&state), Some(second));
         assert_eq!(hero_scenes(&state), [second]);
-        assert!(!state.world.locations.iter().find(|kept| kept.id == place).unwrap().linked_ids.contains(&first));
         assert_eq!(state.beats.get(&first).unwrap().goal, "Find the key");
         assert!(state.beats.get(&first).unwrap().outcome.is_empty());
         let _ = std::fs::remove_dir_all(dir);

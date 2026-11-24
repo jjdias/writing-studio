@@ -16,17 +16,14 @@ use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
 use serde_json::{json, Map, Value};
-use writing_studio_characters::{Cast, Character, CharacterRelationship, Motivation};
 use writing_studio_core::{Error, Id, Result, Timestamp, PROJECT_FORMAT_FILE};
 use writing_studio_diagnostics::SceneBeats;
 use writing_studio_document::{Block, BlockKind, Document, Inline};
-use writing_studio_format::{file_name, Header, SceneFile, SceneHeader, Value as HeaderValue};
+use writing_studio_format::{file_name, Header, SceneFile, SceneHeader};
 use writing_studio_plotting::{PlotGrid, PlotPoint, Plotline};
 use writing_studio_project::{
     normalize_binder_color, BinderNode, BinderTree, Keyword, MindMap, NodeKind, ProjectMeta, ProjectSettings, SavedFilter,
 };
-use writing_studio_research::{ResearchFile, ResearchItem, ResearchLibrary};
-use writing_studio_worldbuilding::{Culture, Location, LoreEntry, TimelineEvent, World};
 
 use crate::ProjectStore;
 
@@ -60,9 +57,6 @@ pub struct ProjectContent {
     pub plot: PlotGrid,
     /// Ideas, lines, and hand-placed nodes of the mind map (`mindmap.json`).
     pub mindmap: MindMap,
-    pub cast: Cast,
-    pub world: World,
-    pub library: ResearchLibrary,
     /// The file each item is kept in, relative to the project folder. A file
     /// keeps the name it was first given; an item with no entry here gets a
     /// name when it is written.
@@ -115,13 +109,10 @@ pub(crate) fn text_fingerprint(text: &str) -> u64 {
 pub struct Extras {
     /// Keys in the front matter of the item's own file.
     pub head: Header,
-    /// Keys of the item's line in `binder.json`, `bible.json`, or `plot.json`.
+    /// Keys of the item's line in `binder.json` or `plot.json`.
     /// For the project, the keys of `project.json`, and its unknown settings
     /// under `settings`.
     pub json: Map<String, Value>,
-    /// Keys of the entry's lines in `scene_links` of `bible.json`, by the
-    /// binder item each links to.
-    pub links: HashMap<Id, Map<String, Value>>,
     /// Text under the front matter of a book's, part's, or folder's file,
     /// which have no text of their own: kept and written back as found.
     pub body: String,
@@ -129,7 +120,7 @@ pub struct Extras {
 
 impl Extras {
     fn is_empty(&self) -> bool {
-        self.head.entries.is_empty() && self.json.is_empty() && self.links.is_empty() && self.body.is_empty()
+        self.head.entries.is_empty() && self.json.is_empty() && self.body.is_empty()
     }
 }
 
@@ -140,12 +131,8 @@ const BINDER_KEYS: [&str; 13] = [
     "id", "kind", "parent", "deleted", "restore_parent", "file", "status", "title", "synopsis", "label",
     "color", "keywords", "left_out",
 ];
-const ENTRY_KEYS: [&str; 4] = ["id", "file", "parent", "label"];
-const RESEARCH_FILE_KEYS: [&str; 4] = ["id", "note", "name", "stored"];
 const PLOTLINE_KEYS: [&str; 4] = ["id", "title", "color", "points"];
 const POINT_KEYS: [&str; 4] = ["id", "title", "summary", "scene"];
-const RELATIONSHIP_KEYS: [&str; 4] = ["id", "from", "to", "kind"];
-const LINK_KEYS: [&str; 2] = ["from", "item"];
 const PROJECT_KEYS: [&str; 5] = ["format", "id", "title", "created", "settings"];
 /// Names in a scene's head that the program writes. `title` is the `<title>`;
 /// a `<meta name="title">` beside it is not kept.
@@ -220,9 +207,6 @@ impl ProjectContent {
             beats: store.load_scene_beats()?,
             plot: store.load_plot()?,
             mindmap: store.load_mindmap()?,
-            cast: store.load_cast()?,
-            world: store.load_world()?,
-            library: store.load_library()?,
             files: HashMap::new(),
             extras: HashMap::new(),
             read: HashMap::new(),
@@ -316,49 +300,6 @@ pub(crate) fn place(
     }
     used.insert(path.clone());
     path
-}
-
-fn text_blocks(text: &str) -> Vec<Block> {
-    Document::from_plain_text(Id::new(), text).blocks
-}
-
-fn blocks_text(blocks: Vec<Block>) -> String {
-    let mut document = Document::new(Id::new());
-    document.blocks = blocks;
-    document.to_plain_text()
-}
-
-/// An entry of the bible as a file: its name as the title, its text as the
-/// body, and the rest as named values.
-fn entry_file(
-    id: Id,
-    title: &str,
-    text: &str,
-    other: Vec<(&str, HeaderValue)>,
-    extras: Option<&Extras>,
-) -> SceneFile {
-    let mut header = Header::default();
-    let known: Vec<&str> = other.iter().map(|(key, _)| *key).collect();
-    for (key, value) in other {
-        match value {
-            HeaderValue::Text(text) => header.set_text(key, &text),
-            HeaderValue::List(items) => header.set_list(key, &items),
-        }
-    }
-    add_head_extras(&mut header, extras, &known);
-    SceneFile {
-        header: SceneHeader {
-            id: Some(id),
-            title: title.to_string(),
-            other: header,
-            ..SceneHeader::default()
-        },
-        blocks: text_blocks(text),
-    }
-}
-
-fn optional_id(id: Option<Id>) -> HeaderValue {
-    HeaderValue::Text(id.map(|id| id.to_string()).unwrap_or_default())
 }
 
 /// JSON with one item of each list on its own line, so that adding, moving,
@@ -619,169 +560,6 @@ pub(crate) fn binder_json(
     lined(&sections)
 }
 
-/// The bible: each entry's id, file, and text, and then `bible.json`, which
-/// orders them. `known` has the files entries already have; `used` gathers
-/// every name that is taken.
-pub(crate) fn bible_files(
-    cast: &Cast,
-    world: &World,
-    library: &ResearchLibrary,
-    known: &HashMap<Id, String>,
-    used: &mut HashSet<String>,
-    extras: &HashMap<Id, Extras>,
-) -> (Vec<(Id, String, SceneFile)>, String) {
-    let mut entries: Vec<(Id, String, SceneFile)> = Vec::new();
-    // The bible: one file for each entry, and one list that orders them.
-    let mut order: Vec<(&str, Vec<Value>)> = Vec::new();
-    let mut links: Vec<Value> = Vec::new();
-    let mut entry = |folder: &'static str,
-                     list: &mut Vec<Value>,
-                     id: Id,
-                     title: &str,
-                     scenes: &[Id],
-                     parent: Option<Id>,
-                     label: &str,
-                     file: SceneFile| {
-        let path = place(known, used, folder, title, id);
-        entries.push((id, path.clone(), file));
-        let mut item = Map::new();
-        item.insert("id".into(), json!(id.to_string()));
-        item.insert("file".into(), json!(path));
-        // Inside another entry of its kind: a city in a country.
-        if let Some(parent) = parent {
-            item.insert("parent".into(), json!(parent.to_string()));
-        }
-        // What it is, in the writer's words: "Country", "Father".
-        if !label.trim().is_empty() {
-            item.insert("label".into(), json!(label));
-        }
-        add_json_extras(&mut item, extras.get(&id), &ENTRY_KEYS);
-        list.push(Value::Object(item));
-        links.extend(scenes.iter().map(|scene| {
-            let mut link = Map::new();
-            link.insert("from".into(), json!(id.to_string()));
-            link.insert("item".into(), json!(scene.to_string()));
-            let found = extras.get(&id).and_then(|found| found.links.get(scene));
-            for (key, value) in found.into_iter().flatten() {
-                if !LINK_KEYS.contains(&key.as_str()) {
-                    link.insert(key.clone(), value.clone());
-                }
-            }
-            Value::Object(link)
-        }));
-    };
-
-    let mut list = Vec::new();
-    for person in sorted(&cast.characters, |person| person.sort_index) {
-        let motivations: Vec<String> = sorted(&cast.motivations, |item| item.sort_index)
-            .into_iter()
-            .filter(|item| item.character_id == person.id)
-            .map(|item| item.body.clone())
-            .collect();
-        let file = entry_file(
-            person.id,
-            &person.name,
-            &person.summary,
-            vec![
-                ("role", HeaderValue::Text(person.role.clone())),
-                ("motivation", HeaderValue::List(motivations)),
-            ],
-            extras.get(&person.id),
-        );
-        entry("characters", &mut list, person.id, &person.name, &person.linked_ids, person.parent_id, &person.label, file);
-    }
-    order.push(("characters", std::mem::take(&mut list)));
-
-    for place_ in sorted(&world.locations, |item| item.sort_index) {
-        let file = entry_file(
-            place_.id,
-            &place_.name,
-            &place_.summary,
-            vec![("culture", optional_id(place_.culture_id))],
-            extras.get(&place_.id),
-        );
-        entry("places", &mut list, place_.id, &place_.name, &place_.linked_ids, place_.parent_id, &place_.label, file);
-    }
-    order.push(("places", std::mem::take(&mut list)));
-
-    for culture in sorted(&world.cultures, |item| item.sort_index) {
-        let file = entry_file(culture.id, &culture.name, &culture.summary, Vec::new(), extras.get(&culture.id));
-        entry("cultures", &mut list, culture.id, &culture.name, &culture.linked_ids, culture.parent_id, &culture.label, file);
-    }
-    order.push(("cultures", std::mem::take(&mut list)));
-
-    for lore in sorted(&world.lore, |item| item.sort_index) {
-        let file = entry_file(
-            lore.id,
-            &lore.title,
-            &lore.body,
-            vec![
-                ("place", optional_id(lore.location_id)),
-                ("culture", optional_id(lore.culture_id)),
-            ],
-            extras.get(&lore.id),
-        );
-        entry("lore", &mut list, lore.id, &lore.title, &lore.linked_ids, lore.parent_id, &lore.label, file);
-    }
-    order.push(("lore", std::mem::take(&mut list)));
-
-    for event in sorted(&world.events, |item| item.sort_index) {
-        let file = entry_file(
-            event.id,
-            &event.title,
-            &event.summary,
-            vec![
-                ("when", HeaderValue::Text(event.when_label.clone())),
-                ("place", optional_id(event.location_id)),
-            ],
-            extras.get(&event.id),
-        );
-        entry("timeline", &mut list, event.id, &event.title, &event.linked_ids, event.parent_id, &event.label, file);
-    }
-    order.push(("timeline", std::mem::take(&mut list)));
-
-    for note in sorted(&library.items, |item| item.sort_index) {
-        let file = entry_file(note.id, &note.title, &note.notes, Vec::new(), extras.get(&note.id));
-        entry("research", &mut list, note.id, &note.title, &note.linked_ids, note.parent_id, &note.label, file);
-    }
-    order.push(("research", std::mem::take(&mut list)));
-
-    order.push((
-        "research_files",
-        library
-            .files
-            .iter()
-            .map(|file| {
-                let mut item = Map::new();
-                item.insert("id".into(), json!(file.id.to_string()));
-                item.insert("note".into(), json!(file.item_id.to_string()));
-                item.insert("name".into(), json!(file.file_name));
-                item.insert("stored".into(), json!(file.stored_name));
-                add_json_extras(&mut item, extras.get(&file.id), &RESEARCH_FILE_KEYS);
-                Value::Object(item)
-            })
-            .collect(),
-    ));
-    order.push((
-        "relationships",
-        sorted(&cast.relationships, |item| item.sort_index)
-            .into_iter()
-            .map(|item| {
-                let mut line = Map::new();
-                line.insert("id".into(), json!(item.id.to_string()));
-                line.insert("from".into(), json!(item.from_id.to_string()));
-                line.insert("to".into(), json!(item.to_id.to_string()));
-                line.insert("kind".into(), json!(item.kind));
-                add_json_extras(&mut line, extras.get(&item.id), &RELATIONSHIP_KEYS);
-                Value::Object(line)
-            })
-            .collect(),
-    ));
-    order.push(("scene_links", links));
-
-    (entries, lined(&order))
-}
-
 pub(crate) fn plot_json(plot: &PlotGrid, extras: &HashMap<Id, Extras>) -> Result<String> {
     let plotlines: Vec<Value> = sorted(&plot.lines, |line| line.sort_index)
         .into_iter()
@@ -862,19 +640,6 @@ fn render(content: &ProjectContent) -> Result<Rendered> {
     }
     contents.push(("binder.json".into(), binder_json(&content.binder, &files, &content.extras)));
 
-    let (entries, bible) = bible_files(
-        &content.cast,
-        &content.world,
-        &content.library,
-        &content.files,
-        &mut used,
-        &content.extras,
-    );
-    for (id, path, file) in entries {
-        contents.push((path.clone(), file.to_markdown()));
-        files.insert(id, path);
-    }
-    contents.push(("bible.json".into(), bible));
     contents.push(("plot.json".into(), plot_json(&content.plot, &content.extras)?));
     // Only once the map has something of its own: a project without the
     // file has no ideas or lines.
@@ -964,32 +729,6 @@ fn read_entry(
         Some(found) if found != id => Err("the id in the file is not the one it is listed under".into()),
         _ => Ok(file),
     })
-}
-
-fn header_id(file: &SceneFile, path: &str, key: &str) -> Result<Option<Id>> {
-    match file.header.other.text(key) {
-        None => Ok(None),
-        Some(text) => text
-            .parse()
-            .map(Some)
-            .map_err(|_| bad(path, format!("“{key}” is not an id"))),
-    }
-}
-
-/// Add the extra keys of the bible's lines that have no file of their own:
-/// `scene_links`, kept with the entry they come from, and `relationships`.
-fn with_lines(
-    mut extras: HashMap<Id, Extras>,
-    links: HashMap<Id, HashMap<Id, Map<String, Value>>>,
-    lines: Vec<(Id, Map<String, Value>)>,
-) -> HashMap<Id, Extras> {
-    for (from, found) in links {
-        extras.entry(from).or_default().links = found;
-    }
-    for (id, found) in lines.into_iter().filter(|(_, found)| !found.is_empty()) {
-        extras.entry(id).or_default().json = found;
-    }
-    extras
 }
 
 /// Read a project from its format 2 files. It does not look at `FORMAT`;
@@ -1213,231 +952,6 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
         repaired = true;
     }
 
-    // The bible.
-    let bible = JsonFile::read(root, "bible.json", &seen)?;
-    let mut scene_links: HashMap<Id, Vec<Id>> = HashMap::new();
-    let mut link_extras: HashMap<Id, HashMap<Id, Map<String, Value>>> = HashMap::new();
-    let mut line_extras: Vec<(Id, Map<String, Value>)> = Vec::new();
-    // A link points at any binder item, a chapter as well as a scene, as
-    // `item`. One written before that, with `scene`, is not converted.
-    if bible.list("scene_links").iter().any(|link| link.get("scene").is_some()) {
-        return Err(bad(
-            "bible.json",
-            "a link in \"scene_links\" was written by an earlier version: it has \"scene\" where this version reads \"item\".              Change \"scene\" to \"item\" in each link (the value stays the same), then open the project again.",
-        ));
-    }
-    for link in bible.list("scene_links") {
-        let (from, scene) = (bible.id(link, "from")?, bible.id(link, "item")?);
-        scene_links.entry(from).or_default().push(scene);
-        let unknown = unknown_keys(link, &LINK_KEYS);
-        if !unknown.is_empty() {
-            link_extras.entry(from).or_default().insert(scene, unknown);
-        }
-    }
-    // `head` is the names the program reads from this kind of entry's head.
-    let parents: RefCell<HashMap<Id, Id>> = RefCell::new(HashMap::new());
-    let labels: RefCell<HashMap<Id, String>> = RefCell::new(HashMap::new());
-    let mut entries = |key: &str, head: &[&str]| -> Result<Vec<(Id, i64, String, SceneFile)>> {
-        let mut out = Vec::new();
-        for (index, item) in bible.list(key).into_iter().enumerate() {
-            let id = bible.id(item, "id")?;
-            if let Some(parent) = bible.optional_id(item, "parent")? {
-                parents.borrow_mut().insert(id, parent);
-            }
-            let label = text_of(item, "label");
-            if !label.trim().is_empty() {
-                labels.borrow_mut().insert(id, label);
-            }
-            let path = text_of(item, "file");
-            if !ids.insert(id) {
-                problem("bible.json", &format!("entry {id} was listed twice; the second line was left out"));
-                repaired = true;
-                continue;
-            }
-            let file = match read_entry(root, "bible.json", &path, id, &seen)? {
-                Ok(file) => file,
-                Err(why) => {
-                    // Taken out of the list. A file that is still there comes
-                    // back below, as a file no list names.
-                    problem(&path, &format!("{why}; it was taken out of the bible"));
-                    repaired = true;
-                    continue;
-                }
-            };
-            files.insert(id, path.clone());
-            keep(
-                id,
-                Extras {
-                    head: unknown_head(&file.header.other, head),
-                    json: unknown_keys(item, &ENTRY_KEYS),
-                    ..Extras::default()
-                },
-            );
-            out.push((id, index as i64, path, file));
-        }
-        for (path, file) in unlisted(root, key, &files, &seen, &mut problem)? {
-            let id = file.header.id.filter(|id| !ids.contains(id)).unwrap_or_else(Id::new);
-            ids.insert(id);
-            files.insert(id, path.clone());
-            keep(
-                id,
-                Extras {
-                    head: unknown_head(&file.header.other, head),
-                    ..Extras::default()
-                },
-            );
-            problem(&path, "was not in bible.json; it was added");
-            repaired = true;
-            out.push((id, out.len() as i64, path, file));
-        }
-        Ok(out)
-    };
-    let links_of = |id: Id| scene_links.get(&id).cloned().unwrap_or_default();
-
-    let mut cast = Cast::default();
-    for (id, index, _, file) in entries("characters", &["role", "motivation"])? {
-        for (at, body) in file.header.other.list("motivation").unwrap_or_default().iter().enumerate() {
-            cast.motivations.push(Motivation {
-                id: Id::new(),
-                character_id: id,
-                body: body.clone(),
-                sort_index: at as i64,
-                created_at: now,
-                updated_at: now,
-            });
-        }
-        // One motivation is written as a single value, not a list.
-        if let Some(body) = file.header.other.text("motivation") {
-            cast.motivations.push(Motivation {
-                id: Id::new(),
-                character_id: id,
-                body: body.to_string(),
-                sort_index: 0,
-                created_at: now,
-                updated_at: now,
-            });
-        }
-        cast.characters.push(Character {
-            id,
-            name: file.header.title.clone(),
-            role: file.header.other.text("role").unwrap_or_default().to_string(),
-            summary: blocks_text(file.blocks),
-            sort_index: index,
-            linked_ids: links_of(id),
-            parent_id: parents.borrow().get(&id).copied(),
-            label: labels.borrow().get(&id).cloned().unwrap_or_default(),
-            created_at: now,
-            updated_at: now,
-        });
-    }
-    for (index, item) in bible.list("relationships").into_iter().enumerate() {
-        // Lines written before relationships had ids get one now.
-        let id = bible.optional_id(item, "id")?.unwrap_or_else(Id::new);
-        line_extras.push((id, unknown_keys(item, &RELATIONSHIP_KEYS)));
-        cast.relationships.push(CharacterRelationship {
-            id,
-            from_id: bible.id(item, "from")?,
-            to_id: bible.id(item, "to")?,
-            kind: text_of(item, "kind"),
-            sort_index: index as i64,
-            created_at: now,
-            updated_at: now,
-        });
-    }
-
-    let mut world = World::default();
-    for (id, index, path, file) in entries("places", &["culture"])? {
-        world.locations.push(Location {
-            id,
-            name: file.header.title.clone(),
-            culture_id: header_id(&file, &path, "culture")?,
-            summary: blocks_text(file.blocks),
-            sort_index: index,
-            linked_ids: links_of(id),
-            parent_id: parents.borrow().get(&id).copied(),
-            label: labels.borrow().get(&id).cloned().unwrap_or_default(),
-            created_at: now,
-            updated_at: now,
-        });
-    }
-    for (id, index, _, file) in entries("cultures", &[])? {
-        world.cultures.push(Culture {
-            id,
-            name: file.header.title.clone(),
-            summary: blocks_text(file.blocks),
-            sort_index: index,
-            linked_ids: links_of(id),
-            parent_id: parents.borrow().get(&id).copied(),
-            label: labels.borrow().get(&id).cloned().unwrap_or_default(),
-            created_at: now,
-            updated_at: now,
-        });
-    }
-    for (id, index, path, file) in entries("lore", &["place", "culture"])? {
-        world.lore.push(LoreEntry {
-            id,
-            title: file.header.title.clone(),
-            location_id: header_id(&file, &path, "place")?,
-            culture_id: header_id(&file, &path, "culture")?,
-            body: blocks_text(file.blocks),
-            sort_index: index,
-            linked_ids: links_of(id),
-            parent_id: parents.borrow().get(&id).copied(),
-            label: labels.borrow().get(&id).cloned().unwrap_or_default(),
-            created_at: now,
-            updated_at: now,
-        });
-    }
-    for (id, index, path, file) in entries("timeline", &["when", "place"])? {
-        world.events.push(TimelineEvent {
-            id,
-            title: file.header.title.clone(),
-            when_label: file.header.other.text("when").unwrap_or_default().to_string(),
-            location_id: header_id(&file, &path, "place")?,
-            summary: blocks_text(file.blocks),
-            sort_index: index,
-            linked_ids: links_of(id),
-            parent_id: parents.borrow().get(&id).copied(),
-            label: labels.borrow().get(&id).cloned().unwrap_or_default(),
-            created_at: now,
-            updated_at: now,
-        });
-    }
-
-    let mut library = ResearchLibrary::default();
-    for (id, index, _, file) in entries("research", &[])? {
-        library.items.push(ResearchItem {
-            id,
-            title: file.header.title.clone(),
-            notes: blocks_text(file.blocks),
-            sort_index: index,
-            linked_ids: links_of(id),
-            parent_id: parents.borrow().get(&id).copied(),
-            label: labels.borrow().get(&id).cloned().unwrap_or_default(),
-            created_at: now,
-            updated_at: now,
-        });
-    }
-    for item in bible.list("research_files") {
-        let stored = text_of(item, "stored");
-        keep(
-            bible.id(item, "id")?,
-            Extras {
-                json: unknown_keys(item, &RESEARCH_FILE_KEYS),
-                ..Extras::default()
-            },
-        );
-        // The name is used to open a file under attachments/.
-        inside(&root.join("attachments"), "bible.json", &stored)?;
-        library.files.push(ResearchFile {
-            id: bible.id(item, "id")?,
-            item_id: bible.id(item, "note")?,
-            file_name: text_of(item, "name"),
-            stored_name: stored,
-            created_at: now,
-        });
-    }
-
     let mindmap = read_mindmap(root, &seen)?;
 
     // The plot grid.
@@ -1516,11 +1030,8 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
         beats,
         plot,
         mindmap,
-        cast,
-        world,
-        library,
         files,
-        extras: with_lines(extras, link_extras, line_extras),
+        extras,
         read: seen.into_inner(),
         problems,
         missing,
@@ -1753,95 +1264,6 @@ mod tests {
         );
         store.persist_scene_beats(&beats).unwrap();
 
-        let (mara, pilot, quay, guild) = (Id::new(), Id::new(), Id::new(), Id::new());
-        let person = |id, name: &str, index| Character {
-            id,
-            name: name.into(),
-            role: "lead".into(),
-            summary: "Late.\n\nAlways late.".into(),
-            sort_index: index,
-            linked_ids: vec![scene.id],
-            parent_id: None,
-            label: String::new(),
-            created_at: now,
-            updated_at: now,
-        };
-        let motive = |body: &str, index| Motivation {
-            id: Id::new(),
-            character_id: mara,
-            body: body.into(),
-            sort_index: index,
-            created_at: now,
-            updated_at: now,
-        };
-        store
-            .persist_cast(&Cast {
-                characters: vec![person(pilot, "The Pilot", 1), person(mara, "Mara Vance", 0)],
-                motivations: vec![motive("Leave", 0), motive("Be forgiven", 1)],
-                relationships: vec![CharacterRelationship {
-                    id: Id::new(),
-                    from_id: mara,
-                    to_id: pilot,
-                    kind: "owes".into(),
-                    sort_index: 0,
-                    created_at: now,
-                    updated_at: now,
-                }],
-            })
-            .unwrap();
-        store
-            .persist_world(&World {
-                locations: vec![Location {
-                    id: quay,
-                    name: "North Quay".into(),
-                    summary: "Stone.".into(),
-                    culture_id: Some(guild),
-                    sort_index: 0,
-                    linked_ids: vec![scene.id],
-                    parent_id: None,
-                    label: String::new(),
-                    created_at: now,
-                    updated_at: now,
-                }],
-                cultures: vec![Culture {
-                    id: guild,
-                    name: "Pilots' Guild".into(),
-                    summary: String::new(),
-                    sort_index: 0,
-                    linked_ids: Vec::new(),
-                    parent_id: None,
-                    label: String::new(),
-                    created_at: now,
-                    updated_at: now,
-                }],
-                lore: vec![LoreEntry {
-                    id: Id::new(),
-                    title: "Tide tables".into(),
-                    body: "A promise.".into(),
-                    location_id: Some(quay),
-                    culture_id: None,
-                    sort_index: 0,
-                    linked_ids: Vec::new(),
-                    parent_id: None,
-                    label: String::new(),
-                    created_at: now,
-                    updated_at: now,
-                }],
-                events: vec![TimelineEvent {
-                    id: Id::new(),
-                    title: "The boat leaves".into(),
-                    when_label: "Dawn".into(),
-                    summary: String::new(),
-                    location_id: Some(quay),
-                    sort_index: 0,
-                    linked_ids: Vec::new(),
-                    parent_id: None,
-                    label: String::new(),
-                    created_at: now,
-                    updated_at: now,
-                }],
-            })
-            .unwrap();
         let line = Id::new();
         store
             .persist_plot(&PlotGrid {
@@ -1924,19 +1346,7 @@ mod tests {
         assert_eq!(read.beats[&harbor.id].outcome, "It has gone");
         assert_eq!(read.documents.len(), content.documents.len());
 
-        // The bible, in its order, with its links.
-        let names: Vec<&str> = read.cast.characters.iter().map(|c| c.name.as_str()).collect();
-        assert_eq!(names, ["Mara Vance", "The Pilot"]);
-        assert_eq!(read.cast.characters[0].summary, "Late.\n\nAlways late.");
-        assert_eq!(read.cast.characters[0].linked_ids, vec![harbor.id]);
-        let motives: Vec<&str> = read.cast.motivations.iter().map(|m| m.body.as_str()).collect();
-        assert_eq!(motives, ["Leave", "Be forgiven"]);
-        assert_eq!(read.cast.relationships[0].kind, "owes");
-        assert_eq!(read.world.locations[0].culture_id, Some(read.world.cultures[0].id));
-        assert_eq!(read.world.lore[0].location_id, Some(read.world.locations[0].id));
-        assert_eq!(read.world.events[0].when_label, "Dawn");
         assert_eq!(read.plot.points[0].scene_id, Some(harbor.id));
-        assert_eq!(read.library.items.len(), content.library.items.len());
 
         // Shared settings travel with the project; the theme stays here.
         assert_eq!(read.meta.title, "Tide Novel");
@@ -1950,20 +1360,6 @@ mod tests {
         let elsewhere = read_project_files(&first).unwrap();
         assert_eq!(elsewhere.meta.settings.theme, ProjectSettings::default().theme);
         assert_eq!(elsewhere.meta.settings.daily_word_goal, 750);
-
-        // A link points at any binder item, a chapter as well as a scene.
-        let chapter = read.binder.nodes.iter().find(|node| node.kind == NodeKind::Chapter).unwrap().id;
-        let bible = first.join("bible.json");
-        let to_harbor = format!(r#""item":"{}""#, harbor.id);
-        assert!(fs::read_to_string(&bible).unwrap().contains(&to_harbor));
-        let to_chapter = fs::read_to_string(&bible).unwrap().replace(&to_harbor, &format!(r#""item":"{chapter}""#));
-        fs::write(&bible, &to_chapter).unwrap();
-        assert_eq!(read_project_files(&first).unwrap().cast.characters[0].linked_ids, vec![chapter]);
-        // A link written with `scene`, before links could point at a chapter,
-        // is refused and not converted.
-        fs::write(&bible, to_chapter.replace(r#""item":"#, r#""scene":"#)).unwrap();
-        let refused = read_project_files(&first).unwrap_err().to_string();
-        assert!(refused.contains("bible.json") && refused.contains("\"item\""), "{refused}");
 
         for dir in [source, first, second] {
             let _ = fs::remove_dir_all(dir);

@@ -13,9 +13,6 @@ pub enum AppShortcut {
     MindMap,
     Outliner,
     Plot,
-    Characters,
-    World,
-    Research,
     History,
     NewScene,
     NewChapter,
@@ -77,7 +74,7 @@ impl Listed {
 /// Every app chord, in the order the shortcuts window lists them. A test
 /// checks each one against `app_shortcut`, so the window cannot list a
 /// chord that does nothing.
-pub const LISTED: [Listed; 26] = [
+pub const LISTED: [Listed; 23] = [
     Listed::ctrl("Save", "s"),
     Listed::ctrl_shift("Snapshot this document", "s"),
     Listed::ctrl("Undo", "z"),
@@ -90,10 +87,7 @@ pub const LISTED: [Listed; 26] = [
     Listed::ctrl("Mind map", "2"),
     Listed::ctrl("Outline", "3"),
     Listed::ctrl("Plot", "4"),
-    Listed::ctrl("Characters", "5"),
-    Listed::ctrl("World", "6"),
-    Listed::ctrl("Research", "7"),
-    Listed::ctrl("History", "8"),
+    Listed::ctrl("History", "5"),
     Listed::ctrl("New scene", "n"),
     Listed::ctrl_shift("New chapter", "n"),
     Listed::ctrl("Go to a scene or chapter", "p"),
@@ -148,10 +142,7 @@ pub fn app_shortcut(key: &str, ctrl: bool, shift: bool, alt: bool) -> Option<App
         ("2", false) => AppShortcut::MindMap,
         ("3", false) => AppShortcut::Outliner,
         ("4", false) => AppShortcut::Plot,
-        ("5", false) => AppShortcut::Characters,
-        ("6", false) => AppShortcut::World,
-        ("7", false) => AppShortcut::Research,
-        ("8", false) => AppShortcut::History,
+        ("5", false) => AppShortcut::History,
         ("n", false) => AppShortcut::NewScene,
         ("n", true) => AppShortcut::NewChapter,
         ("o", false) => AppShortcut::OpenProject,
@@ -187,10 +178,8 @@ mod tests {
         assert_eq!(app_shortcut("2", true, false, false), Some(AppShortcut::MindMap));
         assert_eq!(app_shortcut("3", true, false, false), Some(AppShortcut::Outliner));
         assert_eq!(app_shortcut("4", true, false, false), Some(AppShortcut::Plot));
-        assert_eq!(app_shortcut("5", true, false, false), Some(AppShortcut::Characters));
-        assert_eq!(app_shortcut("6", true, false, false), Some(AppShortcut::World));
-        assert_eq!(app_shortcut("7", true, false, false), Some(AppShortcut::Research));
-        assert_eq!(app_shortcut("8", true, false, false), Some(AppShortcut::History));
+        assert_eq!(app_shortcut("5", true, false, false), Some(AppShortcut::History));
+        assert_eq!(app_shortcut("6", true, false, false), None);
         assert_eq!(app_shortcut("n", true, false, false), Some(AppShortcut::NewScene));
         assert_eq!(app_shortcut("n", true, true, false), Some(AppShortcut::NewChapter));
         assert_eq!(app_shortcut("o", true, false, false), Some(AppShortcut::OpenProject));

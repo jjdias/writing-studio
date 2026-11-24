@@ -23,25 +23,22 @@ Binder + stored documents → writing-studio-export → .md / .docx on disk
 | `writing-studio-core` | IDs, timestamps, errors, events, autosave debounce, format version |
 | `writing-studio-document` | Block document model, JSON, restricted HTML interchange, text comparison between two versions, tracked changes |
 | `writing-studio-editor` | Session, undo/redo, the page's text applied as blocks, counts |
-| `writing-studio-project` | Binder tree, settings, drag-and-drop, trash/restore |
+| `writing-studio-project` | Binder tree, with the manuscript and the notes, settings, drag-and-drop, trash/restore |
 | `writing-studio-manuscript` | Book/chapter/scene outline |
-| `writing-studio-templates` | Blank novel seed |
+| `writing-studio-templates` | Blank novel seed and the first note templates |
 | `writing-studio-storage` | The project folder: Markdown and JSON files as the project, a SQLite cache beside them, snapshots, backups, and restore; the project exported as a folder of Markdown, and Markdown brought in |
 | `writing-studio-plotting` | Plotlines, plot points, and scene links |
-| `writing-studio-characters` | Profiles, motivations, and relationships |
-| `writing-studio-worldbuilding` | Locations, cultures, lore, and timelines |
-| `writing-studio-research` | Research notes and files in `attachments/` |
 | `writing-studio-search` | In-memory full-text index of manuscript text, rebuilt from SQLite when a project opens |
 | `writing-studio-diagnostics` | Scene goal, conflict, and outcome, and the counts and checks made on a scene's text. No dependencies |
-| `writing-studio-context` | A scene's context: the scene, where it sits, the scenes around it, its plot points, and the characters, places, and notes linked to it or to what it is in; as Markdown, capped to a length. Reads the model crates only, not the window or the files |
-| `writing-studio-format` | A scene as a Markdown file with front matter, and back; the same Markdown for the page, export, and import. See [PROJECT_FORMAT.md](PROJECT_FORMAT.md) |
+| `writing-studio-context` | A scene's context: the scene, where it sits, the scenes around it, its plot points, and the notes linked to it or to what it is in, or mentioned in its text; as Markdown, capped to a length. Reads the model crates only, not the window or the files |
+| `writing-studio-format` | A scene or a note as a Markdown file with front matter, and back; the same Markdown for the page, export, and import; `[[Title]]` links. See [PROJECT_FORMAT.md](PROJECT_FORMAT.md) |
 | `writing-studio-spellcheck` | Checks words against a Hunspell dictionary (English US is compiled in) and the project's own words; suggests replacements. No network |
 | `writing-studio-synchronization` | Merging two copies of a project by paragraph and by field, and sync through the `git` program. See [SYNC.md](SYNC.md) |
-| `writing-studio-export` | Manuscript compile to Markdown (with the format crate's writer) and DOCX |
+| `writing-studio-export` | Manuscript compile to Markdown (with the format crate's writer) and DOCX, with links to notes in footnote folders as footnotes |
 | `writing-studio-ui` | Workspace UI |
 | `writing-studio-desktop` | Native window |
 
-The plot grid, character cast, world notes, and research library are files in the project folder beside the manuscript, and rows in the cache. Research files are copied into `attachments/`. Search is not stored: the Tantivy index is memory only.
+Notes are binder items under the Notes root, each a Markdown file in `notes/`, as scenes are in `manuscript/`; the plot grid is `plot.json`. Both are rows in the cache too. A file added to a note is copied into `attachments/`. Search is not stored: the Tantivy index is memory only.
 
 Inline comments, links, code blocks, and scene breaks are fields on the document JSON. A note sits on text runs (`marks.comment`, with `comment_kind` and `comment_resolved`), and so does a highlight (`marks.highlight`). `Document::review_items` lists them, joining neighboring runs that carry the same note. Tracked changes are the difference between the document and a baseline copy kept in `tracking_baselines`; nothing about them is stored in the document. See [Phase 4](../roadmap/done/phase-4.md) and [the roadmap](../roadmap/README.md).
 
@@ -50,7 +47,7 @@ Inline comments, links, code blocks, and scene breaks are fields on the document
 1. The UI holds a `StudioState` with an optional `ProjectStore`. The files in the project folder are the project. The store also holds a SQLite cache in `.local/`, filled from the files when the project opens. Every save writes the file first and the cache second.
 2. Opening a scene loads JSON into an `EditorSession` wrapping a `Document`. Saved JSON is the block model, including links, code blocks, scene breaks, and inline comments. The page is a Markdown editor: CodeMirror 6, built from `crates/ui/codemirror` into one file the program carries (`crates/ui/assets/codemirror.js`), with nothing loaded from the network. It shows the scene as the format crate writes it in Markdown, and every change is read back through the format crate's Markdown reader onto that JSON, keeping the blocks' ids.
 3. Typing updates the session; idle autosave, blur, scene change, and Ctrl+S write JSON back through `ProjectStore`. A save also updates the in-memory search index.
-4. Binder moves and trash update `binder_nodes` (parent, `sort_index`, `label`, `color`, `deleted_at`, `restore_parent_id`). Plot, characters, world notes, research, and scene links use the tables in [PROJECT_FORMAT.md](PROJECT_FORMAT.md). Opening a project copies leftover binder research notes into the research library and removes them from the binder. Emptying trash clears scene links to deleted scenes and drops a deleted book's word target.
+4. Binder moves and trash update `binder_nodes` (parent, `sort_index`, `label`, `color`, `deleted_at`, `restore_parent_id`). A note's links are its `links`, on the same row. The plot grid uses the tables in [PROJECT_FORMAT.md](PROJECT_FORMAT.md). Emptying trash clears plot points' and notes' links to what it deleted and drops a deleted book's word target.
 5. History restore either replaces one document from `snapshots` or copies a `.local/backups/*.sqlite` into the cache and writes the files again from it. That SQLite copy does not include `attachments/`.
 6. Compile loads documents, walks the chosen book, and writes a file the user chooses. Which book is compiled, and how today and the sitting follow that book, is in [Phase 3](../roadmap/done/phase-3.md) and [PROJECT_FORMAT.md](PROJECT_FORMAT.md).
 

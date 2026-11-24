@@ -6284,23 +6284,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
 
 [[package]]
-name = "writing-studio-characters"
-version = "0.1.0"
-dependencies = [
- "serde",
- "writing-studio-core",
-]
-
-[[package]]
 name = "writing-studio-context"
 version = "0.1.0"
 dependencies = [
- "writing-studio-characters",
  "writing-studio-core",
  "writing-studio-plotting",
  "writing-studio-project",
- "writing-studio-research",
- "writing-studio-worldbuilding",
 ]
 
 [[package]]
@@ -6396,14 +6385,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "writing-studio-research"
-version = "0.1.0"
-dependencies = [
- "serde",
- "writing-studio-core",
-]
-
-[[package]]
 name = "writing-studio-search"
 version = "0.1.0"
 dependencies = [
@@ -6427,16 +6408,13 @@ dependencies = [
  "chrono",
  "rusqlite",
  "serde_json",
- "writing-studio-characters",
  "writing-studio-core",
  "writing-studio-diagnostics",
  "writing-studio-document",
  "writing-studio-format",
  "writing-studio-plotting",
  "writing-studio-project",
- "writing-studio-research",
  "writing-studio-templates",
- "writing-studio-worldbuilding",
 ]
 
 [[package]]
@@ -6471,7 +6449,6 @@ dependencies = [
  "rfd 0.15.4",
  "serde_json",
  "tokio",
- "writing-studio-characters",
  "writing-studio-context",
  "writing-studio-core",
  "writing-studio-diagnostics",
@@ -6482,21 +6459,11 @@ dependencies = [
  "writing-studio-manuscript",
  "writing-studio-plotting",
  "writing-studio-project",
- "writing-studio-research",
  "writing-studio-search",
  "writing-studio-spellcheck",
  "writing-studio-storage",
  "writing-studio-synchronization",
- "writing-studio-worldbuilding",
  "zip",
-]
-
-[[package]]
-name = "writing-studio-worldbuilding"
-version = "0.1.0"
-dependencies = [
- "serde",
- "writing-studio-core",
 ]
 
 [[package]]

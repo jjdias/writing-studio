@@ -18,8 +18,6 @@ pub(super) fn ContextPane() -> Element {
                 div { class: "dash-heading", "Trash" }
                 p { class: "hint", "What was moved here, under Trash in the binder. Choose an item to restore it." }
                 TrashActions {}
-            } else if let Some(entry) = state.read().entry_shown() {
-                EntryContext { entry }
             } else {
                 Inspector {}
             }
@@ -617,122 +615,6 @@ fn NotesHere(id: Id, kind: NodeKind) -> Element {
         datalist { id: "note-titles",
             for title in offered {
                 option { value: "{title}" }
-            }
-        }
-    }
-}
-
-#[component]
-fn EntryContext(entry: StoryEntry) -> Element {
-    let mut state = use_context::<Signal<StudioState>>();
-    let id = entry.id;
-    let labels = state.read().labels_in_use(entry.kind);
-    rsx! {
-        div { class: "dash-heading", "{entry.name}" }
-        label { r#for: "entry-label-{id}", "What it is" }
-        input {
-            id: "entry-label-{id}",
-            list: "entry-labels-{id}",
-            placeholder: "Country, pub, father…",
-            value: "{entry.label}",
-            onchange: move |event| state.write().set_entry_label(id, event.value()),
-        }
-        datalist { id: "entry-labels-{id}",
-            for label in labels {
-                option { value: "{label}" }
-            }
-        }
-        Connections { id }
-        SceneLinks { owner: entry.id, kind: entry.kind }
-    }
-}
-
-/// An entry's connections to the others: what it is inside and holds, the
-/// fields that name another entry, and the ones the writer named, each way.
-/// A named one can be renamed or taken away; a new one is added below.
-#[component]
-fn Connections(id: Id) -> Element {
-    let mut state = use_context::<Signal<StudioState>>();
-    let all = state.read().story_connections();
-    let entries = state.read().story_entries();
-    let name_of = |other: Id| entries.iter().find(|entry| entry.id == other).map(|entry| (entry.name.clone(), entry.kind.noun()));
-    let mine: Vec<(writing_studio_context::Connection, bool, String, &str)> = all
-        .into_iter()
-        .filter(|tie| tie.from == id || tie.to == id)
-        .filter_map(|tie| {
-            let outgoing = tie.from == id;
-            let (name, noun) = name_of(if outgoing { tie.to } else { tie.from })?;
-            Some((tie, outgoing, name, noun))
-        })
-        .collect();
-    let offered: Vec<String> = entries.iter().filter(|entry| entry.id != id).map(story_choice).collect();
-    let names = state.read().connection_names();
-    let mut target = use_signal(String::new);
-    let mut name = use_signal(String::new);
-    rsx! {
-        section { class: "cast-block connections",
-            h3 { "Connections" }
-            if mine.is_empty() {
-                p { class: "hint", "Not connected to another entry yet." }
-            }
-            for (tie, outgoing, other, noun) in mine {
-                {
-                    let key = format!("{}-{}-{}", tie.from, tie.to, tie.name);
-                    let arrow = if outgoing { "→" } else { "←" };
-                    let shown = match (tie.tie, outgoing) {
-                        (writing_studio_context::Tie::Inside, false) => "holds".to_string(),
-                        _ => tie.name.clone(),
-                    };
-                    rsx! {
-                        div { class: "connection-row", key: "{key}",
-                            span { class: "connection-name", "{arrow} {shown}" }
-                            span { "{other}" }
-                            span { class: "story-kind", "{noun}" }
-                            if let writing_studio_context::Tie::Named(relation) = tie.tie {
-                                button {
-                                    class: "keyword-remove",
-                                    title: "Take this connection away",
-                                    onclick: move |_| state.write().remove_relationship(relation),
-                                    "×"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            form {
-                class: "connection-form",
-                onsubmit: move |event| {
-                    event.prevent_default();
-                    state.write().connect_entries(id, &target(), &name());
-                    target.set(String::new());
-                    name.set(String::new());
-                },
-                input {
-                    list: "connection-names-{id}",
-                    placeholder: "lives in, son of…",
-                    aria_label: "How they are connected",
-                    value: "{name}",
-                    oninput: move |event| name.set(event.value()),
-                }
-                input {
-                    list: "connection-targets-{id}",
-                    placeholder: "To whom or what",
-                    aria_label: "The entry it is connected to",
-                    value: "{target}",
-                    oninput: move |event| target.set(event.value()),
-                }
-                button { r#type: "submit", "Connect" }
-            }
-            datalist { id: "connection-names-{id}",
-                for one in names {
-                    option { value: "{one}" }
-                }
-            }
-            datalist { id: "connection-targets-{id}",
-                for one in offered {
-                    option { value: "{one}" }
-                }
             }
         }
     }

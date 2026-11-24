@@ -11,7 +11,6 @@ fontdb.workspace = true
 rfd.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
-writing-studio-characters.workspace = true
 writing-studio-context.workspace = true
 writing-studio-core.workspace = true
 writing-studio-diagnostics.workspace = true
@@ -22,12 +21,10 @@ writing-studio-format.workspace = true
 writing-studio-manuscript.workspace = true
 writing-studio-plotting.workspace = true
 writing-studio-project.workspace = true
-writing-studio-research.workspace = true
 writing-studio-search.workspace = true
 writing-studio-spellcheck.workspace = true
 writing-studio-storage.workspace = true
 writing-studio-synchronization.workspace = true
-writing-studio-worldbuilding.workspace = true
 
 [dev-dependencies]
 zip.workspace = true

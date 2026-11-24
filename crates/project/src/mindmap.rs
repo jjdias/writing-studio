@@ -1,6 +1,5 @@
 //! What the mind map keeps beyond the binder: ideas, lines between nodes,
-//! and where the writer put nodes by hand. Stored as `mindmap.json`; story
-//! links stay in `bible.json`, as they are the bible's.
+//! and where the writer put nodes by hand. Stored as `mindmap.json`.
 
 use std::collections::BTreeMap;
 
@@ -52,7 +51,7 @@ pub struct MapLine {
 }
 
 /// Where the writer put a node, in map units, by the node's id: a binder
-/// item, an idea, or a story entry.
+/// item or an idea.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct MapPosition {
     pub id: Id,

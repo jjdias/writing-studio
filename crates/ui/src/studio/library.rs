@@ -177,8 +177,6 @@ pub(super) fn Library() -> Element {
                 }
                 FilterSection {}
                 KeywordSection {}
-                StorySection {}
-                WorldbuildingSection {}
                 if let Some(row) = trash_row {
                     LibraryRow { active: selected == Some(row.id), row: row.clone() }
                     if !row.collapsed {
@@ -390,178 +388,6 @@ fn choose_row(mut state: Signal<StudioState>, id: Id, kind: NodeKind, event: &Mo
     } else {
         current.choose_library(id);
         current.select_node(id);
-    }
-}
-
-/// The story's characters, places, cultures, lore, events, and research,
-/// each kind a tree of its own that nests freely: Country › City ›
-/// Neighbourhood › Pub. A row opens the entry's page; + on a kind adds one
-/// at its top, + on a row adds one inside it.
-#[component]
-fn WorldbuildingSection() -> Element {
-    let mut state = use_context::<Signal<StudioState>>();
-    let kinds = [
-        BibleLink::Character,
-        BibleLink::Location,
-        BibleLink::Culture,
-        BibleLink::Lore,
-        BibleLink::Timeline,
-        BibleLink::Research,
-    ];
-    rsx! {
-        div { class: "library-heading", "Worldbuilding" }
-        for kind in kinds {
-            div { class: "library-kind", key: "{kind.heading()}",
-                span { class: "library-kind-name", "{kind.heading()}" }
-                button {
-                    class: "library-kind-add",
-                    title: "Add a {kind.noun()}",
-                    aria_label: "Add a {kind.noun()}",
-                    onclick: move |_| {
-                        if let Some(id) = state.write().add_entry(kind, None) {
-                            select_field(format!("rename-{id}"));
-                        }
-                    },
-                    "+"
-                }
-            }
-            for (id, depth, held) in state.read().entry_rows(kind) {
-                EntryRow { key: "{id}", id, depth, held }
-            }
-        }
-    }
-}
-
-/// An entry in its kind's tree: opens its page, folds what it holds, is
-/// renamed with a double click or F2, dragged before, after, or inside
-/// another of its kind, given an entry inside it with +, or deleted with ×
-/// and a second click.
-#[component]
-fn EntryRow(id: Id, depth: u32, held: bool) -> Element {
-    let mut state = use_context::<Signal<StudioState>>();
-    let Some(entry) = state.read().story_entry(id) else {
-        return rsx! {};
-    };
-    let kind = entry.kind;
-    let indent = 8 + depth * 14;
-    let collapsed = held && state.read().is_collapsed(id);
-    let active = state.read().entry_shown().is_some_and(|shown| shown.id == id);
-    let mut class = String::from("library-row entry-row");
-    if active {
-        class.push_str(" active");
-    }
-    if state.read().dragging == Some(id) {
-        class.push_str(" dragging");
-    }
-    if state.read().drop_target == Some(id) {
-        let same = state.read().dragging.and_then(|dragged| state.read().story_entry(dragged)).is_some_and(|moving| moving.kind == kind);
-        class.push_str(match (same, state.read().drop_place) {
-            (false, _) => " drop-invalid",
-            (true, DropPlace::Before) => " drop-before",
-            (true, DropPlace::After) => " drop-after",
-            (true, DropPlace::Inside) => " drop-target",
-        });
-    }
-    if state.read().renaming == Some(id) {
-        return rsx! {
-            div { class: "library-item", style: "padding-left: {indent}px",
-                span { class: "fold-spacer" }
-                RenameField { id, name: entry.name.clone() }
-            }
-        };
-    }
-    let fold_label = if collapsed { format!("Show what is in {}", entry.name) } else { format!("Fold {}", entry.name) };
-    let rename = move || {
-        state.write().renaming = Some(id);
-        select_field(format!("rename-{id}"));
-    };
-    rsx! {
-        div { class: "library-item", style: "padding-left: {indent}px",
-            if held {
-                button {
-                    class: if collapsed { "fold-btn folded" } else { "fold-btn" },
-                    title: "{fold_label}",
-                    aria_label: "{fold_label}",
-                    aria_expanded: "{!collapsed}",
-                    onclick: move |_| state.write().toggle_collapsed(id),
-                    svg { class: "fold-glyph", view_box: "0 0 16 16", "aria-hidden": "true",
-                        path { d: "M5 6l3 3 3-3", fill: "none", stroke: "currentColor", stroke_width: "1.6", stroke_linecap: "round", stroke_linejoin: "round" }
-                    }
-                }
-            } else {
-                span { class: "fold-spacer" }
-            }
-            button {
-                class: "{class}",
-                aria_current: if active { "page" } else { "false" },
-                draggable: true,
-                title: "Double-click or press F2 to rename",
-                onclick: move |_| state.write().open_story_entry(id),
-                ondoubleclick: move |_| {
-                    let mut start = rename;
-                    start();
-                },
-                onkeydown: move |event: KeyboardEvent| {
-                    if event.key() == Key::F2 {
-                        event.prevent_default();
-                        let mut start = rename;
-                        start();
-                    } else if let Some(step) = arrow_step(&event) {
-                        event.prevent_default();
-                        step_focus(".library button.library-row", step);
-                    }
-                },
-                ondragstart: move |event| {
-                    event.stop_propagation();
-                    state.write().begin_drag(id);
-                },
-                ondragover: move |event| {
-                    event.prevent_default();
-                    event.stop_propagation();
-                    let place = DropPlace::at(event.element_coordinates().y, LIBRARY_ROW_HEIGHT, true);
-                    let current = state.peek();
-                    let changed = current.drop_target != Some(id) || current.drop_place != place;
-                    drop(current);
-                    if changed {
-                        state.write().set_binder_drop(id, place);
-                    }
-                },
-                ondrop: move |event| {
-                    event.prevent_default();
-                    event.stop_propagation();
-                    state.write().drop_entry(id);
-                },
-                ondragend: move |_| state.write().end_drag(),
-                span { class: "library-name", "{entry.name}" }
-                if !entry.label.is_empty() {
-                    span { class: "entry-label", "{entry.label}" }
-                }
-            }
-            button {
-                class: "item-delete item-edit",
-                title: "Add a {kind.noun()} inside “{entry.name}”",
-                aria_label: "Add inside {entry.name}",
-                onclick: move |event| {
-                    event.stop_propagation();
-                    if let Some(added) = state.write().add_entry(kind, Some(id)) {
-                        select_field(format!("rename-{added}"));
-                    }
-                },
-                "+"
-            }
-            button {
-                class: "item-delete",
-                title: "Delete “{entry.name}”. Asks for a second click; what it holds moves up.",
-                aria_label: "Delete {entry.name}",
-                onclick: move |event| {
-                    event.stop_propagation();
-                    state.write().remove_entry(id);
-                },
-                svg { class: "glyph", view_box: "0 0 16 16", "aria-hidden": "true",
-                    path { d: "M4.5 4.5l7 7M11.5 4.5l-7 7", fill: "none", stroke: "currentColor", stroke_width: "1.5", stroke_linecap: "round" }
-                }
-            }
-        }
     }
 }
 
@@ -907,52 +733,6 @@ fn KeywordSection() -> Element {
     }
 }
 
-/// The characters, places, and notes linked into the manuscript, by kind,
-/// each with how many scenes it reaches. A click narrows the scene list,
-/// the mind map, and the outliner to those scenes; a second click, or
-/// Escape, lets it go.
-#[component]
-fn StorySection() -> Element {
-    let mut state = use_context::<Signal<StudioState>>();
-    let rows = state.read().story_list();
-    if rows.is_empty() {
-        return rsx! {};
-    }
-    let chosen = state.read().story_filter;
-    let mut kinds: Vec<BibleLink> = Vec::new();
-    for (entry, _) in &rows {
-        if !kinds.contains(&entry.kind) {
-            kinds.push(entry.kind);
-        }
-    }
-    rsx! {
-        div { class: "library-heading", "Story" }
-        for kind in kinds {
-            div { class: "library-subheading", key: "{kind.heading()}", "{kind.heading()}" }
-            for (entry, count) in rows.iter().filter(|(entry, _)| entry.kind == kind).cloned() {
-                {
-                    let active = chosen == Some(entry.id);
-                    rsx! {
-                        div { class: "library-item", key: "{entry.id}",
-                            span { class: "fold-spacer" }
-                            button {
-                                class: if active { "library-row active" } else { "library-row" },
-                                aria_current: if active { "true" } else { "false" },
-                                title: if active { "Show every scene again (Escape)" } else { "Show only the scenes “{entry.name}” is linked to, directly or through their chapter" },
-                                onclick: move |_| state.write().choose_story(entry.id),
-                                span { class: "library-name", "{entry.name}" }
-                                span { class: "library-count", "{count}" }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-/// The field that renames a keyword in place. Enter renames it (a second
-/// Enter when it would merge into another), Escape leaves it as it was.
 #[component]
 fn KeywordRenameField(name: String) -> Element {
     let mut state = use_context::<Signal<StudioState>>();
@@ -1057,29 +837,43 @@ fn FilterForm(editing: Option<SavedFilter>) -> Element {
 
 /// Characters, places, and notes a filter's scenes must be linked to,
 /// directly or through their chapter, as chips and a menu that adds one.
+/// The notes a filter's scenes must be reached by, as chips that come off
+/// with ×, and a menu that adds one.
 #[component]
 fn EntryPicks(picked: Signal<Vec<Id>>) -> Element {
     let state = use_context::<Signal<StudioState>>();
     let mut picked = picked;
-    let entries = state.read().story_entries();
-    let chosen: Vec<_> = picked().iter().filter_map(|id| entries.iter().find(|entry| entry.id == *id).cloned()).collect();
-    let offered: Vec<_> = entries.iter().filter(|entry| !picked().contains(&entry.id)).cloned().collect();
-    if entries.is_empty() {
+    let notes: Vec<(Id, String, String)> = {
+        let current = state.read();
+        current
+            .binder
+            .nodes
+            .iter()
+            .filter(|node| current.note_of(node.id).is_some())
+            .map(|node| {
+                let folder = node.parent_id.and_then(|parent| current.binder.get(parent)).map(|parent| parent.title.clone()).unwrap_or_default();
+                (node.id, node.title.clone(), folder)
+            })
+            .collect()
+    };
+    let chosen: Vec<_> = picked().iter().filter_map(|id| notes.iter().find(|note| note.0 == *id).cloned()).collect();
+    let offered: Vec<_> = notes.iter().filter(|note| !picked().contains(&note.0)).cloned().collect();
+    if notes.is_empty() {
         return rsx! {};
     }
     rsx! {
         label { r#for: "filter-entries", "With" }
         if !chosen.is_empty() {
             div { class: "keyword-chips",
-                for entry in chosen {
-                    span { class: "keyword-chip story-chip", key: "{entry.id}",
-                        span { "{entry.name}" }
-                        span { class: "story-kind", "{entry.kind.noun()}" }
+                for (id, title, folder) in chosen {
+                    span { class: "keyword-chip story-chip", key: "{id}",
+                        span { "{title}" }
+                        span { class: "story-kind", "{folder}" }
                         button {
                             class: "keyword-remove",
-                            title: "Take “{entry.name}” out of the filter",
-                            aria_label: "Remove {entry.name}",
-                            onclick: move |_| picked.write().retain(|kept| *kept != entry.id),
+                            title: "Take “{title}” out of the filter",
+                            aria_label: "Remove {title}",
+                            onclick: move |_| picked.write().retain(|kept| *kept != id),
                             "×"
                         }
                     }
@@ -1093,9 +887,9 @@ fn EntryPicks(picked: Signal<Vec<Id>>) -> Element {
                     picked.write().push(id);
                 }
             },
-            option { value: "", selected: true, if picked().is_empty() { "Anyone, anywhere" } else { "Add one…" } }
-            for entry in offered {
-                option { value: "{entry.id}", "{story_choice(&entry)}" }
+            option { value: "", selected: true, if picked().is_empty() { "Any note" } else { "Add one…" } }
+            for (id, title, folder) in offered {
+                option { value: "{id}", "{title} · {folder}" }
             }
         }
     }

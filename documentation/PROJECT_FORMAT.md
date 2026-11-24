@@ -26,16 +26,13 @@ MyNovel.writingstudio/
   notes/                  one Markdown file for each note and folder of notes, under the binder's Notes
   templates/              note templates, one Markdown file each, written once when the project is made
     the-harbor-3f9a.md
-  characters/             one Markdown file for each character
-  places/  cultures/  lore/  timeline/  research/
-  bible.json              the order of those entries, which scenes and chapters they point at, who is related to whom
   plot.json               plotlines and plot points
   mindmap.json            the mind map's ideas, lines, and hand-placed nodes, once it has any
-  attachments/            research files, as now
+  attachments/            files added to notes, `<note id>/<id>.<ext>`
     covers/               each book's ebook cover, `<book id>.png` or `.jpg`
   dictionaries/           optional Hunspell dictionaries, as now
   .gitignore              ignores .local/
-  .gitattributes          keeps line endings as they are, and research files as files
+  .gitattributes          keeps line endings as they are, and attached files as files
   .local/                 this machine only; never shared
     cache.sqlite          search, word counts, snapshots, track-changes baselines
     settings.json         theme, panel layout, book on screen, writing sessions
@@ -96,14 +93,15 @@ The text is Markdown as "Markdown export and import" describes: blocks apart by 
 
 ```text
 Tide (Markdown)/
-  README.md                       the book's title, then every scene and entry, in order, as links
+  README.md                       the book's title, then every scene and note, in order, as links
   manuscript/
     01-tide/                      a book
       01-chapter-1/               a chapter that holds scenes
         01-scene-1.md
         02-the-quay.md
-  characters/01-mara.md           the bible, one file for each entry
-  places/  cultures/  lore/  timeline/  research/
+  notes/
+    01-research/                  a folder of notes
+      01-tides.md                 a note
 ```
 
 The numbers keep files in the order of the book in any file list. An item with text is a file; an item with children is a folder beside it with the same number and name; a chapter with no text of its own is only the folder. The trash is left out. Ids, the plot grid, settings, and `.local/` are not written: this is for reading and for other programs, not for coming back.
@@ -162,31 +160,23 @@ Nobody waited.
 
 ## Other Markdown files
 
-Characters, places, cultures, lore, timeline events, and research notes are files of the same kind: front matter, then the entry's text, written and read by the same code as a scene. The name or title is `title`.
+A note and a folder of notes are files of the same kind as a scene, in `notes/`: front matter, then the text, written and read by the same code. The title is `title`; a note's links from Context are `links`, and a folder compiled as footnotes has `footnotes: "true"` (see the table of keys above). A folder, in `notes/` or in `manuscript/`, holds text of its own, which is never compiled or counted.
 
-| Folder | Keys in the front matter | Text |
-| --- | --- | --- |
-| `characters/` | `id`, `role`, `motivation` (a list, in order) | Summary |
-| `places/` | `id`, `culture` (an id) | Summary |
-| `cultures/` | `id` | Summary |
-| `lore/` | `id`, `place`, `culture` (ids) | Body |
-| `timeline/` | `id`, `when`, `place` (an id) | Summary |
-| `research/` | `id` | Notes |
+A template in `templates/` is a note's file without an id: `title`, `tags` when it has keywords, then its text. A new note from a template takes all three. The program writes the first templates when the project is made and then leaves the folder alone, and it never writes over a template; a file whose front matter cannot be read is left out of the menu.
 
-The text of an entry is plain paragraphs. Its files under `attachments/` are listed in `bible.json`. A book's cover is `attachments/covers/<book id>.png` or `.jpg`: one to a book, used only when the file is a PNG or JPEG picture (checked by its first bytes) of at most 20 MB.
+A file added to a note is copied to `attachments/<note id>/<id>.<ext>`, and the note's text links to it. A book's cover is `attachments/covers/<book id>.png` or `.jpg`: one to a book, used only when the file is a PNG or JPEG picture (checked by its first bytes) of at most 20 MB.
 
 ## JSON files
 
 JSON is for structure that is not read as prose. Where a file is a list, each item is on one line, so that adding, moving, or changing an item changes one line.
 
 - **`project.json`** — `format`, `id`, `title`, `created`, and `settings`: the daily and project word targets, each book's word target, the compile profiles, the author and each book's subtitle, and spelling (on or off, the dictionary, and the project's accepted words).
-- **`binder.json`** — `items`, one to a line. Each has `id` and `kind`, and `parent` unless it is at the top. An item left out of compile has `"left_out": true`; an item without it is compiled. An item's keywords are in its own file, as `tags`; only a root's would be on its line, as `keywords`. A line with `keywords` and a file whose front matter has no `tags`, as written before keywords moved into the files, is read with the line's keywords, and the next save moves them. Once a project uses them, two more lists follow `items`: `keywords`, one `{ "name": "…", "color": "gold" }` for each keyword in use (the color is a binder color), and `filters`, one `{ "id", "name", "keywords", "any", "without", "status", "text" }` for each saved filter: `keywords` and `without` are lists, a scene must carry all of `keywords` (any one with `"any": true`) and none of `without`, on itself or the chapter, part, or book it is in, each taking in the keywords nested under it with `/`; `entries`, a list of bible entry ids, must each reach the scene through `scene_links` (an entry no longer in the bible matches nothing); `status` is the scene's own; an empty field matches anything. A project without them has neither list, and reading checks what comes in: empty or overlong keywords are left out and a color that is not a binder color is dropped. A `label`, on a binder line or in a scene file's header, is still read from older files and becomes a keyword on that item, which is not written again. A filter with `keyword` (one word) or `label`, as written before filters took several keywords, is refused: the project does not open, and the message says what to change. Every item but the three roots has `file`: its title, synopsis, status, label, color, and keywords are in that file, and the line holds only where the item is. A scene, a chapter, or a note has its text in its file; a book, a part, or a folder has none, and text a person writes under its front matter is kept as it is. A root has its details on its line. A book, a part, or a folder with no `file`, as written before they had files, is read from its line, and the next save gives it a file. A trashed item also has `deleted`, the time it was trashed, and `restore_parent`.
-- **`bible.json`** — a list for each kind of entry (`characters`, `places`, `cultures`, `lore`, `timeline`, `research`), each item an `id`, its `file`, `label` when it has one (what it is: "Country", "Father"), and `parent` when it is inside another entry of its kind (a city in a country, a son under his father; an entry without one is at the top, in the list's order); then `research_files`, `relationships` (each with its own `id`, and `from`, `to`, and `kind`: a named connection between any two entries, of any kinds, such as a character who "lives in" a place), and `scene_links` (`from` an entry, to an `item`: a scene, or a chapter, part, or book, whose link reaches every scene in it). A link with `scene` in place of `item`, as written before links could point at a chapter, is refused: the project does not open, and the message says to change `scene` to `item`.
+- **`binder.json`** — `items`, one to a line. Each has `id` and `kind`, and `parent` unless it is at the top. An item left out of compile has `"left_out": true`; an item without it is compiled. An item's keywords are in its own file, as `tags`; only a root's would be on its line, as `keywords`. A line with `keywords` and a file whose front matter has no `tags`, as written before keywords moved into the files, is read with the line's keywords, and the next save moves them. Once a project uses them, two more lists follow `items`: `keywords`, one `{ "name": "…", "color": "gold" }` for each keyword in use (the color is a binder color), and `filters`, one `{ "id", "name", "keywords", "any", "without", "status", "text" }` for each saved filter: `keywords` and `without` are lists, a scene must carry all of `keywords` (any one with `"any": true`) and none of `without`, on itself or the chapter, part, or book it is in, each taking in the keywords nested under it with `/`; `entries`, a list of note ids, must each reach the scene: linked to it or to what it is in, or mentioned in its text with `[[…]]` (a note no longer there matches nothing); `status` is the scene's own; an empty field matches anything. A project without them has neither list, and reading checks what comes in: empty or overlong keywords are left out and a color that is not a binder color is dropped. A `label`, on a binder line or in a scene file's header, is still read from older files and becomes a keyword on that item, which is not written again. A filter with `keyword` (one word) or `label`, as written before filters took several keywords, is refused: the project does not open, and the message says what to change. Every item but the three roots has `file`: its title, synopsis, status, label, color, and keywords are in that file, and the line holds only where the item is. A scene, a chapter, or a note has its text in its file; a book, a part, or a folder has none, and text a person writes under its front matter is kept as it is. A root has its details on its line. A book, a part, or a folder with no `file`, as written before they had files, is read from its line, and the next save gives it a file. A trashed item also has `deleted`, the time it was trashed, and `restore_parent`.
 - **`plot.json`** — `plotlines` in order, each with its `points` in order; a point has `title`, `summary`, and an optional `scene`.
 
-- **`mindmap.json`** — `ideas`, `lines`, and `positions`, one to a line. An idea has `id`, `title`, `note`, and `attached` when it hangs from a node (a binder item, another idea); it is never compiled or counted. A line has `id`, `from`, `to`, and `label` when it has a word; its ends are binder items, ideas, or bible entries, and it is neither a binder move nor a story link. A position has `id` (a binder item, an idea, or an entry) and `x` and `y`, the node's center in map units. The file is written once the map has something of its own; a project without it has no ideas, lines, or positions. The cache keeps a copy in `binder_lists`, so a backup holds the map and a restore writes it back. Emptying the trash takes away the lines and positions of what it deleted, and loosens ideas that hung from it. Sync merges each list by `id`.
+- **`mindmap.json`** — `ideas`, `lines`, and `positions`, one to a line. An idea has `id`, `title`, `note`, and `attached` when it hangs from a node (a binder item, another idea); it is never compiled or counted. A line has `id`, `from`, `to`, and `label` when it has a word; its ends are binder items or ideas, and it is neither a binder move nor a note's link. A position has `id` (a binder item or an idea) and `x` and `y`, the node's center in map units. The file is written once the map has something of its own; a project without it has no ideas, lines, or positions. The cache keeps a copy in `binder_lists`, so a backup holds the map and a restore writes it back. Emptying the trash takes away the lines and positions of what it deleted, and loosens ideas that hung from it. Sync merges each list by `id`.
 
-**Keys the program does not know** are kept and written back: on any line of `binder.json`, `bible.json`, or `plot.json`, on any idea, line, or position of `mindmap.json` and at its top, and in `project.json` and its `settings`. A `relationships` line written before relationships had ids gets one the next time the bible is saved.
+**Keys the program does not know** are kept and written back: on any line of `binder.json` or `plot.json`, on any idea, line, or position of `mindmap.json` and at its top, and in `project.json` and its `settings`.
 
 **Order is the order of the lines.** Nothing is numbered. In `binder.json` a parent comes before its children, and children are in reading order, so the file reads from the top as the book does. Moving a scene moves one line and changes nothing else. An earlier draft of this format gave each item an order key; line order does the same job with nothing to keep in step.
 
@@ -207,16 +197,15 @@ JSON is for structure that is not read as prose. Where a file is a list, each it
 - **A save writes the file first, then the cache.** The cache never holds writing that is not in a file.
 - Every file is written whole under a temporary name and then renamed over the old one. A crash during a save leaves the old file or the new one.
 - Saving a scene writes that scene's file. Changing a title, synopsis, status, label, color, or beat writes the file of that item. Other scene files are not read or written.
-- `binder.json`, `bible.json`, `plot.json`, `project.json`, and the bible's files are written only when what they hold has changed.
+- `binder.json`, `plot.json`, and `project.json` are written only when what they hold has changed.
 - `README.md`, `.gitignore`, and `.gitattributes` are written when they are missing and then left alone, so they can be edited.
-- **A file changed outside the program is never written over.** Before writing or deleting a file, the program checks that it still holds what the program last read or wrote. If not, what it holds is kept beside it as `name.conflict-<time>.ext`. When the window comes back to the front, the files are checked and read again if one changed and nothing is unsaved: the open scene's file alone, or the whole project when a list or a bible entry changed.
-- **Opening copes with files changed outside.** A scene whose file is missing, or holds another item's id, stays in the binder marked missing, and its file is never written over. A bible entry whose file is missing leaves the bible. A Markdown file in `manuscript/` or a bible folder that no list names comes in, a scene into a Recovered folder at the top of the manuscript. An item whose parent is missing, or that is in a loop, moves to Recovered. What was repaired is written back at once, and History lists it. A JSON file that cannot be read, a path that leaves the project, or a binder without its three roots stops the project from opening, and the message names the file.
+- **A file changed outside the program is never written over.** Before writing or deleting a file, the program checks that it still holds what the program last read or wrote. If not, what it holds is kept beside it as `name.conflict-<time>.ext`. When the window comes back to the front, the files are checked and read again if one changed and nothing is unsaved: the open scene's file alone, or the whole project when a list or a note changed.
+- **Opening copes with files changed outside.** A scene whose file is missing, or holds another item's id, stays in the binder marked missing, and its file is never written over. A Markdown file in `manuscript/` or `notes/` that no list names comes in: a scene into a Recovered folder at the top of the manuscript, a note into Notes. An item whose parent is missing, or that is in a loop, moves to Recovered. What was repaired is written back at once, and History lists it. A JSON file that cannot be read, a path that leaves the project, or a binder without its three roots stops the project from opening, and the message names the file.
 - **Opening reads the files.** The cache is filled from them each time, so a scene edited in a text editor, or brought in by git, is what opens. A file that cannot be read stops the project from opening, and the message names the file.
 
 ## What deletes a file
 
-- Emptying the trash deletes the files of the scenes in it. This is the step that already asks twice.
-- Deleting a character, a place, a culture, a lore entry, a timeline event, or a research note deletes its file.
+- Emptying the trash deletes the files of what is in it, and takes notes' links to them away. This is the step that already asks twice.
 - Nothing else does. A file in the folder that no list mentions is left alone and is not part of the project.
 
 ## The cache
@@ -224,10 +213,10 @@ JSON is for structure that is not read as prose. Where a file is a list, each it
 `.local/cache.sqlite` is filled from the files every time the project opens, and every save writes it after the file. It is never the only copy of anything in the files; deleting it loses only what is this machine's alone: snapshots and track-changes baselines. Its tables:
 
 - `project_meta`: id, format version, title, times, and `settings_json`, every setting (see below).
-- `binder_nodes`: id, parent, kind, title, position among its siblings, document id (the item's own id, for an item with text), synopsis, status, `label`, `color`, `deleted_at`, `restore_parent_id`, `keywords`, `left_out`, `notes`.
+- `binder_nodes`: id, parent, kind, title, position among its siblings, document id (the item's own id, for an item with text), synopsis, status, `label`, `color`, `deleted_at`, `restore_parent_id`, `keywords`, `left_out`, `notes`, `footnotes`, `links`.
 - `documents`: `content_json` (the document JSON below), word count, character count.
 - `scene_beats`: `node_id`, `goal`, `conflict`, `outcome`. A scene with none written has no row.
-- `plotlines`, `plot_points`; `characters`, `character_motivations`, `character_relationships`; `locations`, `cultures`, `lore_entries`, `timeline_events`; `research_items`, `research_files`; `bible_parents`, which entry each entry is inside; `bible_labels`, each entry's label; `bible_scene_links`, which bible entries point at which binder items (its `scene_id` column holds a chapter's id as well as a scene's).
+- `plotlines`, `plot_points`.
 - This machine's only: `snapshots`, copies of a document with a label (`manual`, `pre-restore`, …); `tracking_baselines`, the document as it was when tracking began or at the last accept.
 
 Missing tables are added when a project opens (`CREATE TABLE IF NOT EXISTS`).

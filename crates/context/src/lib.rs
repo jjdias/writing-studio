@@ -8,280 +8,9 @@
 //! project's data: the inspector shows it, and `to_markdown` is what an
 //! assistant would read. Nothing here sends anything anywhere.
 
-use writing_studio_characters::Cast;
 use writing_studio_core::Id;
 use writing_studio_plotting::PlotGrid;
 use writing_studio_project::{BinderTree, NodeKind};
-use writing_studio_research::ResearchLibrary;
-use writing_studio_worldbuilding::World;
-
-/// The kinds of entry a binder item can be linked to.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum EntryKind {
-    Character,
-    Location,
-    Culture,
-    Lore,
-    Timeline,
-    Research,
-}
-
-impl EntryKind {
-    /// What an entry of this kind is, in a chip or a list: "character".
-    pub fn noun(self) -> &'static str {
-        match self {
-            Self::Character => "character",
-            Self::Location => "place",
-            Self::Culture => "culture",
-            Self::Lore => "lore",
-            Self::Timeline => "event",
-            Self::Research => "research",
-        }
-    }
-
-    /// The heading over this kind's entries.
-    pub fn heading(self) -> &'static str {
-        match self {
-            Self::Character => "Characters",
-            Self::Location => "Places",
-            Self::Culture => "Cultures",
-            Self::Lore => "Lore",
-            Self::Timeline => "Events",
-            Self::Research => "Research",
-        }
-    }
-}
-
-/// A character, place, culture, lore entry, timeline event, or research
-/// note, with what it says and the binder items it is linked to: scenes, and
-/// chapters, parts, or books, whose link reaches every scene in them.
-#[derive(Clone, Debug, PartialEq)]
-pub struct StoryEntry {
-    pub kind: EntryKind,
-    pub id: Id,
-    pub name: String,
-    /// Its own words: a character's role and summary, a place's or
-    /// culture's summary, lore's body, an event's time and summary, a
-    /// research note's notes.
-    pub text: String,
-    pub links: Vec<Id>,
-    /// The entry of its kind it is inside, if any.
-    pub parent: Option<Id>,
-    /// What it is, in the writer's words: "Country", "Father".
-    pub label: String,
-}
-
-/// Every entry of the story, characters first, each kind in its own order.
-/// An entry with no name is called by its kind: "Unnamed character".
-pub fn story_entries(cast: &Cast, world: &World, library: &ResearchLibrary) -> Vec<StoryEntry> {
-    let mut entries = Vec::new();
-    let mut push = |kind: EntryKind, id: Id, name: &str, parts: &[&str], links: &[Id], parent: Option<Id>, label: &str| {
-        let name = if name.trim().is_empty() { format!("Unnamed {}", kind.noun()) } else { name.trim().to_string() };
-        let text = parts.iter().map(|part| part.trim()).filter(|part| !part.is_empty()).collect::<Vec<_>>().join("\n\n");
-        entries.push(StoryEntry { kind, id, name, text, links: links.to_vec(), parent, label: label.trim().to_string() });
-    };
-    for item in cast.characters_in_order() {
-        push(EntryKind::Character, item.id, &item.name, &[&item.role, &item.summary], &item.linked_ids, item.parent_id, &item.label);
-    }
-    for item in world.locations_in_order() {
-        push(EntryKind::Location, item.id, &item.name, &[&item.summary], &item.linked_ids, item.parent_id, &item.label);
-    }
-    for item in world.cultures_in_order() {
-        push(EntryKind::Culture, item.id, &item.name, &[&item.summary], &item.linked_ids, item.parent_id, &item.label);
-    }
-    for item in world.lore_in_order() {
-        push(EntryKind::Lore, item.id, &item.title, &[&item.body], &item.linked_ids, item.parent_id, &item.label);
-    }
-    for item in world.events_in_order() {
-        push(EntryKind::Timeline, item.id, &item.title, &[&item.when_label, &item.summary], &item.linked_ids, item.parent_id, &item.label);
-    }
-    for item in library.items_in_order() {
-        push(EntryKind::Research, item.id, &item.title, &[&item.notes], &item.linked_ids, item.parent_id, &item.label);
-    }
-    entries
-}
-
-/// How two entries are connected.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Tie {
-    /// A connection the writer named ("lives in"); its relationship's id.
-    Named(Id),
-    /// One is inside the other in its kind's tree.
-    Inside,
-    /// A field of one names the other: a place's culture, lore's place or
-    /// culture, an event's place.
-    Field,
-}
-
-/// A connection from one entry to another, with its name.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Connection {
-    pub from: Id,
-    pub to: Id,
-    pub name: String,
-    pub tie: Tie,
-}
-
-/// Every connection between the story's entries: named ones, being inside
-/// another, and the fields that name another entry.
-pub fn connections(cast: &Cast, world: &World, library: &ResearchLibrary) -> Vec<Connection> {
-    let mut found = Vec::new();
-    let mut tie = |from: Id, to: Id, name: &str, tie: Tie| {
-        found.push(Connection { from, to, name: name.to_string(), tie });
-    };
-    for item in &cast.relationships {
-        let name = if item.kind.trim().is_empty() { "connected to" } else { item.kind.trim() };
-        tie(item.from_id, item.to_id, name, Tie::Named(item.id));
-    }
-    for entry in story_entries(cast, world, library) {
-        if let Some(parent) = entry.parent {
-            tie(entry.id, parent, "inside", Tie::Inside);
-        }
-    }
-    for place in &world.locations {
-        if let Some(culture) = place.culture_id {
-            tie(place.id, culture, "of the culture", Tie::Field);
-        }
-    }
-    for lore in &world.lore {
-        if let Some(place) = lore.location_id {
-            tie(lore.id, place, "about the place", Tie::Field);
-        }
-        if let Some(culture) = lore.culture_id {
-            tie(lore.id, culture, "about the culture", Tie::Field);
-        }
-    }
-    for event in &world.events {
-        if let Some(place) = event.location_id {
-            tie(event.id, place, "takes place in", Tie::Field);
-        }
-    }
-    found
-}
-
-/// The item a link reaches `id` through: `id` itself, or the nearest
-/// chapter, part, or book it is in that the entry is linked to.
-pub fn reached_through(binder: &BinderTree, entry: &StoryEntry, id: Id) -> Option<Id> {
-    let mut at = Some(id);
-    let mut guard = 0;
-    while let Some(node) = at.and_then(|id| binder.get(id)) {
-        if entry.links.contains(&node.id) {
-            return Some(node.id);
-        }
-        at = node.parent_id;
-        guard += 1;
-        if guard > 10_000 {
-            break;
-        }
-    }
-    None
-}
-
-/// Whether an entry reaches a binder item, directly or through what it is in.
-pub fn reaches(binder: &BinderTree, entry: &StoryEntry, id: Id) -> bool {
-    reached_through(binder, entry, id).is_some()
-}
-
-/// An entry that nests within its kind: a city inside a country, a son
-/// under his father. What every kind of entry shares for its tree.
-pub trait Nested {
-    fn id(&self) -> Id;
-    fn parent(&self) -> Option<Id>;
-    fn set_parent(&mut self, parent: Option<Id>);
-    fn sort_index(&self) -> i64;
-    fn set_sort_index(&mut self, index: i64);
-}
-
-macro_rules! nested {
-    ($($kind:ty),*) => {$(
-        impl Nested for $kind {
-            fn id(&self) -> Id { self.id }
-            fn parent(&self) -> Option<Id> { self.parent_id }
-            fn set_parent(&mut self, parent: Option<Id>) { self.parent_id = parent; }
-            fn sort_index(&self) -> i64 { self.sort_index }
-            fn set_sort_index(&mut self, index: i64) { self.sort_index = index; }
-        }
-    )*};
-}
-
-nested!(
-    writing_studio_characters::Character,
-    writing_studio_worldbuilding::Location,
-    writing_studio_worldbuilding::Culture,
-    writing_studio_worldbuilding::LoreEntry,
-    writing_studio_worldbuilding::TimelineEvent,
-    writing_studio_research::ResearchItem
-);
-
-/// The entries directly inside `parent` (the top for `None`), in order. An
-/// entry whose parent is gone is at the top.
-pub fn children_of<T: Nested>(items: &[T], parent: Option<Id>) -> Vec<Id> {
-    let known = |id: Id| items.iter().any(|item| item.id() == id);
-    let mut found: Vec<&T> = items
-        .iter()
-        .filter(|item| match item.parent() {
-            Some(up) if known(up) => Some(up) == parent,
-            _ => parent.is_none(),
-        })
-        .collect();
-    found.sort_by_key(|item| item.sort_index());
-    found.into_iter().map(|item| item.id()).collect()
-}
-
-/// A kind's entries as tree rows, each with its depth and whether it holds
-/// others, leaving out what is inside one in `folded`.
-pub fn tree_rows<T: Nested>(items: &[T], folded: &[Id]) -> Vec<(Id, u32, bool)> {
-    fn walk<T: Nested>(items: &[T], parent: Option<Id>, depth: u32, folded: &[Id], rows: &mut Vec<(Id, u32, bool)>) {
-        for id in children_of(items, parent) {
-            let held = !children_of(items, Some(id)).is_empty();
-            rows.push((id, depth, held));
-            if held && !folded.contains(&id) && depth < 64 {
-                walk(items, Some(id), depth + 1, folded, rows);
-            }
-        }
-    }
-    let mut rows = Vec::new();
-    walk(items, None, 0, folded, &mut rows);
-    rows
-}
-
-/// Whether `id` is `ancestor` or inside it.
-pub fn is_within<T: Nested>(items: &[T], id: Id, ancestor: Id) -> bool {
-    let mut at = Some(id);
-    let mut guard = 0;
-    while let Some(here) = at {
-        if here == ancestor {
-            return true;
-        }
-        at = items.iter().find(|item| item.id() == here).and_then(|item| item.parent());
-        guard += 1;
-        if guard > 10_000 {
-            break;
-        }
-    }
-    false
-}
-
-/// Put an entry inside `parent`, after `after` among what it holds (first
-/// with `None`). An entry cannot go inside itself or what it holds.
-/// Returns whether anything moved.
-pub fn move_entry<T: Nested>(items: &mut [T], id: Id, parent: Option<Id>, after: Option<Id>) -> bool {
-    if parent.is_some_and(|parent| is_within(items, parent, id)) || after == Some(id) {
-        return false;
-    }
-    let mut order: Vec<Id> = children_of(items, parent).into_iter().filter(|other| *other != id).collect();
-    let at = after.and_then(|after| order.iter().position(|other| *other == after)).map(|at| at + 1).unwrap_or(0);
-    order.insert(at.min(order.len()), id);
-    for item in items.iter_mut() {
-        if item.id() == id {
-            item.set_parent(parent);
-        }
-        if let Some(index) = order.iter().position(|other| *other == item.id()) {
-            item.set_sort_index(index as i64);
-        }
-    }
-    true
-}
 
 /// What a context is read from: the project's models, and, from the caller
 /// that has the files, a note's text and the note titles an item's text
@@ -289,9 +18,6 @@ pub fn move_entry<T: Nested>(items: &mut [T], id: Id, parent: Option<Id>, after:
 #[derive(Clone, Copy)]
 pub struct Sources<'a> {
     pub binder: &'a BinderTree,
-    pub cast: &'a Cast,
-    pub world: &'a World,
-    pub library: &'a ResearchLibrary,
     pub plot: &'a PlotGrid,
     pub note_text: &'a dyn Fn(Id) -> String,
     pub mentions: &'a dyn Fn(Id) -> Vec<String>,
@@ -803,9 +529,6 @@ mod tests {
 
     struct Story {
         binder: BinderTree,
-        cast: Cast,
-        world: World,
-        library: ResearchLibrary,
         plot: PlotGrid,
         scenes: [Id; 3],
         chapter: Id,
@@ -814,8 +537,8 @@ mod tests {
     }
 
     /// Tide: chapter One holds Arrival and Harbor, chapter Two holds Dawn.
-    /// Mara is linked to chapter One, the Pilot and Port Ely to Harbor, and
-    /// a research note with long notes to Harbor; the lore is linked to
+    /// Notes: Mara is linked to chapter One, the Pilot and Port Ely to
+    /// Harbor, and a long research note to Harbor; the lore is linked to
     /// nothing.
     fn story() -> Story {
         let draft = BinderNode::new(NodeKind::DraftRoot, "Manuscript", None, 0);
@@ -835,30 +558,6 @@ mod tests {
         let chapter = one.id;
         let binder = BinderTree::new(vec![draft, book, one, two, arrival, harbor, dawn]);
 
-        let mut cast = Cast::new();
-        let mara = cast.add_character();
-        cast.set_name(mara, "Mara Vance".into());
-        cast.set_summary(mara, "Always late.".into());
-        let pilot = cast.add_character();
-        cast.set_name(pilot, "The Pilot".into());
-        cast.characters.iter_mut().find(|item| item.id == mara).unwrap().linked_ids = vec![chapter];
-        cast.characters.iter_mut().find(|item| item.id == pilot).unwrap().linked_ids = vec![scenes[1]];
-
-        let mut world = World::new();
-        let port = world.add_location();
-        let place = world.locations.iter_mut().find(|item| item.id == port).unwrap();
-        place.name = "Port Ely".into();
-        place.summary = "A harbor town.".into();
-        place.linked_ids = vec![scenes[1]];
-        let war = world.add_lore();
-        world.lore.iter_mut().find(|item| item.id == war).unwrap().title = "The Old War".into();
-
-        let mut library = ResearchLibrary::new();
-        let note = library.add_item();
-        library.set_title(note, "Tides".into());
-        library.set_notes(note, "x".repeat(400));
-        library.items.iter_mut().find(|item| item.id == note).unwrap().linked_ids = vec![scenes[1]];
-
         let mut plot = PlotGrid::new();
         let line = plot.add_line();
         plot.lines.iter_mut().find(|item| item.id == line).unwrap().title = "The search".into();
@@ -866,8 +565,7 @@ mod tests {
         plot.set_point_title(point, "She finds him".into());
         plot.set_point_scene(point, Some(scenes[1]));
 
-        // The same entries as notes, in folders, linked as the entries are;
-        // the lore is in its folder, linked to nothing.
+        // The notes, in folders; the lore is linked to nothing.
         let mut binder = binder;
         let notes_root = BinderNode::new(NodeKind::NotesRoot, "Notes", None, 1);
         let root = notes_root.id;
@@ -894,15 +592,12 @@ mod tests {
         }
         let note_text: Box<dyn Fn(Id) -> String> = Box::new(move |id| texts.get(&id).cloned().unwrap_or_default());
         let mentions: Box<dyn Fn(Id) -> Vec<String>> = Box::new(|_| Vec::new());
-        Story { binder, cast, world, library, plot, scenes, chapter, note_text, mentions }
+        Story { binder, plot, scenes, chapter, note_text, mentions }
     }
 
     fn sources(story: &Story) -> Sources<'_> {
         Sources {
             binder: &story.binder,
-            cast: &story.cast,
-            world: &story.world,
-            library: &story.library,
             plot: &story.plot,
             note_text: &*story.note_text,
             mentions: &*story.mentions,
@@ -1020,50 +715,4 @@ mod tests {
         let tiny = context.to_markdown(120);
         assert!(tiny.chars().count() <= 120 && tiny.contains("Cut here"), "{tiny}");
     }
-
-    #[test]
-    fn entries_nest_within_their_kind_and_never_inside_themselves() {
-        let mut world = World::new();
-        let ids: Vec<Id> = (0..4).map(|_| world.add_location()).collect();
-        let (country, city, quarter, pub_) = (ids[0], ids[1], ids[2], ids[3]);
-        assert!(move_entry(&mut world.locations, city, Some(country), None));
-        assert!(move_entry(&mut world.locations, quarter, Some(city), None));
-        assert!(move_entry(&mut world.locations, pub_, Some(quarter), None));
-        let rows = tree_rows(&world.locations, &[]);
-        let depths: Vec<(Id, u32, bool)> = rows;
-        assert_eq!(depths, [(country, 0, true), (city, 1, true), (quarter, 2, true), (pub_, 3, false)]);
-        assert!(!move_entry(&mut world.locations, country, Some(pub_), None), "not inside what it holds");
-        assert!(tree_rows(&world.locations, &[city]).len() == 2, "folded");
-
-        // A second city goes after the first; the pub moves up a level.
-        let other = world.add_location();
-        assert!(move_entry(&mut world.locations, other, Some(country), Some(city)));
-        assert_eq!(children_of(&world.locations, Some(country)), [city, other]);
-        assert!(move_entry(&mut world.locations, pub_, Some(country), None));
-        assert_eq!(children_of(&world.locations, Some(country)), [pub_, city, other]);
-        assert!(is_within(&world.locations, quarter, country) && !is_within(&world.locations, country, quarter));
-    }
-
-
-    #[test]
-    fn connections_hold_named_ones_nesting_and_fields() {
-        let mut cast = Cast::new();
-        let father = cast.add_character();
-        let son = cast.add_character();
-        let mut world = World::new();
-        let city = world.add_location();
-        let culture = world.add_culture();
-        world.locations[0].culture_id = Some(culture);
-        cast.characters.iter_mut().find(|item| item.id == son).unwrap().parent_id = Some(father);
-        let lives = cast.connect(son, city, " lives in ".into()).unwrap();
-        assert!(cast.connect(son, city, "Lives in".into()).is_none(), "once");
-        let all = connections(&cast, &world, &ResearchLibrary::new());
-        let names: Vec<(Id, Id, &str, Tie)> = all.iter().map(|c| (c.from, c.to, c.name.as_str(), c.tie)).collect();
-        assert!(names.contains(&(son, city, "lives in", Tie::Named(lives))));
-        assert!(names.contains(&(son, father, "inside", Tie::Inside)));
-        assert!(names.contains(&(city, culture, "of the culture", Tie::Field)));
-        assert!(cast.disconnect_all(city));
-        assert!(connections(&cast, &world, &ResearchLibrary::new()).iter().all(|c| !matches!(c.tie, Tie::Named(_))));
-    }
-
 }

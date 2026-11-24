@@ -279,17 +279,8 @@ pub fn merge(base: &ProjectContent, ours: &ProjectContent, theirs: &ProjectConte
     content.documents = documents;
     content.beats = beats;
 
-    // The bible and the plot grid.
+    // The plot grid.
     let c = &mut conflicts;
-    content.cast.characters = records(&base.cast.characters, &ours.cast.characters, &theirs.cast.characters, |x| x.id, "character", c);
-    content.cast.motivations = values(&base.cast.motivations, &ours.cast.motivations, &theirs.cast.motivations);
-    content.cast.relationships = values(&base.cast.relationships, &ours.cast.relationships, &theirs.cast.relationships);
-    content.world.locations = records(&base.world.locations, &ours.world.locations, &theirs.world.locations, |x| x.id, "place", c);
-    content.world.cultures = records(&base.world.cultures, &ours.world.cultures, &theirs.world.cultures, |x| x.id, "culture", c);
-    content.world.lore = records(&base.world.lore, &ours.world.lore, &theirs.world.lore, |x| x.id, "lore entry", c);
-    content.world.events = records(&base.world.events, &ours.world.events, &theirs.world.events, |x| x.id, "timeline event", c);
-    content.library.items = records(&base.library.items, &ours.library.items, &theirs.library.items, |x| x.id, "research note", c);
-    content.library.files = records(&base.library.files, &ours.library.files, &theirs.library.files, |x| x.id, "research file", c);
     content.plot.lines = records(&base.plot.lines, &ours.plot.lines, &theirs.plot.lines, |x| x.id, "plotline", c);
     content.plot.points = records(&base.plot.points, &ours.plot.points, &theirs.plot.points, |x| x.id, "plot point", c);
     // The mind map's ideas, lines, and hand-placed nodes, each by its id.
@@ -503,14 +494,6 @@ fn renumber(content: &mut ProjectContent) {
         )*};
     }
     number!(
-        content.cast.characters,
-        content.cast.motivations,
-        content.cast.relationships,
-        content.world.locations,
-        content.world.cultures,
-        content.world.lore,
-        content.world.events,
-        content.library.items,
         content.plot.lines,
         content.plot.points
     );
@@ -689,17 +672,24 @@ mod tests {
     }
 
     #[test]
-    fn the_bible_and_the_project_words_merge_by_entry() {
+    fn notes_and_the_project_words_merge_by_item() {
         let base = base();
         let (mut ours, mut theirs) = (base.clone(), base.clone());
-        let mara = ours.cast.add_character();
-        ours.cast.set_name(mara, "Mara".into());
-        let rose = theirs.cast.add_character();
-        theirs.cast.set_name(rose, "Rose".into());
+        let notes = base.binder.notes_root().unwrap().id;
+        ours.binder.nodes.push(writing_studio_project::BinderNode::new(NodeKind::Note, "Mara", Some(notes), 5));
+        theirs.binder.nodes.push(writing_studio_project::BinderNode::new(NodeKind::Note, "Rose", Some(notes), 6));
         ours.meta.settings.spelling.words = vec!["zhul".into()];
         theirs.meta.settings.spelling.words = vec!["mara".into()];
         let merged = merge(&base, &ours, &theirs).unwrap();
-        let names: Vec<&str> = merged.content.cast.characters.iter().map(|c| c.name.as_str()).collect();
+        let mut names: Vec<&str> = merged
+            .content
+            .binder
+            .children(Some(notes))
+            .into_iter()
+            .filter(|node| node.kind == NodeKind::Note)
+            .map(|node| node.title.as_str())
+            .collect();
+        names.sort();
         assert_eq!(names, ["Mara", "Rose"]);
         assert_eq!(merged.content.meta.settings.spelling.words, ["mara", "zhul"]);
         assert!(merged.content.files.len() >= base.files.len());

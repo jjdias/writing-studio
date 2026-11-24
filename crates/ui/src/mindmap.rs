@@ -4,8 +4,8 @@
 //! bottom, the rest to the left. Each branch takes the height of what it
 //! holds, so no two nodes overlap. A folded node's branch is not laid out.
 //!
-//! Ideas sit in a row under the book, and the story's entries, when shown,
-//! in a row over it. A node the writer dragged somewhere keeps that place,
+//! Ideas sit in a row under the book. A node the writer dragged somewhere
+//! keeps that place,
 //! and a binder node takes its branch along; everything else stays laid out
 //! around it.
 //!
@@ -37,11 +37,6 @@ pub enum MapKind {
     Binder,
     /// An idea, which is not in the book.
     Idea,
-    /// A character, place, or note from the story's entries.
-    Entry,
-    /// What groups others on the worldbuilding map: its middle, and each
-    /// kind of entry.
-    Group,
 }
 
 /// A tree to lay out: what is directly under a node, and what each node is.
@@ -50,8 +45,8 @@ pub struct Tree<'a> {
     pub kind_of: &'a dyn Fn(Id) -> MapKind,
 }
 
-/// A node besides the binder's: an idea or a story entry, and the nodes it
-/// is drawn joined to (what an idea hangs from, what an entry is linked to).
+/// A node besides the binder's, an idea, and the node it is drawn joined
+/// to: what it hangs from.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Extra {
     pub id: Id,
@@ -184,32 +179,30 @@ pub fn place_by_hand(map: &mut MapLayout, placed: &[(Id, f64, f64)]) {
     map.measure();
 }
 
-/// The binder's map with ideas and entries added, and the nodes the writer
+/// The binder's map with ideas added, and the nodes the writer
 /// placed by hand where they were put (`placed`, by id, as centers).
 pub fn layout_all(binder: &BinderTree, root: Id, folded: &[Id], extras: &[Extra], placed: &[(Id, f64, f64)]) -> MapLayout {
     let mut map = layout(binder, root, folded);
     if map.nodes.is_empty() {
         return map;
     }
-    // Ideas in a row under the tree, entries in a row over it, centered.
-    for (kind, below) in [(MapKind::Idea, true), (MapKind::Entry, false)] {
-        let row: Vec<&Extra> = extras.iter().filter(|extra| extra.kind == kind).collect();
-        let step = NODE_WIDTH + ROW_GAP * 2.0;
-        let first = -(row.len().saturating_sub(1) as f64) * step / 2.0;
-        let y = if below { map.max_y + NODE_HEIGHT * 1.5 } else { map.min_y - NODE_HEIGHT * 1.5 };
-        for (at, extra) in row.into_iter().enumerate() {
-            map.nodes.push(MapNode {
-                id: extra.id,
-                kind,
-                parent: None,
-                depth: 0,
-                side: Side::Middle,
-                x: first + at as f64 * step,
-                y,
-                has_children: false,
-                folded: false,
-            });
-        }
+    // Ideas in a row under the tree, centered.
+    let row: Vec<&Extra> = extras.iter().filter(|extra| extra.kind == MapKind::Idea).collect();
+    let step = NODE_WIDTH + ROW_GAP * 2.0;
+    let first = -(row.len().saturating_sub(1) as f64) * step / 2.0;
+    let y = map.max_y + NODE_HEIGHT * 1.5;
+    for (at, extra) in row.into_iter().enumerate() {
+        map.nodes.push(MapNode {
+            id: extra.id,
+            kind: MapKind::Idea,
+            parent: None,
+            depth: 0,
+            side: Side::Middle,
+            x: first + at as f64 * step,
+            y,
+            has_children: false,
+            folded: false,
+        });
     }
     place_by_hand(&mut map, placed);
     map
@@ -372,18 +365,14 @@ mod tests {
     }
 
     #[test]
-    fn ideas_go_under_the_tree_entries_over_it_and_placed_nodes_where_put() {
+    fn ideas_go_under_the_tree_and_placed_nodes_where_put() {
         let (tree, book, chapters, scenes) = book();
-        let (idea, entry) = (Id::new(), Id::new());
-        let extras = [
-            Extra { id: idea, kind: MapKind::Idea, joined: vec![scenes[0]] },
-            Extra { id: entry, kind: MapKind::Entry, joined: vec![scenes[1], scenes[2]] },
-        ];
+        let idea = Id::new();
+        let extras = [Extra { id: idea, kind: MapKind::Idea, joined: vec![scenes[0]] }];
         let plain = layout(&tree, book, &[]);
         let map = layout_all(&tree, book, &[], &extras, &[]);
         assert!(map.get(idea).unwrap().y > plain.max_y, "an idea under the tree");
-        assert!(map.get(entry).unwrap().y < plain.min_y, "an entry over it");
-        assert_eq!(map.get(entry).unwrap().kind, MapKind::Entry);
+        assert_eq!(map.get(idea).unwrap().kind, MapKind::Idea);
 
         // Chapter One placed by hand takes its scenes along; its scene B,
         // placed too, stays where it was put.
@@ -399,8 +388,8 @@ mod tests {
         assert!(moved.max_x >= 900.0 + NODE_WIDTH / 2.0, "the bounds take it in");
     }
 
-    /// Any tree lays out as the book does: the worldbuilding map's middle,
-    /// a kind under it, and its entries nested.
+    /// Any tree lays out as the book does: a middle, two branches, and one
+    /// nested two deep.
     #[test]
     fn any_tree_lays_out_as_the_book_does() {
         let (middle, places, people, country, city) = (Id::new(), Id::new(), Id::new(), Id::new(), Id::new());
@@ -415,11 +404,11 @@ mod tests {
                 Vec::new()
             }
         };
-        let kind_of = move |id: Id| if id == middle || id == places || id == people { MapKind::Group } else { MapKind::Entry };
+        let kind_of = move |id: Id| if id == city { MapKind::Idea } else { MapKind::Binder };
         let map = layout_tree(&Tree { under: &under, kind_of: &kind_of }, middle, &[]);
         let ids: Vec<Id> = map.nodes.iter().map(|node| node.id).collect();
         assert_eq!(ids, [middle, places, country, city, people]);
-        assert_eq!((map.get(city).unwrap().depth, map.get(city).unwrap().kind), (3, MapKind::Entry));
+        assert_eq!((map.get(city).unwrap().depth, map.get(city).unwrap().kind), (3, MapKind::Idea));
         assert_eq!(map.get(people).unwrap().side, Side::Left);
         let mut moved = map.clone();
         place_by_hand(&mut moved, &[(country, 0.0, 400.0)]);

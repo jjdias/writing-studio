@@ -28,24 +28,6 @@ pub(super) fn ModeGlyph(mode: WorkspaceMode) -> Element {
                 circle { cx: "7", cy: "12", r: "1.2", fill: "currentColor" }
             }
         },
-        WorkspaceMode::Characters => rsx! {
-            svg { class: "glyph", view_box: "0 0 16 16",
-                circle { cx: "8", cy: "5", r: "2.2", fill: "none", stroke: "currentColor", stroke_width: "1.2" }
-                path { d: "M3.5 13.2c.8-2.4 2.4-3.6 4.5-3.6s3.7 1.2 4.5 3.6", fill: "none", stroke: "currentColor", stroke_width: "1.2" }
-            }
-        },
-        WorkspaceMode::World => rsx! {
-            svg { class: "glyph", view_box: "0 0 16 16",
-                circle { cx: "8", cy: "6.2", r: "2.3", fill: "none", stroke: "currentColor", stroke_width: "1.2" }
-                path { d: "M8 8.5v4.2M5.2 12.7h5.6", fill: "none", stroke: "currentColor", stroke_width: "1.2" }
-            }
-        },
-        WorkspaceMode::Research => rsx! {
-            svg { class: "glyph", view_box: "0 0 16 16",
-                path { d: "M3 2.5h7l3 3V13.5H3z", fill: "none", stroke: "currentColor", stroke_width: "1.2" }
-                path { d: "M10 2.7V5.5h2.7M5 8h6M5 10.5h4", fill: "none", stroke: "currentColor", stroke_width: "1.2" }
-            }
-        },
         WorkspaceMode::History => rsx! {
             svg { class: "glyph", view_box: "0 0 16 16",
                 path { d: "M8 2.5a5.5 5.5 0 1 1-4.8 2.8", fill: "none", stroke: "currentColor", stroke_width: "1.2" }
@@ -61,10 +43,7 @@ pub(super) fn mode_shortcut(mode: WorkspaceMode) -> &'static str {
         WorkspaceMode::MindMap => "Ctrl+2",
         WorkspaceMode::Outliner => "Ctrl+3",
         WorkspaceMode::Plot => "Ctrl+4",
-        WorkspaceMode::Characters => "Ctrl+5",
-        WorkspaceMode::World => "Ctrl+6",
-        WorkspaceMode::Research => "Ctrl+7",
-        WorkspaceMode::History => "Ctrl+8",
+        WorkspaceMode::History => "Ctrl+5",
     }
 }
 
@@ -103,9 +82,6 @@ pub(super) fn apply_shortcut(
         AppShortcut::MindMap => return set_mode(state, WorkspaceMode::MindMap),
         AppShortcut::Outliner => return set_mode(state, WorkspaceMode::Outliner),
         AppShortcut::Plot => return set_mode(state, WorkspaceMode::Plot),
-        AppShortcut::Characters => return set_mode(state, WorkspaceMode::Characters),
-        AppShortcut::World => return set_mode(state, WorkspaceMode::World),
-        AppShortcut::Research => return set_mode(state, WorkspaceMode::Research),
         AppShortcut::History => return set_mode(state, WorkspaceMode::History),
         AppShortcut::NewScene => {
             if open {

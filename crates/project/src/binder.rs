@@ -1241,8 +1241,8 @@ pub struct SavedFilter {
     pub any: bool,
     #[serde(default)]
     pub without: Vec<String>,
-    /// Story entries (characters, places, notes) that must reach the scene,
-    /// by id. Matched by the caller, which has the bible.
+    /// Notes that must reach the scene, by id: linked to it or to what it is
+    /// in, or mentioned in it. Matched by the caller, which has the text.
     #[serde(default)]
     pub entries: Vec<Id>,
     #[serde(default)]

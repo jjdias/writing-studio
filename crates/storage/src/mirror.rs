@@ -17,7 +17,6 @@ use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 
 use rusqlite::{params, OptionalExtension};
-use writing_studio_characters::Cast;
 use writing_studio_core::{
     Error, Id, Result, PROJECT_DB_FILE, PROJECT_FORMAT_FILE, PROJECT_FORMAT_VERSION,
 };
@@ -25,16 +24,14 @@ use writing_studio_diagnostics::SceneBeats;
 use writing_studio_document::Document;
 use writing_studio_plotting::PlotGrid;
 use writing_studio_project::{BinderNode, BinderTree, MindMap, ProjectMeta};
-use writing_studio_research::ResearchLibrary;
 use writing_studio_templates::blank_novel;
-use writing_studio_worldbuilding::World;
 
 use crate::files::{
     folder_of,
     has_own_file,
     read_scene_file,
     text_fingerprint, unknown_head, with_a_run_in_every_block, write_project_files_noted,
-    bible_files, Extras, Problem, binder_json, inside, mindmap_json, place, plot_json, read_mindmap, read_project_files,
+    Extras, Problem, binder_json, inside, mindmap_json, place, plot_json, read_mindmap, read_project_files,
     scene_text, settings_json, MINDMAP_FILE,
     write_atomic, write_format_marker, ProjectContent,
     LOCAL_SETTINGS,
@@ -290,10 +287,7 @@ impl ProjectStore {
         }
         self.persist_scene_beats_cached(&content.beats)?;
         self.persist_plot_cached(&content.plot)?;
-        self.persist_cast_cached(&content.cast)?;
-        self.persist_world_cached(&content.world)?;
-        self.persist_mindmap_cached(&content.mindmap)?;
-        self.persist_library_cached(&content.library)
+        self.persist_mindmap_cached(&content.mindmap)
     }
 
     /// Write every file from what the cache holds. Used when a project is
@@ -462,8 +456,8 @@ impl ProjectStore {
         inside(&self.root, "kept file", kept_as)
     }
 
-    /// Whether a file other than a scene's (the lists, and the bible's
-    /// entries) holds something other than what the program last read or
+    /// Whether a file other than a scene's (the lists, and the files of
+    /// notes and folders) holds something other than what the program last read or
     /// wrote, or is gone. Reads each of them; a scene is checked on its own
     /// with `changed_outside`.
     pub fn others_changed_outside(&self) -> Result<bool> {
@@ -585,38 +579,12 @@ impl ProjectStore {
         self.write_small("binder.json", &text)
     }
 
-    /// Write the bible's files. `folders` are the ones this save owns: an
-    /// entry there that is no longer in the bible was deleted by the writer,
-    /// and its file goes too.
-    fn write_bible(&self, cast: &Cast, world: &World, library: &ResearchLibrary, folders: &[&str]) -> Result<()> {
-        let known = self.mirror.paths.borrow().clone();
-        let mut used: HashSet<String> = known.values().cloned().collect();
-        let (entries, bible) = bible_files(cast, world, library, &known, &mut used, &self.mirror.extras.borrow());
-        let mut present = HashSet::new();
-        for (id, path, file) in &entries {
-            self.write_small(path, &file.to_markdown())?;
-            self.mirror.paths.borrow_mut().insert(*id, path.clone());
-            present.insert(*id);
-        }
-        self.write_small("bible.json", &bible)?;
-        let gone: Vec<(Id, String)> = known
-            .into_iter()
-            .filter(|(id, path)| !present.contains(id) && folders.iter().any(|folder| path.starts_with(folder)))
-            .collect();
-        for (id, path) in gone {
-            self.remove_file(&path)?;
-            self.mirror.paths.borrow_mut().remove(&id);
-
-        }
-        Ok(())
-    }
-
     /// The binder item whose text has this id.
     fn item_of_document(&self, document_id: Id) -> Result<Option<BinderNode>> {
         self.conn
             .query_row(
                 "SELECT id, parent_id, kind, title, sort_index, document_id, synopsis, label, status, color,
-                        deleted_at, created_at, updated_at, restore_parent_id, keywords, left_out
+                        deleted_at, created_at, updated_at, restore_parent_id, keywords, left_out, notes, footnotes, links
                  FROM binder_nodes WHERE document_id = ?1",
                 params![document_id.to_string()],
                 |row| Ok(row_to_node(row)),
@@ -751,27 +719,6 @@ impl ProjectStore {
         self.persist_plot_cached(grid)
     }
 
-    pub fn persist_cast(&self, cast: &Cast) -> Result<()> {
-        if self.mirroring() {
-            self.write_bible(cast, &self.load_world()?, &self.load_library()?, &["characters/"])?;
-        }
-        self.persist_cast_cached(cast)
-    }
-
-    pub fn persist_world(&self, world: &World) -> Result<()> {
-        if self.mirroring() {
-            let folders = ["places/", "cultures/", "lore/", "timeline/"];
-            self.write_bible(&self.load_cast()?, world, &self.load_library()?, &folders)?;
-        }
-        self.persist_world_cached(world)
-    }
-
-    pub fn persist_library(&self, library: &ResearchLibrary) -> Result<()> {
-        if self.mirroring() {
-            self.write_bible(&self.load_cast()?, &self.load_world()?, library, &["research/"])?;
-        }
-        self.persist_library_cached(library)
-    }
 }
 
 impl Mirror {
@@ -901,37 +848,16 @@ mod tests {
             fs::read_to_string(dir.join(PROJECT_FORMAT_FILE)).unwrap(),
             "writing-studio-project 4\n"
         );
-        for name in ["project.json", "binder.json", "bible.json", "plot.json", "README.md", ".gitignore"] {
+        for name in ["project.json", "binder.json", "plot.json", "README.md", ".gitignore"] {
             assert!(dir.join(name).exists(), "{name}");
         }
         assert!(dir.join(".local").join("cache.sqlite").exists());
         assert!(!dir.join(PROJECT_DB_FILE).exists());
+        assert!(!dir.join("bible.json").exists(), "notes are binder items; there is no bible");
         let scene = scene_of(&store);
         assert_eq!(scene.document_id, Some(scene.id));
         assert!(fs::read_to_string(file_of(&store, scene.id)).unwrap().contains("Start writing this scene."));
         assert!(ProjectStore::create(&dir, "Again").is_err());
-        let _ = fs::remove_dir_all(dir);
-    }
-
-    /// An entry inside another of its kind keeps its place through the
-    /// cache, `bible.json`, and a reopening.
-    #[test]
-    fn an_entry_inside_another_keeps_its_parent() {
-        let dir = temp("parents");
-        let store = ProjectStore::create(&dir, "Nested").unwrap();
-        let mut world = store.load_world().unwrap();
-        let country = world.add_location();
-        let city = world.add_location();
-        world.locations.iter_mut().find(|place| place.id == city).unwrap().parent_id = Some(country);
-        store.persist_world(&world).unwrap();
-        assert_eq!(store.load_world().unwrap().locations.iter().find(|place| place.id == city).unwrap().parent_id, Some(country));
-        let bible = fs::read_to_string(dir.join("bible.json")).unwrap();
-        assert!(bible.contains(&format!("\"parent\":\"{country}\"")), "{bible}");
-        drop(store);
-        let reopened = ProjectStore::open(&dir).unwrap();
-        let read = reopened.load_world().unwrap();
-        assert_eq!(read.locations.iter().find(|place| place.id == city).unwrap().parent_id, Some(country));
-        assert_eq!(read.locations.iter().find(|place| place.id == country).unwrap().parent_id, None);
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -1268,18 +1194,15 @@ mod tests {
         fs::write(dir.join("manuscript/b-plain.md"), "Two.\n").unwrap();
         fs::write(dir.join("manuscript/c-copy.md"), scene_file(Some(scene.id), "A copy", "Three.")).unwrap();
         fs::write(dir.join("manuscript/x.conflict-2026.md"), scene_file(None, "Set aside", "Skip.")).unwrap();
-        fs::create_dir_all(dir.join("characters")).unwrap();
-        fs::write(dir.join("characters/rose.md"), scene_file(None, "Rose", "A pilot.")).unwrap();
 
         let store = ProjectStore::open(&dir).unwrap();
-        assert_eq!(store.problems().len(), 4, "{:?}", store.problems());
+        assert_eq!(store.problems().len(), 3, "{:?}", store.problems());
         assert_eq!(titles_in(&store, recovered(&store)), ["With an id", "b-plain", "A copy"]);
         let tree = store.load_binder().unwrap();
         let copy = tree.nodes.iter().find(|node| node.title == "A copy").unwrap();
         assert_ne!(copy.id, scene.id);
         assert!(tree.get(fresh).is_some());
         assert_eq!(store.load_document(copy.id).unwrap().to_plain_text(), "Three.");
-        assert_eq!(store.load_cast().unwrap().characters[0].name, "Rose");
         // The copy's file now carries its own id, and the binder lists all three.
         assert!(fs::read_to_string(dir.join("manuscript/c-copy.md")).unwrap().contains(&copy.id.to_string()));
         assert!(!fs::read_to_string(dir.join("binder.json")).unwrap().contains("conflict"));
@@ -1404,54 +1327,16 @@ mod tests {
     }
 
     #[test]
-    fn a_deleted_character_file_takes_the_character_out() {
-        let dir = temp("cast-gone");
-        let store = ProjectStore::create(&dir, "Cast").unwrap();
-        let mut cast = Cast::new();
-        let mara = cast.add_character();
-        cast.set_name(mara, "Mara".into());
-        store.persist_cast(&cast).unwrap();
-        let path = file_of(&store, mara);
-        drop(store);
-        fs::remove_file(path).unwrap();
-        let store = ProjectStore::open(&dir).unwrap();
-        assert!(store.load_cast().unwrap().characters.is_empty());
-        assert_eq!(store.problems().len(), 1);
-        assert!(!fs::read_to_string(dir.join("bible.json")).unwrap().contains(&mara.to_string()));
-        let _ = fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn a_deleted_character_loses_its_file_and_other_folders_are_left_alone() {
-        let dir = temp("bible");
-        let store = ProjectStore::create(&dir, "Cast").unwrap();
-        let mut cast = Cast::new();
-        let mara = cast.add_character();
-        cast.set_name(mara, "Mara Vance".into());
-        store.persist_cast(&cast).unwrap();
-        let path = file_of(&store, mara);
-        assert!(fs::read_to_string(&path).unwrap().contains("\ntitle: Mara Vance\n"));
-        let scene_file = file_of(&store, scene_of(&store).id);
-
-        store.persist_cast(&Cast::new()).unwrap();
-        assert!(!path.exists());
-        assert!(scene_file.exists());
-        assert!(!fs::read_to_string(dir.join("bible.json")).unwrap().contains(&mara.to_string()));
-        let _ = fs::remove_dir_all(dir);
-    }
-
-    #[test]
     fn entries_the_program_does_not_know_survive_every_kind_of_save() {
         let dir = temp("extras");
         let store = ProjectStore::create(&dir, "Kept").unwrap();
         let scene = scene_of(&store);
-        let mut cast = Cast::new();
-        let mara = cast.add_character();
-        cast.set_name(mara, "Mara".into());
-        let tom = cast.add_character();
-        let bond = cast.connect(mara, tom, String::new()).unwrap();
-        cast.link_scene(mara, scene.id);
-        store.persist_cast(&cast).unwrap();
+        let mut tree = store.load_binder().unwrap();
+        let mut note = BinderNode::new(NodeKind::Note, "Mara", tree.notes_root().map(|root| root.id), 9);
+        note.links = vec![scene.id];
+        let mara = note.id;
+        tree.nodes.push(note);
+        store.persist_binder(&tree).unwrap();
         let mut grid = PlotGrid::new();
         let line = grid.add_line();
         store.persist_plot(&grid).unwrap();
@@ -1476,10 +1361,6 @@ mod tests {
         edit(&dir.join("plot.json"), &line_id, &format!("\"arc\": \"rising\",\n      {line_id}"));
         edit(&dir.join("project.json"), "\"format\"", "\"series\": \"North\",\n  \"format\"");
         edit(&dir.join("project.json"), "\"settings\": {", "\"settings\": {\n    \"house_style\": \"plain\",");
-        let bond_id = format!("\"id\":\"{bond}\"");
-        edit(&dir.join("bible.json"), &bond_id, &format!("{bond_id},\"since\":\"spring\""));
-        let link = format!("\"item\":\"{}\"", scene.id);
-        edit(&dir.join("bible.json"), &link, &format!("{link},\"weight\":\"main\""));
 
         // Every save that touches those items keeps what was added.
         let store = ProjectStore::open(&dir).unwrap();
@@ -1491,9 +1372,9 @@ mod tests {
         node.title = "Renamed".into();
         node.parent_id = None;
         store.persist_binder(&tree).unwrap();
-        let mut cast = store.load_cast().unwrap();
-        cast.characters[0].summary = "Changed.".into();
-        store.persist_cast(&cast).unwrap();
+        let mut tree = store.load_binder().unwrap();
+        tree.nodes.iter_mut().find(|node| node.id == mara).unwrap().synopsis = "Changed.".into();
+        store.persist_binder(&tree).unwrap();
         let mut meta = store.load_meta().unwrap();
         meta.title = "Kept again".into();
         meta.settings.daily_word_goal = 900;
@@ -1513,8 +1394,6 @@ mod tests {
         let project = fs::read_to_string(dir.join("project.json")).unwrap();
         assert!(project.contains("\"series\": \"North\"") && project.contains("\"house_style\": \"plain\""));
         assert!(project.contains("Kept again") && project.contains("900"));
-        let bible = fs::read_to_string(dir.join("bible.json")).unwrap();
-        assert!(bible.contains("\"since\":\"spring\"") && bible.contains("\"weight\":\"main\""));
 
         // Restoring a backup writes every file again, and keeps them too.
         let mut store = store;
