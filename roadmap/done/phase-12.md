@@ -45,7 +45,7 @@ Decided by the maintainer: the component is CodeMirror 6; the scenes stayed HTML
 - **What is stored.** Two ways:
   - *Keep the HTML files* and the document model as they are: the page turns the scene into Markdown when it opens it and back into blocks when it saves (both already in `crates/format`). No format change.
   - *Store scenes as `.md` files* (format 3): the files are what the writer sees, and other Markdown editors open the project directly. Following "No compatibility with earlier versions" in [../README.md](../README.md), format 2 projects would be refused.
-  **Decided: the HTML files stayed while the editor was built (stages 1 to 7); stage 8 stores `.md` files.** The page edits Markdown already, so what is stored becomes what the writer sees, and each file is its level's context above its text, the shape [Phase 13](../todo/phase-13.md) builds on.
+  **Decided: the HTML files stayed while the editor was built (stages 1 to 7); stage 8 stores `.md` files.** The page edits Markdown already, so what is stored becomes what the writer sees, and each file is its level's context above its text, the shape [Phase 13](phase-13.md) builds on.
 - **Underline and colored highlights.** Markdown has neither. Underline stays `<u>`, as the export writes it; highlights keep their color as `{==text==}{.green}`. The toolbar keeps offering both.
 - **Shortcut keys.** Ctrl+1 to Ctrl+8 change views today, so heading levels take Ctrl+Alt+1 to Ctrl+Alt+6, or the paragraph style menu.
 

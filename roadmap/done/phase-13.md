@@ -1,6 +1,6 @@
 # Phase 13 — Context at every level
 
-Stages 1 to 4 are done, and stage 5 was skipped by the maintainer. Trying it in the window, by hand, is left before the phase closes. It comes after [Phase 12](../done/phase-12.md), whose stage 8 makes every text file of the project Markdown with front matter.
+Done. Stages 1 to 4 are done, stage 5 was skipped by the maintainer, and the maintainer tried it in the window. It comes after [Phase 12](phase-12.md), whose stage 8 makes every text file of the project Markdown with front matter.
 
 A scene, a chapter, a part, and a book each have a **context** and a **body**. The context is what the writer knows about that level: its synopsis, keywords, status, goal, and notes, and what it is linked to. The body is its text: a scene's prose, a chapter's own text if it has any. For a chapter, part, or book, what it holds (its scenes or chapters, each with its synopsis) is part of what is read about it, in order.
 
@@ -63,7 +63,7 @@ In `crates/context`, beside `scene_context`:
 
 - The project's files are made for reading, but a level's whole context (what it holds, its links) is made, not stored. A tool that reads folders, such as an AI working in the project, would need the program to give it that.
 - The choice: a setting, off until chosen, that keeps `.local/context/` up to date, one `.md` file of context for each level, rebuilt when something it reads is saved. `.local/` is this machine's only and never synced, so these files never conflict and never go stale on another machine.
-- The other way is to leave it to the optional local assistance in [bonus.md](bonus.md), which asks `crates/context` directly.
+- The other way is to leave it to the optional local assistance in [bonus.md](../todo/bonus.md), which asks `crates/context` directly.
 
 **Skipped.** The maintainer chose not to keep context files in `.local/context/`. A tool that wants a level's context gets it from the program: **Copy context** now, and the optional local assistance in [bonus.md](bonus.md), which asks `crates/context` directly, later.
 
