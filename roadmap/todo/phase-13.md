@@ -1,6 +1,6 @@
 # Phase 13 — Context at every level
 
-Not started. It comes after [Phase 12](../done/phase-12.md), whose stage 8 makes every text file of the project Markdown with front matter.
+In progress: stage 1 is done. It comes after [Phase 12](../done/phase-12.md), whose stage 8 makes every text file of the project Markdown with front matter.
 
 A scene, a chapter, a part, and a book each have a **context** and a **body**. The context is what the writer knows about that level: its synopsis, keywords, status, goal, and notes, and what it is linked to. The body is its text: a scene's prose, a chapter's own text if it has any. For a chapter, part, or book, what it holds (its scenes or chapters, each with its synopsis) is part of what is read about it, in order.
 
@@ -29,6 +29,8 @@ From the maintainer's decision on this idea:
 - `binder.json` keeps only the structure: each item's `id`, `kind`, `parent`, order, `file`, whether it is left out of compile, and whether it is in the trash. Title, synopsis, status, and color move to the files of the items that did not have one.
 - **Keywords move into the files**, as `tags:`, as the Markdown export already writes them and Obsidian reads them. The keyword list with its colors stays in `binder.json`.
 - Sync merges these as it merges a scene's header today, key by key.
+
+**Done.** Every binder item but the three roots has a file in `manuscript/` (`has_own_file`): a book, a part, or a folder has its title, synopsis, status, label, color, and keywords there, and no text; what a person writes under its front matter is kept and written back (`Extras::body`). Keywords are `tags:` in each item's front matter, spelled exactly as they are, and `binder.json` keeps only where each item is. A project written by Phase 12 (books without files, keywords on the binder lines) still opens, and its next save moves them; so this stays format 3. Sync needed nothing: it merges the items, not the files. Tests: `a_book_has_a_file_of_its_details_and_a_move_changes_only_the_binder` (a book's file, its kept text, and a move that writes only `binder.json`), and the keyword test, now on the files' `tags`.
 
 ### 2. Notes for the writer at every level
 

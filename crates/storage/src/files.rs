@@ -113,7 +113,7 @@ pub(crate) fn text_fingerprint(text: &str) -> u64 {
 /// removes them.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Extras {
-    /// Names in the head of the item's own HTML file.
+    /// Keys in the front matter of the item's own file.
     pub head: Header,
     /// Keys of the item's line in `binder.json`, `bible.json`, or `plot.json`.
     /// For the project, the keys of `project.json`, and its unknown settings
@@ -122,11 +122,14 @@ pub struct Extras {
     /// Keys of the entry's lines in `scene_links` of `bible.json`, by the
     /// binder item each links to.
     pub links: HashMap<Id, Map<String, Value>>,
+    /// Text under the front matter of a book's, part's, or folder's file,
+    /// which have no text of their own: kept and written back as found.
+    pub body: String,
 }
 
 impl Extras {
     fn is_empty(&self) -> bool {
-        self.head.entries.is_empty() && self.json.is_empty() && self.links.is_empty()
+        self.head.entries.is_empty() && self.json.is_empty() && self.links.is_empty() && self.body.is_empty()
     }
 }
 
@@ -146,8 +149,8 @@ const LINK_KEYS: [&str; 2] = ["from", "item"];
 const PROJECT_KEYS: [&str; 5] = ["format", "id", "title", "created", "settings"];
 /// Names in a scene's head that the program writes. `title` is the `<title>`;
 /// a `<meta name="title">` beside it is not kept.
-const SCENE_HEAD: [&str; 9] = [
-    "id", "title", "synopsis", "status", "label", "color", "goal", "conflict", "outcome",
+const SCENE_HEAD: [&str; 10] = [
+    "id", "title", "synopsis", "status", "label", "color", "goal", "conflict", "outcome", "tags",
 ];
 
 fn unknown_keys(item: &Value, known: &[&str]) -> Map<String, Value> {
@@ -494,8 +497,15 @@ pub fn write_format_marker(root: &Path) -> Result<()> {
     )
 }
 
-/// The file of one item with text: a scene, or a chapter written without
-/// scenes.
+/// Whether a binder item has a file of its own: every item but the three
+/// roots. A scene, a chapter, or a note keeps its text there; a book, a part,
+/// or a folder its details.
+pub(crate) fn has_own_file(node: &BinderNode) -> bool {
+    !node.is_root()
+}
+
+/// The file of one binder item: its details as front matter, its keywords
+/// as `tags`, and its text.
 pub(crate) fn scene_text(
     node: &BinderNode,
     beats: &SceneBeats,
@@ -503,7 +513,20 @@ pub(crate) fn scene_text(
     extras: Option<&Extras>,
 ) -> String {
     let mut other = Header::default();
+    if !node.keywords.is_empty() {
+        other.set_list("tags", &node.keywords);
+    }
     add_head_extras(&mut other, extras, &[]);
+    // A book, a part, or a folder has no text; what a person wrote under its
+    // front matter is kept.
+    let kept;
+    let blocks = match extras {
+        Some(found) if node.document_id.is_none() && !found.body.is_empty() => {
+            kept = writing_studio_format::markdown_to_blocks(&found.body);
+            kept.as_slice()
+        }
+        _ => blocks,
+    };
     SceneFile {
         header: SceneHeader {
             id: Some(node.id),
@@ -542,11 +565,12 @@ pub(crate) fn binder_json(
         if let Some(parent) = node.restore_parent_id {
             item.insert("restore_parent".into(), json!(parent.to_string()));
         }
-        match paths.get(&node.id).filter(|_| node.document_id.is_some()) {
+        match paths.get(&node.id).filter(|_| has_own_file(node)) {
             Some(path) => {
                 item.insert("file".into(), json!(path));
             }
             None => {
+                // A root has no file, so its details stay here.
                 // An item with no text of its own has nowhere else to keep these.
                 item.insert("status".into(), json!(node.status));
                 for (key, value) in [
@@ -559,10 +583,10 @@ pub(crate) fn binder_json(
                         item.insert(key.into(), json!(value));
                     }
                 }
+                if !node.keywords.is_empty() {
+                    item.insert("keywords".into(), json!(node.keywords));
+                }
             }
-        }
-        if !node.keywords.is_empty() {
-            item.insert("keywords".into(), json!(node.keywords));
         }
         if node.left_out {
             item.insert("left_out".into(), json!(true));
@@ -811,7 +835,7 @@ fn render(content: &ProjectContent) -> Result<Rendered> {
     let mut used: HashSet<String> = HashSet::new();
     let documents: HashMap<Id, &Document> = content.documents.iter().map(|doc| (doc.id, doc)).collect();
 
-    for node in content.binder.nodes.iter().filter(|node| node.document_id.is_some()) {
+    for node in content.binder.nodes.iter().filter(|node| has_own_file(node)) {
         let path = place(&content.files, &mut used, "manuscript", &node.title, node.id);
         if content.missing.contains(&node.id) {
             files.insert(node.id, path);
@@ -1065,7 +1089,10 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
         };
         if let Some(path) = item.get("file").and_then(Value::as_str) {
             files.insert(id, path.to_string());
-            node.document_id = Some(id);
+            let holds_text = node.kind.can_hold_document();
+            if holds_text {
+                node.document_id = Some(id);
+            }
             let file = match read_entry(root, "binder.json", path, id, &seen)? {
                 Ok(file) => file,
                 Err(why) => {
@@ -1080,7 +1107,13 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
                     continue;
                 }
             };
-            found.head = unknown_head(&file.header.other, &[]);
+            found.head = unknown_head(&file.header.other, &["tags"]);
+            // Keywords are in the file; a file from before they moved there
+            // has none, and the binder line's are kept.
+            let tags = tags_of(&file.header.other);
+            if !tags.is_empty() {
+                node.keywords = tags;
+            }
             node.title = file.header.title;
             node.synopsis = file.header.synopsis;
             node.status = file.header.status;
@@ -1091,6 +1124,15 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
                 conflict: file.header.conflict,
                 outcome: file.header.outcome,
             };
+            if !holds_text {
+                let written = file.blocks.iter().any(|block| !block.plain_text().trim().is_empty());
+                if written {
+                    found.body = writing_studio_format::blocks_to_markdown(&file.blocks);
+                }
+                keep(id, found);
+                nodes.push(node);
+                continue;
+            }
             if !scene_beats.is_empty() {
                 beats.insert(id, scene_beats);
             }
@@ -1929,17 +1971,22 @@ mod tests {
         assert_eq!(read.binder.keywords, content.binder.keywords);
         assert_eq!(read.binder.filters, content.binder.filters);
 
+        // Keywords are in each item's own file, not in the binder.
+        let scene_file = tagged.join(&read.files[&scene]);
+        assert!(fs::read_to_string(&scene_file).unwrap().contains("tags:\n  - Flashback\n"));
+        assert!(fs::read_to_string(tagged.join(&read.files[&book])).unwrap().contains("tags:\n  - Draft two\n"));
+        let path = tagged.join("binder.json");
+        assert!(!fs::read_to_string(&path).unwrap().contains("\"keywords\":[\"Flashback\"]"));
+
         // What another machine wrote is checked: an empty or overlong
         // keyword, and a color that is not a binder color, do not come in.
-        let path = tagged.join("binder.json");
-        let edited = fs::read_to_string(&path)
-            .unwrap()
-            .replace(
-                r#""keywords":["Flashback"]"#,
-                &format!(r#""keywords":["  ","{}","{}","Flashback"]"#, "x".repeat(90), "y".repeat(300)),
-            )
-            .replace(r#""color":"gold""#, r#""color":"chartreuse""#);
-        fs::write(&path, edited).unwrap();
+        let edited = fs::read_to_string(&scene_file).unwrap().replace(
+            "tags:\n  - Flashback\n",
+            &format!("tags:\n  - \"  \"\n  - {}\n  - {}\n  - Flashback\n", "x".repeat(90), "y".repeat(300)),
+        );
+        fs::write(&scene_file, edited).unwrap();
+        let colors = fs::read_to_string(&path).unwrap().replace(r#""color":"gold""#, r#""color":"chartreuse""#);
+        fs::write(&path, colors).unwrap();
         let checked = read_project_files(&tagged).unwrap();
         let words = &checked.binder.get(scene).unwrap().keywords;
         assert_eq!(words.len(), 3);
@@ -1949,7 +1996,7 @@ mod tests {
 
         // A filter from before filters took several keywords is refused,
         // with what to change; nothing is converted.
-        let old = fs::read_to_string(&path).unwrap().replace(r#""keywords":["Flashback","Draft two"]"#, r#""keyword":"Flashback""#);
+        let old = fs::read_to_string(&path).unwrap().replacen(r#""keywords":["#, r#""keyword":"Flashback","old":["#, 1);
         assert!(old.contains(r#""keyword":"Flashback""#), "{old}");
         fs::write(&path, old).unwrap();
         let refused = read_project_files(&tagged).unwrap_err().to_string();
@@ -2001,6 +2048,20 @@ const KEYWORD_LIMIT: usize = 200;
 
 /// An item's keywords from its `binder.json` line: strings only, trimmed,
 /// none empty, none too long.
+/// The keywords in a file's front matter: `tags`, a list, or one line.
+fn tags_of(header: &Header) -> Vec<String> {
+    let words: Vec<String> = match (header.list("tags"), header.text("tags")) {
+        (Some(list), _) => list.to_vec(),
+        (None, Some(line)) => vec![line.to_string()],
+        _ => Vec::new(),
+    };
+    words
+        .into_iter()
+        .map(|word| word.trim().chars().take(KEYWORD_LIMIT).collect::<String>())
+        .filter(|word| !word.is_empty())
+        .collect()
+}
+
 fn keywords_of(item: &Value) -> Vec<String> {
     item.get("keywords")
         .and_then(Value::as_array)

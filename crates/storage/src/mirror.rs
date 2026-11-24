@@ -30,6 +30,7 @@ use writing_studio_templates::blank_novel;
 use writing_studio_worldbuilding::World;
 
 use crate::files::{
+    has_own_file,
     read_scene_file,
     text_fingerprint, unknown_head, with_a_run_in_every_block, write_project_files_noted,
     bible_files, Extras, Problem, binder_json, inside, mindmap_json, place, plot_json, read_mindmap, read_project_files,
@@ -89,7 +90,9 @@ fn fingerprint(parts: &[&str]) -> u64 {
 }
 
 fn head_fingerprint(node: &BinderNode, beats: &SceneBeats) -> u64 {
+    let keywords = node.keywords.join("\n");
     fingerprint(&[
+        &keywords,
         &node.title,
         &node.synopsis,
         &node.status,
@@ -538,10 +541,7 @@ impl ProjectStore {
     fn write_changed_scenes(&self, tree: &BinderTree, beats: &HashMap<Id, SceneBeats>) -> Result<()> {
         let none = SceneBeats::default();
         for node in &tree.nodes {
-            let Some(document_id) = node.document_id else {
-                continue;
-            };
-            if self.is_missing(node.id) {
+            if !has_own_file(node) || self.is_missing(node.id) {
                 continue;
             }
             let scene_beats = beats.get(&node.id).unwrap_or(&none);
@@ -550,8 +550,9 @@ impl ProjectStore {
             if has_file && self.mirror.heads.borrow().get(&node.id) == Some(&mark) {
                 continue;
             }
-            let blocks = self
-                .load_document(document_id)
+            let blocks = node
+                .document_id
+                .and_then(|document_id| self.load_document(document_id).ok())
                 .map(|document| document.blocks)
                 .unwrap_or_default();
             let path = self.mirror.path_for(node.id, "manuscript", &node.title);
@@ -764,7 +765,7 @@ impl Mirror {
             .binder
             .nodes
             .iter()
-            .filter(|node| node.document_id.is_some())
+            .filter(|node| has_own_file(node))
             .map(|node| (node.id, head_fingerprint(node, content.beats.get(&node.id).unwrap_or(&none))))
             .collect();
         *self.paths.borrow_mut() = files;
@@ -807,6 +808,51 @@ mod tests {
 
     fn file_of(store: &ProjectStore, id: Id) -> PathBuf {
         store.root.join(&store.mirror.paths.borrow()[&id])
+    }
+
+    #[test]
+    fn a_book_has_a_file_of_its_details_and_a_move_changes_only_the_binder() {
+        let dir = temp("levels");
+        let store = ProjectStore::create(&dir, "Levels").unwrap();
+        let mut tree = store.load_binder().unwrap();
+        let book = tree.nodes.iter().find(|node| node.kind == NodeKind::Book).unwrap().id;
+        let node = tree.nodes.iter_mut().find(|node| node.id == book).unwrap();
+        node.synopsis = "A tide, a pilot, a promise.".into();
+        node.keywords = vec!["act/one".into()];
+        store.persist_binder(&tree).unwrap();
+        let book_file = file_of(&store, book);
+        let text = fs::read_to_string(&book_file).unwrap();
+        assert!(text.contains("\nsynopsis: A tide, a pilot, a promise.\n") && text.contains("tags:\n  - act/one\n"), "{text}");
+        let binder = fs::read_to_string(dir.join("binder.json")).unwrap();
+        assert!(!binder.contains("A tide") && !binder.contains("act/one"), "{binder}");
+
+        // Text a person writes under a book's front matter is kept.
+        fs::write(&book_file, format!("{text}\nWhat this book is for.\n")).unwrap();
+        drop(store);
+        let store = ProjectStore::open(&dir).unwrap();
+        let mut tree = store.load_binder().unwrap();
+        tree.nodes.iter_mut().find(|node| node.id == book).unwrap().synopsis = "Changed.".into();
+        store.persist_binder(&tree).unwrap();
+        let text = fs::read_to_string(&book_file).unwrap();
+        assert!(text.contains("synopsis: Changed.") && text.contains("What this book is for."), "{text}");
+
+        // Moving a scene writes the binder and no item's file.
+        let scene = scene_of(&store);
+        let before: Vec<(PathBuf, String)> = fs::read_dir(dir.join("manuscript"))
+            .unwrap()
+            .flatten()
+            .map(|entry| (entry.path(), fs::read_to_string(entry.path()).unwrap()))
+            .collect();
+        let mut tree = store.load_binder().unwrap();
+        let folder = tree.nodes.iter().find(|node| node.kind == NodeKind::Chapter).map(|node| node.id);
+        let node = tree.nodes.iter_mut().find(|node| node.id == scene.id).unwrap();
+        node.sort_index += 10;
+        node.parent_id = folder.or(node.parent_id);
+        store.persist_binder(&tree).unwrap();
+        for (path, text) in before {
+            assert_eq!(fs::read_to_string(&path).unwrap(), text, "{} was written", path.display());
+        }
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]
