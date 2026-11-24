@@ -5,13 +5,31 @@
 // quote's `>`, or a list's marker while the caret is on that line. The
 // caret steps over what is hidden. In Source mode every mark shows, quietly.
 
-import { Facet, RangeSet } from "@codemirror/state";
+import { Facet, RangeSet, StateEffect, StateField } from "@codemirror/state";
 import { Decoration, EditorView, ViewPlugin, WidgetType } from "@codemirror/view";
 import { syntaxTree } from "@codemirror/language";
 import { footnoteTexts, readNote } from "./syntax.js";
 
 // True when every mark is shown as typed.
 export const sourceMode = Facet.define({ combine: (values) => values.some(Boolean) });
+
+// The notes a `[[link]]` can name: lowercase title to its tip.
+export const setNotes = StateEffect.define();
+export const knownNotes = StateField.define({
+  create: () => new Map(),
+  update(notes, tr) {
+    for (const effect of tr.effects) if (effect.is(setNotes)) return effect.value;
+    return notes;
+  },
+});
+
+// The title and the words of a `[[…]]`, from its text.
+export function wikiParts(inside) {
+  const bar = inside.indexOf("|");
+  const title = (bar < 0 ? inside : inside.slice(0, bar)).trim();
+  const words = bar < 0 ? title : inside.slice(bar + 1).trim();
+  return { title, words, bar };
+}
 
 class TextWidget extends WidgetType {
   constructor(text, className, title) {
@@ -258,6 +276,26 @@ function build(view) {
           // Taken care of with the highlight they follow; alone, they are
           // shown as typed.
           return false;
+        case "WikiLink": {
+          const inside = doc.sliceString(node.from + 2, node.to - 2);
+          const { title, bar } = wikiParts(inside);
+          const notes = state.field(knownNotes, false) || new Map();
+          const tip = notes.get(title.toLowerCase());
+          const known = tip !== undefined;
+          const shownFrom = bar < 0 ? node.from + 2 : node.from + 3 + bar;
+          const attributes = { "data-note": title, title: known ? tip || title : `No note is called “${title}” yet` };
+          const className = known ? "ws-wikilink" : "ws-wikilink ws-wikilink-missing";
+          if (live && !touches(node.from, node.to)) {
+            hide(node.from, shownFrom);
+            add(markClass(className, attributes), shownFrom, node.to - 2);
+            hide(node.to - 2, node.to);
+          } else {
+            add(quietMark, node.from, node.from + 2);
+            add(markClass(className, attributes), node.from + 2, node.to - 2);
+            add(quietMark, node.to - 2, node.to);
+          }
+          return false;
+        }
         case "FootnoteRef": {
           footnotes = footnotes || footnoteTexts(doc.toString());
           const label = doc.sliceString(node.from + 2, node.to - 1);

@@ -177,7 +177,20 @@ impl LineWriter {
 
     fn text(&mut self, text: &str) {
         let chars: Vec<char> = text.chars().collect();
+        // A link to a note, `[[Title]]`, is written as it is.
+        let mut skip_to = 0;
         for (index, ch) in chars.iter().copied().enumerate() {
+            if index < skip_to {
+                continue;
+            }
+            // Not before `(`, where `](` would make it a Markdown link.
+            let link_here = crate::links::link_at(&chars[index..]).filter(|(length, _, _)| chars.get(index + length) != Some(&'('));
+            if let Some((length, _, _)) = link_here {
+                let link: String = chars[index..index + length].iter().collect();
+                self.raw(&link);
+                skip_to = index + length;
+                continue;
+            }
             let next = chars.get(index + 1).copied();
             if ch == '\n' {
                 self.line_break();

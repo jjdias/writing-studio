@@ -149,8 +149,9 @@ const LINK_KEYS: [&str; 2] = ["from", "item"];
 const PROJECT_KEYS: [&str; 5] = ["format", "id", "title", "created", "settings"];
 /// Names in a scene's head that the program writes. `title` is the `<title>`;
 /// a `<meta name="title">` beside it is not kept.
-const SCENE_HEAD: [&str; 12] = [
+const SCENE_HEAD: [&str; 13] = [
     "id", "title", "synopsis", "status", "label", "color", "goal", "conflict", "outcome", "tags", "notes", "footnotes",
+    "links",
 ];
 
 fn unknown_keys(item: &Value, known: &[&str]) -> Map<String, Value> {
@@ -526,6 +527,8 @@ pub(crate) fn scene_text(
     if node.footnotes {
         other.set_text("footnotes", "true");
     }
+    let links: Vec<String> = node.links.iter().map(Id::to_string).collect();
+    other.set_list("links", &links);
     add_head_extras(&mut other, extras, &[]);
     // A book, a part, or a folder has no text; what a person wrote under its
     // front matter is kept.
@@ -1127,6 +1130,11 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
             }
             node.notes = file.header.other.text("notes").unwrap_or_default().to_string();
             node.footnotes = file.header.other.text("footnotes").is_some_and(|value| value.trim() == "true");
+            node.links = match (file.header.other.list("links"), file.header.other.text("links")) {
+                (Some(list), _) => list.iter().filter_map(|id| id.trim().parse().ok()).collect(),
+                (None, Some(one)) => one.trim().parse().ok().into_iter().collect(),
+                _ => Vec::new(),
+            };
             node.title = file.header.title;
             node.synopsis = file.header.synopsis;
             node.status = file.header.status;

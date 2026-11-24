@@ -67,6 +67,7 @@ A scene is written as "One scene" under "Markdown export and import" shows: fron
 | `tags` | Its keywords, a list, nested with `/`, spelled exactly as they are |
 | `notes` | What the writer wants to remember about it, on any level; never compiled or counted |
 | `footnotes` | `"true"` on a folder of notes compiled as footnotes (Phase 14) |
+| `links` | A note's links to binder items made from Context, a list of their ids |
 
 ### The text
 
@@ -137,6 +138,7 @@ Nobody waited.
 - An item's keywords are `tags:`, a list, as Obsidian reads them, nested with `/` as they are; a space in a keyword is written `-`, since a tag cannot hold one. Import reads `tags:` or `keywords:`, a list or one line of words apart by spaces or commas, each without a leading `#`, and gives each a keyword: one in use keeps its spelling, a new one takes the next color. A chapter's keywords are on the chapter's own file, not repeated on its scenes.
 - Notes and highlights are CriticMarkup: `{==text==}` is a highlight, `{==text==}{.green}` a colored one, `{==text==}{>>the note<<}` a note, with `Question: `, `Revise: `, `Check: `, and `(resolved) ` in front of the note where they apply.
 - Underline is `<u>`. A scene break is `* * *`. An empty paragraph is `<br>` on a line.
+- A link to a note, `[[Title]]` or `[[Title|words]]`, is written as typed, never escaped, and read as text; the title matches a note's title whatever its case. One with `(` right after it is escaped, as it would read as a Markdown link.
 - What the writer typed is never read as formatting: characters that mean something to Markdown are written with a backslash.
 - Where another Markdown reader would misread `**`, `*`, or `~~`, the file uses `<strong>`, `<em>`, or `<s>`.
 

@@ -426,6 +426,12 @@ pub struct StudioState {
     pub editor_epoch: u64,
     pub search: String,
     pub manuscript_index: Rc<RefCell<ManuscriptIndex>>,
+    /// For each item with text, the note titles its text links to with
+    /// `[[…]]`, in lowercase: filled when the project opens, kept up as the
+    /// open text changes, so backlinks never read every file.
+    pub link_index: HashMap<Id, Vec<String>>,
+    /// The first line of each item's text, for a link's tip.
+    pub openings: HashMap<Id, String>,
     /// The mind map's text filter: what does not match is dimmed.
     pub map_query: String,
     /// Mind map branches folded, until the program closes.
@@ -590,6 +596,8 @@ impl Default for StudioState {
             editor_epoch: 0,
             search: String::new(),
             manuscript_index: Rc::new(RefCell::new(ManuscriptIndex::new())),
+            link_index: HashMap::new(),
+            openings: HashMap::new(),
             map_query: String::new(),
             folded_map: Vec::new(),
             map_zoom: None,
@@ -3876,6 +3884,27 @@ impl StudioState {
         if let Err(err) = self.manuscript_index.borrow_mut().replace_all(&pairs) {
             self.status = format!("Search index failed: {err}");
         }
+        self.link_index.clear();
+        self.openings.clear();
+        for (id, text) in &owned {
+            self.index_links(*id, text);
+        }
+    }
+
+    /// Note what `text`, the text of item `id`, links to, and its first line.
+    fn index_links(&mut self, id: Id, text: &str) {
+        let titles: Vec<String> = writing_studio_format::wikilinks(text)
+            .into_iter()
+            .map(|link| link.title.to_lowercase())
+            .collect();
+        if titles.is_empty() {
+            self.link_index.remove(&id);
+        } else {
+            self.link_index.insert(id, titles);
+        }
+        let first = text.lines().map(str::trim).find(|line| !line.is_empty()).unwrap_or_default();
+        let opening: String = first.chars().take(160).collect();
+        self.openings.insert(id, opening);
     }
 
     fn note_session_for_search(&mut self) {
@@ -3887,7 +3916,79 @@ impl StudioState {
         }
         let id = session.document_id();
         let text = session.plain_text();
+        self.index_links(id, &text);
         self.manuscript_index.borrow_mut().set_pending(id, text);
+    }
+
+    /// The note with this title, under Notes and not in the trash.
+    pub fn note_titled(&self, title: &str) -> Option<Id> {
+        self.binder
+            .nodes
+            .iter()
+            .find(|node| {
+                node.kind == NodeKind::Note
+                    && node.deleted_at.is_none()
+                    && self.binder.is_in_notes(node.id)
+                    && writing_studio_format::same_title(&node.title, title)
+            })
+            .map(|node| node.id)
+    }
+
+    /// Every note a `[[link]]` can point at, with what a link to it shows
+    /// as its tip: where it is, and its first line.
+    pub fn note_link_targets(&self) -> Vec<(String, String)> {
+        let mut targets: Vec<(String, String)> = self
+            .binder
+            .nodes
+            .iter()
+            .filter(|node| node.kind == NodeKind::Note && node.deleted_at.is_none() && self.binder.is_in_notes(node.id))
+            .map(|node| {
+                let folder = node.parent_id.and_then(|id| self.binder.get(id)).map(|up| up.title.clone()).unwrap_or_default();
+                let opening = self.openings.get(&node.id).cloned().unwrap_or_default();
+                let tip = if opening.is_empty() { folder } else { format!("{folder}: {opening}") };
+                (node.title.clone(), tip)
+            })
+            .collect();
+        targets.sort_by_key(|(title, _)| title.to_lowercase());
+        targets
+    }
+
+    /// Open the note a `[[link]]` names, or say there is none.
+    pub fn open_note_titled(&mut self, title: &str) {
+        match self.note_titled(title) {
+            Some(id) => {
+                self.flush_editor();
+                self.select_node(id);
+                self.mode = WorkspaceMode::Writing;
+            }
+            None => self.status = format!("No note is called “{}”. Make one under Notes, or check the spelling.", title.trim()),
+        }
+    }
+
+    /// The scenes, chapters, and notes whose text links to `note` with
+    /// `[[…]]`, in binder order.
+    pub fn mentions_of(&self, note: Id) -> Vec<Id> {
+        let Some(title) = self.binder.get(note).map(|node| node.title.to_lowercase()) else {
+            return Vec::new();
+        };
+        self.binder
+            .nodes
+            .iter()
+            .filter(|node| node.id != note && node.deleted_at.is_none())
+            .filter(|node| self.link_index.get(&node.id).is_some_and(|titles| titles.iter().any(|seen| seen.trim() == title.trim())))
+            .map(|node| node.id)
+            .collect()
+    }
+
+    /// Link a note to a binder item from Context, or take the link away.
+    pub fn set_note_link(&mut self, note: Id, item: Id, linked: bool) {
+        self.edit_node(note, |node| {
+            node.links.retain(|id| *id != item);
+            if linked {
+                node.links.push(item);
+            }
+        });
+        self.save_all();
     }
 
     pub fn backup(&mut self) {
@@ -5446,10 +5547,64 @@ impl StudioState {
             self.status = "A name cannot be empty.".into();
             return;
         }
-        if self.binder.get(id).is_some_and(|node| node.title != title) {
-            self.update_node_title(id, title.to_string());
-            self.save_all();
+        let Some(old) = self.binder.get(id).filter(|node| node.title != title).map(|node| node.title.clone()) else {
+            return;
+        };
+        let is_note = self.binder.get(id).is_some_and(|node| node.kind == NodeKind::Note);
+        let mentioning = if is_note { self.mentions_of(id) } else { Vec::new() };
+        self.update_node_title(id, title.to_string());
+        self.save_all();
+        if !mentioning.is_empty() {
+            let changed = self.rename_links_in(&mentioning, &old, title);
+            self.status = match changed {
+                1 => format!("Renamed, and the link to it in 1 place."),
+                many => format!("Renamed, and the links to it in {many} places."),
+            };
         }
+    }
+
+    /// Point every `[[old]]` in these items' text at `new`. The open one
+    /// changes on the page; the others are saved. Returns how many changed.
+    fn rename_links_in(&mut self, items: &[Id], old: &str, new: &str) -> usize {
+        let Some(store) = self.store.clone() else {
+            return 0;
+        };
+        let open = self.session.as_ref().map(|session| session.document_id());
+        let mut changed = 0;
+        for item in items {
+            let Some(document_id) = self.binder.get(*item).and_then(|node| node.document_id) else {
+                continue;
+            };
+            if Some(document_id) == open {
+                let page = self.editor_markdown();
+                if let Some(renamed) = writing_studio_format::rename_wikilinks(&page, old, new) {
+                    self.edit_text("Links renamed.", |document| {
+                        document.replace_blocks(writing_studio_format::markdown_to_blocks(&renamed));
+                        true
+                    });
+                    changed += 1;
+                }
+                continue;
+            }
+            let Ok(mut document) = store.borrow().load_document(document_id) else {
+                continue;
+            };
+            let text = writing_studio_format::blocks_to_markdown(&document.blocks);
+            let Some(renamed) = writing_studio_format::rename_wikilinks(&text, old, new) else {
+                continue;
+            };
+            document.replace_blocks(writing_studio_format::markdown_to_blocks(&renamed));
+            if store.borrow().save_document(&document).is_ok() {
+                self.index_links(document_id, &document.to_plain_text());
+                changed += 1;
+            }
+        }
+        self.flush_editor();
+        if let Some(session) = &self.session {
+            let text = session.plain_text();
+            self.index_links(session.document_id(), &text);
+        }
+        changed
     }
 
     pub fn restore_selected(&mut self) {

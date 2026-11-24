@@ -198,6 +198,11 @@ pub fn install(conn: &Connection) -> rusqlite::Result<()> {
         "ALTER TABLE binder_nodes ADD COLUMN footnotes INTEGER NOT NULL DEFAULT 0",
         [],
     );
+    // A note's links to binder items, as a JSON list of ids (Phase 14).
+    let _ = conn.execute(
+        "ALTER TABLE binder_nodes ADD COLUMN links TEXT NOT NULL DEFAULT '[]'",
+        [],
+    );
     // Whether an item is left out of compile, 1 or 0.
     let _ = conn.execute(
         "ALTER TABLE binder_nodes ADD COLUMN left_out INTEGER NOT NULL DEFAULT 0",

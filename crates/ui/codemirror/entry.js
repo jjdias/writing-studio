@@ -15,9 +15,9 @@ import { EditorState, Compartment, Annotation, Transaction } from "@codemirror/s
 import { EditorView, keymap, drawSelection } from "@codemirror/view";
 import { defaultKeymap, history, undo, redo } from "@codemirror/commands";
 import { sceneLanguage } from "./syntax.js";
-import { preview, sourceMode } from "./preview.js";
+import { preview, sourceMode, knownNotes, setNotes } from "./preview.js";
 import { selectReview, showBlock, spelling, setSpelling, findWord, keepingPlace } from "./places.js";
-import { writingKeys, smartTypography, pairing, pasteHandler, insertPasted, runCommand, marksAt } from "./writing.js";
+import { writingKeys, smartTypography, pairing, pasteHandler, insertPasted, runCommand, marksAt, noteCompletion, noteOpening } from "./writing.js";
 
 let view = null;
 let token = null;
@@ -60,7 +60,10 @@ function mount(parent, text, send, id, options = {}) {
     showSource.of(sourceMode.of(!!options.source)),
     spelling,
     keepPlace.of(keepingPlace(options.keep)),
+    knownNotes,
     preview,
+    noteCompletion,
+    noteOpening(send),
     writingKeys,
     smart.of(options.smart ? smartTypography : []),
     pairs.of(options.pair ? pairing : []),
@@ -215,6 +218,18 @@ function release() {
   return true;
 }
 
+// The notes a `[[link]]` can name: `[{ title, tip }]`, as the program
+// gives them. Links to a title not among them are shown as missing.
+function setNoteList(list) {
+  if (!view) return false;
+  const notes = new Map();
+  for (const note of list || []) {
+    notes.set(String(note.title).toLowerCase(), Object.assign(String(note.tip || ""), { title: note.title, where: note.tip }));
+  }
+  view.dispatch({ effects: setNotes.of(notes) });
+  return true;
+}
+
 // Put `text` where the selection is, as typing would, and keep the focus.
 function insertText(text) {
   if (!view) return false;
@@ -247,6 +262,7 @@ window.wsEditor = {
   release,
   pasted,
   insertText,
+  setNotes: setNoteList,
   active: () => !!view,
   // What the page holds before the caret, for splitting the scene there.
   textBeforeCaret: () => (view ? view.state.doc.sliceString(0, view.state.selection.main.head) : null),

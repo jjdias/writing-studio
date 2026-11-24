@@ -8,6 +8,7 @@
 
 mod canonical;
 mod header;
+mod links;
 mod read;
 mod scene;
 #[cfg(test)]
@@ -16,6 +17,7 @@ mod write;
 
 pub use canonical::{canonical_blocks, same_content};
 pub use header::{split_header, Header, HeaderError, Value};
+pub use links::{rename_wikilinks, same_title, wikilinks, WikiLink};
 pub use read::markdown_to_blocks;
 pub use scene::{file_name, slug, SceneFile, SceneHeader};
 pub use write::{blocks_to_markdown, write_markdown, NoteStyle};

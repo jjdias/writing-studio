@@ -19,6 +19,15 @@ pub(super) fn EditorPane() -> Element {
         &unknown.iter().map(|item| item.word.as_str()).collect::<Vec<_>>(),
     )
     .unwrap_or_else(|_| "[]".into());
+    // The notes a `[[link]]` can name, with each one's tip.
+    let notes_json = serde_json::to_string(
+        &snapshot
+            .note_link_targets()
+            .into_iter()
+            .map(|(title, tip)| serde_json::json!({ "title": title, "tip": tip }))
+            .collect::<Vec<_>>(),
+    )
+    .unwrap_or_else(|_| "[]".into());
     let keep = snapshot.keep_place();
     let keep_json = format!(
         r#"{{"scroll":"{}","marker":{},"fade":"{}","bars":{}}}"#,
@@ -46,7 +55,7 @@ pub(super) fn EditorPane() -> Element {
                         span { class: "page-words", "{words} words" }
                     }
                     if let Some(scene) = scene {
-                        MarkdownPage { key: "{scene}", scene, can_edit, marks, spelling: unknown_json.clone(), keep: keep_json.clone(), fading: keep.fade != Fade::Off }
+                        MarkdownPage { key: "{scene}", scene, can_edit, marks, spelling: unknown_json.clone(), keep: keep_json.clone(), fading: keep.fade != Fade::Off, notes: notes_json.clone() }
                     } else {
                         div { class: "manuscript markdown-page", aria_label: "Manuscript" }
                     }
@@ -73,6 +82,7 @@ fn MarkdownPage(
     spelling: String,
     keep: String,
     fading: bool,
+    notes: String,
 ) -> Element {
     let mut state = use_context::<Signal<StudioState>>();
     let mut marks = marks;
@@ -103,6 +113,7 @@ fn MarkdownPage(
                 match message["kind"].as_str() {
                     Some("text") => state.write().apply_editor_markdown(message["text"].as_str().unwrap_or_default()),
                     Some("blur") => state.write().flush_editor(),
+                    Some("open-note") => state.write().open_note_titled(message["title"].as_str().unwrap_or_default()),
                     Some("marks") => {
                         let next: Vec<String> = message["marks"]
                             .as_array()
@@ -137,6 +148,9 @@ fn MarkdownPage(
     // rich-text page had them.
     use_effect(use_reactive((&spelling,), move |(words,)| {
         let _ = document::eval(&format!("window.wsEditor && wsEditor.setSpelling({words});"));
+    }));
+    use_effect(use_reactive((&notes,), move |(notes,)| {
+        let _ = document::eval(&format!("window.wsEditor && wsEditor.setNotes({notes});"));
     }));
     use_effect(use_reactive((&keep,), move |(keep,)| {
         let _ = document::eval(&format!("window.wsEditor && wsEditor.setKeepPlace({keep});"));

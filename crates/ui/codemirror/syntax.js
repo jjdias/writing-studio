@@ -40,6 +40,8 @@ const Scene = {
     { name: "Underline" },
     { name: "UnderlineMark", style: t.processingInstruction },
     { name: "FootnoteRef", style: t.labelName },
+    { name: "WikiLink" },
+    { name: "WikiMark", style: t.processingInstruction },
     { name: "FootnoteDefinition", block: true },
     { name: "FootnoteLabel", style: t.labelName },
   ],
@@ -93,6 +95,27 @@ const Scene = {
         const tag = cx.slice(pos, Math.min(cx.end, pos + 4)).toLowerCase();
         if (tag.startsWith("<u>")) return cx.addDelimiter(UnderlineDelim, pos, pos + 3, true, false);
         if (tag === "</u>") return cx.addDelimiter(UnderlineDelim, pos, pos + 4, false, true);
+        return -1;
+      },
+    },
+    {
+      // `[[Title]]` or `[[Title|words]]`: a link to a note, on one line.
+      name: "WikiLink",
+      before: "Link",
+      parse(cx, next, pos) {
+        if (next !== 91 /* [ */ || code(cx, pos + 1) !== 91) return -1;
+        for (let at = pos + 2; at < cx.end; at++) {
+          const ch = code(cx, at);
+          if (ch === 10 || ch === 91) return -1;
+          if (ch === 93 /* ] */) {
+            if (code(cx, at + 1) !== 93 || at === pos + 2) return -1;
+            // `](` after it would make it a Markdown link, as crates/format reads it.
+            if (code(cx, at + 2) === 40) return -1;
+            return cx.addElement(
+              cx.elt("WikiLink", pos, at + 2, [cx.elt("WikiMark", pos, pos + 2), cx.elt("WikiMark", at, at + 2)])
+            );
+          }
+        }
         return -1;
       },
     },

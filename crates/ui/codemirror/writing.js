@@ -6,7 +6,8 @@
 import { EditorSelection, EditorState, Prec } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { syntaxTree } from "@codemirror/language";
-import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
+import { closeBrackets, closeBracketsKeymap, autocompletion } from "@codemirror/autocomplete";
+import { knownNotes, sourceMode, wikiParts } from "./preview.js";
 import { insertNewlineContinueMarkup, deleteMarkupBackward } from "@codemirror/lang-markdown";
 
 // --- Finding what the caret is in -------------------------------------------
@@ -615,6 +616,72 @@ function lineBreak(view) {
     userEvent: "input",
   });
   return true;
+}
+
+// --- Links to notes --------------------------------------------------------------
+
+// Typing `[[` offers the notes' titles; choosing one finishes the link.
+function noteTitles(context) {
+  const before = context.matchBefore(/\[\[[^\[\]\n|]*$/);
+  if (!before) return null;
+  const notes = context.state.field(knownNotes, false);
+  if (!notes || !notes.size) return null;
+  const typed = before.text.slice(2);
+  const after = context.state.sliceDoc(context.pos, context.pos + 2);
+  return {
+    from: before.from + 2,
+    options: [...notes.entries()].map(([, tip], index) => ({
+      label: tip.title,
+      detail: tip.where,
+      apply: after === "]]" ? tip.title : tip.title + "]]",
+      boost: -index,
+    })),
+    validFor: /^[^\[\]\n|]*$/,
+    filter: true,
+    span: typed,
+  };
+}
+
+export const noteCompletion = autocompletion({ override: [noteTitles], icons: false, activateOnTyping: true });
+
+// The `[[…]]` the caret is in, as the title it names.
+function linkAt(state, pos) {
+  for (let node = syntaxTree(state).resolveInner(pos, -1); node; node = node.parent) {
+    if (node.name === "WikiLink") return wikiParts(state.sliceDoc(node.from + 2, node.to - 2)).title;
+  }
+  for (let node = syntaxTree(state).resolveInner(pos, 1); node; node = node.parent) {
+    if (node.name === "WikiLink") return wikiParts(state.sliceDoc(node.from + 2, node.to - 2)).title;
+  }
+  return null;
+}
+
+// A click on a link opens its note (in Source mode, a Ctrl+click), and so
+// does Ctrl+Enter with the caret in it.
+export function noteOpening(send) {
+  return [
+    EditorView.domEventHandlers({
+      mousedown: (event, view) => {
+        const target = event.target instanceof Element ? event.target.closest("[data-note]") : null;
+        if (!target || event.button !== 0) return false;
+        const source = view.state.facet(sourceMode);
+        if (source && !(event.ctrlKey || event.metaKey)) return false;
+        event.preventDefault();
+        send({ kind: "open-note", title: target.getAttribute("data-note") });
+        return true;
+      },
+    }),
+    keymap.of([
+      {
+        key: "Mod-Enter",
+        run: (view) => {
+          const title = linkAt(view.state, view.state.selection.main.head);
+          if (!title) return false;
+          send({ kind: "open-note", title });
+          return true;
+        },
+      },
+    ]),
+  ];
 }
 
 // --- Keys --------------------------------------------------------------------

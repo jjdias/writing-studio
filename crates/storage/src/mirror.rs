@@ -96,6 +96,7 @@ fn head_fingerprint(node: &BinderNode, beats: &SceneBeats) -> u64 {
         &keywords,
         &node.notes,
         if node.footnotes { "footnotes" } else { "" },
+        &node.links.iter().map(Id::to_string).collect::<Vec<_>>().join(","),
         &node.title,
         &node.synopsis,
         &node.status,

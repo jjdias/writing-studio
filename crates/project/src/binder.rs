@@ -151,6 +151,11 @@ pub struct BinderNode {
     /// links to them. Meaningless on anything else.
     #[serde(default)]
     pub footnotes: bool,
+    /// For a note: the binder items it is linked to from Context, as story
+    /// links were. A mention in the text, `[[Title]]`, is a link too, kept in
+    /// the text alone.
+    #[serde(default)]
+    pub links: Vec<Id>,
     /// Left out of compile, with what it holds. Missing on older items,
     /// which are compiled.
     #[serde(default)]
@@ -186,6 +191,7 @@ impl BinderNode {
             keywords: Vec::new(),
             notes: String::new(),
             footnotes: false,
+            links: Vec::new(),
             left_out: false,
             deleted_at: None,
             restore_parent_id: None,

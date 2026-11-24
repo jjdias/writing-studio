@@ -1376,3 +1376,13 @@ button.keyword-dot:hover { box-shadow: 0 0 0 2px var(--line); }
 /* Spelling and keeping one's place (places.js), as on the rich-text page. */
 .markdown-page .ws-spell { text-decoration: underline wavy #e5484d; text-decoration-skip-ink: none; }
 .markdown-page.fading .ws-current { color: var(--editor-text); }
+
+/* Links to notes, [[Title]] (Phase 14), and the titles offered for them. */
+.markdown-page .ws-wikilink { color: var(--page-link); text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; }
+.markdown-page .ws-wikilink-missing { color: var(--muted); text-decoration-style: dashed; }
+.markdown-page .cm-tooltip { background: var(--panel-2); color: var(--text); border: 1px solid var(--control-border); border-radius: var(--radius); font-family: var(--ui, inherit); font-size: 13px; }
+.markdown-page .cm-tooltip-autocomplete ul li { padding: 3px 8px; }
+.markdown-page .cm-tooltip-autocomplete ul li[aria-selected] { background: var(--hover); color: var(--text); }
+.markdown-page .cm-completionDetail { margin-left: 8px; color: var(--muted); font-style: normal; }
+.note-links { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 8px; }
+.note-links .note-link { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; font-size: 12px; }

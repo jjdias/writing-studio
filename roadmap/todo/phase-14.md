@@ -1,6 +1,6 @@
 # Phase 14 — Notes
 
-In progress: stages 1 to 3 are done.
+In progress: stages 1 to 4 are done.
 
 Characters, places, cultures, lore, timeline events, research notes, and the binder's story notes become one thing: a **note**. A note is a Markdown file the writer writes as they like, in the same page as a scene, in folders the writer makes and names. Nothing about it is a form. The program knows a note's title, its keywords, and what it links to; everything else is the writer's text.
 
@@ -72,6 +72,8 @@ Recommended in this plan:
 - Context's links (to a scene, chapter, part, or book, as story links are now) are kept in the note's front matter.
 - Context shows a note's **backlinks**: every scene and note that mentions it, and every item it is linked to.
 - Renaming a note offers to change every `[[old title]]` to the new one, as one undo step.
+
+**Done.** `crates/format/src/links.rs` finds `[[Title]]` and `[[Title|words]]` (`wikilinks`), matches titles whatever their case (`same_title`), and renames them (`rename_wikilinks`); the writer writes a link as typed and the reader keeps it as text. On the page (`syntax.js`, `preview.js`, `writing.js`) a link reads as a link, its brackets hidden except where the caret is, with the note's folder and first line as its tip, and a title no note has is shown faint; typing `[[` offers the notes' titles (`@codemirror/autocomplete`), a click opens the note (Ctrl+click in Source mode), and so does Ctrl+Enter. A note's links from Context are `BinderNode::links`, kept as `links:` in its front matter (a cache column, merged by sync). Context for a note shows **Linked to**, with **Link to…** and **Unlink**, and **Mentioned in**, from `StudioState::link_index`: which titles each text links to, filled when the project opens and kept up as the open text changes, so it never reads every file. Renaming a note changes every link to it at once, as Obsidian does by default, rather than offering to; the other files are saved with the change, so it is not one undo step. Tests: the format crate's link tests, and `notes_are_linked_by_title_and_from_context_and_renaming_follows`; the page was checked in a browser.
 
 ### 5. Footnotes in the compiled book
 

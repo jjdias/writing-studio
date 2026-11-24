@@ -78,6 +78,9 @@ pub(super) fn Inspector() -> Element {
             {
                 LevelContextView { id: node.id }
             }
+            if node.kind == NodeKind::Note && state.read().binder.is_in_notes(node.id) {
+                NoteLinks { id: node.id }
+            }
             if node.kind == NodeKind::Note && state.read().session.as_ref().is_some_and(|session| Some(session.document_id()) == node.document_id) {
                 button {
                     title: "Copy a file into the project and link to it where the caret is in this note",
@@ -832,6 +835,77 @@ fn LevelContextView(id: Id) -> Element {
                 title: "This {noun}, what it holds with each synopsis, its plot points, and everything in it, as Markdown",
                 onclick: move |_| copy_to_clipboard(state, markdown.clone(), "Context copied."),
                 "Copy context"
+            }
+        }
+    }
+}
+
+/// A note's links: the items it is linked to from here, to take away or add
+/// to, and the scenes and notes whose text links to it with `[[…]]`.
+#[component]
+fn NoteLinks(id: Id) -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let linked: Vec<(Id, String)> = state
+        .read()
+        .binder
+        .get(id)
+        .map(|node| node.links.clone())
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|item| state.read().binder.get(item).map(|node| (item, format!("{}: {}", node.kind.icon_label(), node.title))))
+        .collect();
+    let mentions: Vec<(Id, String)> = state
+        .read()
+        .mentions_of(id)
+        .into_iter()
+        .filter_map(|item| state.read().binder.get(item).map(|node| (item, format!("{}: {}", node.kind.icon_label(), node.title))))
+        .collect();
+    // What can be linked: the manuscript's books, parts, chapters, and scenes.
+    let choices: Vec<(Id, String)> = state
+        .read()
+        .binder
+        .nodes
+        .iter()
+        .filter(|node| {
+            matches!(node.kind, NodeKind::Book | NodeKind::Part | NodeKind::Chapter | NodeKind::Scene)
+                && node.deleted_at.is_none()
+                && !linked.iter().any(|(item, _)| *item == node.id)
+        })
+        .filter(|node| state.read().binder.in_manuscript(node.id))
+        .map(|node| (node.id, format!("{}: {}", node.kind.icon_label(), node.title)))
+        .collect();
+    rsx! {
+        label { "Linked to" }
+        div { class: "note-links",
+            if linked.is_empty() {
+                p { class: "hint", "Not linked to a scene or chapter yet. Write [[{state.read().binder.get(id).map(|node| node.title.clone()).unwrap_or_default()}]] in one, or link it here." }
+            }
+            for (item, label) in linked {
+                div { class: "note-link", key: "{item}",
+                    button { class: "link-button", onclick: move |_| state.write().select_node(item), "{label}" }
+                    button { title: "Take this link away", onclick: move |_| state.write().set_note_link(id, item, false), "Unlink" }
+                }
+            }
+            select {
+                aria_label: "Link this note to",
+                onchange: move |event| {
+                    if let Ok(item) = event.value().parse::<Id>() {
+                        state.write().set_note_link(id, item, true);
+                    }
+                },
+                option { value: "", selected: true, "Link to…" }
+                for (item, label) in choices {
+                    option { value: "{item}", "{label}" }
+                }
+            }
+        }
+        label { "Mentioned in" }
+        div { class: "note-links",
+            if mentions.is_empty() {
+                p { class: "hint", "No text links to it yet." }
+            }
+            for (item, label) in mentions {
+                button { class: "link-button note-link", key: "{item}", onclick: move |_| state.write().select_node(item), "{label}" }
             }
         }
     }

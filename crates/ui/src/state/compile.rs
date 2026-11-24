@@ -555,6 +555,45 @@ mod tests {
     }
 
     #[test]
+    fn notes_are_linked_by_title_and_from_context_and_renaming_follows() {
+        let (mut state, dir) = open_state("links");
+        let scene = state.selected.unwrap();
+        let notes = state.binder.notes_root().unwrap().id;
+        let research = state.binder.children(Some(notes))[1].id;
+        let mara = state.new_note_from_template(research, "character.md").unwrap();
+        state.rename_item(mara, "Mara");
+
+        // The scene mentions her; she is in its backlinks, found by title.
+        state.select_node(scene);
+        state.apply_editor_markdown("Ask [[mara]], or [[Mara|the pilot's daughter]].");
+        state.flush_editor();
+        assert_eq!(state.note_titled("MARA"), Some(mara));
+        assert_eq!(state.mentions_of(mara), [scene]);
+        assert!(state.note_link_targets().iter().any(|(title, _)| title == "Mara"));
+
+        // A link from Context is kept in the note's file.
+        let chapter = state.binder.get(scene).unwrap().parent_id.unwrap();
+        state.set_note_link(mara, chapter, true);
+        let file = state.project_root().unwrap().join(state.store.as_ref().unwrap().borrow().file_of(mara).unwrap());
+        assert!(std::fs::read_to_string(&file).unwrap().contains(&format!("links:\n  - {chapter}\n")));
+
+        // Renaming her changes the links to her, keeping the words they show.
+        state.select_node(mara);
+        state.rename_item(mara, "Mara Vance");
+        assert!(state.status.contains("in 1 place"), "{}", state.status);
+        state.select_node(scene);
+        assert_eq!(state.editor_markdown(), "Ask [[Mara Vance]], or [[Mara Vance|the pilot's daughter]].");
+        assert_eq!(state.mentions_of(mara), [scene]);
+
+        // A link opens its note.
+        state.open_note_titled("mara vance");
+        assert_eq!(state.selected, Some(mara));
+        state.open_note_titled("Nobody");
+        assert!(state.status.contains("No note is called “Nobody”"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn the_preview_is_the_web_page_for_any_profile_and_writes_nothing() {
         let (mut state, dir) = open_state("preview");
         state.apply_editor_text("The harbor was quiet.".into());
