@@ -106,6 +106,7 @@ Asked for by the maintainer after trying the phase:
 - Context is not beside a note or a folder of notes, which are context themselves (`StudioState::context_shown`). **Add a file…** is on the open note's right-click menu; a note's **Linked to** and **Mentioned in** went with Context, and a note is linked from the scene's or chapter's Context.
 - **Compile as footnotes** is on the right-click menu of a note and of a folder of notes, and belongs to each note (`BinderNode::footnotes`): setting a folder sets everything in it (`set_footnotes`), a new note takes its folder's setting, and compile reads the note's own. Moving a note keeps its setting.
 - A note's or a folder of notes' **Color** is on its right-click menu (`StudioState::set_item_color`), as Context, which had it, is not beside them.
+- Each row under Notes in the library has a dot: full when it compiles with the book, an empty ring when it does not, with a tooltip saying which (`BinderRow::compiles`).
 - Hiding everything but the page while typing is **Hide everything but the page while I type** in Settings, off by default, under a new key (`hide_while_typing`), so a project where the old `quiet_bars` was saved on starts off.
 
 Test: `footnotes_cascade_from_a_folder_and_context_stays_off_notes`.

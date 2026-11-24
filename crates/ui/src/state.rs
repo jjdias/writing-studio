@@ -99,6 +99,9 @@ pub struct BinderRow {
     /// For what holds scenes: how many it holds, and how many are final.
     pub scenes: usize,
     pub finished: usize,
+    /// Under Notes: whether it is compiled with the book, as footnotes.
+    /// `None` elsewhere.
+    pub compiles: Option<bool>,
 }
 
 /// A binder search: does the item, or something in it, match the words, by
@@ -2428,6 +2431,7 @@ impl StudioState {
             left_out: self.binder.is_left_out(node.id),
             scenes: held.len(),
             finished,
+            compiles: (!node.kind.is_root() && self.binder.is_in_notes(node.id)).then_some(node.footnotes),
         }
     }
 
@@ -4995,6 +4999,9 @@ mod tests {
         assert!(state.binder.get(inner).unwrap().footnotes && !state.binder.get(deep).unwrap().footnotes, "one note apart");
         state.set_footnotes(scene, true);
         assert!(!state.binder.get(scene).unwrap().footnotes, "only under Notes");
+        let dots: Vec<(Id, Option<bool>)> = state.note_rows().into_iter().map(|row| (row.id, row.compiles)).collect();
+        assert!(dots.contains(&(inner, Some(true))) && dots.contains(&(deep, Some(false))), "the library's dots");
+        assert!(state.binder_rows().iter().all(|row| row.compiles.is_none()), "none in the manuscript");
         state.set_item_color(deep, "blue");
         assert_eq!(state.binder.get(deep).unwrap().color, "blue");
         state.set_item_color(deep, "plaid");

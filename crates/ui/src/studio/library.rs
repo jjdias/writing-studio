@@ -37,6 +37,7 @@ pub(super) fn Library() -> Element {
         left_out: false,
         scenes: 0,
         finished: 0,
+        compiles: None,
     });
     let widths = use_context::<Signal<PanelWidths>>();
     let width = widths.read().sidebar;
@@ -339,6 +340,14 @@ fn LibraryRow(row: BinderRow, active: bool) -> Element {
             ondragend: move |_| state.write().end_drag(),
             KindGlyph { kind }
             span { class: "library-name", "{name}" }
+            if let Some(compiles) = row.compiles {
+                span {
+                    class: if compiles { "compile-dot on" } else { "compile-dot" },
+                    title: if compiles { "Compiles with book" } else { "Won't compile with book" },
+                    aria_label: if compiles { "Compiles with book" } else { "Won't compile with book" },
+                    role: "img",
+                }
+            }
             if kind == NodeKind::Scene && !row.status.trim().is_empty() {
                 StatusPill { status: row.status.clone() }
             }

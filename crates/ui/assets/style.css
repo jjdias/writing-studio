@@ -1229,6 +1229,10 @@ body[data-typing] .sash { opacity: 0; }
 button.keyword-dot { cursor: pointer; }
 button.keyword-dot:hover { box-shadow: 0 0 0 2px var(--line); }
 .keyword-dot.small { width: 8px; height: 8px; display: inline-block; }
+/* Beside a note or folder of notes: a full dot when it compiles with the
+   book (as footnotes), an empty ring when it does not. */
+.compile-dot { width: 8px; height: 8px; margin-left: 6px; border: 1.5px solid var(--text); border-radius: 50%; flex: 0 0 auto; box-sizing: border-box; }
+.compile-dot.on { background: var(--text); }
 .keyword-remove { padding: 0 4px; border: 0; background: transparent; color: var(--muted); font-size: 13px; line-height: 1; }
 .keyword-remove:hover { background: transparent; color: var(--danger); }
 .keyword-field { width: 100%; }
