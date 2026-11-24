@@ -1058,9 +1058,14 @@ pub(super) fn ItemMenuView() -> Element {
                             class: "menu-item",
                             key: "{name}",
                             title: "templates/{name}",
-                            onclick: move |_| {
-                                state.write().item_menu = None;
-                                state.write().new_note_from_template(id, &name);
+                            onclick: {
+                                // The key and title read the name too, so the
+                                // click gets its own copy.
+                                let name = name.clone();
+                                move |_| {
+                                    state.write().item_menu = None;
+                                    state.write().new_note_from_template(id, &name);
+                                }
                             },
                             "{title}"
                         }
