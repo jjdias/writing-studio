@@ -95,7 +95,7 @@ impl ProjectStore {
             .conn
             .prepare(
                 "SELECT id, parent_id, kind, title, sort_index, document_id, synopsis, label, status, color,
-                        deleted_at, created_at, updated_at, restore_parent_id, keywords, left_out
+                        deleted_at, created_at, updated_at, restore_parent_id, keywords, left_out, notes
                  FROM binder_nodes",
             )
             .map_err(sqlite)?;
@@ -142,10 +142,11 @@ impl ProjectStore {
             .execute(
                 "INSERT INTO binder_nodes (
                     id, parent_id, kind, title, sort_index, document_id, synopsis, label, status, color,
-                    deleted_at, created_at, updated_at, restore_parent_id, keywords, left_out
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
+                    deleted_at, created_at, updated_at, restore_parent_id, keywords, left_out, notes
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
                  ON CONFLICT(id) DO UPDATE SET
                     keywords=excluded.keywords,
+                    notes=excluded.notes,
                     left_out=excluded.left_out,
                     parent_id=excluded.parent_id,
                     title=excluded.title,
@@ -175,6 +176,7 @@ impl ProjectStore {
                     node.restore_parent_id.map(|id| id.to_string()),
                     serde_json::to_string(&node.keywords).unwrap_or_else(|_| "[]".into()),
                     node.left_out,
+                    node.notes,
                 ],
             )
             .map_err(sqlite)?;
@@ -999,6 +1001,7 @@ pub(crate) fn row_to_node(row: &rusqlite::Row<'_>) -> BinderNode {
             .unwrap_or_default(),
         // Older caches have no such column either, and compile everything.
         left_out: row.get(15).unwrap_or(false),
+        notes: row.get(16).unwrap_or_default(),
         deleted_at: deleted.as_deref().and_then(|value| Timestamp::parse(value).ok()),
         restore_parent_id: row
             .get::<_, Option<String>>(13)

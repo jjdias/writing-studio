@@ -5613,6 +5613,11 @@ impl StudioState {
         self.edit_node(id, |node| node.synopsis = synopsis);
     }
 
+    /// The writer's notes on an item: kept in its file, never compiled.
+    pub fn update_node_notes(&mut self, id: Id, notes: String) {
+        self.edit_node(id, |node| node.notes = notes);
+    }
+
     pub fn update_node_status(&mut self, id: Id, status: String) {
         self.edit_node(id, |node| node.status = status);
     }

@@ -63,6 +63,7 @@ A scene is written as "One scene" under "Markdown export and import" shows: fron
 | `synopsis`, `status`, `label`, `color` | As in Context |
 | `goal`, `conflict`, `outcome` | The scene's three beats |
 | `tags` | Its keywords, a list, nested with `/`, spelled exactly as they are |
+| `notes` | What the writer wants to remember about it, on any level; never compiled or counted |
 
 ### The text
 
@@ -218,7 +219,7 @@ JSON is for structure that is not read as prose. Where a file is a list, each it
 `.local/cache.sqlite` is filled from the files every time the project opens, and every save writes it after the file. It is never the only copy of anything in the files; deleting it loses only what is this machine's alone: snapshots and track-changes baselines. Its tables:
 
 - `project_meta`: id, format version, title, times, and `settings_json`, every setting (see below).
-- `binder_nodes`: id, parent, kind, title, position among its siblings, document id (the item's own id, for an item with text), synopsis, status, `label`, `color`, `deleted_at`, `restore_parent_id`.
+- `binder_nodes`: id, parent, kind, title, position among its siblings, document id (the item's own id, for an item with text), synopsis, status, `label`, `color`, `deleted_at`, `restore_parent_id`, `keywords`, `left_out`, `notes`.
 - `documents`: `content_json` (the document JSON below), word count, character count.
 - `scene_beats`: `node_id`, `goal`, `conflict`, `outcome`. A scene with none written has no row.
 - `plotlines`, `plot_points`; `characters`, `character_motivations`, `character_relationships`; `locations`, `cultures`, `lore_entries`, `timeline_events`; `research_items`, `research_files`; `bible_parents`, which entry each entry is inside; `bible_labels`, each entry's label; `bible_scene_links`, which bible entries point at which binder items (its `scene_id` column holds a chapter's id as well as a scene's).

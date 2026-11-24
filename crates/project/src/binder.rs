@@ -141,6 +141,10 @@ pub struct BinderNode {
     /// are the binder's, one for each keyword.
     #[serde(default)]
     pub keywords: Vec<String>,
+    /// What the writer wants to remember about this item: never compiled,
+    /// never counted.
+    #[serde(default)]
+    pub notes: String,
     /// Left out of compile, with what it holds. Missing on older items,
     /// which are compiled.
     #[serde(default)]
@@ -174,6 +178,7 @@ impl BinderNode {
             status: String::from("draft"),
             color: String::new(),
             keywords: Vec::new(),
+            notes: String::new(),
             left_out: false,
             deleted_at: None,
             restore_parent_id: None,

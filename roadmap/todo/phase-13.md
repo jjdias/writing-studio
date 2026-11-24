@@ -1,6 +1,6 @@
 # Phase 13 — Context at every level
 
-In progress: stage 1 is done. It comes after [Phase 12](../done/phase-12.md), whose stage 8 makes every text file of the project Markdown with front matter.
+In progress: stages 1 and 2 are done. It comes after [Phase 12](../done/phase-12.md), whose stage 8 makes every text file of the project Markdown with front matter.
 
 A scene, a chapter, a part, and a book each have a **context** and a **body**. The context is what the writer knows about that level: its synopsis, keywords, status, goal, and notes, and what it is linked to. The body is its text: a scene's prose, a chapter's own text if it has any. For a chapter, part, or book, what it holds (its scenes or chapters, each with its synopsis) is part of what is read about it, in order.
 
@@ -36,6 +36,8 @@ From the maintainer's decision on this idea:
 
 - `notes:` in the front matter of any file: what the writer wants to remember about this scene, chapter, part, or book ("the reader should not trust Mara yet"). Several lines.
 - Edited in Context, for whatever is chosen. Never compiled, never counted.
+
+**Done.** `BinderNode::notes`, kept as `notes:` in the item's front matter (several lines under `|-`), in the cache's new `binder_nodes.notes` column (added to an older cache when it opens), and merged by sync with the item's other details. Context has a **Notes** field under the keywords for any item but a root. Notes are not in the document, so they are never compiled or counted. Test: `notes_on_any_level_are_kept_in_its_file`.
 
 ### 3. The context of a chapter, a part, and a book
 

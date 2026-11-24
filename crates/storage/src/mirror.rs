@@ -93,6 +93,7 @@ fn head_fingerprint(node: &BinderNode, beats: &SceneBeats) -> u64 {
     let keywords = node.keywords.join("\n");
     fingerprint(&[
         &keywords,
+        &node.notes,
         &node.title,
         &node.synopsis,
         &node.status,
@@ -852,6 +853,27 @@ mod tests {
         for (path, text) in before {
             assert_eq!(fs::read_to_string(&path).unwrap(), text, "{} was written", path.display());
         }
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn notes_on_any_level_are_kept_in_its_file() {
+        let dir = temp("notes");
+        let store = ProjectStore::create(&dir, "Noted").unwrap();
+        let scene = scene_of(&store).id;
+        let mut tree = store.load_binder().unwrap();
+        let book = tree.nodes.iter().find(|node| node.kind == NodeKind::Book).unwrap().id;
+        for (id, notes) in [(scene, "Mara should not be trusted yet."), (book, "Ends at sea.\nNo epilogue.")] {
+            tree.nodes.iter_mut().find(|node| node.id == id).unwrap().notes = notes.into();
+        }
+        store.persist_binder(&tree).unwrap();
+        assert!(fs::read_to_string(file_of(&store, scene)).unwrap().contains("\nnotes: Mara should not be trusted yet.\n"));
+        assert!(fs::read_to_string(file_of(&store, book)).unwrap().contains("notes: |-\n  Ends at sea.\n  No epilogue.\n"));
+        drop(store);
+        let store = ProjectStore::open(&dir).unwrap();
+        let tree = store.load_binder().unwrap();
+        assert_eq!(tree.get(scene).unwrap().notes, "Mara should not be trusted yet.");
+        assert_eq!(tree.get(book).unwrap().notes, "Ends at sea.\nNo epilogue.");
         let _ = fs::remove_dir_all(dir);
     }
 

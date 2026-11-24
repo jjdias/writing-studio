@@ -149,8 +149,8 @@ const LINK_KEYS: [&str; 2] = ["from", "item"];
 const PROJECT_KEYS: [&str; 5] = ["format", "id", "title", "created", "settings"];
 /// Names in a scene's head that the program writes. `title` is the `<title>`;
 /// a `<meta name="title">` beside it is not kept.
-const SCENE_HEAD: [&str; 10] = [
-    "id", "title", "synopsis", "status", "label", "color", "goal", "conflict", "outcome", "tags",
+const SCENE_HEAD: [&str; 11] = [
+    "id", "title", "synopsis", "status", "label", "color", "goal", "conflict", "outcome", "tags", "notes",
 ];
 
 fn unknown_keys(item: &Value, known: &[&str]) -> Map<String, Value> {
@@ -516,6 +516,7 @@ pub(crate) fn scene_text(
     if !node.keywords.is_empty() {
         other.set_list("tags", &node.keywords);
     }
+    other.set_text("notes", &node.notes);
     add_head_extras(&mut other, extras, &[]);
     // A book, a part, or a folder has no text; what a person wrote under its
     // front matter is kept.
@@ -1114,6 +1115,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
             if !tags.is_empty() {
                 node.keywords = tags;
             }
+            node.notes = file.header.other.text("notes").unwrap_or_default().to_string();
             node.title = file.header.title;
             node.synopsis = file.header.synopsis;
             node.status = file.header.status;

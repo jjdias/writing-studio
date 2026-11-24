@@ -55,6 +55,15 @@ pub(super) fn Inspector() -> Element {
             }
             if !node.kind.is_root() {
                 Keywords { id: node.id }
+                label { r#for: "item-notes", "Notes" }
+                textarea {
+                    id: "item-notes",
+                    class: "synopsis notes",
+                    title: "What you want to remember about this. Kept in its file; never compiled or counted.",
+                    value: "{node.notes}",
+                    oninput: move |event| state.write().update_node_notes(node.id, event.value()),
+                    onblur: move |_| state.write().save_all(),
+                }
             }
             if matches!(node.kind, NodeKind::Scene | NodeKind::Chapter | NodeKind::Part | NodeKind::Book)
                 && state.read().binder.in_manuscript(node.id)
