@@ -1,6 +1,6 @@
 # Phase 15 — Free context
 
-Stages 1 to 6 are done; to try in the window. Branch: `phase-15`.
+Done: stages 1 to 6, and the changes asked for after the build. The maintainer tried it in the window.
 
 Context stops being a form. A scene, a chapter, a part, and a book each get one **context**: free text, written as the writer likes, about what matters there. It replaces the synopsis, the notes, and a scene's goal, conflict, and outcome. The program does not need these as separate fields: an AI reading the project reads them as plain text anyway, as it reads notes since [Phase 14](../done/phase-14.md).
 
