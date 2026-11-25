@@ -23,6 +23,17 @@ export const knownNotes = StateField.define({
   },
 });
 
+// The known notes as `setNotes` takes them, from the list the program
+// sends: each title, in lowercase, to its tip, which also carries the title
+// as written and where the note is.
+export function noteMap(list) {
+  const notes = new Map();
+  for (const note of list || []) {
+    notes.set(String(note.title).toLowerCase(), Object.assign(String(note.tip || ""), { title: note.title, where: note.tip }));
+  }
+  return notes;
+}
+
 // The title and the words of a `[[…]]`, from its text.
 export function wikiParts(inside) {
   const bar = inside.indexOf("|");

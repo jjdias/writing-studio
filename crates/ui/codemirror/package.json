@@ -3,8 +3,10 @@
   "private": true,
   "description": "Builds crates/ui/assets/codemirror.js, the page's Markdown editor, from pinned CodeMirror 6 packages.",
   "license": "MIT OR Apache-2.0",
+  "type": "module",
   "scripts": {
-    "build": "esbuild entry.js --bundle --format=iife --minify --target=es2020 --outfile=../assets/codemirror.js --metafile=node_modules/.bundle-meta.json && node licenses.js"
+    "build": "esbuild entry.js --bundle --format=iife --minify --target=es2020 --outfile=../assets/codemirror.js --metafile=node_modules/.bundle-meta.json && node licenses.cjs",
+    "test": "node --test tests/"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",

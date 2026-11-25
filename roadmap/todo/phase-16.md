@@ -1,6 +1,6 @@
 # Phase 16 — Tests for the page
 
-Not started. Branch: `phase-16`.
+In progress: stage 1 is done. Branch: `phase-16`.
 
 The Markdown page is the program's one piece of JavaScript: about 1,900 lines in `crates/ui/codemirror` (`entry.js`, `syntax.js`, `preview.js`, `writing.js`, `places.js`) around the CodeMirror library, built into `crates/ui/assets/codemirror.js`. It is what the writer types into, and it has no tests: the Rust tests drive the window's state, not the page. This phase gives the page's own logic tests that run with `npm test` and in CI.
 
@@ -40,6 +40,8 @@ Recommended in this plan (the builder's calls, for the maintainer to correct):
 - `npm test` runs `node --test tests/`. `tests/view.js` holds the stand-in view and a helper that makes an editor state with the page's extensions for some text.
 - A first test that the scene's language parses a line, so the runner, the imports, and the stand-in are known to work before anything else is written.
 - `crates/ui/codemirror/README.md` (one paragraph): how to build the page and run its tests.
+
+**Done.** `package.json` has `"type": "module"` and a `test` script, `node --test tests/`; `licenses.js` is `licenses.cjs`, and the build runs it under that name. `tests/view.js` holds `pageState` (a state with the page's language and known notes for a text, `|` marking the caret or a selection), `standIn` (the stand-in view: the state, `dispatch`, the visible range, a `focus` that does nothing), `nodeNames`, and `withSelection`. The known notes are made by `noteMap` in `preview.js`, which `entry.js` now uses too, since `entry.js` attaches itself to `window` when it loads and so cannot be loaded in Node. `tests/setup.test.js` checks that a line with a note and a link parses and that the helpers work; renaming the parser's `WikiLink` node on purpose made it fail. The rebuilt bundle differs only by `noteMap`, its licenses are the same 21 packages, and the window's tests pass with it. `README.md` says how to build the page and run its tests.
 
 ### 2. The scene's language
 

@@ -15,7 +15,7 @@ import { EditorState, Compartment, Annotation, Transaction } from "@codemirror/s
 import { EditorView, keymap, drawSelection } from "@codemirror/view";
 import { defaultKeymap, history, undo, redo } from "@codemirror/commands";
 import { sceneLanguage } from "./syntax.js";
-import { preview, sourceMode, knownNotes, setNotes } from "./preview.js";
+import { preview, sourceMode, knownNotes, setNotes, noteMap } from "./preview.js";
 import { selectReview, showBlock, spelling, setSpelling, findWord, keepingPlace } from "./places.js";
 import { writingKeys, smartTypography, pairing, pasteHandler, insertPasted, runCommand, marksAt, noteCompletion, noteOpening } from "./writing.js";
 
@@ -222,11 +222,7 @@ function release() {
 // gives them. Links to a title not among them are shown as missing.
 function setNoteList(list) {
   if (!view) return false;
-  const notes = new Map();
-  for (const note of list || []) {
-    notes.set(String(note.title).toLowerCase(), Object.assign(String(note.tip || ""), { title: note.title, where: note.tip }));
-  }
-  view.dispatch({ effects: setNotes.of(notes) });
+  view.dispatch({ effects: setNotes.of(noteMap(list)) });
   return true;
 }
 
