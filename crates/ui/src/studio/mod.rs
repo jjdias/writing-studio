@@ -263,9 +263,10 @@ fn Workspace() -> Element {
     let library_on = if fold.binder { overlay_library } else { arrangement.sidebar_visible };
     let inspector_on = inspector_mode && if fold.inspector { overlay_inspector } else { arrangement.inspector_visible };
     // Each side panel slides in and out: its slot's width moves, and what is
-    // in it stays a moment after it closes, so it slides shut whole. The
-    // page moves by half the difference of the two, so it stays in the
-    // middle of the window while they move (`--shift`).
+    // in it stays a moment after it closes, so it slides shut whole. The two
+    // widths are animated values (`--left-slot`, `--right-slot`), and the
+    // page's offset is worked out from them on every frame, so it stays in
+    // the middle of the window while they move.
     let widths = use_context::<Signal<PanelWidths>>();
     let resizing = use_context::<Signal<Option<ResizeDrag>>>().read().is_some();
     let (left_width, right_width) = (widths.read().sidebar, widths.read().inspector);
@@ -273,7 +274,6 @@ fn Workspace() -> Element {
     let context_slot = if show_inspector { right_width + SASH_WIDTH } else { 0 };
     let keep_library = use_lingering(show_library);
     let keep_context = use_lingering(show_inspector);
-    let shift = (i64::from(context_slot) - i64::from(library_slot)) / 2;
     let mut bench = String::from("workbench");
     if focus {
         bench.push_str(" focus");
@@ -285,7 +285,7 @@ fn Workspace() -> Element {
         if menu_open {
             div { class: "menu-backdrop", onclick: move |_| state.write().open_menu = None }
         }
-        div { class: "{bench}", style: "--shift: {shift}px;",
+        div { class: "{bench}", style: "--left-slot: {library_slot}px; --right-slot: {context_slot}px;",
             // A panel over the page comes where it shows, so Tab reaches it
             // in the order it is seen.
             if overlay_library {
@@ -294,7 +294,7 @@ fn Workspace() -> Element {
                     Library {}
                 }
             }
-            div { class: "panel-slot left", style: "width: {library_slot}px;",
+            div { class: "panel-slot left",
                 if keep_library {
                     Library {}
                     Sash { kind: ResizeKind::Sidebar, positive: true }
@@ -340,7 +340,7 @@ fn Workspace() -> Element {
                 }
             }
             // Context is on the right of the page, as the inspector was.
-            div { class: "panel-slot right", style: "width: {context_slot}px;",
+            div { class: "panel-slot right",
                 if keep_context {
                     Sash { kind: ResizeKind::Inspector, positive: false }
                     ContextPane {}
@@ -730,12 +730,19 @@ fn apply_goal(mut state: Signal<StudioState>, value: String, daily: bool) {
 }
 
 
+/// The width given to one character of the page's line length: about what
+/// the default serif's average is at the page's 17px.
+const CHARACTER_PX: u32 = 9;
+
 /// The page style as CSS variables on the shell, which the page's rules
-/// read. Line length is in characters, spacing in lines, indent in em.
+/// read. Line length is in characters of the page's 17px type, at
+/// `CHARACTER_PX` each, not in `ch`, which is the width of a "0" in the
+/// chosen font: so the page keeps its width when the font changes. Spacing
+/// is in lines, indent in em.
 fn page_variables(style: PageStyle) -> String {
     format!(
-        "--line-length: {}ch; --line-height: {}; --para-space: {}; --indent: {}em;",
-        style.line_length,
+        "--line-length: {}px; --line-height: {}; --para-space: {}; --indent: {}em;",
+        u32::from(style.line_length) * CHARACTER_PX,
         style.line_height as f64 / 100.0,
         style.paragraph_spacing as f64 / 10.0,
         style.first_line_indent as f64 / 10.0,

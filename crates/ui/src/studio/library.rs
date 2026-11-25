@@ -365,9 +365,6 @@ fn LibraryRow(row: BinderRow, active: bool) -> Element {
             if kind == NodeKind::Scene && !row.status.trim().is_empty() {
                 StatusPill { status: row.status.clone() }
             }
-            if kind == NodeKind::Scene {
-                span { class: "row-progress", title: "{scene_progress(&row)}", Ring { fraction: status_fraction(&row.status) } }
-            }
             // Under Notes, one dot in the note's own color, none without one.
             if row.compiles.is_some() {
                 if !row.color.is_empty() {
@@ -385,6 +382,10 @@ fn LibraryRow(row: BinderRow, active: bool) -> Element {
                         }
                     }
                 }
+            }
+            // After the keyword dots, at the row's end, as a chapter's ring.
+            if kind == NodeKind::Scene {
+                span { class: "row-progress", title: "{scene_progress(&row)}", Ring { fraction: status_fraction(&row.status) } }
             }
             if row.scenes > 0 {
                 span { class: "row-progress", title: "{row.finished} of {row.scenes} scenes final", Ring { fraction } }

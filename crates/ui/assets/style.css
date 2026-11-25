@@ -634,7 +634,7 @@ button.danger:hover, button.danger.armed { background: var(--danger-fill); borde
 .track-text { flex: 1; margin: 0; padding: 2px 6px; white-space: pre-wrap; line-height: 1.45; color: var(--text); background: var(--panel-2); }
 /* The type scale for prose: a body size, and headings stepped up from it. */
 .manuscript {
-  max-width: calc(70ch + 112px);
+  max-width: calc(var(--line-length) + 112px);
   min-height: 100%;
   margin: 0 auto;
   background: var(--editor);
@@ -1007,6 +1007,8 @@ kbd {
   text-align: left;
 }
 .library-row > * { pointer-events: none; }
+/* A scene's ring answers the pointer, for its tooltip of how far it is. */
+.library-row > .row-progress { pointer-events: auto; }
 .library-row:hover { background: var(--hover); }
 .library-row.active { background: var(--row-active); color: var(--row-active-fg); font-weight: 600; }
 .library-row .kind-glyph, .library-row .glyph { width: 17px; height: 17px; flex: 0 0 17px; color: var(--gold); }
@@ -1107,7 +1109,7 @@ kbd {
 /* The page's heading: the scene's title, large, renamed in place, with the
    word count small and grey at its right. */
 .page-head {
-  max-width: calc(70ch + 112px);
+  max-width: calc(var(--line-length) + 112px);
   margin: 0 auto;
   padding: 8px 56px 4px;
   display: flex;
@@ -1154,7 +1156,7 @@ kbd {
 
 /* Page settings (Phase 9 stage 2). The shell sets these from the
    project's page style; the values here are today's look. */
-:root { --line-length: 70ch; --line-height: 1.65; --para-space: 0.4; --indent: 0em; }
+:root { --line-length: 630px; --line-height: 1.65; --para-space: 0.4; --indent: 0em; }
 .manuscript, .page-head { max-width: calc(var(--line-length) + 112px); }
 .manuscript { line-height: var(--line-height); }
 
@@ -1391,16 +1393,19 @@ button.keyword-dot:hover { box-shadow: 0 0 0 2px var(--line); }
 /* The side panels slide in and out (their slot's width), and the page
    moves by half the difference of the two so it stays in the middle of the
    window, as far as the room beside it allows. Not while a sash is dragged. */
-.panel-slot { flex: 0 0 auto; display: flex; min-width: 0; min-height: 0; overflow: hidden; transition: width 0.28s cubic-bezier(0.2, 0.7, 0.2, 1); }
-.panel-slot.right { justify-content: flex-end; }
+@property --left-slot { syntax: '<length>'; inherits: true; initial-value: 0px; }
+@property --right-slot { syntax: '<length>'; inherits: true; initial-value: 0px; }
+.workbench { transition: --left-slot 0.28s cubic-bezier(0.2, 0.7, 0.2, 1), --right-slot 0.28s cubic-bezier(0.2, 0.7, 0.2, 1); }
+.workbench.resizing { transition: none; }
+.panel-slot { flex: 0 0 auto; display: flex; min-width: 0; min-height: 0; overflow: hidden; }
+.panel-slot.left { width: var(--left-slot); }
+.panel-slot.right { width: var(--right-slot); justify-content: flex-end; }
 .desk { container-type: inline-size; }
 .manuscript, .page-head {
   position: relative;
-  --room: max(0px, (100cqw - min(100cqw, var(--line-length, 70ch) + 112px)) / 2);
-  left: clamp(calc(-1 * var(--room)), var(--shift, 0px), var(--room));
-  transition: left 0.28s cubic-bezier(0.2, 0.7, 0.2, 1);
+  --room: max(0px, (100cqw - min(100cqw, var(--line-length, 630px) + 112px)) / 2);
+  left: clamp(calc(-1 * var(--room)), (var(--right-slot) - var(--left-slot)) / 2, var(--room));
 }
-.workbench.resizing .panel-slot, .workbench.resizing .manuscript, .workbench.resizing .page-head { transition: none; }
 
 /* The page's scroll bar shows while it scrolls or under the pointer, and
    fades a moment after. */

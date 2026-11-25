@@ -119,6 +119,10 @@ Asked for by the maintainer after trying the phase:
 - **No status bar.** What the program has to say shows for a few seconds in a notice at the foot of the window (`StatusNotice`), with **Undo** while it applies; saving on its own says nothing. Today's words and this sitting's, which only the bar showed, are under the book's count in the library, and a deadline's pace is that line's tooltip.
 - **A scene has a ring** in the binder, as a chapter and a book have, filled by its status (`status_fraction`), whose tooltip gives its status, words, characters, and reading time; Context's **Progress** is gone. A scene's size is kept as texts are read and saved (`StudioState::text_sizes`), and the open scene's is its session's, so the binder reads no text for it.
 
+- Then, after trying it: the page followed a closing panel late, because its offset was a transition of its own, recalculated from the desk's width on every frame. The two panels' widths are now animated values (`--left-slot`, `--right-slot`, registered with `@property`), the slots' widths and the page's offset are worked out from them on each frame, and nothing else animates.
+- Changing the font changed the page's width, since the line length was in `ch`, the width of a "0" in the chosen font. It is in pixels now, at 9px for each character of the page's 17px type (`CHARACTER_PX`), so the page keeps its width whatever the font.
+- A scene's ring is at the row's end, after its keyword dots, and shows its tooltip: every child of a library row ignored the pointer, so the row's own "press F2 to rename" showed instead.
+
 Tests: `a_scenes_ring_fills_with_its_status` and `a_scene_row_carries_the_scenes_size`; how the panels, the page, the scroll bar, and the notice move is the maintainer's to try.
 
 ## How changes are checked
