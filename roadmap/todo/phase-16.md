@@ -1,6 +1,6 @@
 # Phase 16 — Tests for the page
 
-In progress: stages 1 to 4 are done. Branch: `phase-16`.
+Stages 1 to 5 are done; the CI job runs once the branch is pushed. Branch: `phase-16`.
 
 The Markdown page is the program's one piece of JavaScript: about 1,900 lines in `crates/ui/codemirror` (`entry.js`, `syntax.js`, `preview.js`, `writing.js`, `places.js`) around the CodeMirror library, built into `crates/ui/assets/codemirror.js`. It is what the writer types into, and it has no tests: the Rust tests drive the window's state, not the page. This phase gives the page's own logic tests that run with `npm test` and in CI.
 
@@ -85,6 +85,8 @@ Found on the way, left as it is: spelling underlines an unknown word inside a co
 
 - A job, beside the Rust ones on Linux, that sets up Node, runs `npm ci` and `npm test` in `crates/ui/codemirror`, then `npm run build` and fails if `crates/ui/assets/codemirror.js` or `LICENSES.txt` is not what the sources make.
 - `documentation/ARCHITECTURE.md` says the page has tests and how they run; `.claude/rules/testing.md` says to run `npm test` for a change to the page.
+
+**Done.** `.github/workflows/ci.yml` has a **Page** job on Linux: Node 22 (`actions/setup-node`, with npm's cache keyed on the lockfile), `npm ci`, `npm test`, then `npm run build` and `git diff --exit-code` on `crates/ui/assets/codemirror.js` and `LICENSES.txt`, with an error that says to build and commit both. `npm test` names its files as `tests/*.test.js`, which Node reads the same from 21 on; the README asks for Node 22. Locally the packages match the lockfile (`npm ls`), the build is byte for byte what is committed, with Unix line ends as Linux makes it, and the job's check, tried with a source changed and not rebuilt, failed with its error and passed once put back. The job itself first runs when the branch is pushed. `documentation/ARCHITECTURE.md` and `.claude/rules/testing.md`, which now also applies to `crates/ui/codemirror`, say how the page is tested. At the end: 124 page tests and 299 workspace tests pass.
 
 ## How changes are checked
 

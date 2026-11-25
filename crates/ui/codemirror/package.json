@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "esbuild entry.js --bundle --format=iife --minify --target=es2020 --outfile=../assets/codemirror.js --metafile=node_modules/.bundle-meta.json && node licenses.cjs",
-    "test": "node --test tests/"
+    "test": "node --test \"tests/*.test.js\""
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",

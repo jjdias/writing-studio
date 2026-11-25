@@ -56,3 +56,37 @@ jobs:
       # mistake can pass the build above and fail only in the packaged one.
       - name: Check the release build
         run: cargo check --workspace --release --locked
+
+  # The Markdown page's JavaScript: its tests, and that the bundle the program
+  # carries is the one its sources make. The page is the same on every
+  # system, so one run is enough.
+  page:
+    name: Page
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: crates/ui/codemirror
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: crates/ui/codemirror/package-lock.json
+
+      - name: Install the pinned packages
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      # A change to the sources must be built and committed with them, or
+      # the program ships the page as it was.
+      - name: The committed bundle is the one the sources make
+        run: |
+          npm run build
+          git diff --exit-code -- ../assets/codemirror.js LICENSES.txt || {
+            echo "::error::crates/ui/assets/codemirror.js or LICENSES.txt is not what the sources make. Run npm run build in crates/ui/codemirror and commit both."
+            exit 1
+          }
