@@ -1,6 +1,6 @@
 # Phase 16 — Tests for the page
 
-In progress: stages 1 and 2 are done. Branch: `phase-16`.
+In progress: stages 1 to 3 are done. Branch: `phase-16`.
 
 The Markdown page is the program's one piece of JavaScript: about 1,900 lines in `crates/ui/codemirror` (`entry.js`, `syntax.js`, `preview.js`, `writing.js`, `places.js`) around the CodeMirror library, built into `crates/ui/assets/codemirror.js`. It is what the writer types into, and it has no tests: the Rust tests drive the window's state, not the page. This phase gives the page's own logic tests that run with `npm test` and in CI.
 
@@ -65,6 +65,8 @@ Found on the way, left as they are: the page shows `![image](x.png)` as a link a
 - Enter continues a list or a quote and ends an empty item; Shift+Enter is a line break in the paragraph.
 - Pasting (`insertPasted`) puts Markdown at the selection.
 - `[[` offers the notes' titles, narrowed by what is typed after it, and nothing outside a link.
+
+**Done.** `tests/writing.test.js`: every command the toolbar and the review panel send, on and off where it has an off (bold, italic, underline, strikethrough, a heading, body text, a quote, both lists, a code block, a scene break, a highlight in yellow and in green and clearing it, a note added and removed, a link added and removed), and what does nothing (an unknown block, an unknown command, removing a note from outside it, a link to `javascript:`); what the toolbar lights for ten carets; smart quotes, dashes, and the ellipsis, and where they are left alone (code, an address, a line that may become a scene break); pairing through CodeMirror's own bracket command; Enter and Shift+Enter in prose, lists, quotes, and code; a paste put in place and never past the end; and what `[[` offers, keeping a `]]` already typed. `writing.js` exports `typeSmart` (the handler behind `smartTypography`), `enter`, `lineBreak`, and `noteTitles` for them, and does nothing new. 85 tests in all; making Enter write one line end on purpose made its test fail. Removing a note works with the caret on its words, which is where live preview puts it, and not from inside the note's own text, which it hides.
 
 ### 4. The preview and the review
 

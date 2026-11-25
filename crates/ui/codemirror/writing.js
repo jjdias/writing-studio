@@ -493,7 +493,7 @@ function inVerbatim(state, pos) {
 
 // Curly quotes, an em dash for `--`, and an ellipsis for `...`, as typed.
 // Not in code, and not where a line of dashes would make a scene break.
-export const smartTypography = EditorView.inputHandler.of((view, from, to, text) => {
+export function typeSmart(view, from, to, text) {
   if (text.length !== 1 || !/["'\-.]/.test(text)) return false;
   const { state } = view;
   if (inVerbatim(state, from)) return false;
@@ -521,7 +521,9 @@ export const smartTypography = EditorView.inputHandler.of((view, from, to, text)
     userEvent: "input.type",
   });
   return true;
-});
+}
+
+export const smartTypography = EditorView.inputHandler.of(typeSmart);
 
 // --- Pairing -----------------------------------------------------------------
 
@@ -577,7 +579,7 @@ export function insertPasted(view, from, to, text) {
 // Enter: in a list or a quote, the next item or quoted line (and on an empty
 // one, the end of it); anywhere else, a new paragraph, which in Markdown is a
 // blank line. One line end alone would be the same paragraph, wrapped.
-function enter(view) {
+export function enter(view) {
   const { state } = view;
   const range = state.selection.main;
   for (let node = syntaxTree(state).resolveInner(range.head, -1); node; node = node.parent) {
@@ -600,7 +602,7 @@ function enter(view) {
 
 // Shift+Enter: a line break inside the paragraph, as a backslash at the
 // line's end, which is how crates/format writes one.
-function lineBreak(view) {
+export function lineBreak(view) {
   const { state } = view;
   const range = state.selection.main;
   for (let node = syntaxTree(state).resolveInner(range.head, -1); node; node = node.parent) {
@@ -621,7 +623,7 @@ function lineBreak(view) {
 // --- Links to notes --------------------------------------------------------------
 
 // Typing `[[` offers the notes' titles; choosing one finishes the link.
-function noteTitles(context) {
+export function noteTitles(context) {
   const before = context.matchBefore(/\[\[[^\[\]\n|]*$/);
   if (!before) return null;
   const notes = context.state.field(knownNotes, false);
