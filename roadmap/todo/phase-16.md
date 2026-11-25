@@ -1,6 +1,6 @@
 # Phase 16 — Tests for the page
 
-In progress: stage 1 is done. Branch: `phase-16`.
+In progress: stages 1 and 2 are done. Branch: `phase-16`.
 
 The Markdown page is the program's one piece of JavaScript: about 1,900 lines in `crates/ui/codemirror` (`entry.js`, `syntax.js`, `preview.js`, `writing.js`, `places.js`) around the CodeMirror library, built into `crates/ui/assets/codemirror.js`. It is what the writer types into, and it has no tests: the Rust tests drive the window's state, not the page. This phase gives the page's own logic tests that run with `npm test` and in CI.
 
@@ -50,6 +50,10 @@ Recommended in this plan (the builder's calls, for the maintainer to correct):
 - The parser finds what the page shows: `**bold**`, `*italic*`, `<u>underline</u>`, `~~strike~~`, `==highlight==`, `{==text==}{.green}`, `{==text==}{>>note<<}`, `[[Title]]` and `[[Title|words]]`, `[^1]` footnotes, a scene break, headings, quotes, lists, code; and leaves alone what is not one (a lone `[[`, `{==` without its end, brackets inside code).
 - `readNote` reads a note's kind (`Question: `, `Revise: `, `Check: `) and `(resolved)`; `footnoteTexts` pairs a footnote's mark with its text; `wikiParts` splits a link's title from its words; `linkTarget` and `noteBody` write what the commands insert.
 - Each case is one table row (text in, what is found out), so a new case is one line.
+
+**Done.** `tests/syntax.test.js`: a table of 21 texts and what the page finds in each (bold, italic both ways, underline, strikethrough, `==` and `{==…==}` highlights, a color, a note, a link to a note with and without its own words, a footnote mark and its text, headings, a quote, both lists, a code block, a scene break, a Markdown link), and 11 it must leave as text (a lone `[[`, `[[]]`, a link across two lines, a highlight or a note with no end, `===`, an unclosed `**`, inline code, a setext heading, indented code). `readNote` reads each kind and `(resolved)`; a note written by `noteBody` is one note in the text, ending at its own `<<}`, and reads back as it was; `footnoteTexts`, `wikiParts`, and `linkTarget` (which refuses `javascript:` and `file:`) have their cases. 42 tests in all. Breaking `noteBody`'s escaping on purpose made the round trip fail; escaping only `<` or only `}` is enough, which the first try at breaking it showed.
+
+Found on the way, left as they are: the page shows `![image](x.png)` as a link and `<b>…</b>` as raw tags, where the format crate reads both as text on import. Which is right is the maintainer's call, so neither is in the table.
 
 ### 3. Writing
 
