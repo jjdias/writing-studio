@@ -704,6 +704,11 @@ mod tests {
         assert!(short.chars().count() <= limit);
         assert!(!short.contains(&"x".repeat(400)), "the last entry's text goes first");
         assert!(short.contains("A harbor town.") && short.contains("### Tides"), "the others stay, and its name");
+        assert!(full.contains("## Context
+
+Mara looks for the pilot.") && short.contains("## Context
+
+Mara looks for the pilot."), "the scene's own context stays: {short}");
         assert!(short.contains("The text of 1 entry was left out"), "{short}");
 
         let tiny = context.to_markdown(120);

@@ -286,6 +286,14 @@ mod tests {
     fn exported_scenes_come_back_as_new_scenes() {
         let (dir, target) = (temp("source"), temp("files"));
         let store = sample(&dir);
+        let mut tree = store.load_binder().unwrap();
+        let context = "Mara is late.
+
+## Why
+
+[[The Pilot]] left.";
+        tree.nodes.iter_mut().find(|node| node.title == "Scene 1").unwrap().context = context.into();
+        store.persist_binder(&tree).unwrap();
         store.export_markdown(&target).unwrap();
         let chapter = store
             .load_binder()
@@ -306,6 +314,11 @@ mod tests {
         let (node, document) = store.import_markdown_scene(&text, "fallback", Some(chapter.id), 9).unwrap();
         assert_ne!(node.id, original.id);
         assert_eq!((node.title.as_str(), node.parent_id), ("Scene 1", Some(chapter.id)));
+        assert!(text.contains("
+context: |-
+  Mara is late.
+"), "{text}");
+        assert_eq!(node.context, context, "the context goes out and comes back");
         let before = store.load_document(original.id).unwrap();
         assert!(same_content(&canonical_blocks(&document.blocks), &canonical_blocks(&before.blocks)));
         assert_eq!(store.load_document(node.id).unwrap().to_plain_text(), before.to_plain_text());
@@ -315,6 +328,14 @@ mod tests {
             .import_markdown_scene("Just text, *with* a word.\n", "loose-notes", None, 10)
             .unwrap();
         assert_eq!(plain.title, "loose-notes");
+        // Another program's synopsis is the context, when there is none.
+        let (other, _) = store.import_markdown_scene("---
+title: Elsewhere
+synopsis: Late.
+---
+Text.
+", "x", None, 12).unwrap();
+        assert_eq!(other.context, "Late.");
         let error = store.import_markdown_scene("---\ntitle: x\n", "broken", None, 11).unwrap_err();
         assert!(error.to_string().contains("line"), "{error}");
         for folder in [dir, target] {

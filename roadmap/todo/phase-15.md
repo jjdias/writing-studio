@@ -1,6 +1,6 @@
 # Phase 15 — Free context
 
-In progress: stages 1 and 2 are done. Branch: `phase-15`.
+In progress: stages 1 to 3 are done. Branch: `phase-15`.
 
 Context stops being a form. A scene, a chapter, a part, and a book each get one **context**: free text, written as the writer likes, about what matters there. It replaces the synopsis, the notes, and a scene's goal, conflict, and outcome. The program does not need these as separate fields: an AI reading the project reads them as plain text anyway, as it reads notes since [Phase 14](../done/phase-14.md).
 
@@ -69,6 +69,8 @@ So that the window kept building, parts of stages 2 and 3 came with this stage: 
 - An idea made into a scene gives its note as the new scene's context.
 - Copy context writes the item's whole context under `## Context`, in place of `## Synopsis` and `## Notes`; when the text is cut to fit, the context is kept before the notes' text, as the synopsis was.
 - The Markdown export writes `context` in each file's front matter; the import reads `context`, and a file's `synopsis` as its context when it has no `context`, as other programs write.
+
+**Done.** Most of this came with stage 1. The summary (`BinderNode::summary`, the context's first paragraph) shows in the four places the plan names: the outliner, the mind map under a chosen scene, the scenes before and after in Copy context, and a level's outline. The outliner's **Summary** cell is a box one line high that grows, not a one-line field, so a summary written on two lines keeps its line break when it is changed there; it changes only the first paragraph (`with_summary`). An idea made into a scene gives its note as the context. Copy context writes the item's whole context under `## Context`, which stays when the notes' text is left out to fit. The Markdown export writes `context`, and the import reads it, or another program's `synopsis` when there is none. Tests: `exported_scenes_come_back_as_new_scenes` and `the_markdown_drops_entry_text_from_the_end_first_and_says_so`, with the stage 1 tests.
 
 ### 4. The connected list
 

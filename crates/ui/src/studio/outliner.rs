@@ -160,9 +160,12 @@ pub(super) fn OutlineCells(row: OwnedOutlineRow) -> Element {
             }
         }
         td { class: "wide",
-            input {
-                class: "cell-input",
+            // A box, not a one-line field, so a summary written on two lines
+            // keeps its line break when it is changed here.
+            textarea {
+                class: "cell-input cell-text",
                 aria_label: "Summary",
+                rows: "1",
                 value: "{row.summary}",
                 oninput: move |event| state.write().update_node_summary(id, event.value()),
             }

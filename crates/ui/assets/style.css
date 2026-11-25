@@ -784,6 +784,8 @@ span.connected-chip { cursor: default; }
   background: var(--input);
   outline: none;
 }
+/* The summary: a box one line high that grows with a line break in it. */
+.outliner .cell-text { display: block; field-sizing: content; min-height: 0; resize: none; font: inherit; line-height: 1.4; }
 .outliner .words { color: var(--muted); text-align: right; white-space: nowrap; }
 .outliner .diag-table td { vertical-align: top; }
 .diag-scene { min-width: 9em; }
