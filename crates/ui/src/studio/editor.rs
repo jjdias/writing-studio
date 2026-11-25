@@ -342,7 +342,7 @@ pub(super) fn SpellPanel(unknown: Vec<UnknownWord>, project_words: Vec<String>) 
                 if total == 0 {
                     span { "Every word is known" }
                 } else {
-                    span { "{total} words not in the dictionary" }
+                    span { "{unknown_words_heading(total)}" }
                 }
                 if project_count > 0 {
                     button {
@@ -1074,5 +1074,25 @@ pub(super) fn NavList(items: Vec<NavItem>) -> Element {
                 }
             }
         }
+    }
+}
+
+/// The spelling tab's heading, for one or more unknown words.
+fn unknown_words_heading(total: usize) -> String {
+    if total == 1 {
+        "1 word not in the dictionary".to_string()
+    } else {
+        format!("{total} words not in the dictionary")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_spelling_heading_counts_one_word_as_one() {
+        assert_eq!(unknown_words_heading(1), "1 word not in the dictionary");
+        assert_eq!(unknown_words_heading(3), "3 words not in the dictionary");
     }
 }
