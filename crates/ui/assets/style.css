@@ -656,6 +656,15 @@ button.danger:hover, button.danger.armed { background: var(--danger-fill); borde
   .manuscript { padding: 28px 24px 48px; }
 }
 .synopsis { min-height: 96px; }
+/* Context (Phase 15): one free text that grows with what is written, up to
+   most of the panel, and what the item is connected to under it. */
+.synopsis.context-box { field-sizing: content; min-height: 120px; max-height: 60vh; resize: vertical; }
+.connected { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 6px 0 4px; }
+.connected-label { font-size: 12px; color: var(--muted); margin-right: 2px; }
+.connected .hint { font-size: 12px; }
+.connected-chip { cursor: pointer; }
+.connected-chip.note { border-style: dashed; }
+span.connected-chip { cursor: default; }
 
 .map-pane { display: flex; flex-direction: column; height: 100%; padding: 12px 16px 16px; box-sizing: border-box; }
 .map-filter { width: min(260px, 100%); }

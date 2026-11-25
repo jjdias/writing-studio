@@ -330,6 +330,8 @@ pub struct StudioState {
     /// `[[…]]`, in lowercase: filled when the project opens, kept up as the
     /// open text changes, so backlinks never read every file.
     pub link_index: HashMap<Id, Vec<String>>,
+    /// The same links as written, for the connected list (Phase 15).
+    linked_titles: HashMap<Id, Vec<String>>,
     /// The first line of each item's text, for a link's tip.
     pub openings: HashMap<Id, String>,
     /// The mind map's text filter: what does not match is dimmed.
@@ -470,6 +472,7 @@ impl Default for StudioState {
             search: String::new(),
             manuscript_index: Rc::new(RefCell::new(ManuscriptIndex::new())),
             link_index: HashMap::new(),
+            linked_titles: HashMap::new(),
             openings: HashMap::new(),
             map_query: String::new(),
             folded_map: Vec::new(),
@@ -3187,6 +3190,7 @@ impl StudioState {
             self.status = format!("Search index failed: {err}");
         }
         self.link_index.clear();
+        self.linked_titles.clear();
         self.openings.clear();
         for (id, text) in &owned {
             self.index_links(*id, text);
@@ -3195,14 +3199,13 @@ impl StudioState {
 
     /// Note what `text`, the text of item `id`, links to, and its first line.
     fn index_links(&mut self, id: Id, text: &str) {
-        let titles: Vec<String> = writing_studio_format::wikilinks(text)
-            .into_iter()
-            .map(|link| link.title.to_lowercase())
-            .collect();
-        if titles.is_empty() {
+        let written = writing_studio_storage::links_in(text);
+        if written.is_empty() {
             self.link_index.remove(&id);
+            self.linked_titles.remove(&id);
         } else {
-            self.link_index.insert(id, titles);
+            self.link_index.insert(id, written.iter().map(|title| title.to_lowercase()).collect());
+            self.linked_titles.insert(id, written);
         }
         let first = text.lines().map(str::trim).find(|line| !line.is_empty()).unwrap_or_default();
         let opening: String = first.chars().take(160).collect();
@@ -4487,6 +4490,15 @@ impl StudioState {
         self.edit_node(id, |node| node.title = title);
     }
 
+    /// What an item is connected to, as the top of its file lists it: its
+    /// keywords, the notes its context and text link to, and the notes
+    /// linked to it from Context. Read from what is already indexed, so
+    /// showing it reads no text.
+    pub fn connected_of(&self, id: Id) -> Vec<writing_studio_storage::Tie> {
+        let text_links = self.linked_titles.get(&id).map(Vec::as_slice).unwrap_or_default();
+        writing_studio_storage::connected(&self.binder, id, text_links)
+    }
+
     /// What the writer says about an item: kept in its file, never compiled.
     pub fn update_node_context(&mut self, id: Id, context: String) {
         self.edit_node(id, |node| node.context = context);
@@ -4944,6 +4956,25 @@ mod tests {
         assert_eq!(row.color, binder_color_hex("blue"), "the row's dot is the note's color");
         state.set_item_color(deep, "plaid");
         assert_eq!(state.binder.get(deep).unwrap().color, "", "not a binder color");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Context lists what an item is connected to, as its file will: its
+    /// keywords, the notes its context and text link to, and those linked to
+    /// it from Context, kept up as the text is typed.
+    #[test]
+    fn context_lists_what_an_item_is_connected_to() {
+        let (mut state, dir) = open_state("connected");
+        let scene = state.selected.unwrap();
+        add_note(&mut state, "Mara", "A pilot's daughter.");
+        let port = add_note(&mut state, "Port Ely", "A harbor town.");
+        state.set_note_link(port, scene, true);
+        state.select_node(scene);
+        state.add_keyword(scene, "night");
+        state.update_node_context(scene, "She looks for [[The Pilot]].".into());
+        state.apply_editor_markdown("Mara ran. [[Mara]] again, and [[The Pilot]].");
+        let written: Vec<String> = state.connected_of(scene).iter().map(writing_studio_storage::Tie::written).collect();
+        assert_eq!(written, ["night", "[[The Pilot]]", "[[Mara]]", "[[Port Ely]]"]);
         let _ = std::fs::remove_dir_all(dir);
     }
 

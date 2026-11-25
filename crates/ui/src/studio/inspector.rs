@@ -44,6 +44,7 @@ pub(super) fn Inspector() -> Element {
                     oninput: move |event| state.write().update_selected_context(event.value()),
                     onblur: move |_| state.write().save_all(),
                 }
+                ConnectedChips { id: node.id }
             }
             label { r#for: "scene-status", "Status" }
             StatusSelect {
@@ -155,6 +156,50 @@ pub(super) fn cast_summary(facts: &SceneFacts) -> String {
         parts.push(format!("and {} more", facts.characters.len() - 3));
     }
     parts.join(", ")
+}
+
+/// What the item is connected to, as the top of its file lists it for
+/// whoever reads it: its keywords, then the notes it is tied to. A keyword
+/// narrows the binder to it; a note opens.
+#[component]
+fn ConnectedChips(id: Id) -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let ties = state.read().connected_of(id);
+    rsx! {
+        div { class: "connected",
+            span { class: "connected-label", title: "Written at the top of its file, for whoever reads it", "Connected" }
+            if ties.is_empty() {
+                span { class: "hint", "Its keywords, and the notes it links to or that are linked to it, show here." }
+            }
+            for tie in ties {
+                {
+                    match tie {
+                        writing_studio_storage::Tie::Keyword(word) => rsx! {
+                            button {
+                                class: "keyword-chip connected-chip",
+                                key: "k-{word}",
+                                title: "Show what has this keyword",
+                                onclick: move |_| state.write().choose_keyword(&word),
+                                "{word}"
+                            }
+                        },
+                        writing_studio_storage::Tie::Note(title) => rsx! {
+                            button {
+                                class: "keyword-chip connected-chip note",
+                                key: "n-{title}",
+                                title: "Open this note",
+                                onclick: move |_| state.write().open_note_titled(&title),
+                                "[[{title}]]"
+                            }
+                        },
+                        writing_studio_storage::Tie::Item(caption) => rsx! {
+                            span { class: "keyword-chip connected-chip", key: "i-{caption}", "{caption}" }
+                        },
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// What the checks found in the selected scene's text.

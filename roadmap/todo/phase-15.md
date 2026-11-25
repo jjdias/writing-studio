@@ -1,6 +1,6 @@
 # Phase 15 — Free context
 
-In progress: stage 1 is done. Branch: `phase-15`.
+In progress: stages 1 and 2 are done. Branch: `phase-15`.
 
 Context stops being a form. A scene, a chapter, a part, and a book each get one **context**: free text, written as the writer likes, about what matters there. It replaces the synopsis, the notes, and a scene's goal, conflict, and outcome. The program does not need these as separate fields: an AI reading the project reads them as plain text anyway, as it reads notes since [Phase 14](../done/phase-14.md).
 
@@ -58,6 +58,8 @@ So that the window kept building, parts of stages 2 and 3 came with this stage: 
 - Under it, the connected list as chips (keywords, then links), each opening what it names: a keyword narrows the binder to it, a link opens its note. It is the list as it will be written, so the writer sees what an AI will read.
 - "Beats and diagnostics" becomes **Diagnostics**: the word, dialogue, and sentence checks stay; Goal, Conflict, and Outcome go. The outliner's Diagnostics table loses those three columns, and the diagnostics crate its three findings.
 - A folder's Context, in the manuscript and under Notes, has no context box; a note's Context stays hidden, as Phase 14 left it.
+
+**Done.** The **Context** box (from stage 1) sits under the progress and the heading, for a scene, chapter, part, or book; it grows with its text up to most of the panel (`field-sizing: content`) and saves as it is typed. Under it, **Connected** shows the list as chips: keywords, then notes as `[[Title]]`, a keyword narrowing the binder to it and a note opening. The list comes from one function, `writing_studio_storage::connected` (`crates/storage/src/connected.rs`), which stage 4 will write into each file, so Context and the file cannot differ. The window reads it without reading any text: the titles the text links to, as written, are kept beside the link index as the text is typed (`StudioState::connected_of`). A folder has no box, and a note's Context stays hidden. Diagnostics without the beats came in stage 1. Tests: `an_item_lists_its_keywords_then_its_notes_once_each` (`crates/storage`) and `context_lists_what_an_item_is_connected_to`.
 
 ### 3. The first paragraph as the synopsis
 

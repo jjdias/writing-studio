@@ -5,6 +5,7 @@
 //! Backups copy the database into `backups/` without touching the live file
 //! until the copy succeeds.
 
+mod connected;
 mod files;
 mod markdown;
 mod mirror;
@@ -18,6 +19,7 @@ pub use files::{
     write_project_files, Extras, Problem, ProjectContent, FILES_FORMAT_VERSION,
 };
 pub use recovery::{BackupInfo, SnapshotInfo};
+pub use connected::{connected, links_in, Tie};
 
 use writing_studio_format::SceneFile;
 use std::collections::HashMap;
