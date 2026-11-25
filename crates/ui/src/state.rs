@@ -9,7 +9,7 @@ use writing_studio_document::{
     NavItem, NoteKind, ReviewItem, ReviewKind, ReviewTarget, TrackedChange,
 };
 use writing_studio_diagnostics::{
-    findings, mentions, scene_facts, typical_words, BookContext, Finding, SceneBeats, SceneFacts,
+    findings, mentions, scene_facts, typical_words, BookContext, Finding, SceneFacts,
 };
 use writing_studio_core::{autosave_due, autosave_wait, local_day, Id, Timestamp, PRODUCT_NAME};
 use writing_studio_editor::EditorSession;
@@ -307,18 +307,9 @@ impl Tracking {
     }
 }
 
-/// One of the three things a scene is asked for.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Beat {
-    Goal,
-    Conflict,
-    Outcome,
-}
-
 /// What diagnostics says about one scene.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SceneReport {
-    pub beats: SceneBeats,
     pub facts: SceneFacts,
     pub findings: Vec<Finding>,
 }
@@ -447,8 +438,6 @@ pub struct StudioState {
     /// What the last sync could not combine, one line each.
     pub sync_conflicts: Vec<String>,
     /// Goal, conflict, and outcome by binder item.
-    pub beats: HashMap<Id, SceneBeats>,
-    pub beats_dirty: bool,
     /// The outliner shows the diagnostics table instead of the outline.
     pub outliner_diagnostics: bool,
     /// Scene text by document, read when the diagnostics table opens.
@@ -538,8 +527,6 @@ impl Default for StudioState {
             sync_address: String::new(),
             syncing: false,
             sync_conflicts: Vec::new(),
-            beats: HashMap::new(),
-            beats_dirty: false,
             outliner_diagnostics: false,
             diagnostic_texts: Rc::new(HashMap::new()),
             binder_dirty: false,
@@ -1176,7 +1163,7 @@ impl StudioState {
                 self.reindex_manuscript();
                 self.begin_writing_session();
                 self.load_speller();
-                self.load_beats();
+                self.diagnostic_texts = Rc::new(HashMap::new());
                 self.note_open_problems();
             }
             (Err(err), _, _) | (_, Err(err), _) | (_, _, Err(err)) => {
@@ -1391,59 +1378,12 @@ impl StudioState {
         }
     }
 
-    fn load_beats(&mut self) {
-        self.beats_dirty = false;
-        self.diagnostic_texts = Rc::new(HashMap::new());
-        let Some(store) = &self.store else {
-            return;
-        };
-        match store.borrow().load_scene_beats() {
-            Ok(beats) => self.beats = beats,
-            Err(err) => {
-                self.beats = HashMap::new();
-                self.status = format!("Could not read scene goals: {err}");
-            }
-        }
-    }
-
-    fn persist_beats_now(&mut self) -> bool {
-        let Some(store) = &self.store else {
-            return false;
-        };
-        match store.borrow().persist_scene_beats(&self.beats) {
-            Ok(()) => true,
-            Err(err) => {
-                self.status = format!("Could not save scene goals: {err}");
-                false
-            }
-        }
-    }
-
     /// Whether diagnostics covers this binder item: a scene in the
     /// manuscript, or a chapter written without scenes.
     pub fn has_scene_diagnostics(&self, node_id: Id) -> bool {
         outline_rows(&self.binder)
             .iter()
             .any(|row| row.document_id.is_some() && row.scene_id.unwrap_or(row.chapter_id) == node_id)
-    }
-
-    pub fn scene_beats(&self, node_id: Id) -> SceneBeats {
-        self.beats.get(&node_id).cloned().unwrap_or_default()
-    }
-
-    pub fn set_scene_beat(&mut self, node_id: Id, beat: Beat, text: String) {
-        let entry = self.beats.entry(node_id).or_default();
-        let slot = match beat {
-            Beat::Goal => &mut entry.goal,
-            Beat::Conflict => &mut entry.conflict,
-            Beat::Outcome => &mut entry.outcome,
-        };
-        if *slot == text {
-            return;
-        }
-        *slot = text;
-        self.beats_dirty = true;
-        self.note_edit();
     }
 
     /// Read every scene's text for the diagnostics table. The table asks for
@@ -1504,14 +1444,9 @@ impl StudioState {
     pub fn scene_report_in(&self, node_id: Id, context: &BookContext) -> Option<SceneReport> {
         let document_id = self.binder.get(node_id)?.document_id?;
         let names = self.note_titles();
-        let beats = self.scene_beats(node_id);
         let facts = scene_facts(&self.document_text(document_id), &names);
-        let findings = findings(&beats, &facts, context);
-        Some(SceneReport {
-            beats,
-            facts,
-            findings,
-        })
+        let findings = findings(&facts, context);
+        Some(SceneReport { facts, findings })
     }
 
     /// The baseline, when it belongs to the document in the editor.
@@ -2134,18 +2069,13 @@ impl StudioState {
         }
         let reread = store.borrow().reread_scene(id);
         match reread {
-            Ok(Some((node, beats, document))) => {
+            Ok(Some((node, document))) => {
                 if let Some(current) = self.binder.nodes.iter_mut().find(|item| item.id == node.id) {
                     current.title = node.title.clone();
-                    current.synopsis = node.synopsis;
+                    current.context = node.context;
                     current.status = node.status;
                     current.label = node.label;
                     current.color = node.color;
-                }
-                if beats.is_empty() {
-                    self.beats.remove(&node.id);
-                } else {
-                    self.beats.insert(node.id, beats);
                 }
                 let indexed = self
                     .manuscript_index
@@ -2172,9 +2102,6 @@ impl StudioState {
         if self.plot_dirty && self.store.is_some() && !self.persist_plot_now() {
             return;
         }
-        if self.beats_dirty && self.store.is_some() && !self.persist_beats_now() {
-            return;
-        }
         self.note_writing_activity();
         if let Some(meta) = &self.meta {
             if let Some(store) = &self.store {
@@ -2189,7 +2116,6 @@ impl StudioState {
         }
         self.binder_dirty = false;
         self.plot_dirty = false;
-        self.beats_dirty = false;
         self.settings_dirty = false;
         self.last_edit = None;
         self.status = "All changes saved locally.".into();
@@ -2908,7 +2834,7 @@ impl StudioState {
 
     /// Make an idea a scene: in the chapter or folder it hangs from (or the
     /// one it is dropped on), after the scene it hangs from, or where a new
-    /// scene would go. Its title is the scene's, its note the synopsis, and
+    /// scene would go. Its title is the scene's, its note the context, and
     /// its lines go with it.
     pub fn idea_to_scene(&mut self, idea: Id, into: Option<Id>) -> Option<Id> {
         let found = self.mindmap.idea(idea)?.clone();
@@ -2929,7 +2855,7 @@ impl StudioState {
             if !found.title.trim().is_empty() {
                 node.title = found.title.trim().to_string();
             }
-            node.synopsis = found.note.trim().to_string();
+            node.context = found.note.trim().to_string();
         }
         self.persist_binder();
         self.mindmap.idea_became(idea, id);
@@ -3196,7 +3122,6 @@ impl StudioState {
         self.settings_dirty
             || self.binder_dirty
             || self.plot_dirty
-            || self.beats_dirty
             || self.session.as_ref().is_some_and(EditorSession::is_dirty)
     }
 
@@ -3695,7 +3620,7 @@ impl StudioState {
                 self.reindex_manuscript();
                 self.begin_writing_session();
                 self.load_speller();
-                self.load_beats();
+                self.diagnostic_texts = Rc::new(HashMap::new());
                 self.note_open_problems();
             }
             (Err(err), _, _) | (_, Err(err), _) | (_, _, Err(err)) => {
@@ -3866,11 +3791,8 @@ impl StudioState {
                         .map_err(|err| err.to_string())
                 });
             match imported {
-                Ok((mut node, beats, document)) => {
+                Ok((mut node, document)) => {
                     let _ = self.manuscript_index.borrow_mut().upsert(node.id, &document.to_plain_text());
-                    if !beats.is_empty() {
-                        self.beats.insert(node.id, beats);
-                    }
                     let id = node.id;
                     last = Some(id);
                     // Its `tags:` join the project's keywords, a new one
@@ -4440,11 +4362,6 @@ impl StudioState {
                 }
             }
         }
-        let beats_before = self.beats.len();
-        self.beats.retain(|id, _| !nodes.contains(id));
-        if self.beats.len() != beats_before && !self.persist_beats_now() {
-            self.beats_dirty = true;
-        }
         // A note's links to what is gone go with it.
         for node in self.binder.nodes.iter_mut().filter(|node| node.links.iter().any(|id| nodes.contains(id))) {
             node.links.retain(|id| !nodes.contains(id));
@@ -4554,9 +4471,9 @@ impl StudioState {
         }
     }
 
-    pub fn update_selected_synopsis(&mut self, synopsis: String) {
+    pub fn update_selected_context(&mut self, context: String) {
         if let Some(id) = self.selected {
-            self.update_node_synopsis(id, synopsis);
+            self.update_node_context(id, context);
         }
     }
 
@@ -4570,13 +4487,15 @@ impl StudioState {
         self.edit_node(id, |node| node.title = title);
     }
 
-    pub fn update_node_synopsis(&mut self, id: Id, synopsis: String) {
-        self.edit_node(id, |node| node.synopsis = synopsis);
+    /// What the writer says about an item: kept in its file, never compiled.
+    pub fn update_node_context(&mut self, id: Id, context: String) {
+        self.edit_node(id, |node| node.context = context);
     }
 
-    /// The writer's notes on an item: kept in its file, never compiled.
-    pub fn update_node_notes(&mut self, id: Id, notes: String) {
-        self.edit_node(id, |node| node.notes = notes);
+    /// The first paragraph of an item's context, from the outliner; the rest
+    /// stays as it is.
+    pub fn update_node_summary(&mut self, id: Id, summary: String) {
+        self.edit_node(id, |node| node.context = writing_studio_project::with_summary(&node.context, &summary));
     }
 
     /// Whether a note, or a folder of notes and everything in it, is
@@ -4975,7 +4894,7 @@ mod tests {
         state.drop_on_map(chapter);
         let made = state.selected.unwrap();
         let node = state.binder.get(made).unwrap().clone();
-        assert_eq!((node.title.as_str(), node.synopsis.as_str()), ("Storm at sea", "The ship nearly goes down."));
+        assert_eq!((node.title.as_str(), node.context.as_str()), ("Storm at sea", "The ship nearly goes down."));
         assert_eq!(node.parent_id, Some(chapter));
         assert!(state.mindmap.ideas.is_empty());
         assert_eq!((state.mindmap.lines[0].from, state.mindmap.lines[0].to), (made, scene));
@@ -5316,7 +5235,7 @@ Nobody spoke.");
     }
 
     #[test]
-    fn scene_diagnostics_report_beats_and_text_and_save_with_the_project() {
+    fn scene_diagnostics_report_the_text_and_a_context_saves_with_the_project() {
         let (mut state, dir) = open_state("diagnostics");
         let scene = state.selected.unwrap();
         assert!(state.has_scene_diagnostics(scene));
@@ -5329,21 +5248,18 @@ Nobody spoke.");
             .unwrap();
         assert!(!state.has_scene_diagnostics(manuscript));
 
-        let report = state.scene_report(scene).unwrap();
-        // A new scene has its opening line and no beats yet.
-        assert_eq!(
-            report.findings,
-            [Finding::NoGoal, Finding::NoConflict, Finding::NoOutcome]
-        );
+        // A new scene has its opening line, and nothing to check yet.
+        assert!(state.scene_report(scene).unwrap().findings.is_empty());
 
         add_note(&mut state, "Mara Vance", "A pilot's daughter.");
         state.select_node(scene);
+        state.apply_editor_markdown("The boat was gone.");
+        assert_eq!(state.scene_report(scene).unwrap().findings, [Finding::NoCharacterNamed]);
         state.apply_editor_markdown("Mara ran for the harbor. “Wait,” said the pilot.");
-        state.set_scene_beat(scene, Beat::Goal, "Reach the harbor".into());
-        state.set_scene_beat(scene, Beat::Outcome, "The boat has gone".into());
+        state.update_node_context(scene, "Reach the harbor.\n\nThe boat has gone.".into());
         assert!(state.has_unsaved());
         let report = state.scene_report(scene).unwrap();
-        assert_eq!(report.findings, [Finding::NoConflict]);
+        assert!(report.findings.is_empty(), "{:?}", report.findings);
         assert_eq!(report.facts.words, 9);
         assert_eq!(report.facts.characters[0].name, "Mara Vance");
         assert_eq!(report.facts.dialogue_percent, 11);
@@ -5353,21 +5269,11 @@ Nobody spoke.");
         let root = state.store.as_ref().unwrap().borrow().root.clone();
         let mut reopened = StudioState::default();
         reopened.open_project_at(root);
-        assert_eq!(reopened.scene_beats(scene).goal, "Reach the harbor");
+        assert_eq!(reopened.binder.get(scene).unwrap().summary(), "Reach the harbor.");
         reopened.load_diagnostic_texts();
         // Another scene is on screen; the table still reads this one's text.
         reopened.session = None;
         assert_eq!(reopened.scene_report(scene).unwrap().facts.words, 9);
-
-        // Emptying the trash drops the beats of deleted scenes.
-        reopened.select_node(scene);
-        reopened.trash_selected();
-        reopened.empty_trash();
-        reopened.empty_trash();
-        assert!(reopened.beats.is_empty());
-        let store = reopened.store.as_ref().unwrap().borrow();
-        assert!(store.load_scene_beats().unwrap().is_empty());
-        drop(store);
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -5785,7 +5691,7 @@ Nobody spoke.");
         let files = dir.join("incoming");
         std::fs::create_dir_all(&files).unwrap();
         let good = files.join("arrival.md");
-        std::fs::write(&good, "---\ngoal: Land\ntags:\n- \"#harbor/night\"\n- Flashback\n---\n\nThe ship came in.\n").unwrap();
+        std::fs::write(&good, "---\nsynopsis: Land\ntags:\n- \"#harbor/night\"\n- Flashback\n---\n\nThe ship came in.\n").unwrap();
         let broken = files.join("broken.md");
         std::fs::write(&broken, "---\ntitle: never closed\n").unwrap();
 
@@ -5793,7 +5699,7 @@ Nobody spoke.");
         let scene = state.binder.get(state.selected.unwrap()).unwrap().clone();
         assert_eq!((scene.title.as_str(), scene.parent_id), ("arrival", chapter));
         assert_eq!(state.editor_text, "The ship came in.");
-        assert_eq!(state.scene_beats(scene.id).goal, "Land");
+        assert_eq!(scene.context, "Land", "another program's synopsis is its context");
         // Its tags are keywords, each with a color, and saved.
         assert_eq!(scene.keywords, ["harbor/night", "Flashback"]);
         assert!(!state.binder.keyword_color("flashback").is_empty());

@@ -17,13 +17,12 @@ pub struct SceneHeader {
     /// made by hand; the program gives it one when it takes the file in.
     pub id: Option<Id>,
     pub title: String,
-    pub synopsis: String,
+    /// What the writer says about it, as they like (Phase 15): the key after
+    /// the title, where an AI reading the file reads first.
+    pub context: String,
     pub status: String,
     pub label: String,
     pub color: String,
-    pub goal: String,
-    pub conflict: String,
-    pub outcome: String,
     /// Entries this program does not know. They are written back as found.
     pub other: Header,
 }
@@ -42,13 +41,10 @@ impl SceneHeader {
             header.set_text("id", &id.to_string());
         }
         for (key, value) in [
-            ("synopsis", &self.synopsis),
+            ("context", &self.context),
             ("status", &self.status),
             ("label", &self.label),
             ("color", &self.color),
-            ("goal", &self.goal),
-            ("conflict", &self.conflict),
-            ("outcome", &self.outcome),
         ] {
             header.set_text(key, value);
         }
@@ -61,13 +57,10 @@ impl SceneHeader {
         Self {
             id: id.trim().parse().ok(),
             title,
-            synopsis: header.take_text("synopsis"),
+            context: header.take_text("context"),
             status: header.take_text("status"),
             label: header.take_text("label"),
             color: header.take_text("color"),
-            goal: header.take_text("goal"),
-            conflict: header.take_text("conflict"),
-            outcome: header.take_text("outcome"),
             other: header,
         }
     }
@@ -198,10 +191,8 @@ mod tests {
             header: SceneHeader {
                 id: Some(id),
                 title: "The Harbor & the \"Tide\"".into(),
-                synopsis: "Mara is late.\nThe boat is leaving.".into(),
+                context: "Mara is late.\n\nGoal: reach the boat before the tide. [[The Pilot]] has gone.".into(),
                 status: "draft".into(),
-                goal: "Reach the boat before the tide".into(),
-                outcome: "The boat has gone".into(),
                 other,
                 ..SceneHeader::default()
             },
@@ -217,7 +208,7 @@ mod tests {
             "---\n",
             "id: 3f9a2c1e-0b7d-4e55-9a10-6c2f8d4b1a77\n",
             "title: The Harbor & the \"Tide\"\n",
-            "synopsis: |-\n  Mara is late.\n  The boat is leaving.\n",
+            "context: |-\n  Mara is late.\n\n  Goal: reach the boat before the tide. [[The Pilot]] has gone.\n",
         )));
         // Markdown cannot say that the space after "north" is bold.
         assert!(text.ends_with("---\n\nMara ran for the **north** quay.\n\n“Wait,” said the pilot.\n"));
@@ -225,7 +216,12 @@ mod tests {
         assert_eq!(read.header, file.header);
         assert!(same_content(&read.blocks, &canonical_blocks(&file.blocks)));
         assert_eq!(read.to_markdown(), text, "a stored file is written the same again");
-        // Keys this program does not know are kept, a list as a list.
+        // Keys this program does not know are kept, a list as a list; so are
+        // the keys a synopsis and beats had before Phase 15.
+        let older = text.replace("mood: grey\n", "mood: grey\nsynopsis: Late.\ngoal: The boat\n");
+        let older = SceneFile::parse_markdown(&older).unwrap();
+        assert_eq!(older.header.other.text("synopsis"), Some("Late."));
+        assert!(older.to_markdown().contains("synopsis: Late.\ngoal: The boat\n"));
         assert!(text.contains("mood: grey\n") && text.contains("also:\n  - Mara\n  - the pilot\n"), "{text}");
         // A byte-order mark from another editor is not part of the file.
         let marked = format!("\u{feff}{text}");

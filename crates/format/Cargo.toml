@@ -11,6 +11,5 @@ writing-studio-document.workspace = true
 
 [dev-dependencies]
 pulldown-cmark = { version = "0.13", default-features = false }
-writing-studio-diagnostics.workspace = true
 writing-studio-project.workspace = true
 writing-studio-storage.workspace = true

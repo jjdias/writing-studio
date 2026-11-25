@@ -34,12 +34,16 @@ pub(super) fn Inspector() -> Element {
             // The title is the heading on the page, so it is renamed there.
             Progress {}
             div { class: "dash-heading", "{node.kind.icon_label()}" }
-            label { "Synopsis" }
-            textarea {
-                class: "synopsis",
-                value: "{node.synopsis}",
-                oninput: move |event| state.write().update_selected_synopsis(event.value()),
-                onblur: move |_| state.write().save_all(),
+            if matches!(node.kind, NodeKind::Scene | NodeKind::Chapter | NodeKind::Part | NodeKind::Book) {
+                label { r#for: "item-context", "Context" }
+                textarea {
+                    id: "item-context",
+                    class: "synopsis context-box",
+                    title: "What this is about, as you like: written at the top of its file, where an AI reads first. Its first paragraph is its summary. Never compiled or counted.",
+                    value: "{node.context}",
+                    oninput: move |event| state.write().update_selected_context(event.value()),
+                    onblur: move |_| state.write().save_all(),
+                }
             }
             label { r#for: "scene-status", "Status" }
             StatusSelect {
@@ -53,15 +57,6 @@ pub(super) fn Inspector() -> Element {
             }
             if !node.kind.is_root() {
                 Keywords { id: node.id }
-                label { r#for: "item-notes", "Notes" }
-                textarea {
-                    id: "item-notes",
-                    class: "synopsis notes",
-                    title: "What you want to remember about this. Kept in its file; never compiled or counted.",
-                    value: "{node.notes}",
-                    oninput: move |event| state.write().update_node_notes(node.id, event.value()),
-                    onblur: move |_| state.write().save_all(),
-                }
             }
             if matches!(node.kind, NodeKind::Scene | NodeKind::Chapter | NodeKind::Part | NodeKind::Book)
                 && state.read().binder.in_manuscript(node.id)
@@ -104,7 +99,7 @@ pub(super) fn Inspector() -> Element {
             }
             if state.read().has_scene_diagnostics(node.id) {
                 details { class: "inspector-section", open: true,
-                    summary { "Beats and diagnostics" }
+                    summary { "Diagnostics" }
                     SceneDiagnostics { node_id: node.id }
                 }
             }
@@ -148,22 +143,6 @@ pub(super) fn Inspector() -> Element {
     }
 }
 
-pub(super) fn beat_label(beat: Beat) -> &'static str {
-    match beat {
-        Beat::Goal => "Goal",
-        Beat::Conflict => "Conflict",
-        Beat::Outcome => "Outcome",
-    }
-}
-
-pub(super) fn beat_hint(beat: Beat) -> &'static str {
-    match beat {
-        Beat::Goal => "What the viewpoint character wants in this scene",
-        Beat::Conflict => "What stands in the way",
-        Beat::Outcome => "How the scene ends: won, lost, or changed",
-    }
-}
-
 /// "Mara ×5, Rose ×2", for at most three characters.
 pub(super) fn cast_summary(facts: &SceneFacts) -> String {
     let mut parts: Vec<String> = facts
@@ -178,31 +157,16 @@ pub(super) fn cast_summary(facts: &SceneFacts) -> String {
     parts.join(", ")
 }
 
-/// Goal, conflict, and outcome for the selected scene, with what the checks found.
+/// What the checks found in the selected scene's text.
 #[component]
 pub(super) fn SceneDiagnostics(node_id: Id) -> Element {
-    let mut state = use_context::<Signal<StudioState>>();
+    let state = use_context::<Signal<StudioState>>();
     let Some(report) = state.read().scene_report(node_id) else {
         return rsx! {};
     };
     let facts = report.facts.clone();
     let cast = cast_summary(&facts);
     rsx! {
-
-        for beat in [Beat::Goal, Beat::Conflict, Beat::Outcome] {
-            label { "{beat_label(beat)}" }
-            textarea {
-                class: "synopsis beat",
-                placeholder: "{beat_hint(beat)}",
-                value: match beat {
-                    Beat::Goal => report.beats.goal.clone(),
-                    Beat::Conflict => report.beats.conflict.clone(),
-                    Beat::Outcome => report.beats.outcome.clone(),
-                },
-                oninput: move |event| state.write().set_scene_beat(node_id, beat, event.value()),
-                onblur: move |_| state.write().save_all(),
-            }
-        }
         if facts.words > 0 {
             p { class: "hint diag-facts",
                 "{facts.words} words · {facts.dialogue_percent}% dialogue · {facts.average_sentence} words in an average sentence"
@@ -216,7 +180,7 @@ pub(super) fn SceneDiagnostics(node_id: Id) -> Element {
         } else {
             ul { class: "diag-list",
                 for finding in report.findings.iter() {
-                    li { class: if finding.is_beat() { "diag-beat" } else { "" }, "{finding.message()}" }
+                    li { "{finding.message()}" }
                 }
             }
         }
@@ -656,8 +620,8 @@ fn LevelContextView(id: Id) -> Element {
                     for (index, item) in context.outline.iter().enumerate() {
                         li { key: "{index}", class: if item.depth == 0 { "outline-top" } else { "outline-inner" },
                             span { class: "outline-title", "{item.title}" }
-                            if !item.synopsis.is_empty() {
-                                span { class: "context-text", " — {short_summary(&item.synopsis)}" }
+                            if !item.summary.is_empty() {
+                                span { class: "context-text", " — {short_summary(&item.summary)}" }
                             }
                         }
                     }

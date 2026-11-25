@@ -10,7 +10,7 @@ mod settings;
 mod writing;
 
 pub use binder::{
-    binder_color_hex, keyword_covers, normalize_binder_color, same_keyword, tidy_keyword, BinderColor, BinderNode,
+    binder_color_hex, first_paragraph, keyword_covers, with_summary, normalize_binder_color, same_keyword, tidy_keyword, BinderColor, BinderNode,
     BinderTree, DropPlace, Keyword, KeywordQuery, KeywordRow, KeywordSort, NodeKind, SavedFilter, BINDER_COLORS,
 };
 pub use mindmap::{Idea, MapLine, MapPosition, MindMap};

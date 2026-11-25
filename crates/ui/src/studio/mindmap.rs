@@ -514,7 +514,7 @@ fn LinesNote(id: Id) -> Element {
     }
 }
 
-/// A scene's synopsis and word count, under the map, once it is chosen.
+/// A scene's summary and word count, under the map, once it is chosen.
 #[component]
 fn ChosenNote(id: Id) -> Element {
     let state = use_context::<Signal<StudioState>>();
@@ -529,10 +529,10 @@ fn ChosenNote(id: Id) -> Element {
         div { class: "map-note",
             strong { "{item.title}" }
             span { class: "card-meta", " · {words} words. Double-click or Enter opens it." }
-            if item.synopsis.trim().is_empty() {
-                p { class: "hint", "No synopsis yet." }
+            if item.summary().is_empty() {
+                p { class: "hint", "No context yet." }
             } else {
-                p { "{item.synopsis}" }
+                p { "{item.summary()}" }
             }
         }
     }
@@ -554,7 +554,7 @@ fn IdeaNote(idea: writing_studio_project::Idea) -> Element {
             }
             textarea {
                 aria_label: "The idea's note",
-                placeholder: "A short note. It becomes the synopsis if the idea becomes a scene.",
+                placeholder: "A short note. It becomes the context if the idea becomes a scene.",
                 value: "{idea.note}",
                 onchange: move |event| state.write().set_idea_note(id, event.value()),
             }

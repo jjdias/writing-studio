@@ -28,7 +28,6 @@ use rusqlite::{params, Connection, OptionalExtension};
 use writing_studio_core::{
     Error, Id, ImageKind, Result, Timestamp,
 };
-use writing_studio_diagnostics::SceneBeats;
 use writing_studio_document::Document;
 use writing_studio_plotting::{PlotGrid, PlotPoint, Plotline};
 use writing_studio_project::{BinderNode, BinderTree, NodeKind, ProjectMeta, ProjectSettings};
@@ -92,8 +91,8 @@ impl ProjectStore {
         let mut stmt = self
             .conn
             .prepare(
-                "SELECT id, parent_id, kind, title, sort_index, document_id, synopsis, label, status, color,
-                        deleted_at, created_at, updated_at, restore_parent_id, keywords, left_out, notes, footnotes, links
+                "SELECT id, parent_id, kind, title, sort_index, document_id, context, label, status, color,
+                        deleted_at, created_at, updated_at, restore_parent_id, keywords, left_out, footnotes, links
                  FROM binder_nodes",
             )
             .map_err(sqlite)?;
@@ -139,12 +138,11 @@ impl ProjectStore {
         self.conn
             .execute(
                 "INSERT INTO binder_nodes (
-                    id, parent_id, kind, title, sort_index, document_id, synopsis, label, status, color,
-                    deleted_at, created_at, updated_at, restore_parent_id, keywords, left_out, notes, footnotes, links
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)
+                    id, parent_id, kind, title, sort_index, document_id, context, label, status, color,
+                    deleted_at, created_at, updated_at, restore_parent_id, keywords, left_out, footnotes, links
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
                  ON CONFLICT(id) DO UPDATE SET
                     keywords=excluded.keywords,
-                    notes=excluded.notes,
                     footnotes=excluded.footnotes,
                     links=excluded.links,
                     left_out=excluded.left_out,
@@ -152,7 +150,7 @@ impl ProjectStore {
                     title=excluded.title,
                     sort_index=excluded.sort_index,
                     document_id=excluded.document_id,
-                    synopsis=excluded.synopsis,
+                    context=excluded.context,
                     label=excluded.label,
                     status=excluded.status,
                     color=excluded.color,
@@ -166,7 +164,7 @@ impl ProjectStore {
                     node.title,
                     node.sort_index,
                     node.document_id.map(|id| id.to_string()),
-                    node.synopsis,
+                    node.context,
                     node.label,
                     node.status,
                     node.color,
@@ -176,7 +174,6 @@ impl ProjectStore {
                     node.restore_parent_id.map(|id| id.to_string()),
                     serde_json::to_string(&node.keywords).unwrap_or_else(|_| "[]".into()),
                     node.left_out,
-                    node.notes,
                     node.footnotes,
                     serde_json::to_string(&node.links).unwrap_or_else(|_| "[]".into()),
                 ],
@@ -220,48 +217,6 @@ impl ProjectStore {
             .collect::<std::result::Result<Vec<_>, _>>()
             .map_err(sqlite)?;
         Ok(PlotGrid { lines, points })
-    }
-
-    /// Goal, conflict, and outcome for each scene that has any, by binder item.
-    pub fn load_scene_beats(&self) -> Result<HashMap<Id, SceneBeats>> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT node_id, goal, conflict, outcome FROM scene_beats")
-            .map_err(sqlite)?;
-        let rows = stmt
-            .query_map([], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    SceneBeats {
-                        goal: row.get(1)?,
-                        conflict: row.get(2)?,
-                        outcome: row.get(3)?,
-                    },
-                ))
-            })
-            .map_err(sqlite)?
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(sqlite)?;
-        Ok(rows
-            .into_iter()
-            .filter_map(|(id, beats)| Some((id.parse::<Id>().ok()?, beats)))
-            .collect())
-    }
-
-    /// Replace the stored beats with `beats`. A scene with nothing written
-    /// keeps no row.
-    pub(crate) fn persist_scene_beats_cached(&self, beats: &HashMap<Id, SceneBeats>) -> Result<()> {
-        let tx = self.conn.unchecked_transaction().map_err(sqlite)?;
-        tx.execute("DELETE FROM scene_beats", []).map_err(sqlite)?;
-        for (id, item) in beats.iter().filter(|(_, item)| !item.is_empty()) {
-            tx.execute(
-                "INSERT INTO scene_beats (node_id, goal, conflict, outcome) VALUES (?1, ?2, ?3, ?4)",
-                params![id.to_string(), item.goal, item.conflict, item.outcome],
-            )
-            .map_err(sqlite)?;
-        }
-        tx.commit().map_err(sqlite)?;
-        Ok(())
     }
 
     pub(crate) fn persist_plot_cached(&self, grid: &PlotGrid) -> Result<()> {
@@ -595,8 +550,8 @@ impl ProjectStore {
 
     /// Every document's word count, in one query, for a count that sums
     /// many of them.
-    pub fn document_word_counts(&self) -> std::collections::HashMap<Id, u32> {
-        let mut counts = std::collections::HashMap::new();
+    pub fn document_word_counts(&self) -> HashMap<Id, u32> {
+        let mut counts = HashMap::new();
         let Ok(mut statement) = self.conn.prepare("SELECT id, word_count FROM documents") else {
             return counts;
         };
@@ -646,7 +601,7 @@ pub(crate) fn row_to_node(row: &rusqlite::Row<'_>) -> BinderNode {
         title: row.get(3).unwrap_or_default(),
         sort_index: row.get(4).unwrap_or(0),
         document_id: document.as_deref().map(parse_id),
-        synopsis: row.get(6).unwrap_or_default(),
+        context: row.get(6).unwrap_or_default(),
         label: row.get(7).unwrap_or_default(),
         status: row.get(8).unwrap_or_default(),
         color: row.get(9).unwrap_or_default(),
@@ -658,10 +613,9 @@ pub(crate) fn row_to_node(row: &rusqlite::Row<'_>) -> BinderNode {
             .unwrap_or_default(),
         // Older caches have no such column either, and compile everything.
         left_out: row.get(15).unwrap_or(false),
-        notes: row.get(16).unwrap_or_default(),
-        footnotes: row.get(17).unwrap_or(false),
+        footnotes: row.get(16).unwrap_or(false),
         links: row
-            .get::<_, String>(18)
+            .get::<_, String>(17)
             .ok()
             .and_then(|json| serde_json::from_str(&json).ok())
             .unwrap_or_default(),
@@ -834,37 +788,6 @@ mod tests {
         reopened.save_tracking_baseline(&document).unwrap();
         reopened.delete_document(doc_id).unwrap();
         assert!(reopened.load_tracking_baseline(doc_id).unwrap().is_none());
-        let _ = fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn scene_beats_round_trip_and_blank_ones_keep_no_row() {
-        let dir = env::temp_dir().join(format!("ws-beats-{}", Id::new()));
-        let store = ProjectStore::create(&dir, "Beats Novel").unwrap();
-        assert!(store.load_scene_beats().unwrap().is_empty());
-        // Beats are kept in a scene's own file, so they need real scenes.
-        let tree = store.load_binder().unwrap();
-        let with_text: Vec<Id> = tree
-            .nodes
-            .iter()
-            .filter(|node| node.document_id.is_some())
-            .map(|node| node.id)
-            .collect();
-        let (kept, blank) = (with_text[0], with_text[1]);
-        let mut beats = HashMap::new();
-        beats.insert(
-            kept,
-            SceneBeats {
-                goal: "Reach the harbor".into(),
-                conflict: String::new(),
-                outcome: "Turned back".into(),
-            },
-        );
-        beats.insert(blank, SceneBeats::default());
-        store.persist_scene_beats(&beats).unwrap();
-        let loaded = ProjectStore::open(&dir).unwrap().load_scene_beats().unwrap();
-        assert_eq!(loaded.len(), 1);
-        assert_eq!(loaded[&kept], beats[&kept]);
         let _ = fs::remove_dir_all(dir);
     }
 

@@ -9,7 +9,6 @@ description = "Merging two copies of a project, and sync through git"
 serde.workspace = true
 serde_json.workspace = true
 writing-studio-core.workspace = true
-writing-studio-diagnostics.workspace = true
 writing-studio-document.workspace = true
 writing-studio-format.workspace = true
 writing-studio-project.workspace = true

@@ -753,7 +753,7 @@ button.danger:hover, button.danger.armed { background: var(--danger-fill); borde
 .outliner { padding: 0; }
 .outliner table { width: 100%; border-collapse: collapse; }
 .outliner th, .outliner td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
-/* Columns take the room their content needs; the synopsis takes the rest. */
+/* Columns take the room their content needs; the summary takes the rest. */
 .outliner .outline-table { table-layout: auto; }
 .outliner .outline-table th, .outliner .outline-table td { white-space: nowrap; width: 1%; }
 .outliner .outline-table .wide { width: auto; white-space: normal; }
@@ -780,9 +780,7 @@ button.danger:hover, button.danger.armed { background: var(--danger-fill); borde
 .diag-scene { min-width: 9em; }
 .diag-cast { color: var(--muted); font-size: 12px; min-width: 8em; }
 .diag-list { list-style: none; margin: 0; padding: 0; font-size: 12px; color: var(--muted); line-height: 1.5; }
-.diag-list .diag-beat { color: var(--comment-line); }
 .diag-facts { font-size: 12px; margin: 6px 0; }
-.synopsis.beat { min-height: 2.6em; height: 2.6em; }
 
 .history-pane { padding: 8px 16px 24px; display: flex; flex-direction: column; gap: 10px; }
 .history-pane h2 { font-family: var(--ui); font-size: 13px; font-weight: 600; margin: 0 0 8px; }
@@ -1210,7 +1208,7 @@ body[data-typing] .sash { opacity: 0; }
 .story-chip .story-kind { font-size: 11px; color: var(--muted); }
 .context-entry summary { display: flex; gap: 6px; align-items: baseline; cursor: pointer; }
 .context-text { margin: 4px 0 8px 14px; font-size: 12px; white-space: pre-wrap; }
-/* A level's outline in Context: what it holds, with each synopsis. */
+/* A level's outline in Context: what it holds, with each summary. */
 .context-outline { list-style: none; padding: 0; margin: 4px 0 8px; font-size: 12px; }
 .context-outline li { margin: 2px 0; }
 .context-outline .outline-inner { padding-left: 14px; }

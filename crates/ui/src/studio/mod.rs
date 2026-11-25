@@ -21,7 +21,7 @@ use writing_studio_spellcheck::UnknownWord;
 
 use crate::shortcuts::{app_shortcut, AppShortcut, IN_THE_MANUSCRIPT, LISTED};
 use crate::state::{binder_matches, pasted_markdown,
-    Beat, CheckFinding, CompileCheck, Earlier, FoldedPanel, FrameMenu, QuickMatch, ReviewTab, BinderRow,
+    CheckFinding, CompileCheck, Earlier, FoldedPanel, FrameMenu, QuickMatch, ReviewTab, BinderRow,
     StudioState, WorkspaceMode,
 };
 

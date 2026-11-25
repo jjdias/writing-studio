@@ -6353,7 +6353,6 @@ version = "0.1.0"
 dependencies = [
  "pulldown-cmark",
  "writing-studio-core",
- "writing-studio-diagnostics",
  "writing-studio-document",
  "writing-studio-project",
  "writing-studio-storage",
@@ -6409,7 +6408,6 @@ dependencies = [
  "rusqlite",
  "serde_json",
  "writing-studio-core",
- "writing-studio-diagnostics",
  "writing-studio-document",
  "writing-studio-format",
  "writing-studio-plotting",
@@ -6424,7 +6422,6 @@ dependencies = [
  "serde",
  "serde_json",
  "writing-studio-core",
- "writing-studio-diagnostics",
  "writing-studio-document",
  "writing-studio-format",
  "writing-studio-project",

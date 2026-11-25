@@ -17,7 +17,6 @@ use std::path::{Component, Path, PathBuf};
 
 use serde_json::{json, Map, Value};
 use writing_studio_core::{Error, Id, Result, Timestamp, PROJECT_FORMAT_FILE};
-use writing_studio_diagnostics::SceneBeats;
 use writing_studio_document::{Block, BlockKind, Document, Inline};
 use writing_studio_format::{file_name, Header, SceneFile, SceneHeader};
 use writing_studio_plotting::{PlotGrid, PlotPoint, Plotline};
@@ -53,7 +52,6 @@ pub struct ProjectContent {
     /// The text of each binder item that has text. In format 2 a document
     /// has the id of its binder item.
     pub documents: Vec<Document>,
-    pub beats: HashMap<Id, SceneBeats>,
     pub plot: PlotGrid,
     /// Ideas, lines, and hand-placed nodes of the mind map (`mindmap.json`).
     pub mindmap: MindMap,
@@ -128,18 +126,16 @@ impl Extras {
 /// kept as an extra; one of these never is, so that an extra cannot stand in
 /// for what the program knows.
 const BINDER_KEYS: [&str; 13] = [
-    "id", "kind", "parent", "deleted", "restore_parent", "file", "status", "title", "synopsis", "label",
+    "id", "kind", "parent", "deleted", "restore_parent", "file", "status", "title", "context", "label",
     "color", "keywords", "left_out",
 ];
 const PLOTLINE_KEYS: [&str; 4] = ["id", "title", "color", "points"];
 const POINT_KEYS: [&str; 4] = ["id", "title", "summary", "scene"];
 const PROJECT_KEYS: [&str; 5] = ["format", "id", "title", "created", "settings"];
-/// Names in a scene's head that the program writes. `title` is the `<title>`;
-/// a `<meta name="title">` beside it is not kept.
-const SCENE_HEAD: [&str; 13] = [
-    "id", "title", "synopsis", "status", "label", "color", "goal", "conflict", "outcome", "tags", "notes", "footnotes",
-    "links",
-];
+/// Keys in an item's front matter that the program writes. Any other is
+/// kept as found, the `synopsis`, `notes`, and beats of a file from before
+/// Phase 15 among them.
+const SCENE_HEAD: [&str; 9] = ["id", "title", "context", "status", "label", "color", "tags", "footnotes", "links"];
 
 fn unknown_keys(item: &Value, known: &[&str]) -> Map<String, Value> {
     item.as_object()
@@ -204,7 +200,6 @@ impl ProjectContent {
             meta: store.load_meta()?,
             binder,
             documents,
-            beats: store.load_scene_beats()?,
             plot: store.load_plot()?,
             mindmap: store.load_mindmap()?,
             files: HashMap::new(),
@@ -454,17 +449,11 @@ pub(crate) fn has_own_file(node: &BinderNode) -> bool {
 
 /// The file of one binder item: its details as front matter, its keywords
 /// as `tags`, and its text.
-pub(crate) fn scene_text(
-    node: &BinderNode,
-    beats: &SceneBeats,
-    blocks: &[Block],
-    extras: Option<&Extras>,
-) -> String {
+pub(crate) fn scene_text(node: &BinderNode, blocks: &[Block], extras: Option<&Extras>) -> String {
     let mut other = Header::default();
     if !node.keywords.is_empty() {
         other.set_list("tags", &node.keywords);
     }
-    other.set_text("notes", &node.notes);
     if node.footnotes {
         other.set_text("footnotes", "true");
     }
@@ -485,13 +474,10 @@ pub(crate) fn scene_text(
         header: SceneHeader {
             id: Some(node.id),
             title: node.title.clone(),
-            synopsis: node.synopsis.clone(),
+            context: node.context.clone(),
             status: node.status.clone(),
             label: node.label.clone(),
             color: node.color.clone(),
-            goal: beats.goal.clone(),
-            conflict: beats.conflict.clone(),
-            outcome: beats.outcome.clone(),
             other,
         },
         blocks: blocks.to_vec(),
@@ -529,7 +515,7 @@ pub(crate) fn binder_json(
                 item.insert("status".into(), json!(node.status));
                 for (key, value) in [
                     ("title", &node.title),
-                    ("synopsis", &node.synopsis),
+                    ("context", &node.context),
                     ("label", &node.label),
                     ("color", &node.color),
                 ] {
@@ -633,9 +619,8 @@ fn render(content: &ProjectContent) -> Result<Rendered> {
             files.insert(node.id, path);
             continue;
         }
-        let beats = content.beats.get(&node.id).cloned().unwrap_or_default();
         let blocks = documents.get(&node.id).map(|document| document.blocks.as_slice()).unwrap_or_default();
-        contents.push((path.clone(), scene_text(node, &beats, blocks, content.extras.get(&node.id))));
+        contents.push((path.clone(), scene_text(node, blocks, content.extras.get(&node.id))));
         files.insert(node.id, path);
     }
     contents.push(("binder.json".into(), binder_json(&content.binder, &files, &content.extras)));
@@ -805,7 +790,6 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
     let binder_file = JsonFile::read(root, "binder.json", &seen)?;
     let mut nodes = Vec::new();
     let mut documents = Vec::new();
-    let mut beats = HashMap::new();
     let mut next_index: HashMap<Option<Id>, i64> = HashMap::new();
     for item in binder_file.list("items") {
         let id = binder_file.id(item, "id")?;
@@ -822,7 +806,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
         let mut node = BinderNode::new(kind, text_of(item, "title"), parent, *index);
         *index += 1;
         node.id = id;
-        node.synopsis = text_of(item, "synopsis");
+        node.context = text_of(item, "context");
         node.label = text_of(item, "label");
         node.color = text_of(item, "color");
         node.keywords = keywords_of(item);
@@ -867,7 +851,6 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
             if !tags.is_empty() {
                 node.keywords = tags;
             }
-            node.notes = file.header.other.text("notes").unwrap_or_default().to_string();
             node.footnotes = file.header.other.text("footnotes").is_some_and(|value| value.trim() == "true");
             node.links = match (file.header.other.list("links"), file.header.other.text("links")) {
                 (Some(list), _) => list.iter().filter_map(|id| id.trim().parse().ok()).collect(),
@@ -875,15 +858,10 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
                 _ => Vec::new(),
             };
             node.title = file.header.title;
-            node.synopsis = file.header.synopsis;
+            node.context = file.header.context;
             node.status = file.header.status;
             node.label = file.header.label;
             node.color = file.header.color;
-            let scene_beats = SceneBeats {
-                goal: file.header.goal,
-                conflict: file.header.conflict,
-                outcome: file.header.outcome,
-            };
             if !holds_text {
                 let written = file.blocks.iter().any(|block| !block.plain_text().trim().is_empty());
                 if written {
@@ -892,9 +870,6 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
                 keep(id, found);
                 nodes.push(node);
                 continue;
-            }
-            if !scene_beats.is_empty() {
-                beats.insert(id, scene_beats);
             }
             let mut document = Document::new(id);
             document.blocks = with_a_run_in_every_block(file.blocks);
@@ -926,19 +901,11 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
         let mut node = BinderNode::new(kind, title, parent, i64::MAX);
         node.id = id;
         node.document_id = Some(id);
-        node.synopsis = file.header.synopsis.clone();
+        node.context = file.header.context.clone();
         node.label = file.header.label.clone();
         node.color = file.header.color.clone();
         if !file.header.status.is_empty() {
             node.status = file.header.status.clone();
-        }
-        let scene_beats = SceneBeats {
-            goal: file.header.goal.clone(),
-            conflict: file.header.conflict.clone(),
-            outcome: file.header.outcome.clone(),
-        };
-        if !scene_beats.is_empty() {
-            beats.insert(id, scene_beats);
         }
         let mut document = Document::new(id);
         document.blocks = with_a_run_in_every_block(file.blocks);
@@ -1027,7 +994,6 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
         meta,
         binder,
         documents,
-        beats,
         plot,
         mindmap,
         files,
@@ -1236,7 +1202,7 @@ mod tests {
         // a scene in the trash.
         let mut first = BinderNode::new(NodeKind::Scene, "Before <Dawn> & after", Some(chapter), -1);
         first.document_id = Some(Id::new());
-        first.synopsis = "Two lines.\nOf synopsis.".into();
+        first.context = "Two lines.\nOf context.\n\nAnd a second [[Mara]] paragraph.".into();
         first.label = "A".into();
         let trash = tree.nodes.iter().find(|node| node.kind == NodeKind::TrashRoot).unwrap().id;
         let mut gone = BinderNode::new(NodeKind::Scene, "Cut", Some(trash), 0);
@@ -1253,16 +1219,6 @@ mod tests {
             "<p><span class=\"ws-comment\" data-comment=\"which?\">The harbor</span> was quiet.</p>",
         ));
         store.save_document(&document).unwrap();
-        let mut beats = HashMap::new();
-        beats.insert(
-            scene.id,
-            SceneBeats {
-                goal: "Reach the boat".into(),
-                conflict: String::new(),
-                outcome: "It has gone".into(),
-            },
-        );
-        store.persist_scene_beats(&beats).unwrap();
 
         let line = Id::new();
         store
@@ -1313,7 +1269,7 @@ mod tests {
 
         let files = all_files(&first);
         write_format_marker(&first).unwrap();
-        assert_eq!(fs::read_to_string(first.join("FORMAT")).unwrap(), "writing-studio-project 4\n");
+        assert_eq!(fs::read_to_string(first.join("FORMAT")).unwrap(), "writing-studio-project 5\n");
         assert_eq!(files[".gitignore"], ".local/\n");
         assert!(files.contains_key("README.md") && !files.contains_key("scene.css"));
         assert!(!files.keys().any(|name| name.ends_with(".tmp")));
@@ -1333,17 +1289,16 @@ mod tests {
         // Its label came back as a keyword.
         let before = read.binder.nodes.iter().find(|node| node.keywords.iter().any(|word| word == "A")).unwrap();
         assert!(before.label.is_empty());
-        assert_eq!(before.synopsis, "Two lines.\nOf synopsis.");
+        assert_eq!(before.context, "Two lines.\nOf context.\n\nAnd a second [[Mara]] paragraph.");
         assert_eq!(before.document_id, Some(before.id));
 
-        // Text, beats, and the note come back.
+        // Text and the note come back.
         let harbor = read
             .documents
             .iter()
             .find(|document| document.to_plain_text().contains("north quay"))
             .unwrap();
         assert_eq!(harbor.review_items().len(), 1);
-        assert_eq!(read.beats[&harbor.id].outcome, "It has gone");
         assert_eq!(read.documents.len(), content.documents.len());
 
         assert_eq!(read.plot.points[0].scene_id, Some(harbor.id));

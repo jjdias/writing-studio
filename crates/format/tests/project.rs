@@ -3,7 +3,6 @@
 use std::path::PathBuf;
 
 use writing_studio_core::Id;
-use writing_studio_diagnostics::SceneBeats;
 use writing_studio_format::{canonical_blocks, file_name, same_content, SceneFile, SceneHeader};
 use writing_studio_project::NodeKind;
 use writing_studio_storage::ProjectStore;
@@ -24,10 +23,10 @@ fn sample_project() -> (ProjectStore, PathBuf, bool) {
         .find(|node| node.kind == NodeKind::Scene)
         .unwrap();
     scene.title = "The Harbor: Dawn".into();
-    scene.synopsis = "Mara is late.\nThe boat is leaving.".into();
+    scene.context = "Mara is late.\nThe boat is leaving.\n\n## Goal\n\nReach the boat. [[The Pilot]] has gone.".into();
     scene.status = "draft".into();
     scene.label = "1".into();
-    let (scene_id, document_id) = (scene.id, scene.document_id.unwrap());
+    let document_id = scene.document_id.unwrap();
     store.persist_binder(&tree).unwrap();
 
     let mut document = store.load_document(document_id).unwrap();
@@ -43,16 +42,6 @@ fn sample_project() -> (ProjectStore, PathBuf, bool) {
         "<p>- She did not look back.</p>",
     ));
     store.save_document(&document).unwrap();
-    let mut beats = std::collections::HashMap::new();
-    beats.insert(
-        scene_id,
-        SceneBeats {
-            goal: "Reach the boat".into(),
-            conflict: String::new(),
-            outcome: "It has gone".into(),
-        },
-    );
-    store.persist_scene_beats(&beats).unwrap();
     (store, dir, kept.is_some())
 }
 
@@ -60,7 +49,6 @@ fn sample_project() -> (ProjectStore, PathBuf, bool) {
 fn every_scene_of_a_project_reads_back_from_its_file() {
     let (store, dir, keep) = sample_project();
     let binder = store.load_binder().unwrap();
-    let beats = store.load_scene_beats().unwrap();
     let mut checked = 0;
     let mut names = std::collections::HashSet::new();
     for node in &binder.nodes {
@@ -71,18 +59,14 @@ fn every_scene_of_a_project_reads_back_from_its_file() {
         let Ok(document) = store.load_document(document_id) else {
             continue;
         };
-        let beat = beats.get(&node.id).cloned().unwrap_or_default();
         let file = SceneFile {
             header: SceneHeader {
                 id: Some(node.id),
                 title: node.title.clone(),
-                synopsis: node.synopsis.clone(),
+                context: node.context.clone(),
                 status: node.status.clone(),
                 label: node.label.clone(),
                 color: node.color.clone(),
-                goal: beat.goal,
-                conflict: beat.conflict,
-                outcome: beat.outcome,
                 ..SceneHeader::default()
             },
             blocks: document.blocks.clone(),

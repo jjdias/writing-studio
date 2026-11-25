@@ -11,7 +11,6 @@ use std::hash::Hash;
 use serde::Serialize;
 use serde_json::Value;
 use writing_studio_core::{Id, Result};
-use writing_studio_diagnostics::SceneBeats;
 use writing_studio_document::{Block, Document};
 use writing_studio_format::blocks_to_markdown;
 use writing_studio_project::{BinderNode, BinderTree};
@@ -193,21 +192,16 @@ pub fn merge(base: &ProjectContent, ours: &ProjectContent, theirs: &ProjectConte
     let mut baselines = Vec::new();
     let mut content = ours.clone();
 
-    // The binder, with each item's text and beats.
+    // The binder, with each item's text.
     let nodes = |c: &ProjectContent| c.binder.nodes.iter().map(|n| (n.id, n.clone())).collect::<HashMap<_, _>>();
     let docs = |c: &ProjectContent| c.documents.iter().map(|d| (d.id, d.clone())).collect::<HashMap<_, _>>();
     let (bn, on, tn) = (nodes(base), nodes(ours), nodes(theirs));
     let (bd, od, td) = (docs(base), docs(ours), docs(theirs));
-    let none = SceneBeats::default();
-    let beats_of = |c: &ProjectContent, id: Id| c.beats.get(&id).cloned().unwrap_or_default();
-    let unchanged = |b: &BinderNode, x: &BinderNode, xd: &HashMap<Id, Document>, xc: &ProjectContent| {
-        same_node(b, x)
-            && same_text(bd.get(&b.id), xd.get(&x.id))
-            && beats_of(base, b.id) == beats_of(xc, x.id)
+    let unchanged = |b: &BinderNode, x: &BinderNode, xd: &HashMap<Id, Document>| {
+        same_node(b, x) && same_text(bd.get(&b.id), xd.get(&x.id))
     };
     let mut merged_nodes = Vec::new();
     let mut documents = Vec::new();
-    let mut beats = HashMap::new();
     let all: Vec<Id> = in_merged_order(
         &ours.binder.nodes.iter().map(|n| n.id).collect::<Vec<_>>(),
         &theirs.binder.nodes.iter().map(|n| n.id).collect::<Vec<_>>(),
@@ -216,8 +210,8 @@ pub fn merge(base: &ProjectContent, ours: &ProjectContent, theirs: &ProjectConte
         let (b, o, t) = (bn.get(&id), on.get(&id), tn.get(&id));
         let node = match (b, o, t) {
             (Some(b), Some(o), Some(t)) => merge_node(b, o, t, &mut conflicts),
-            (Some(b), Some(o), None) if unchanged(b, o, &od, ours) => continue,
-            (Some(b), None, Some(t)) if unchanged(b, t, &td, theirs) => continue,
+            (Some(b), Some(o), None) if unchanged(b, o, &od) => continue,
+            (Some(b), None, Some(t)) if unchanged(b, t, &td) => continue,
             (_, Some(o), _) => o.clone(),
             (_, None, Some(t)) => t.clone(),
             _ => continue,
@@ -243,31 +237,6 @@ pub fn merge(base: &ProjectContent, ours: &ProjectContent, theirs: &ProjectConte
             } else if let Some(text) = text {
                 documents.push(text);
             }
-            let (b, o, t) = (
-                base.beats.get(&id).unwrap_or(&none),
-                ours.beats.get(&id).unwrap_or(&none),
-                theirs.beats.get(&id).unwrap_or(&none),
-            );
-            let mut clash = false;
-            let mut pick = |b: &String, o: &String, t: &String| {
-                let (value, c) = field(b, o, t);
-                clash |= c;
-                value
-            };
-            let merged = SceneBeats {
-                goal: pick(&b.goal, &o.goal, &t.goal),
-                conflict: pick(&b.conflict, &o.conflict, &t.conflict),
-                outcome: pick(&b.outcome, &o.outcome, &t.outcome),
-            };
-            if clash {
-                conflicts.push(Conflict {
-                    item: id,
-                    what: format!("the goal, conflict, or outcome of “{}” was changed on both machines; this machine's was kept", node.title),
-                });
-            }
-            if !merged.is_empty() {
-                beats.insert(id, merged);
-            }
         }
         merged_nodes.push(node);
     }
@@ -277,7 +246,6 @@ pub fn merge(base: &ProjectContent, ours: &ProjectContent, theirs: &ProjectConte
     content.binder.keywords = merge_by_key(&base.binder.keywords, &ours.binder.keywords, &theirs.binder.keywords, |keyword| keyword.name.to_lowercase());
     content.binder.filters = merge_by_key(&base.binder.filters, &ours.binder.filters, &theirs.binder.filters, |filter| filter.id.to_string());
     content.documents = documents;
-    content.beats = beats;
 
     // The plot grid.
     let c = &mut conflicts;
@@ -316,12 +284,13 @@ pub fn merge(base: &ProjectContent, ours: &ProjectContent, theirs: &ProjectConte
 }
 
 fn same_node(a: &BinderNode, b: &BinderNode) -> bool {
-    (a.parent_id, a.kind, &a.title, &a.synopsis, &a.status, &a.label, &a.color, &a.keywords, a.left_out, a.deleted_at, a.restore_parent_id)
-        == (b.parent_id, b.kind, &b.title, &b.synopsis, &b.status, &b.label, &b.color, &b.keywords, b.left_out, b.deleted_at, b.restore_parent_id)
+    (a.parent_id, a.kind, &a.title, &a.context, &a.status, &a.label, &a.color, &a.keywords, a.left_out, a.deleted_at, a.restore_parent_id)
+        == (b.parent_id, b.kind, &b.title, &b.context, &b.status, &b.label, &b.color, &b.keywords, b.left_out, b.deleted_at, b.restore_parent_id)
 }
 
 /// Each field of an item on its own: one side's change is taken; a field
-/// both changed differently keeps this machine's.
+/// both changed differently keeps this machine's. The context is merged by
+/// paragraph, as a scene's text is.
 fn merge_node(b: &BinderNode, o: &BinderNode, t: &BinderNode, conflicts: &mut Vec<Conflict>) -> BinderNode {
     let mut node = o.clone();
     let mut clash = false;
@@ -332,14 +301,60 @@ fn merge_node(b: &BinderNode, o: &BinderNode, t: &BinderNode, conflicts: &mut Ve
             clash |= c;
         )*};
     }
-    take!(parent_id, title, synopsis, status, label, color, keywords, notes, footnotes, links, left_out, deleted_at, restore_parent_id);
+    take!(parent_id, title, status, label, color, keywords, footnotes, links, left_out, deleted_at, restore_parent_id);
     if clash {
         conflicts.push(Conflict {
             item: o.id,
             what: format!("“{}” had the same detail changed on both machines; this machine's was kept", node.title),
         });
     }
+    let (context, kept_both) = merge_context(&b.context, &o.context, &t.context);
+    node.context = context;
+    if kept_both {
+        conflicts.push(Conflict {
+            item: o.id,
+            what: format!(
+                "“{}” had the same paragraph of its context changed on both machines; both versions are in it, this machine's first",
+                node.title
+            ),
+        });
+    }
     node
+}
+
+/// A context's paragraphs: its text between blank lines, as Markdown reads
+/// them.
+fn context_paragraphs(text: &str) -> Vec<String> {
+    let mut found = Vec::new();
+    let mut current: Vec<&str> = Vec::new();
+    for line in text.lines() {
+        if line.trim().is_empty() {
+            if !current.is_empty() {
+                found.push(current.join("\n"));
+                current.clear();
+            }
+        } else {
+            current.push(line);
+        }
+    }
+    if !current.is_empty() {
+        found.push(current.join("\n"));
+    }
+    found
+}
+
+/// Merge a context by paragraph. A paragraph both sides changed keeps both
+/// versions, this machine's first; the second value says so.
+fn merge_context(base: &str, ours: &str, theirs: &str) -> (String, bool) {
+    if ours == theirs || theirs == base {
+        return (ours.to_string(), false);
+    }
+    if ours == base {
+        return (theirs.to_string(), false);
+    }
+    let (bp, op, tp) = (context_paragraphs(base), context_paragraphs(ours), context_paragraphs(theirs));
+    let (merged, _, clash) = merge_runs(&bp, &op, &tp, &op, &tp);
+    (merged.join("\n\n"), clash)
 }
 
 /// One string for each paragraph, so that paragraphs can be compared.
@@ -379,6 +394,20 @@ fn merge_text(
     if tp == bp {
         return (Some(o.clone()), None);
     }
+    let (merged, baseline, clash) = merge_runs(&bp, &op, &tp, &o.blocks, &t.blocks);
+    if clash {
+        (None, Some((with_blocks(o, merged), with_blocks(o, baseline))))
+    } else {
+        (Some(with_blocks(o, merged)), None)
+    }
+}
+
+/// The three-way merge of two edits of a list of paragraphs. `bp`, `op`,
+/// and `tp` are each side's paragraphs as text, to compare; `ours` and
+/// `theirs` are what is kept for each of them (a scene's blocks, or the
+/// text itself). Returns what was merged, the same with only this machine's
+/// version where both changed a paragraph, and whether any did.
+fn merge_runs<T: Clone>(bp: &[String], op: &[String], tp: &[String], ours: &[T], theirs: &[T]) -> (Vec<T>, Vec<T>, bool) {
     let (in_ours, in_theirs) = (matches(&bp, &op), matches(&bp, &tp));
     let (mut merged, mut baseline) = (Vec::new(), Vec::new());
     let mut clash = false;
@@ -393,7 +422,7 @@ fn merge_text(
             None => (bp.len(), op.len(), tp.len()),
         };
         let (bs, os, ts) = (&bp[bi..bend], &op[oi..oend], &tp[ti..tend]);
-        let (ob, tb) = (&o.blocks[oi..oend], &t.blocks[ti..tend]);
+        let (ob, tb) = (&ours[oi..oend], &theirs[ti..tend]);
         if os == bs {
             merged.extend_from_slice(tb);
             baseline.extend_from_slice(tb);
@@ -407,15 +436,11 @@ fn merge_text(
             baseline.extend_from_slice(ob);
         }
         let Some(k) = anchor else { break };
-        merged.push(o.blocks[oend].clone());
-        baseline.push(o.blocks[oend].clone());
+        merged.push(ours[oend].clone());
+        baseline.push(ours[oend].clone());
         (bi, oi, ti) = (k + 1, oend + 1, tend + 1);
     }
-    if clash {
-        (None, Some((with_blocks(o, merged), with_blocks(o, baseline))))
-    } else {
-        (Some(with_blocks(o, merged)), None)
-    }
+    (merged, baseline, clash)
 }
 
 fn with_blocks(document: &Document, blocks: Vec<Block>) -> Document {
@@ -659,16 +684,42 @@ mod tests {
         let id = scene(&base);
         let (mut ours, mut theirs) = (base.clone(), base.clone());
         node(&mut ours, id).title = "Title here".into();
-        node(&mut theirs, id).synopsis = "Synopsis there".into();
-        theirs.beats.insert(id, SceneBeats { goal: "Goal there".into(), ..SceneBeats::default() });
+        node(&mut theirs, id).context = "Context there".into();
         node(&mut ours, id).status = "done".into();
         node(&mut theirs, id).status = "revised".into();
         let merged = merge(&base, &ours, &theirs).unwrap();
         let result = merged.content.binder.get(id).unwrap();
-        assert_eq!((result.title.as_str(), result.synopsis.as_str()), ("Title here", "Synopsis there"));
+        assert_eq!((result.title.as_str(), result.context.as_str()), ("Title here", "Context there"));
         assert_eq!(result.status, "done");
-        assert_eq!(merged.content.beats[&id].goal, "Goal there");
         assert_eq!(merged.conflicts.len(), 1);
+    }
+
+    /// A context merges by paragraph: each machine's new paragraph is kept,
+    /// and a paragraph both changed keeps both, this machine's first.
+    #[test]
+    fn a_context_merges_by_paragraph() {
+        let mut base = base();
+        let id = scene(&base);
+        node(&mut base, id).context = "Mara is late.\n\nThe pilot waits.".into();
+        let (mut ours, mut theirs) = (base.clone(), base.clone());
+        node(&mut ours, id).context = "Mara is late.\n\nThe pilot waits.\n\nHere: the tide turns.".into();
+        node(&mut theirs, id).context = "Before: a storm.\n\nMara is late.\n\nThe pilot waits.".into();
+        let merged = merge(&base, &ours, &theirs).unwrap();
+        assert_eq!(
+            merged.content.binder.get(id).unwrap().context,
+            "Before: a storm.\n\nMara is late.\n\nThe pilot waits.\n\nHere: the tide turns."
+        );
+        assert!(merged.conflicts.is_empty(), "{:?}", merged.conflicts);
+
+        node(&mut ours, id).context = "Mara is early.\nShe waits.\n\nThe pilot waits.".into();
+        node(&mut theirs, id).context = "Mara is very late.\n\nThe pilot waits.".into();
+        let merged = merge(&base, &ours, &theirs).unwrap();
+        assert_eq!(
+            merged.content.binder.get(id).unwrap().context,
+            "Mara is early.\nShe waits.\n\nMara is very late.\n\nThe pilot waits."
+        );
+        assert_eq!(merged.conflicts.len(), 1);
+        assert!(merged.conflicts[0].what.contains("context"), "{:?}", merged.conflicts);
     }
 
     #[test]

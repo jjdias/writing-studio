@@ -19,7 +19,7 @@ pub fn install(conn: &Connection) -> rusqlite::Result<()> {
             title TEXT NOT NULL,
             sort_index INTEGER NOT NULL,
             document_id TEXT,
-            synopsis TEXT NOT NULL DEFAULT '',
+            context TEXT NOT NULL DEFAULT '',
             label TEXT NOT NULL DEFAULT '',
             status TEXT NOT NULL DEFAULT 'draft',
             color TEXT NOT NULL DEFAULT '',
@@ -50,13 +50,6 @@ pub fn install(conn: &Connection) -> rusqlite::Result<()> {
             document_id TEXT PRIMARY KEY,
             content_json TEXT NOT NULL,
             started_at TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS scene_beats (
-            node_id TEXT PRIMARY KEY,
-            goal TEXT NOT NULL DEFAULT '',
-            conflict TEXT NOT NULL DEFAULT '',
-            outcome TEXT NOT NULL DEFAULT ''
         );
 
         CREATE TABLE IF NOT EXISTS plotlines (
@@ -94,9 +87,10 @@ pub fn install(conn: &Connection) -> rusqlite::Result<()> {
         "ALTER TABLE binder_nodes ADD COLUMN keywords TEXT NOT NULL DEFAULT '[]'",
         [],
     );
-    // The writer's notes on an item (Phase 13).
+    // An item's free context (Phase 15), in place of its synopsis and notes,
+    // whose columns an older cache keeps unread.
     let _ = conn.execute(
-        "ALTER TABLE binder_nodes ADD COLUMN notes TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE binder_nodes ADD COLUMN context TEXT NOT NULL DEFAULT ''",
         [],
     );
     // Whether a folder of notes is compiled as footnotes, 1 or 0 (Phase 14).

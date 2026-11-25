@@ -7,7 +7,6 @@
 
 use writing_studio_core::{Id, Timestamp};
 use writing_studio_document::{split_baseline, split_blocks, Block, Document};
-use writing_studio_diagnostics::SceneBeats;
 use writing_studio_project::{BinderNode, NodeKind};
 
 use super::{StudioState, UndoOffer};
@@ -21,7 +20,7 @@ pub(super) struct StructureStep {
     before: String,
     /// The open scene's tracking baseline before the change, if it had one.
     baseline: Option<Document>,
-    /// The open scene's item before the change, for its keywords and synopsis.
+    /// The open scene's item before the change, for its keywords and context.
     node: BinderNode,
     kind: StepKind,
 }
@@ -62,17 +61,14 @@ struct Carried {
     /// the open one. The joined scene keeps its own links, so restoring it
     /// from the trash finds them.
     notes: Vec<Id>,
-    /// The open scene's goal, conflict, and outcome before the joined scene's
-    /// were added, when they changed.
-    beats: Option<Option<SceneBeats>>,
 }
 
-/// Two beats as one: each written one, joined by a line break.
-fn join_beat(first: &str, second: &str) -> String {
+/// Two contexts as one: the second's paragraphs after the first's.
+fn join_contexts(first: &str, second: &str) -> String {
     match (first.trim().is_empty(), second.trim().is_empty()) {
         (_, true) => first.to_string(),
         (true, false) => second.to_string(),
-        (false, false) => format!("{first}\n{second}"),
+        (false, false) => format!("{}\n\n{}", first.trim_end(), second.trim()),
     }
 }
 
@@ -142,19 +138,6 @@ impl StudioState {
                 carried.notes.push(note);
             }
         }
-        if let Some(joined) = self.beats.get(&next).filter(|beats| !beats.is_empty()).cloned() {
-            let before = self.beats.get(&first).cloned();
-            let mine = before.clone().unwrap_or_default();
-            self.beats.insert(
-                first,
-                SceneBeats {
-                    goal: join_beat(&mine.goal, &joined.goal),
-                    conflict: join_beat(&mine.conflict, &joined.conflict),
-                    outcome: join_beat(&mine.outcome, &joined.outcome),
-                },
-            );
-            carried.beats = Some(before);
-        }
         self.persist_carried(&carried);
         carried
     }
@@ -171,12 +154,6 @@ impl StudioState {
                 node.links.retain(|id| *id != first);
             }
         }
-        if let Some(before) = &carried.beats {
-            match before {
-                Some(beats) => self.beats.insert(first, beats.clone()),
-                None => self.beats.remove(&first),
-            };
-        }
         self.persist_carried(&carried);
     }
 
@@ -186,9 +163,6 @@ impl StudioState {
         }
         if !carried.notes.is_empty() && !self.persist_binder() {
             self.binder_dirty = true;
-        }
-        if carried.beats.is_some() && !self.persist_beats_now() {
-            self.beats_dirty = true;
         }
     }
 
@@ -337,8 +311,8 @@ impl StudioState {
 
     /// Join `others`, in the order given, onto the end of the open scene and
     /// move them to the trash. Notes, highlights, and tracked changes go with
-    /// the text; keywords join the open scene's, and its synopsis is the
-    /// first one written. Every scene is kept as a snapshot first.
+    /// the text; keywords join the open scene's, and each one's context
+    /// follows the open scene's, its paragraphs after them. Every scene is kept as a snapshot first.
     fn merge_into_open(&mut self, others: Vec<Id>) {
         let Some(first) = self.open_scene() else {
             self.status = "Open a scene to merge into it.".into();
@@ -425,9 +399,7 @@ impl StudioState {
                 self.binder.carry_keyword(first, word);
             }
             if let Some(open) = self.binder.get_mut(first) {
-                if open.synopsis.trim().is_empty() {
-                    open.synopsis = scene.node.synopsis.clone();
-                }
+                open.context = join_contexts(&open.context, &scene.node.context);
             }
             if let Err(err) = self.binder.trash(scene.node.id) {
                 self.status = err.to_string();
@@ -611,11 +583,11 @@ impl StudioState {
         }
         if let Some(node) = self.binder.get_mut(step.node.id) {
             node.keywords = step.node.keywords.clone();
-            node.synopsis = step.node.synopsis.clone();
+            node.context = step.node.context.clone();
         }
         let status = match step.kind {
             StepKind::Merged(merged) => {
-                // Links come back last one first, so the open scene's beats
+                // Links come back last one first, so the open scene's links
                 // end as they were before the first was added.
                 for scene in merged.iter().rev() {
                     self.uncarry_links(step.node.id, scene.scene, scene.carried.clone());
@@ -647,7 +619,6 @@ impl StudioState {
                 match removed {
                     Ok(()) => {
                         self.binder.nodes.retain(|node| node.id != scene);
-                        self.beats.remove(&scene);
                         if let Some(doc_id) = doc_id {
                             let _ = self.manuscript_index.borrow_mut().remove(doc_id);
                         }
@@ -786,15 +757,15 @@ mod tests {
     }
 
     #[test]
-    fn a_merge_brings_the_joined_scenes_links_and_beats_and_undo_takes_them_back() {
+    fn a_merge_brings_the_joined_scenes_links_and_context_and_undo_takes_them_back() {
         let (mut state, dir) = open_state("merge-links");
         let first = state.selected.unwrap();
         state.apply_editor_text("One.".into());
-        state.beats.insert(first, SceneBeats { goal: "Find the key".into(), ..SceneBeats::default() });
+        state.update_node_context(first, "Find the key.".into());
         state.add_node(NodeKind::Scene);
         let second = state.selected.unwrap();
         state.apply_editor_text("Two.".into());
-        state.beats.insert(second, SceneBeats { goal: "Open the door".into(), outcome: "Locked".into(), ..SceneBeats::default() });
+        state.update_node_context(second, "Open the door.\n\nIt is locked.".into());
         let line = state.plot.add_line();
         let point = state.plot.add_point(line).unwrap();
         state.plot.set_point_scene(point, Some(second));
@@ -809,16 +780,12 @@ mod tests {
         assert_eq!(point_scene(&state), Some(first));
         let hero_scenes = |state: &StudioState| state.binder.get(hero).unwrap().links.clone();
         assert_eq!(hero_scenes(&state), [second, first], "the trashed scene keeps its link for restoring");
-        let beats = state.beats.get(&first).unwrap();
-        assert_eq!(beats.goal, "Find the key
-Open the door");
-        assert_eq!(beats.outcome, "Locked");
+        assert_eq!(state.binder.get(first).unwrap().context, "Find the key.\n\nOpen the door.\n\nIt is locked.");
 
         state.undo();
         assert_eq!(point_scene(&state), Some(second));
         assert_eq!(hero_scenes(&state), [second]);
-        assert_eq!(state.beats.get(&first).unwrap().goal, "Find the key");
-        assert!(state.beats.get(&first).unwrap().outcome.is_empty());
+        assert_eq!(state.binder.get(first).unwrap().context, "Find the key.");
         let _ = std::fs::remove_dir_all(dir);
     }
 

@@ -27,7 +27,7 @@ pub(super) fn OutlinerPane() -> Element {
             chapter_title: chapter.title.clone(),
             scene_title: scene.map(|node| node.title.clone()).unwrap_or_default(),
             status: meta.status.clone(),
-            synopsis: meta.synopsis.clone(),
+            summary: meta.summary(),
             words: row_word_count(line.document_id, |id| words_for_document(&snapshot, id)),
             starts_chapter: false,
             chapter_left_out: snapshot.binder.is_left_out(line.chapter_id),
@@ -64,7 +64,7 @@ pub(super) fn OutlinerPane() -> Element {
                 }
                 button {
                     class: if diagnostics { "primary" } else { "" },
-                    title: "Goal, conflict, and outcome for each scene, with checks on its text",
+                    title: "Checks on each scene's text",
                     onclick: move |_| state.write().outliner_diagnostics = true,
                     "Diagnostics"
                 }
@@ -73,7 +73,7 @@ pub(super) fn OutlinerPane() -> Element {
                 EmptyState {
                     mode: WorkspaceMode::Outliner,
                     title: "Nothing to outline yet",
-                    body: "Chapters and their scenes are rows here, with status, synopsis, and words, to edit in place.",
+                    body: "Chapters and their scenes are rows here, with status, summary, and words, to edit in place.",
                     action: "Add a chapter",
                     onclick: move |_| {
                         state.write().add_node(NodeKind::Chapter);
@@ -90,7 +90,7 @@ pub(super) fn OutlinerPane() -> Element {
                         tr {
                             th { "Title" }
                             th { "Status" }
-                            th { class: "wide", "Synopsis" }
+                            th { class: "wide", title: "The first paragraph of its context", "Summary" }
                             th { class: "words", "Words" }
                         }
                     }
@@ -144,7 +144,8 @@ pub(super) fn OutlinerPane() -> Element {
     }
 }
 
-/// Status, synopsis, and words for one outline row, edited in place.
+/// Status, summary, and words for one outline row, edited in place. The
+/// summary is the first paragraph of the context; the rest stays.
 #[component]
 pub(super) fn OutlineCells(row: OwnedOutlineRow) -> Element {
     let mut state = use_context::<Signal<StudioState>>();
@@ -161,16 +162,16 @@ pub(super) fn OutlineCells(row: OwnedOutlineRow) -> Element {
         td { class: "wide",
             input {
                 class: "cell-input",
-                aria_label: "Synopsis",
-                value: "{row.synopsis}",
-                oninput: move |event| state.write().update_node_synopsis(id, event.value()),
+                aria_label: "Summary",
+                value: "{row.summary}",
+                oninput: move |event| state.write().update_node_summary(id, event.value()),
             }
         }
         td { class: "words", "{row.words}" }
     }
 }
 
-/// Every scene of each book on screen, with its beats and what the checks found.
+/// Every scene of each book on screen, with what the checks found.
 #[component]
 pub(super) fn DiagnosticsTables(books: Vec<OwnedOutlineBook>) -> Element {
     let mut state = use_context::<Signal<StudioState>>();
@@ -182,7 +183,7 @@ pub(super) fn DiagnosticsTables(books: Vec<OwnedOutlineBook>) -> Element {
     let snapshot = state.read().clone();
     rsx! {
         p { class: "hint",
-            "Goal, conflict, and outcome are yours to write. The checks count what is in the text on this computer; they do not read meaning."
+            "The checks count what is in the text on this computer; they do not read meaning. What a scene is for is in its context."
         }
         for book in books {
             DiagnosticsBook { context: snapshot.book_context(book.id), book }
@@ -200,7 +201,6 @@ pub(super) fn DiagnosticsBook(book: OwnedOutlineBook, context: BookContext) -> E
         .filter_map(|row| Some((row.clone(), snapshot.scene_report_in(row.open_id, &context)?)))
         .collect();
     let total = rows.len();
-    let complete = rows.iter().filter(|(_, report)| report.beats.is_complete()).count();
     let typical = if context.typical_words > 0 {
         format!(" · a scene is usually about {} words", context.typical_words)
     } else {
@@ -208,14 +208,11 @@ pub(super) fn DiagnosticsBook(book: OwnedOutlineBook, context: BookContext) -> E
     };
     rsx! {
         h3 { "{book.title}" }
-        p { class: "hint", "{complete} of {total} scenes have a goal, a conflict, and an outcome{typical}" }
+        p { class: "hint", "{total} scenes{typical}" }
         table { class: "diag-table",
             thead {
                 tr {
                     th { "Scene" }
-                    th { "Goal" }
-                    th { "Conflict" }
-                    th { "Outcome" }
                     th { "Words" }
                     th { "Dialogue" }
                     th { "Named" }
@@ -237,21 +234,6 @@ pub(super) fn DiagnosticsBook(book: OwnedOutlineBook, context: BookContext) -> E
                                 if row.scene_title.is_empty() { "{row.chapter_title}" } else { "{row.scene_title}" }
                             }
                         }
-                        for beat in [Beat::Goal, Beat::Conflict, Beat::Outcome] {
-                            td {
-                                input {
-                                    class: "cell-input",
-                                    title: "{beat_hint(beat)}",
-                                    value: match beat {
-                                        Beat::Goal => report.beats.goal.clone(),
-                                        Beat::Conflict => report.beats.conflict.clone(),
-                                        Beat::Outcome => report.beats.outcome.clone(),
-                                    },
-                                    oninput: move |event| state.write().set_scene_beat(row.open_id, beat, event.value()),
-                                    onblur: move |_| state.write().save_all(),
-                                }
-                            }
-                        }
                         td { class: "words", "{report.facts.words}" }
                         td { class: "words",
                             if report.facts.words > 0 { "{report.facts.dialogue_percent}%" }
@@ -263,7 +245,7 @@ pub(super) fn DiagnosticsBook(book: OwnedOutlineBook, context: BookContext) -> E
                             } else {
                                 ul { class: "diag-list",
                                     for finding in report.findings.iter() {
-                                        li { class: if finding.is_beat() { "diag-beat" } else { "" }, "{finding.message()}" }
+                                        li { "{finding.message()}" }
                                     }
                                 }
                             }
@@ -290,7 +272,7 @@ pub(super) struct OwnedOutlineRow {
     pub(super) chapter_title: String,
     pub(super) scene_title: String,
     pub(super) status: String,
-    pub(super) synopsis: String,
+    pub(super) summary: String,
     pub(super) words: u32,
     /// The first row of its chapter, which draws the chapter's group row.
     pub(super) starts_chapter: bool,

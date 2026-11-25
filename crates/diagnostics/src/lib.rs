@@ -1,40 +1,9 @@
 //! Scene diagnostics.
 //!
-//! A scene has three beats the writer fills in: what the viewpoint character
-//! wants (goal), what stands in the way (conflict), and how it ends
-//! (outcome). This crate holds those, measures a scene's text, and lists what
-//! looks worth a second look.
-//!
-//! Everything here is counting and comparing on this computer. It does not
-//! read meaning: it cannot tell whether a goal is a good one, only that none
-//! was written down.
-
-/// The three beats of a scene, in the writer's words.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct SceneBeats {
-    pub goal: String,
-    pub conflict: String,
-    pub outcome: String,
-}
-
-impl SceneBeats {
-    /// Nothing written in any of the three.
-    pub fn is_empty(&self) -> bool {
-        self.filled() == 0
-    }
-
-    /// How many of the three are written.
-    pub fn filled(&self) -> usize {
-        [&self.goal, &self.conflict, &self.outcome]
-            .into_iter()
-            .filter(|beat| !beat.trim().is_empty())
-            .count()
-    }
-
-    pub fn is_complete(&self) -> bool {
-        self.filled() == 3
-    }
-}
+//! This crate measures a scene's text and lists what looks worth a second
+//! look. Everything here is counting and comparing on this computer. It does
+//! not read meaning. Since Phase 15 a scene has no beats of its own to check:
+//! what it is for is in the writer's free context.
 
 /// How often one character is named in a scene.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -70,9 +39,6 @@ pub struct BookContext {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Finding {
     NoText,
-    NoGoal,
-    NoConflict,
-    NoOutcome,
     MuchLonger { words: u32, typical: u32 },
     MuchShorter { words: u32, typical: u32 },
     NoCharacterNamed,
@@ -80,17 +46,9 @@ pub enum Finding {
 }
 
 impl Finding {
-    /// A missing beat, as opposed to something measured in the text.
-    pub fn is_beat(&self) -> bool {
-        matches!(self, Finding::NoGoal | Finding::NoConflict | Finding::NoOutcome)
-    }
-
     pub fn message(&self) -> String {
         match self {
             Finding::NoText => "Nothing written yet".into(),
-            Finding::NoGoal => "No goal".into(),
-            Finding::NoConflict => "No conflict".into(),
-            Finding::NoOutcome => "No outcome".into(),
             Finding::MuchLonger { words, typical } => {
                 format!("Long: {words} words, where a scene in this book is usually about {typical}")
             }
@@ -130,18 +88,9 @@ pub fn typical_words(counts: impl IntoIterator<Item = u32>) -> u32 {
     }
 }
 
-/// What to look at in one scene: missing beats first, then the text.
-pub fn findings(beats: &SceneBeats, facts: &SceneFacts, context: &BookContext) -> Vec<Finding> {
+/// What to look at in one scene's text.
+pub fn findings(facts: &SceneFacts, context: &BookContext) -> Vec<Finding> {
     let mut found = Vec::new();
-    if beats.goal.trim().is_empty() {
-        found.push(Finding::NoGoal);
-    }
-    if beats.conflict.trim().is_empty() {
-        found.push(Finding::NoConflict);
-    }
-    if beats.outcome.trim().is_empty() {
-        found.push(Finding::NoOutcome);
-    }
     if facts.words == 0 {
         found.push(Finding::NoText);
         return found;
@@ -374,29 +323,12 @@ mod tests {
     }
 
     #[test]
-    fn lists_missing_beats_first_and_then_what_the_text_shows() {
+    fn lists_what_the_text_shows() {
         let context = BookContext {
             typical_words: 1000,
             has_cast: true,
         };
-        let empty = findings(&SceneBeats::default(), &SceneFacts::default(), &context);
-        assert_eq!(
-            empty,
-            vec![
-                Finding::NoGoal,
-                Finding::NoConflict,
-                Finding::NoOutcome,
-                Finding::NoText
-            ]
-        );
-        assert!(empty[0].is_beat() && !empty[3].is_beat());
-
-        let beats = SceneBeats {
-            goal: "Reach the harbor".into(),
-            conflict: "  ".into(),
-            outcome: "She is turned back".into(),
-        };
-        assert_eq!(beats.filled(), 2);
+        assert_eq!(findings(&SceneFacts::default(), &context), vec![Finding::NoText]);
         let facts = SceneFacts {
             words: 2500,
             sentences: 50,
@@ -404,9 +336,8 @@ mod tests {
             ..SceneFacts::default()
         };
         assert_eq!(
-            findings(&beats, &facts, &context),
+            findings(&facts, &context),
             vec![
-                Finding::NoConflict,
                 Finding::MuchLonger {
                     words: 2500,
                     typical: 1000
@@ -426,20 +357,15 @@ mod tests {
             }],
             ..SceneFacts::default()
         };
-        let complete = SceneBeats {
-            conflict: "The tide".into(),
-            ..beats
-        };
-        assert!(complete.is_complete());
         assert_eq!(
-            findings(&complete, &short, &context),
+            findings(&short, &context),
             vec![Finding::MuchShorter {
                 words: 300,
                 typical: 1000
             }]
         );
         // With too few scenes to compare, length is not judged.
-        assert!(findings(&complete, &short, &BookContext::default()).is_empty());
+        assert!(findings(&short, &BookContext::default()).is_empty());
     }
 
     #[test]

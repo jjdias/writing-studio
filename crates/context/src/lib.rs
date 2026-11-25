@@ -58,11 +58,12 @@ fn note_reaches(sources: &Sources<'_>, note: &writing_studio_project::BinderNode
     None
 }
 
-/// The scene before or after, by its title and synopsis.
+/// The scene before or after, by its title and summary: the first
+/// paragraph of its context.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Neighbor {
     pub title: String,
-    pub synopsis: String,
+    pub summary: String,
 }
 
 /// A plot point that points at the scene, with its plotline.
@@ -89,10 +90,9 @@ pub struct ContextEntry {
 #[derive(Clone, Debug, PartialEq)]
 pub struct SceneContext {
     pub title: String,
-    pub synopsis: String,
     pub status: String,
-    /// What the writer wants to remember about it.
-    pub notes: String,
+    /// What the writer says about it, all of it.
+    pub context: String,
     /// Its keywords, with those of the chapter, part, or book it is in.
     pub keywords: Vec<String>,
     /// Where it is, from the book down: "Book: Tide", "Chapter: Chapter 1".
@@ -144,7 +144,7 @@ pub fn scene_context(sources: &Sources<'_>, scene: Id) -> Option<SceneContext> {
         .unwrap_or_default();
     let neighbor = |id: Option<&Id>| {
         id.and_then(|id| binder.get(*id))
-            .map(|node| Neighbor { title: node.title.clone(), synopsis: node.synopsis.trim().to_string() })
+            .map(|node| Neighbor { title: node.title.clone(), summary: node.summary() })
     };
     let at = order.iter().position(|id| *id == scene);
     let before = at.and_then(|at| at.checked_sub(1)).and_then(|at| neighbor(order.get(at)));
@@ -182,9 +182,8 @@ pub fn scene_context(sources: &Sources<'_>, scene: Id) -> Option<SceneContext> {
 
     Some(SceneContext {
         title: node.title.clone(),
-        synopsis: node.synopsis.trim().to_string(),
         status: node.status.trim().to_string(),
-        notes: node.notes.trim().to_string(),
+        context: node.context.trim().to_string(),
         keywords,
         place,
         before,
@@ -239,17 +238,14 @@ impl SceneContext {
             out.push_str(&format!("{fact}  \n"));
         }
         out.push('\n');
-        if !self.synopsis.is_empty() {
-            out.push_str(&format!("## Synopsis\n\n{}\n\n", self.synopsis));
-        }
-        if !self.notes.is_empty() {
-            out.push_str(&format!("## Notes\n\n{}\n\n", self.notes));
+        if !self.context.is_empty() {
+            out.push_str(&format!("## Context\n\n{}\n\n", self.context));
         }
         for (heading, neighbor) in [("Before", &self.before), ("After", &self.after)] {
             if let Some(neighbor) = neighbor {
                 out.push_str(&format!("## {heading}\n\n**{}**", neighbor.title.trim()));
-                if !neighbor.synopsis.is_empty() {
-                    out.push_str(&format!(": {}", neighbor.synopsis));
+                if !neighbor.summary.is_empty() {
+                    out.push_str(&format!(": {}", neighbor.summary.replace('\n', " ")));
                 }
                 out.push_str("\n\n");
             }
@@ -293,7 +289,8 @@ pub struct OutlineItem {
     pub kind: NodeKind,
     pub title: String,
     pub status: String,
-    pub synopsis: String,
+    /// The first paragraph of its context.
+    pub summary: String,
 }
 
 /// A note linked to the level or to anything in it, with its folder.
@@ -307,15 +304,15 @@ pub struct LevelEntry {
 }
 
 /// What is read about a level: its own context, then what it holds, each
-/// with its synopsis, then the plot points and entries in it. A level is
-/// read from the synopses of the level below, not from their text.
+/// with its summary, then the plot points and entries in it. A level is
+/// read from the summaries of the level below, not from their text.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LevelContext {
     pub kind: NodeKind,
     pub title: String,
-    pub synopsis: String,
     pub status: String,
-    pub notes: String,
+    /// What the writer says about it, all of it.
+    pub context: String,
     /// A folder's own text: what the writer says it holds. Read from the
     /// document by the caller, since this crate reads only the models.
     pub about: String,
@@ -377,9 +374,8 @@ pub fn level_context(sources: &Sources<'_>, id: Id) -> Option<LevelContext> {
     Some(LevelContext {
         kind: node.kind,
         title: node.title.clone(),
-        synopsis: node.synopsis.trim().to_string(),
         status: node.status.trim().to_string(),
-        notes: node.notes.trim().to_string(),
+        context: node.context.trim().to_string(),
         about: String::new(),
         keywords: keywords_of(binder, id),
         place: place_of(binder, id),
@@ -395,34 +391,34 @@ fn outline_item(node: &writing_studio_project::BinderNode, depth: usize) -> Outl
         kind: node.kind,
         title: node.title.trim().to_string(),
         status: node.status.trim().to_string(),
-        synopsis: node.synopsis.trim().to_string(),
+        summary: node.summary(),
     }
 }
 
 /// How much of a level's context is kept when it must be shortened.
 #[derive(Clone, Copy)]
 struct Kept {
-    /// Synopses kept down to this depth: 2 for all, 1 for what the level
+    /// Summaries kept down to this depth: 2 for all, 1 for what the level
     /// holds directly, 0 for none.
-    synopses: usize,
+    summaries: usize,
     /// The text of the first this many entries.
     entry_text: usize,
 }
 
 impl LevelContext {
     /// The context as plain Markdown, at most `limit` characters. When it is
-    /// longer, the synopses of the deepest items go first, then those of the
+    /// longer, the summaries of the deepest items go first, then those of the
     /// items the level holds directly, then the entries' text from the end
     /// of the list, and the last line says what was left out; if that is not
     /// enough, the end is cut, and that is said too.
     pub fn to_markdown(&self, limit: usize) -> String {
-        let mut kept = Kept { synopses: 2, entry_text: self.entries.len() };
+        let mut kept = Kept { summaries: 2, entry_text: self.entries.len() };
         loop {
             let text = self.render(kept);
             let mut left_out = Vec::new();
-            match kept.synopses {
-                0 => left_out.push("every synopsis in the outline".to_string()),
-                1 => left_out.push("the synopses of the outline's deepest items".to_string()),
+            match kept.summaries {
+                0 => left_out.push("every summary in the outline".to_string()),
+                1 => left_out.push("the summaries of the outline's deepest items".to_string()),
                 _ => {}
             }
             match self.entries.len() - kept.entry_text {
@@ -438,8 +434,8 @@ impl LevelContext {
             if text.chars().count() + note.chars().count() <= limit {
                 return text + &note;
             }
-            if kept.synopses > 0 {
-                kept.synopses -= 1;
+            if kept.summaries > 0 {
+                kept.summaries -= 1;
             } else if kept.entry_text > 0 {
                 kept.entry_text -= 1;
             } else {
@@ -467,14 +463,11 @@ impl LevelContext {
             out.push_str(&format!("{fact}  \n"));
         }
         out.push('\n');
-        if !self.synopsis.is_empty() {
-            out.push_str(&format!("## Synopsis\n\n{}\n\n", self.synopsis));
+        if !self.context.is_empty() {
+            out.push_str(&format!("## Context\n\n{}\n\n", self.context));
         }
         if !self.about.is_empty() {
             out.push_str(&format!("## About\n\n{}\n\n", self.about));
-        }
-        if !self.notes.is_empty() {
-            out.push_str(&format!("## Notes\n\n{}\n\n", self.notes));
         }
         if !self.outline.is_empty() {
             out.push_str("## What it holds\n\n");
@@ -484,8 +477,8 @@ impl LevelContext {
                 if !item.status.is_empty() {
                     out.push_str(&format!(" ({})", item.status));
                 }
-                if item.depth < kept.synopses && !item.synopsis.is_empty() {
-                    out.push_str(&format!(": {}", item.synopsis.replace('\n', " ")));
+                if item.depth < kept.summaries && !item.summary.is_empty() {
+                    out.push_str(&format!(": {}", item.summary.replace('\n', " ")));
                 }
                 out.push('\n');
             }
@@ -548,12 +541,12 @@ mod tests {
         let mut arrival = BinderNode::new(NodeKind::Scene, "Arrival", Some(one.id), 0);
         let mut harbor = BinderNode::new(NodeKind::Scene, "Harbor", Some(one.id), 1);
         let mut dawn = BinderNode::new(NodeKind::Scene, "Dawn", Some(two.id), 0);
-        arrival.synopsis = "The ship comes in.".into();
-        harbor.synopsis = "Mara looks for the pilot.".into();
+        arrival.context = "The ship comes in.\n\nNot shown beside the next scene.".into();
+        harbor.context = "Mara looks for the pilot.".into();
         harbor.status = "Revise".into();
         harbor.keywords = vec!["night".into()];
         one.keywords = vec!["act one".into()];
-        dawn.synopsis = "They leave.".into();
+        dawn.context = "They leave.".into();
         let scenes = [arrival.id, harbor.id, dawn.id];
         let chapter = one.id;
         let binder = BinderTree::new(vec![draft, book, one, two, arrival, harbor, dawn]);
@@ -612,7 +605,7 @@ mod tests {
         assert_eq!(context.keywords, ["night", "act one"], "the chapter's keywords too");
         assert_eq!(context.place, ["Book: Tide", "Chapter: One"]);
         assert_eq!(context.before.as_ref().unwrap().title, "Arrival");
-        assert_eq!(context.after.as_ref().unwrap().synopsis, "They leave.", "the next scene, in the next chapter");
+        assert_eq!(context.after.as_ref().unwrap().summary, "They leave.", "the next scene, in the next chapter");
         assert_eq!(context.plot_points[0].line, "The search");
 
         let entries: Vec<(&str, Option<&str>)> =
@@ -631,17 +624,17 @@ mod tests {
     }
 
     #[test]
-    fn a_book_and_a_chapter_are_read_from_the_synopses_below_them() {
+    fn a_book_and_a_chapter_are_read_from_the_summaries_below_them() {
         let mut story = story();
         let book = story.binder.book_of(story.chapter).unwrap();
-        story.binder.nodes.iter_mut().find(|node| node.id == book).unwrap().notes = "Ends at sea.".into();
+        story.binder.nodes.iter_mut().find(|node| node.id == book).unwrap().context = "Ends at sea.".into();
         let context = level_context(&sources(&story), book).unwrap();
         assert_eq!(context.title, "Tide");
-        assert_eq!(context.notes, "Ends at sea.");
+        assert_eq!(context.context, "Ends at sea.");
         let outline: Vec<(usize, &str, &str)> = context
             .outline
             .iter()
-            .map(|item| (item.depth, item.title.as_str(), item.synopsis.as_str()))
+            .map(|item| (item.depth, item.title.as_str(), item.summary.as_str()))
             .collect();
         assert_eq!(
             outline,
@@ -666,16 +659,16 @@ mod tests {
         assert_eq!(chapter.outline.len(), 2);
         assert!(level_context(&sources(&story), story.scenes[0]).is_none(), "a scene has its own context");
 
-        // Shortened: the deepest synopses go first, and that is said.
+        // Shortened: the deepest summaries go first, and that is said.
         let full = context.to_markdown(100_000);
         assert!(full.contains("## What it holds\n\n- **One** (draft)\n  - **Arrival** (draft): The ship comes in.\n"), "{full}");
-        assert!(full.contains("## Notes\n\nEnds at sea."));
+        assert!(full.contains("## Context\n\nEnds at sea."));
         let limit = full.chars().count() - 1;
         let short = context.to_markdown(limit);
         assert!(short.chars().count() <= limit);
-        // The outline's synopses went first, then the entries' text from the
+        // The outline's summaries went first, then the entries' text from the
         // end of the list: the research note's long notes, not Mara's line.
-        assert!(!short.contains("The ship comes in.") && short.contains("every synopsis in the outline"), "{short}");
+        assert!(!short.contains("The ship comes in.") && short.contains("every summary in the outline"), "{short}");
         assert!(short.contains("Always late.") && !short.contains(&"x".repeat(400)), "{short}");
         let tiny = context.to_markdown(120);
         assert!(tiny.chars().count() <= 120 && tiny.contains("Cut here"), "{tiny}");
@@ -704,6 +697,7 @@ mod tests {
             assert!(full.contains(part), "{part} missing:\n{full}");
         }
         assert!(!full.contains("left out"));
+        assert!(!full.contains("Not shown beside"), "only the scene before's first paragraph");
 
         let limit = full.chars().count() - 100;
         let short = context.to_markdown(limit);

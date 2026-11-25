@@ -20,7 +20,6 @@ use rusqlite::{params, OptionalExtension};
 use writing_studio_core::{
     Error, Id, Result, PROJECT_DB_FILE, PROJECT_FORMAT_FILE, PROJECT_FORMAT_VERSION,
 };
-use writing_studio_diagnostics::SceneBeats;
 use writing_studio_document::Document;
 use writing_studio_plotting::PlotGrid;
 use writing_studio_project::{BinderNode, BinderTree, MindMap, ProjectMeta};
@@ -87,21 +86,17 @@ fn fingerprint(parts: &[&str]) -> u64 {
     hasher.finish()
 }
 
-fn head_fingerprint(node: &BinderNode, beats: &SceneBeats) -> u64 {
+fn head_fingerprint(node: &BinderNode) -> u64 {
     let keywords = node.keywords.join("\n");
     fingerprint(&[
         &keywords,
-        &node.notes,
         if node.footnotes { "footnotes" } else { "" },
         &node.links.iter().map(Id::to_string).collect::<Vec<_>>().join(","),
         &node.title,
-        &node.synopsis,
+        &node.context,
         &node.status,
         &node.label,
         &node.color,
-        &beats.goal,
-        &beats.conflict,
-        &beats.outcome,
     ])
 }
 
@@ -232,10 +227,16 @@ impl ProjectStore {
                  this version keeps each scene as a Markdown file and cannot open it",
             ));
         }
-        if version < PROJECT_FORMAT_VERSION {
+        if version == 3 {
             return Err(Error::message(
                 "this project was made by an earlier test version of Writing Studio, which kept characters, places, and research apart; \
                  this version keeps them all as notes and cannot open it",
+            ));
+        }
+        if version < PROJECT_FORMAT_VERSION {
+            return Err(Error::message(
+                "this project was made by an earlier test version of Writing Studio, which kept a synopsis, notes, and beats apart; \
+                 this version keeps them as one context and cannot open it",
             ));
         }
         if !root.join("project.json").exists() {
@@ -285,7 +286,6 @@ impl ProjectStore {
         for document in &content.documents {
             self.save_document_cached(document)?;
         }
-        self.persist_scene_beats_cached(&content.beats)?;
         self.persist_plot_cached(&content.plot)?;
         self.persist_mindmap_cached(&content.mindmap)
     }
@@ -501,9 +501,8 @@ impl ProjectStore {
 
     /// Read the file of one scene again, after it was changed outside the
     /// program, and put what it holds in the cache. Returns the item and its
-    /// beats and text as the file has them, or `None` if the item has no
-    /// file.
-    pub fn reread_scene(&self, id: Id) -> Result<Option<(BinderNode, SceneBeats, Document)>> {
+    /// text as the file has them, or `None` if the item has no file.
+    pub fn reread_scene(&self, id: Id) -> Result<Option<(BinderNode, Document)>> {
         let Some(path) = self.mirror.paths.borrow().get(&id).cloned() else {
             return Ok(None);
         };
@@ -518,45 +517,35 @@ impl ProjectStore {
             )));
         }
         node.title = file.header.title;
-        node.synopsis = file.header.synopsis;
+        node.context = file.header.context;
         node.status = file.header.status;
         node.label = file.header.label;
         node.color = file.header.color;
-        let beats = SceneBeats {
-            goal: file.header.goal,
-            conflict: file.header.conflict,
-            outcome: file.header.outcome,
-        };
         let mut document = Document::new(id);
         document.blocks = with_a_run_in_every_block(file.blocks);
 
         self.upsert_node_cached(&node)?;
         self.save_document_cached(&document)?;
-        let mut all_beats = self.load_scene_beats()?;
-        all_beats.insert(id, beats.clone());
-        self.persist_scene_beats_cached(&all_beats)?;
 
         let extras_head = unknown_head(&file.header.other, &[]);
         let mut extras = self.mirror.extras.borrow_mut();
         let entry = extras.entry(id).or_default();
         entry.head = extras_head;
         drop(extras);
-        self.mirror.heads.borrow_mut().insert(id, head_fingerprint(&node, &beats));
+        self.mirror.heads.borrow_mut().insert(id, head_fingerprint(&node));
         self.mirror.on_disk.borrow_mut().insert(path, text_fingerprint(&text));
-        Ok(Some((node, beats, document)))
+        Ok(Some((node, document)))
     }
 
-    /// Write the scene file of every item whose title, synopsis, status,
-    /// label, color, or beats changed, or that has no file yet. An item whose
-    /// head is unchanged is not read or written.
-    fn write_changed_scenes(&self, tree: &BinderTree, beats: &HashMap<Id, SceneBeats>) -> Result<()> {
-        let none = SceneBeats::default();
+    /// Write the file of every item whose title, context, status, label,
+    /// color, keywords, or links changed, or that has no file yet. An item
+    /// whose head is unchanged is not read or written.
+    fn write_changed_scenes(&self, tree: &BinderTree) -> Result<()> {
         for node in &tree.nodes {
             if !has_own_file(node) || self.is_missing(node.id) {
                 continue;
             }
-            let scene_beats = beats.get(&node.id).unwrap_or(&none);
-            let mark = head_fingerprint(node, scene_beats);
+            let mark = head_fingerprint(node);
             let has_file = self.mirror.paths.borrow().contains_key(&node.id);
             if has_file && self.mirror.heads.borrow().get(&node.id) == Some(&mark) {
                 continue;
@@ -567,7 +556,7 @@ impl ProjectStore {
                 .map(|document| document.blocks)
                 .unwrap_or_default();
             let path = self.mirror.path_for(node.id, folder_of(tree, node.id), &node.title);
-            let text = scene_text(node, scene_beats, &blocks, self.mirror.extras.borrow().get(&node.id));
+            let text = scene_text(node, &blocks, self.mirror.extras.borrow().get(&node.id));
             self.write_file(&path, &text)?;
             self.mirror.heads.borrow_mut().insert(node.id, mark);
         }
@@ -583,33 +572,14 @@ impl ProjectStore {
     fn item_of_document(&self, document_id: Id) -> Result<Option<BinderNode>> {
         self.conn
             .query_row(
-                "SELECT id, parent_id, kind, title, sort_index, document_id, synopsis, label, status, color,
-                        deleted_at, created_at, updated_at, restore_parent_id, keywords, left_out, notes, footnotes, links
+                "SELECT id, parent_id, kind, title, sort_index, document_id, context, label, status, color,
+                        deleted_at, created_at, updated_at, restore_parent_id, keywords, left_out, footnotes, links
                  FROM binder_nodes WHERE document_id = ?1",
                 params![document_id.to_string()],
                 |row| Ok(row_to_node(row)),
             )
             .optional()
             .map_err(sqlite)
-    }
-
-    fn beats_of(&self, node_id: Id) -> Result<SceneBeats> {
-        let found = self
-            .conn
-            .query_row(
-                "SELECT goal, conflict, outcome FROM scene_beats WHERE node_id = ?1",
-                params![node_id.to_string()],
-                |row| {
-                    Ok(SceneBeats {
-                        goal: row.get(0)?,
-                        conflict: row.get(1)?,
-                        outcome: row.get(2)?,
-                    })
-                },
-            )
-            .optional()
-            .map_err(sqlite)?;
-        Ok(found.unwrap_or_default())
     }
 
     pub fn save_document(&self, document: &Document) -> Result<()> {
@@ -621,15 +591,11 @@ impl ProjectStore {
         }
         if self.mirroring() {
             if let Some(node) = self.item_of_document(document.id)? {
-                let beats = self.beats_of(node.id)?;
                 let is_new = !self.mirror.paths.borrow().contains_key(&node.id);
                 let path = self.mirror.path_for(node.id, "manuscript", &node.title);
-                let text = scene_text(&node, &beats, &document.blocks, self.mirror.extras.borrow().get(&node.id));
+                let text = scene_text(&node, &document.blocks, self.mirror.extras.borrow().get(&node.id));
                 self.write_file(&path, &text)?;
-                self.mirror
-                    .heads
-                    .borrow_mut()
-                    .insert(node.id, head_fingerprint(&node, &beats));
+                self.mirror.heads.borrow_mut().insert(node.id, head_fingerprint(&node));
                 if is_new {
                     self.write_binder(&self.load_binder()?)?;
                 }
@@ -654,7 +620,7 @@ impl ProjectStore {
 
     pub fn persist_binder(&self, tree: &BinderTree) -> Result<()> {
         if self.mirroring() {
-            self.write_changed_scenes(tree, &self.load_scene_beats()?)?;
+            self.write_changed_scenes(tree)?;
             self.write_binder(tree)?;
         }
         self.persist_binder_cached(tree)
@@ -666,17 +632,10 @@ impl ProjectStore {
         self.upsert_node_cached(node)?;
         if self.mirroring() {
             let tree = self.load_binder()?;
-            self.write_changed_scenes(&tree, &self.load_scene_beats()?)?;
+            self.write_changed_scenes(&tree)?;
             self.write_binder(&tree)?;
         }
         Ok(())
-    }
-
-    pub fn persist_scene_beats(&self, beats: &HashMap<Id, SceneBeats>) -> Result<()> {
-        if self.mirroring() {
-            self.write_changed_scenes(&self.load_binder()?, beats)?;
-        }
-        self.persist_scene_beats_cached(beats)
     }
 
     pub fn persist_meta(&self, meta: &ProjectMeta) -> Result<()> {
@@ -724,13 +683,12 @@ impl ProjectStore {
 impl Mirror {
     /// Take in what was just read from, or written to, the files.
     fn remember(&self, content: &ProjectContent, files: HashMap<Id, String>, on_disk: HashMap<String, u64>) {
-        let none = SceneBeats::default();
         *self.heads.borrow_mut() = content
             .binder
             .nodes
             .iter()
             .filter(|node| has_own_file(node))
-            .map(|node| (node.id, head_fingerprint(node, content.beats.get(&node.id).unwrap_or(&none))))
+            .map(|node| (node.id, head_fingerprint(node)))
             .collect();
         *self.paths.borrow_mut() = files;
         *self.extras.borrow_mut() = content.extras.clone();
@@ -781,12 +739,12 @@ mod tests {
         let mut tree = store.load_binder().unwrap();
         let book = tree.nodes.iter().find(|node| node.kind == NodeKind::Book).unwrap().id;
         let node = tree.nodes.iter_mut().find(|node| node.id == book).unwrap();
-        node.synopsis = "A tide, a pilot, a promise.".into();
+        node.context = "A tide, a pilot, a promise.".into();
         node.keywords = vec!["act/one".into()];
         store.persist_binder(&tree).unwrap();
         let book_file = file_of(&store, book);
         let text = fs::read_to_string(&book_file).unwrap();
-        assert!(text.contains("\nsynopsis: A tide, a pilot, a promise.\n") && text.contains("tags:\n  - act/one\n"), "{text}");
+        assert!(text.contains("\ncontext: A tide, a pilot, a promise.\n") && text.contains("tags:\n  - act/one\n"), "{text}");
         let binder = fs::read_to_string(dir.join("binder.json")).unwrap();
         assert!(!binder.contains("A tide") && !binder.contains("act/one"), "{binder}");
 
@@ -795,10 +753,10 @@ mod tests {
         drop(store);
         let store = ProjectStore::open(&dir).unwrap();
         let mut tree = store.load_binder().unwrap();
-        tree.nodes.iter_mut().find(|node| node.id == book).unwrap().synopsis = "Changed.".into();
+        tree.nodes.iter_mut().find(|node| node.id == book).unwrap().context = "Changed.".into();
         store.persist_binder(&tree).unwrap();
         let text = fs::read_to_string(&book_file).unwrap();
-        assert!(text.contains("synopsis: Changed.") && text.contains("What this book is for."), "{text}");
+        assert!(text.contains("context: Changed.") && text.contains("What this book is for."), "{text}");
 
         // Moving a scene writes the binder and no item's file.
         let scene = scene_of(&store);
@@ -820,23 +778,27 @@ mod tests {
     }
 
     #[test]
-    fn notes_on_any_level_are_kept_in_its_file() {
-        let dir = temp("notes");
+    fn a_context_on_any_level_is_kept_first_in_its_file() {
+        let dir = temp("context");
         let store = ProjectStore::create(&dir, "Noted").unwrap();
         let scene = scene_of(&store).id;
         let mut tree = store.load_binder().unwrap();
         let book = tree.nodes.iter().find(|node| node.kind == NodeKind::Book).unwrap().id;
-        for (id, notes) in [(scene, "Mara should not be trusted yet."), (book, "Ends at sea.\nNo epilogue.")] {
-            tree.nodes.iter_mut().find(|node| node.id == id).unwrap().notes = notes.into();
+        let long = "Ends at sea.\n\n## Not yet\n\n- [[Mara]] should not be trusted.\n- No epilogue.";
+        for (id, context) in [(scene, "Mara should not be trusted yet."), (book, long)] {
+            tree.nodes.iter_mut().find(|node| node.id == id).unwrap().context = context.into();
         }
         store.persist_binder(&tree).unwrap();
-        assert!(fs::read_to_string(file_of(&store, scene)).unwrap().contains("\nnotes: Mara should not be trusted yet.\n"));
-        assert!(fs::read_to_string(file_of(&store, book)).unwrap().contains("notes: |-\n  Ends at sea.\n  No epilogue.\n"));
+        let scene_text = fs::read_to_string(file_of(&store, scene)).unwrap();
+        assert!(scene_text.contains("\ntitle: Scene 1\ncontext: Mara should not be trusted yet.\n"), "after the title: {scene_text}");
+        let book_text = fs::read_to_string(file_of(&store, book)).unwrap();
+        assert!(book_text.contains("context: |-\n  Ends at sea.\n\n  ## Not yet\n\n  - [[Mara]] should not be trusted.\n"), "{book_text}");
         drop(store);
         let store = ProjectStore::open(&dir).unwrap();
         let tree = store.load_binder().unwrap();
-        assert_eq!(tree.get(scene).unwrap().notes, "Mara should not be trusted yet.");
-        assert_eq!(tree.get(book).unwrap().notes, "Ends at sea.\nNo epilogue.");
+        assert_eq!(tree.get(scene).unwrap().context, "Mara should not be trusted yet.");
+        assert_eq!(tree.get(book).unwrap().context, long);
+        assert_eq!(tree.get(book).unwrap().summary(), "Ends at sea.");
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -846,7 +808,7 @@ mod tests {
         let store = ProjectStore::create(&dir, "New Novel").unwrap();
         assert_eq!(
             fs::read_to_string(dir.join(PROJECT_FORMAT_FILE)).unwrap(),
-            "writing-studio-project 4\n"
+            "writing-studio-project 5\n"
         );
         for name in ["project.json", "binder.json", "plot.json", "README.md", ".gitignore"] {
             assert!(dir.join(name).exists(), "{name}");
@@ -952,7 +914,7 @@ mod tests {
         store.persist_binder(&tree).unwrap();
 
         // Saves that write the binder file from the cache keep them: a new
-        // item, the scene's text, and its beats.
+        // item, and the scene's text.
         let chapter = tree.nodes.iter().find(|node| node.kind == NodeKind::Chapter).unwrap().id;
         store
             .upsert_node(&BinderNode::new(NodeKind::Scene, "Another", Some(chapter), 9))
@@ -960,7 +922,6 @@ mod tests {
         let mut document = store.load_document(scene.id).unwrap();
         document.replace_plain_text("The river ran uphill.");
         store.save_document(&document).unwrap();
-        store.persist_scene_beats(&HashMap::new()).unwrap();
         let cached = store.load_binder().unwrap();
         assert_eq!(cached.get(scene.id).unwrap().keywords, ["Flashback"]);
         assert!(cached.get(scene.id).unwrap().left_out);
@@ -1003,18 +964,6 @@ mod tests {
         let text = fs::read_to_string(&path).unwrap();
         assert!(text.contains("\ntitle: The Door\n") && text.contains("She opened the door."));
         assert_eq!(fs::read_to_string(dir.join("binder.json")).unwrap(), binder_before);
-
-        // Beats go into the same file.
-        let mut beats = HashMap::new();
-        beats.insert(
-            scene.id,
-            SceneBeats {
-                goal: "Get in".into(),
-                ..SceneBeats::default()
-            },
-        );
-        store.persist_scene_beats(&beats).unwrap();
-        assert!(fs::read_to_string(&path).unwrap().contains("\ngoal: Get in\n"));
 
         // A new scene gets a file and a line in the binder.
         let chapter = scene.parent_id;
@@ -1121,6 +1070,15 @@ mod tests {
         let error = ProjectStore::open(&dir).err().expect("refused").to_string();
         assert!(error.contains("as notes") && error.contains("cannot open it"), "{error}");
         assert_eq!(fs::read_to_string(dir.join(PROJECT_FORMAT_FILE)).unwrap(), "writing-studio-project 3\n");
+
+        // So is a format 4 one, from before the context (Phase 15).
+        let book = dir.join("manuscript").read_dir().unwrap().flatten().next().unwrap().path();
+        let before = fs::read_to_string(&book).unwrap();
+        fs::write(dir.join(PROJECT_FORMAT_FILE), "writing-studio-project 4\n").unwrap();
+        let error = ProjectStore::open(&dir).err().expect("refused").to_string();
+        assert!(error.contains("one context") && error.contains("cannot open it"), "{error}");
+        assert_eq!(fs::read_to_string(dir.join(PROJECT_FORMAT_FILE)).unwrap(), "writing-studio-project 4\n");
+        assert_eq!(fs::read_to_string(&book).unwrap(), before, "nothing in it is written");
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -1373,7 +1331,7 @@ mod tests {
         node.parent_id = None;
         store.persist_binder(&tree).unwrap();
         let mut tree = store.load_binder().unwrap();
-        tree.nodes.iter_mut().find(|node| node.id == mara).unwrap().synopsis = "Changed.".into();
+        tree.nodes.iter_mut().find(|node| node.id == mara).unwrap().context = "Changed.".into();
         store.persist_binder(&tree).unwrap();
         let mut meta = store.load_meta().unwrap();
         meta.title = "Kept again".into();
@@ -1502,19 +1460,19 @@ mod tests {
         let text = fs::read_to_string(&scene_file).unwrap();
         let text = text
             .replace("\ntitle: Scene 1\n", "\ntitle: Harbor\n")
-            .replacen("\n---\n", "\ngoal: Leave\n---\n", 1);
+            .replacen("\n---\n", "\ncontext: Leave\n---\n", 1);
         let body_at = text.find("\n---\n").unwrap() + "\n---\n".len();
         let text = format!("{}\nFrom git.\n", &text[..body_at]);
         fs::write(&scene_file, &text).unwrap();
         assert!(store.changed_outside(scene.id).unwrap());
 
-        let (node, beats, document) = store.reread_scene(scene.id).unwrap().unwrap();
+        let (node, document) = store.reread_scene(scene.id).unwrap().unwrap();
         assert_eq!(node.title, "Harbor");
-        assert_eq!(beats.goal, "Leave");
+        assert_eq!(node.context, "Leave");
         assert_eq!(document.to_plain_text(), "From git.");
         assert!(!store.changed_outside(scene.id).unwrap());
         assert_eq!(store.load_document(scene.id).unwrap().to_plain_text(), "From git.");
-        assert_eq!(store.load_scene_beats().unwrap()[&scene.id].goal, "Leave");
+        assert_eq!(store.load_binder().unwrap().get(scene.id).unwrap().context, "Leave");
 
         // Saving after reading it again sets nothing aside.
         let mut document = document;

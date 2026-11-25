@@ -1,6 +1,6 @@
 # Phase 15 — Free context
 
-Not started. Branch: `phase-15`.
+In progress: stage 1 is done. Branch: `phase-15`.
 
 Context stops being a form. A scene, a chapter, a part, and a book each get one **context**: free text, written as the writer likes, about what matters there. It replaces the synopsis, the notes, and a scene's goal, conflict, and outcome. The program does not need these as separate fields: an AI reading the project reads them as plain text anyway, as it reads notes since [Phase 14](../done/phase-14.md).
 
@@ -47,6 +47,10 @@ Recommended in this plan (the builder's calls, for the maintainer to correct):
 - Sync merges `context` by paragraph, as it merges a scene's text, so two machines that each add a paragraph both keep theirs. A paragraph both changed keeps both versions, this machine's first, and sync reports the conflict as it reports others; a context has no tracked changes, so nothing else marks it. (The builder's call: nothing is lost without a word.)
 - **A paragraph** of a context is text between blank lines, as in Markdown, for the summary, the outliner's cell, and sync alike. (The builder's call.)
 - `FORMAT` is 5; a format 4 project is refused with its own message.
+
+**Done.** `BinderNode::context` replaces `synopsis` and `notes`, and `SceneHeader::context` replaces `synopsis` and the three beats; `context` is written right after `title`. `SceneBeats`, the cache's `scene_beats` table, `load_scene_beats` and `persist_scene_beats`, and the beats in the Markdown export and import, in sync, and in merging scenes are gone; storage, sync, and the format crate's tests no longer use `crates/diagnostics`. An older file's `synopsis`, `notes`, `goal`, `conflict`, and `outcome` are kept as unknown keys, and the Markdown import takes a file's `synopsis` as its context when it has none. The cache has `binder_nodes.context`, and a root's line in `binder.json` has `context` in place of `synopsis`. Sync merges a context by paragraph (`merge_context`, with the scene text's three-way merge made general as `merge_runs`): both machines' new paragraphs are kept, and a paragraph both changed keeps both, this machine's first, with a conflict that says so. `FORMAT` is 5; a format 4 project is refused with its own message and left alone.
+
+So that the window kept building, parts of stages 2 and 3 came with this stage: Context has one **Context** box for a scene, chapter, part, or book in place of Synopsis and Notes, and no beats; "Beats and diagnostics" is **Diagnostics**, the outliner's Diagnostics table has no Goal, Conflict, or Outcome, and the diagnostics crate has no beat findings. `BinderNode::summary()` (`first_paragraph`) is shown where the synopsis was: the outliner, whose **Summary** cell changes only the first paragraph (`with_summary`), the mind map, the scenes before and after, and a level's outline. Copy context writes `## Context`. An idea made into a scene gives its note as the context, and merging scenes adds each joined scene's context after the open one's. Stage 2 still has the box's place, the chips, and folders; stage 3 has what is left of the summary. Tests: `the_summary_is_the_first_paragraph_and_is_changed_alone`, `a_context_merges_by_paragraph`, `a_context_on_any_level_is_kept_first_in_its_file`, the format 4 refusal, and the format, storage, context, and window tests on contexts.
 
 ### 2. Context in the window
 

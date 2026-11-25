@@ -10,7 +10,6 @@ use std::fs;
 use std::path::Path;
 
 use writing_studio_core::{Error, Id, Result};
-use writing_studio_diagnostics::SceneBeats;
 use writing_studio_document::Document;
 use writing_studio_format::{slug, Header, SceneFile, SceneHeader};
 use writing_studio_project::{same_keyword, tidy_keyword, BinderNode, BinderTree, NodeKind};
@@ -103,10 +102,10 @@ impl ProjectStore {
     }
 
     /// Bring one Markdown file in as a new scene under `parent`. A header
-    /// (`---` front matter) gives the scene its title, synopsis, status,
-    /// label, keywords (`tags:` or `keywords:`), color, goal, conflict, and
-    /// outcome; with no title there, the
-    /// scene is called `fallback_title`. The scene always gets a new id, so
+    /// (`---` front matter) gives the scene its title, context (or, from a
+    /// file another program wrote, its `synopsis`), status, label, keywords
+    /// (`tags:` or `keywords:`), and color; with no title there, the scene is
+    /// called `fallback_title`. The scene always gets a new id, so
     /// that bringing a file in twice cannot replace a scene.
     pub fn import_markdown_scene(
         &self,
@@ -114,23 +113,24 @@ impl ProjectStore {
         fallback_title: &str,
         parent: Option<Id>,
         sort_index: i64,
-    ) -> Result<(BinderNode, SceneBeats, Document)> {
+    ) -> Result<(BinderNode, Document)> {
         let file = SceneFile::parse_markdown(text).map_err(|err| Error::message(err.to_string()))?;
         let SceneHeader {
             title,
-            synopsis,
+            context,
             status,
             label,
             color,
-            goal,
-            conflict,
-            outcome,
             other,
             ..
         } = file.header;
         let title = if title.trim().is_empty() { fallback_title.to_string() } else { title };
         let mut node = BinderNode::new(NodeKind::Scene, title, parent, sort_index);
-        node.synopsis = synopsis;
+        node.context = if context.trim().is_empty() {
+            other.text("synopsis").unwrap_or_default().to_string()
+        } else {
+            context
+        };
         node.label = label;
         // Taken in as keywords by the caller, which gives each new one a color.
         node.keywords = keywords_from(&other);
@@ -138,18 +138,12 @@ impl ProjectStore {
         if !status.is_empty() {
             node.status = status;
         }
-        let beats = SceneBeats { goal, conflict, outcome };
         let mut document = Document::new(node.id);
         document.blocks = with_a_run_in_every_block(file.blocks);
 
-        if !beats.is_empty() {
-            let mut all = self.load_scene_beats()?;
-            all.insert(node.id, beats.clone());
-            self.persist_scene_beats_cached(&all)?;
-        }
         self.upsert_node(&node)?;
         self.save_document(&document)?;
-        Ok((node, beats, document))
+        Ok((node, document))
     }
 }
 
@@ -188,18 +182,14 @@ fn export_children(
         match document {
             Some(document) => {
                 let path = format!("{folder}/{name}.md");
-                let beats = content.beats.get(&node.id).cloned().unwrap_or_default();
                 let file = SceneFile {
                     header: SceneHeader {
                         id: None,
                         title: node.title.clone(),
-                        synopsis: node.synopsis.clone(),
+                        context: node.context.clone(),
                         status: node.status.clone(),
                         label: node.label.clone(),
                         color: node.color.clone(),
-                        goal: beats.goal,
-                        conflict: beats.conflict,
-                        outcome: beats.outcome,
                         other: tags_header(&node.keywords),
                     },
                     blocks: document.blocks.clone(),
@@ -313,7 +303,7 @@ mod tests {
             .unwrap();
 
         let text = fs::read_to_string(target.join("manuscript/01-tide/01-chapter-1/01-scene-1.md")).unwrap();
-        let (node, _, document) = store.import_markdown_scene(&text, "fallback", Some(chapter.id), 9).unwrap();
+        let (node, document) = store.import_markdown_scene(&text, "fallback", Some(chapter.id), 9).unwrap();
         assert_ne!(node.id, original.id);
         assert_eq!((node.title.as_str(), node.parent_id), ("Scene 1", Some(chapter.id)));
         let before = store.load_document(original.id).unwrap();
@@ -321,7 +311,7 @@ mod tests {
         assert_eq!(store.load_document(node.id).unwrap().to_plain_text(), before.to_plain_text());
 
         // No header: the file's name is the title. A broken header is refused.
-        let (plain, _, _) = store
+        let (plain, _) = store
             .import_markdown_scene("Just text, *with* a word.\n", "loose-notes", None, 10)
             .unwrap();
         assert_eq!(plain.title, "loose-notes");
@@ -349,14 +339,14 @@ mod tests {
         assert!(text.contains("tags:\n  - plot/subplot\n  - act-two\n"), "{text}");
         let quay = fs::read_to_string(target.join("manuscript/01-tide/01-chapter-1/02-the-quay.md")).unwrap();
         assert!(!quay.contains("tags:"), "a scene with no keywords has none");
-        let (node, _, _) = store.import_markdown_scene(&text, "fallback", None, 9).unwrap();
+        let (node, _) = store.import_markdown_scene(&text, "fallback", None, 9).unwrap();
         assert_eq!(node.keywords, ["plot/subplot", "act-two"]);
 
         // As Obsidian writes them: a list, `#` in front, or one line.
         let obsidian = "---\ntitle: Notes\ntags:\n- \"#Mara\"\n- harbor/night\nkeywords: draft, revise later\n---\nText.\n";
-        let (node, _, _) = store.import_markdown_scene(obsidian, "fallback", None, 10).unwrap();
+        let (node, _) = store.import_markdown_scene(obsidian, "fallback", None, 10).unwrap();
         assert_eq!(node.keywords, ["Mara", "harbor/night", "draft", "revise", "later"]);
-        let (node, _, _) = store.import_markdown_scene("---\ntags: \"#one #two\"\n---\nText.\n", "x", None, 11).unwrap();
+        let (node, _) = store.import_markdown_scene("---\ntags: \"#one #two\"\n---\nText.\n", "x", None, 11).unwrap();
         assert_eq!(node.keywords, ["one", "two"]);
         for folder in [dir, target] {
             let _ = fs::remove_dir_all(folder);

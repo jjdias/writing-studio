@@ -127,6 +127,36 @@ enum DropPlan {
     Beside { parent: Id, anchor: Id, before: bool },
 }
 
+/// The text up to the first blank line, trimmed: a context's first
+/// paragraph, as Markdown reads one.
+pub fn first_paragraph(text: &str) -> &str {
+    let text = text.trim_start();
+    let mut end = text.len();
+    let mut at = 0;
+    for line in text.split_inclusive('\n') {
+        if line.trim().is_empty() {
+            end = at;
+            break;
+        }
+        at += line.len();
+    }
+    text[..end].trim()
+}
+
+/// The context with its first paragraph replaced by `summary`, the rest as
+/// it was. An empty summary takes the first paragraph away.
+pub fn with_summary(context: &str, summary: &str) -> String {
+    let text = context.trim_start();
+    let first = first_paragraph(text);
+    let rest = if first.is_empty() { text } else { &text[text.find(first).map_or(0, |at| at + first.len())..] };
+    let (summary, rest) = (summary.trim(), rest.trim_start_matches([' ', '\t', '\r', '\n']));
+    match (summary.is_empty(), rest.is_empty()) {
+        (true, _) => rest.to_string(),
+        (false, true) => summary.to_string(),
+        (false, false) => format!("{summary}\n\n{rest}"),
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BinderNode {
     pub id: Id,
@@ -135,7 +165,11 @@ pub struct BinderNode {
     pub title: String,
     pub sort_index: i64,
     pub document_id: Option<Id>,
-    pub synopsis: String,
+    /// What the writer says about this item, as they like (Phase 15), in
+    /// place of a synopsis, notes, and beats: never compiled, never counted.
+    /// Its first paragraph is the item's summary.
+    #[serde(default)]
+    pub context: String,
     pub label: String,
     pub status: String,
     pub color: String,
@@ -143,10 +177,6 @@ pub struct BinderNode {
     /// are the binder's, one for each keyword.
     #[serde(default)]
     pub keywords: Vec<String>,
-    /// What the writer wants to remember about this item: never compiled,
-    /// never counted.
-    #[serde(default)]
-    pub notes: String,
     /// A folder of notes whose notes are compiled as footnotes where the text
     /// links to them. Meaningless on anything else.
     #[serde(default)]
@@ -167,6 +197,12 @@ pub struct BinderNode {
 }
 
 impl BinderNode {
+    /// The context's first paragraph, which shows where a synopsis did: the
+    /// text up to its first blank line, trimmed.
+    pub fn summary(&self) -> String {
+        first_paragraph(&self.context).to_string()
+    }
+
     pub fn new(kind: NodeKind, title: impl Into<String>, parent_id: Option<Id>, sort_index: i64) -> Self {
         let now = Timestamp::now();
         let kind_copy = kind;
@@ -184,12 +220,11 @@ impl BinderNode {
             } else {
                 None
             },
-            synopsis: String::new(),
+            context: String::new(),
             label: String::new(),
             status: String::from("draft"),
             color: String::new(),
             keywords: Vec::new(),
-            notes: String::new(),
             footnotes: false,
             links: Vec::new(),
             left_out: false,
@@ -870,6 +905,39 @@ impl BinderTree {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A context's summary is its first paragraph, as Markdown reads one,
+    /// and the outliner changes only that paragraph.
+    #[test]
+    fn the_summary_is_the_first_paragraph_and_is_changed_alone() {
+        let context = "
+  Mara is late.
+The boat is leaving.
+
+## Goal
+
+Reach the boat.";
+        assert_eq!(first_paragraph(context), "Mara is late.
+The boat is leaving.");
+        assert_eq!(first_paragraph("One line"), "One line");
+        assert_eq!(first_paragraph("  
+
+"), "");
+        assert_eq!(with_summary(context, "Mara is early."), "Mara is early.
+
+## Goal
+
+Reach the boat.");
+        assert_eq!(with_summary(context, "  "), "## Goal
+
+Reach the boat.", "an empty summary takes the paragraph away");
+        assert_eq!(with_summary("", "New."), "New.");
+        assert_eq!(with_summary("Only.", "Other."), "Other.");
+        let mut node = BinderNode::new(NodeKind::Scene, "Harbor", None, 0);
+        node.context = context.into();
+        assert_eq!(node.summary(), "Mara is late.
+The boat is leaving.");
+    }
 
     fn tree() -> (BinderTree, Id, Id, Id, Id) {
         let draft = BinderNode::new(NodeKind::DraftRoot, "Manuscript", None, 0);
