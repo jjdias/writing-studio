@@ -20,6 +20,10 @@ pub struct SceneHeader {
     /// What the writer says about it, as they like (Phase 15): the key after
     /// the title, where an AI reading the file reads first.
     pub context: String,
+    /// What it is connected to, as the program wrote it from the item
+    /// (Phase 15): written after the context, and never taken from a file,
+    /// where it is only for whoever reads it.
+    pub connected: Vec<String>,
     pub status: String,
     pub label: String,
     pub color: String,
@@ -40,12 +44,9 @@ impl SceneHeader {
         if let Some(id) = self.id {
             header.set_text("id", &id.to_string());
         }
-        for (key, value) in [
-            ("context", &self.context),
-            ("status", &self.status),
-            ("label", &self.label),
-            ("color", &self.color),
-        ] {
+        header.set_text("context", &self.context);
+        header.set_list("connected", &self.connected);
+        for (key, value) in [("status", &self.status), ("label", &self.label), ("color", &self.color)] {
             header.set_text(key, value);
         }
         header.entries.extend(self.other.entries.iter().cloned());
@@ -58,6 +59,7 @@ impl SceneHeader {
             id: id.trim().parse().ok(),
             title,
             context: header.take_text("context"),
+            connected: header.take_list("connected"),
             status: header.take_text("status"),
             label: header.take_text("label"),
             color: header.take_text("color"),
@@ -192,6 +194,7 @@ mod tests {
                 id: Some(id),
                 title: "The Harbor & the \"Tide\"".into(),
                 context: "Mara is late.\n\nGoal: reach the boat before the tide. [[The Pilot]] has gone.".into(),
+                connected: vec!["night".into(), "[[The Pilot]]".into()],
                 status: "draft".into(),
                 other,
                 ..SceneHeader::default()
@@ -209,6 +212,7 @@ mod tests {
             "id: 3f9a2c1e-0b7d-4e55-9a10-6c2f8d4b1a77\n",
             "title: The Harbor & the \"Tide\"\n",
             "context: |-\n  Mara is late.\n\n  Goal: reach the boat before the tide. [[The Pilot]] has gone.\n",
+            "connected:\n  - night\n  - \"[[The Pilot]]\"\n",
         )));
         // Markdown cannot say that the space after "north" is bold.
         assert!(text.ends_with("---\n\nMara ran for the **north** quay.\n\n“Wait,” said the pilot.\n"));

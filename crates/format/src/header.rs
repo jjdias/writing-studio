@@ -71,6 +71,19 @@ impl Header {
         }
     }
 
+    /// Take a list out, as `take_text` takes a text; one written as a single
+    /// line is a list of one.
+    pub fn take_list(&mut self, key: &str) -> Vec<String> {
+        let Some(at) = self.entries.iter().position(|(name, _)| name == key) else {
+            return Vec::new();
+        };
+        match self.entries.remove(at).1 {
+            Value::List(items) => items,
+            Value::Text(text) if !text.trim().is_empty() => vec![text],
+            Value::Text(_) => Vec::new(),
+        }
+    }
+
     /// Take an entry out, for a reader that then keeps what is left as the
     /// keys it does not know.
     pub fn take_text(&mut self, key: &str) -> String {

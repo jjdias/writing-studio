@@ -187,6 +187,7 @@ fn export_children(
                         id: None,
                         title: node.title.clone(),
                         context: node.context.clone(),
+                        connected: crate::connected::connected_written(tree, node, &document.blocks),
                         status: node.status.clone(),
                         label: node.label.clone(),
                         color: node.color.clone(),

@@ -10,7 +10,7 @@
 
 use writing_studio_core::Id;
 use writing_studio_format::{same_title, wikilinks};
-use writing_studio_project::{BinderTree, NodeKind};
+use writing_studio_project::{BinderNode, BinderTree, NodeKind};
 
 /// One thing an item is connected to.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -42,15 +42,14 @@ pub fn links_in(text: &str) -> Vec<String> {
     wikilinks(text).into_iter().map(|link| link.title).collect()
 }
 
-/// What the item `id` is connected to, in order: its keywords, then each
-/// note first met in its context, among `text_links` (the titles its own
-/// text links to, from [`links_in`]), and among the notes linked to it from
-/// Context; for a note, then the items it is linked to. Each appears once;
-/// nothing in the trash is listed.
-pub fn connected(tree: &BinderTree, id: Id, text_links: &[String]) -> Vec<Tie> {
-    let Some(node) = tree.get(id) else {
-        return Vec::new();
-    };
+/// What `node` is connected to, in order: its keywords, then each note
+/// first met in its context, among `text_links` (the titles its own text
+/// links to, from [`links_in`]), and among the notes in `tree` linked to it
+/// from Context; for a note, then the items it is linked to. Each appears
+/// once; nothing in the trash is listed. `node` is passed on its own so that
+/// the item as it is now is read, whatever `tree` holds of it.
+pub fn connected(tree: &BinderTree, node: &BinderNode, text_links: &[String]) -> Vec<Tie> {
+    let id = node.id;
     let mut ties: Vec<Tie> = node.keywords.iter().map(|word| Tie::Keyword(word.clone())).collect();
     let mut notes: Vec<String> = Vec::new();
     let add_note = |title: &str, notes: &mut Vec<String>| {
@@ -83,11 +82,24 @@ pub fn connected(tree: &BinderTree, id: Id, text_links: &[String]) -> Vec<Tie> {
     ties
 }
 
+/// What `node`'s file lists: its ties written out, the text's links read
+/// from `blocks` as the file holds them.
+pub(crate) fn connected_written(tree: &BinderTree, node: &BinderNode, blocks: &[writing_studio_document::Block]) -> Vec<String> {
+    let links = links_in(&writing_studio_format::blocks_to_markdown(blocks));
+    connected(tree, node, &links).iter().map(Tie::written).collect()
+}
+
+/// The part of `node`'s list that comes from the binder rather than its
+/// text, written out: what tells that its file's head is out of date when
+/// another item changes, without reading its text.
+pub(crate) fn binder_ties(tree: &BinderTree, node: &BinderNode) -> Vec<String> {
+    connected(tree, node, &[]).iter().map(Tie::written).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use writing_studio_core::Timestamp;
-    use writing_studio_project::BinderNode;
 
     #[test]
     fn an_item_lists_its_keywords_then_its_notes_once_each() {
@@ -110,7 +122,7 @@ mod tests {
 
         let text = links_in("The [[Tide Tables]] say so, and [[The Pilot|he]] agrees.");
         assert_eq!(text, ["Tide Tables", "The Pilot"]);
-        let ties = connected(&tree, scene_id, &text);
+        let ties = connected(&tree, tree.get(scene_id).unwrap(), &text);
         let written: Vec<String> = ties.iter().map(Tie::written).collect();
         assert_eq!(
             written,
@@ -118,8 +130,7 @@ mod tests {
             "keywords, then links in the context, in the text, then notes linked from Context; a note in the trash is not"
         );
 
-        let for_note: Vec<String> = connected(&tree, mara_id, &[]).iter().map(Tie::written).collect();
+        let for_note: Vec<String> = connected(&tree, tree.get(mara_id).unwrap(), &[]).iter().map(Tie::written).collect();
         assert_eq!(for_note, ["Tide / Chapter 1 / Harbor", "Tide / Chapter 1", "Tide"], "a note lists what it is linked to");
-        assert!(connected(&tree, Id::new(), &[]).is_empty());
     }
 }

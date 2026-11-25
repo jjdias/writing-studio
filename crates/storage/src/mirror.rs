@@ -51,8 +51,12 @@ pub(crate) struct Mirror {
     /// What the files hold that the program does not use, read when the
     /// project opened. Written back with each item, so that a save keeps it.
     extras: RefCell<HashMap<Id, Extras>>,
-    /// A fingerprint of what each scene file's head was last written from.
+    /// A fingerprint of what each scene file's head was last written from,
+    /// the binder's part of its connected list among it.
     heads: RefCell<HashMap<Id, u64>>,
+    /// The binder as last written or read, for what another item's file
+    /// lists of it, so that saving a scene's text reads no binder.
+    tree: RefCell<Option<BinderTree>>,
     /// A fingerprint of what each file held when the program last read or
     /// wrote it. A file that holds something else was changed outside.
     on_disk: RefCell<HashMap<String, u64>>,
@@ -86,9 +90,11 @@ fn fingerprint(parts: &[&str]) -> u64 {
     hasher.finish()
 }
 
-fn head_fingerprint(node: &BinderNode) -> u64 {
+fn head_fingerprint(node: &BinderNode, tree: &BinderTree) -> u64 {
     let keywords = node.keywords.join("\n");
+    let ties = crate::connected::binder_ties(tree, node).join("\n");
     fingerprint(&[
+        &ties,
         &keywords,
         if node.footnotes { "footnotes" } else { "" },
         &node.links.iter().map(Id::to_string).collect::<Vec<_>>().join(","),
@@ -532,7 +538,8 @@ impl ProjectStore {
         let entry = extras.entry(id).or_default();
         entry.head = extras_head;
         drop(extras);
-        self.mirror.heads.borrow_mut().insert(id, head_fingerprint(&node));
+        let mark = self.mirror.with_tree(|tree| head_fingerprint(&node, tree));
+        self.mirror.heads.borrow_mut().insert(id, mark);
         self.mirror.on_disk.borrow_mut().insert(path, text_fingerprint(&text));
         Ok(Some((node, document)))
     }
@@ -541,11 +548,12 @@ impl ProjectStore {
     /// color, keywords, or links changed, or that has no file yet. An item
     /// whose head is unchanged is not read or written.
     fn write_changed_scenes(&self, tree: &BinderTree) -> Result<()> {
+        *self.mirror.tree.borrow_mut() = Some(tree.clone());
         for node in &tree.nodes {
             if !has_own_file(node) || self.is_missing(node.id) {
                 continue;
             }
-            let mark = head_fingerprint(node);
+            let mark = head_fingerprint(node, tree);
             let has_file = self.mirror.paths.borrow().contains_key(&node.id);
             if has_file && self.mirror.heads.borrow().get(&node.id) == Some(&mark) {
                 continue;
@@ -556,7 +564,7 @@ impl ProjectStore {
                 .map(|document| document.blocks)
                 .unwrap_or_default();
             let path = self.mirror.path_for(node.id, folder_of(tree, node.id), &node.title);
-            let text = scene_text(node, &blocks, self.mirror.extras.borrow().get(&node.id));
+            let text = scene_text(node, tree, &blocks, self.mirror.extras.borrow().get(&node.id));
             self.write_file(&path, &text)?;
             self.mirror.heads.borrow_mut().insert(node.id, mark);
         }
@@ -593,9 +601,12 @@ impl ProjectStore {
             if let Some(node) = self.item_of_document(document.id)? {
                 let is_new = !self.mirror.paths.borrow().contains_key(&node.id);
                 let path = self.mirror.path_for(node.id, "manuscript", &node.title);
-                let text = scene_text(&node, &document.blocks, self.mirror.extras.borrow().get(&node.id));
+                let (text, mark) = self.mirror.with_tree(|tree| {
+                    let text = scene_text(&node, tree, &document.blocks, self.mirror.extras.borrow().get(&node.id));
+                    (text, head_fingerprint(&node, tree))
+                });
                 self.write_file(&path, &text)?;
-                self.mirror.heads.borrow_mut().insert(node.id, head_fingerprint(&node));
+                self.mirror.heads.borrow_mut().insert(node.id, mark);
                 if is_new {
                     self.write_binder(&self.load_binder()?)?;
                 }
@@ -688,12 +699,21 @@ impl Mirror {
             .nodes
             .iter()
             .filter(|node| has_own_file(node))
-            .map(|node| (node.id, head_fingerprint(node)))
+            .map(|node| (node.id, head_fingerprint(node, &content.binder)))
             .collect();
+        *self.tree.borrow_mut() = Some(content.binder.clone());
         *self.paths.borrow_mut() = files;
         *self.extras.borrow_mut() = content.extras.clone();
         *self.missing.borrow_mut() = content.missing.clone();
         *self.on_disk.borrow_mut() = on_disk;
+    }
+
+    /// Work with the binder as last written or read; before any, an empty one.
+    fn with_tree<T>(&self, work: impl FnOnce(&BinderTree) -> T) -> T {
+        match self.tree.borrow().as_ref() {
+            Some(tree) => work(tree),
+            None => work(&BinderTree::new(Vec::new())),
+        }
     }
 
     /// The file of an item, giving it one if it has none.
@@ -774,6 +794,72 @@ mod tests {
         for (path, text) in before {
             assert_eq!(fs::read_to_string(&path).unwrap(), text, "{} was written", path.display());
         }
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// A file lists what its item is connected to, after its context:
+    /// keywords, then the notes its context and text link to and those
+    /// linked to it from Context. The list is the program's: a hand edit is
+    /// written over, and linking a note writes the scene's file again.
+    #[test]
+    fn a_file_lists_what_its_item_is_connected_to() {
+        let dir = temp("connected");
+        let store = ProjectStore::create(&dir, "Tied").unwrap();
+        let scene = scene_of(&store);
+        let mut tree = store.load_binder().unwrap();
+        let notes = tree.notes_root().unwrap().id;
+        let port = BinderNode::new(NodeKind::Note, "Port Ely", Some(notes), 9);
+        let port_id = port.id;
+        tree.nodes.push(port);
+        let node = tree.nodes.iter_mut().find(|node| node.id == scene.id).unwrap();
+        node.keywords = vec!["night".into()];
+        node.context = "She looks for [[The Pilot]].".into();
+        store.persist_binder(&tree).unwrap();
+        let mut document = store.load_document(scene.id).unwrap();
+        document.replace_plain_text("Mara ran. [[Mara]] again.");
+        store.save_document(&document).unwrap();
+        let path = file_of(&store, scene.id);
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(
+            text.contains("context: She looks for [[The Pilot]].
+connected:
+  - night
+  - \"[[The Pilot]]\"
+  - \"[[Mara]]\"
+"),
+            "{text}"
+        );
+
+        // Linked from Context, the note is listed, and only the scene's head changes.
+        let mut tree = store.load_binder().unwrap();
+        tree.nodes.iter_mut().find(|node| node.id == port_id).unwrap().links = vec![scene.id];
+        store.persist_binder(&tree).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.contains("  - \"[[Mara]]\"
+  - \"[[Port Ely]]\"
+") && text.ends_with("Mara ran. [[Mara]] again.
+"), "{text}");
+        let note = fs::read_to_string(file_of(&store, port_id)).unwrap();
+        assert!(note.contains("connected:
+  - Tied / Chapter 1 / Scene 1
+"), "{note}");
+
+        // A list changed by hand is not read, and the next save writes it again.
+        fs::write(&path, text.replace("connected:
+  - night
+", "connected:
+  - invented
+")).unwrap();
+        drop(store);
+        let store = ProjectStore::open(&dir).unwrap();
+        assert!(store.load_binder().unwrap().get(scene.id).unwrap().keywords == ["night"]);
+        let mut document = store.load_document(scene.id).unwrap();
+        document.replace_plain_text("Mara ran. [[Mara]] again, once more.");
+        store.save_document(&document).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.contains("connected:
+  - night
+") && !text.contains("invented"), "{text}");
         let _ = fs::remove_dir_all(dir);
     }
 

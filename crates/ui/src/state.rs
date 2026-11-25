@@ -330,8 +330,9 @@ pub struct StudioState {
     /// `[[…]]`, in lowercase: filled when the project opens, kept up as the
     /// open text changes, so backlinks never read every file.
     pub link_index: HashMap<Id, Vec<String>>,
-    /// The same links as written, for the connected list (Phase 15).
-    linked_titles: HashMap<Id, Vec<String>>,
+    /// The links of each item's text alone, as written, for the connected
+    /// list (Phase 15). `link_index` has these and its context's, in lowercase.
+    text_links: HashMap<Id, Vec<String>>,
     /// The first line of each item's text, for a link's tip.
     pub openings: HashMap<Id, String>,
     /// The mind map's text filter: what does not match is dimmed.
@@ -472,7 +473,7 @@ impl Default for StudioState {
             search: String::new(),
             manuscript_index: Rc::new(RefCell::new(ManuscriptIndex::new())),
             link_index: HashMap::new(),
-            linked_titles: HashMap::new(),
+            text_links: HashMap::new(),
             openings: HashMap::new(),
             map_query: String::new(),
             folded_map: Vec::new(),
@@ -3190,10 +3191,15 @@ impl StudioState {
             self.status = format!("Search index failed: {err}");
         }
         self.link_index.clear();
-        self.linked_titles.clear();
+        self.text_links.clear();
         self.openings.clear();
         for (id, text) in &owned {
             self.index_links(*id, text);
+        }
+        // A book or a part has a context and no text.
+        let with_context: Vec<Id> = self.binder.nodes.iter().filter(|node| !node.context.is_empty()).map(|node| node.id).collect();
+        for id in with_context {
+            self.relink(id);
         }
     }
 
@@ -3201,15 +3207,28 @@ impl StudioState {
     fn index_links(&mut self, id: Id, text: &str) {
         let written = writing_studio_storage::links_in(text);
         if written.is_empty() {
-            self.link_index.remove(&id);
-            self.linked_titles.remove(&id);
+            self.text_links.remove(&id);
         } else {
-            self.link_index.insert(id, written.iter().map(|title| title.to_lowercase()).collect());
-            self.linked_titles.insert(id, written);
+            self.text_links.insert(id, written);
         }
+        self.relink(id);
         let first = text.lines().map(str::trim).find(|line| !line.is_empty()).unwrap_or_default();
         let opening: String = first.chars().take(160).collect();
         self.openings.insert(id, opening);
+    }
+
+    /// What item `id` links to, its text and its context together: a
+    /// `[[link]]` in a context counts wherever a link counts.
+    fn relink(&mut self, id: Id) {
+        let mut titles: Vec<String> = self.text_links.get(&id).cloned().unwrap_or_default();
+        if let Some(node) = self.binder.get(id) {
+            titles.extend(writing_studio_storage::links_in(&node.context));
+        }
+        if titles.is_empty() {
+            self.link_index.remove(&id);
+        } else {
+            self.link_index.insert(id, titles.iter().map(|title| title.to_lowercase()).collect());
+        }
     }
 
     fn note_session_for_search(&mut self) {
@@ -4266,39 +4285,47 @@ impl StudioState {
         }
     }
 
-    /// Point every `[[old]]` in these items' text at `new`. The open one
-    /// changes on the page; the others are saved. Returns how many changed.
+    /// Point every `[[old]]` in these items' text and context at `new`. The
+    /// open one changes on the page; the others are saved. Returns how many
+    /// items changed.
     fn rename_links_in(&mut self, items: &[Id], old: &str, new: &str) -> usize {
         let Some(store) = self.store.clone() else {
             return 0;
         };
         let open = self.session.as_ref().map(|session| session.document_id());
         let mut changed = 0;
+        let mut contexts = false;
         for item in items {
-            let Some(document_id) = self.binder.get(*item).and_then(|node| node.document_id) else {
-                continue;
-            };
-            if Some(document_id) == open {
-                let page = self.editor_markdown();
-                if let Some(renamed) = writing_studio_format::rename_wikilinks(&page, old, new) {
-                    self.edit_text("Links renamed.", |document| {
-                        document.replace_blocks(writing_studio_format::markdown_to_blocks(&renamed));
-                        true
-                    });
-                    changed += 1;
-                }
-                continue;
+            // Its context first: a book has one and no text.
+            let in_context = self.binder.get(*item).and_then(|node| writing_studio_format::rename_wikilinks(&node.context, old, new));
+            let mut here = false;
+            if let Some(renamed) = in_context {
+                self.edit_node(*item, |node| node.context = renamed);
+                contexts = true;
+                here = true;
             }
-            let Ok(mut document) = store.borrow().load_document(document_id) else {
-                continue;
-            };
-            let text = writing_studio_format::blocks_to_markdown(&document.blocks);
-            let Some(renamed) = writing_studio_format::rename_wikilinks(&text, old, new) else {
-                continue;
-            };
-            document.replace_blocks(writing_studio_format::markdown_to_blocks(&renamed));
-            if store.borrow().save_document(&document).is_ok() {
-                self.index_links(document_id, &document.to_plain_text());
+            if let Some(document_id) = self.binder.get(*item).and_then(|node| node.document_id) {
+                if Some(document_id) == open {
+                    let page = self.editor_markdown();
+                    if let Some(renamed) = writing_studio_format::rename_wikilinks(&page, old, new) {
+                        self.edit_text("Links renamed.", |document| {
+                            document.replace_blocks(writing_studio_format::markdown_to_blocks(&renamed));
+                            true
+                        });
+                        here = true;
+                    }
+                } else if let Ok(mut document) = store.borrow().load_document(document_id) {
+                    let text = writing_studio_format::blocks_to_markdown(&document.blocks);
+                    if let Some(renamed) = writing_studio_format::rename_wikilinks(&text, old, new) {
+                        document.replace_blocks(writing_studio_format::markdown_to_blocks(&renamed));
+                        if store.borrow().save_document(&document).is_ok() {
+                            self.index_links(document_id, &document.to_plain_text());
+                            here = true;
+                        }
+                    }
+                }
+            }
+            if here {
                 changed += 1;
             }
         }
@@ -4306,6 +4333,10 @@ impl StudioState {
         if let Some(session) = &self.session {
             let text = session.plain_text();
             self.index_links(session.document_id(), &text);
+        }
+        // The contexts are the binder's, saved with it.
+        if contexts {
+            self.save_all();
         }
         changed
     }
@@ -4495,8 +4526,11 @@ impl StudioState {
     /// linked to it from Context. Read from what is already indexed, so
     /// showing it reads no text.
     pub fn connected_of(&self, id: Id) -> Vec<writing_studio_storage::Tie> {
-        let text_links = self.linked_titles.get(&id).map(Vec::as_slice).unwrap_or_default();
-        writing_studio_storage::connected(&self.binder, id, text_links)
+        let Some(node) = self.binder.get(id) else {
+            return Vec::new();
+        };
+        let text_links = self.text_links.get(&id).map(Vec::as_slice).unwrap_or_default();
+        writing_studio_storage::connected(&self.binder, node, text_links)
     }
 
     /// What the writer says about an item: kept in its file, never compiled.
@@ -4559,10 +4593,15 @@ impl StudioState {
         let Some(node) = self.binder.get_mut(id) else {
             return;
         };
+        let context = node.context.clone();
         apply(node);
         node.updated_at = writing_studio_core::Timestamp::now();
+        let relink = node.context != context;
         self.binder_dirty = true;
         self.note_edit();
+        if relink {
+            self.relink(id);
+        }
     }
 }
 

@@ -1,6 +1,6 @@
 # Phase 15 — Free context
 
-In progress: stages 1 to 3 are done. Branch: `phase-15`.
+In progress: stages 1 to 4 are done. Branch: `phase-15`.
 
 Context stops being a form. A scene, a chapter, a part, and a book each get one **context**: free text, written as the writer likes, about what matters there. It replaces the synopsis, the notes, and a scene's goal, conflict, and outcome. The program does not need these as separate fields: an AI reading the project reads them as plain text anyway, as it reads notes since [Phase 14](../done/phase-14.md).
 
@@ -79,6 +79,8 @@ So that the window kept building, parts of stages 2 and 3 came with this stage: 
 - For a note, the list also has the items it is linked to from Context, after its links, each by its caption as the program shows it elsewhere ("Tide / Chapter 1 / Harbor"), quoted, since a scene's title alone is not unique and a scene is not a `[[link]]`.
 - The program writes it on every save of the item and never reads it back: the next save writes it again from the item. A hand edit is written over; sync does not merge it.
 - `[[links]]` in a context count wherever links count: in `link_index`, so a note mentioned in a scene's context reaches that scene and is in its **Notes in this scene**. A link in a context is never a footnote, as the context is never compiled.
+
+**Done.** Every item's file has `connected` after `context` (`SceneHeader::connected`, written from `connected_written` in `crates/storage/src/connected.rs`, the same list Context shows); the Markdown export writes it too. The reader takes it out of the head and nothing uses it, so a hand edit is written over on the next save and is never kept as an unknown key. The text's links are read from the text being written. What comes from the binder (keywords, the context's links, notes linked from Context, a note's captions) is part of each file's head fingerprint, so when a change to one item changes another's list (a note linked from Context, a scene renamed, a note trashed) the next save of the binder writes that other file again, and only its head; saving a scene's text uses the binder as last written (`Mirror::tree`), so it reads no binder. `[[links]]` in a context are in the window's link index with the text's (`StudioState::relink`, on any change to a context), so a note mentioned in a context reaches the item and counts as a mention; renaming a note rewrites `[[old]]` in contexts as well as texts, and saves them. Tests: `a_file_lists_what_its_item_is_connected_to` (order, a note linked from Context, a note's captions, a hand edit written over) and `notes_are_linked_by_title_and_from_context_and_renaming_follows` (a book's context links and their rename).
 
 ### 5. Keeping the lists current
 

@@ -601,13 +601,32 @@ mod tests {
         let file = state.project_root().unwrap().join(state.store.as_ref().unwrap().borrow().file_of(mara).unwrap());
         assert!(std::fs::read_to_string(&file).unwrap().contains(&format!("links:\n  - {chapter}\n")));
 
-        // Renaming her changes the links to her, keeping the words they show.
+        // A link in a context counts as one: the book, which has no text,
+        // links to her from its context, and she reaches it.
+        let book = state.binder.book_of(scene).unwrap();
+        state.update_node_context(book, "It ends with [[Mara]] at sea.".into());
+        state.save_all();
+        assert!(state.note_reaches(mara, book));
+        let mut mentioned = state.mentions_of(mara);
+        mentioned.sort_by_key(|id| id.to_string());
+        let mut expected = vec![scene, book];
+        expected.sort_by_key(|id| id.to_string());
+        assert_eq!(mentioned, expected);
+
+        // Renaming her changes the links to her, in texts and contexts,
+        // keeping the words they show.
         state.select_node(mara);
         state.rename_item(mara, "Mara Vance");
-        assert!(state.status.contains("in 1 place"), "{}", state.status);
+        assert!(state.status.contains("in 2 places"), "{}", state.status);
+        assert_eq!(state.binder.get(book).unwrap().context, "It ends with [[Mara Vance]] at sea.");
+        let book_file = state.project_root().unwrap().join(state.store.as_ref().unwrap().borrow().file_of(book).unwrap());
+        let book_text = std::fs::read_to_string(&book_file).unwrap();
+        assert!(book_text.contains("connected:
+  - \"[[Mara Vance]]\"
+") && !book_text.contains("[[Mara]]"), "{book_text}");
         state.select_node(scene);
         assert_eq!(state.editor_markdown(), "Ask [[Mara Vance]], or [[Mara Vance|the pilot's daughter]].");
-        assert_eq!(state.mentions_of(mara), [scene]);
+        assert_eq!(state.mentions_of(mara).len(), 2);
 
         // A link opens its note.
         state.open_note_titled("mara vance");

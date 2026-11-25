@@ -401,6 +401,7 @@ impl StudioState {
             if let Some(open) = self.binder.get_mut(first) {
                 open.context = join_contexts(&open.context, &scene.node.context);
             }
+            self.relink(first);
             if let Err(err) = self.binder.trash(scene.node.id) {
                 self.status = err.to_string();
                 return;
@@ -585,6 +586,7 @@ impl StudioState {
             node.keywords = step.node.keywords.clone();
             node.context = step.node.context.clone();
         }
+        self.relink(step.node.id);
         let status = match step.kind {
             StepKind::Merged(merged) => {
                 // Links come back last one first, so the open scene's links

@@ -135,7 +135,7 @@ const PROJECT_KEYS: [&str; 5] = ["format", "id", "title", "created", "settings"]
 /// Keys in an item's front matter that the program writes. Any other is
 /// kept as found, the `synopsis`, `notes`, and beats of a file from before
 /// Phase 15 among them.
-const SCENE_HEAD: [&str; 9] = ["id", "title", "context", "status", "label", "color", "tags", "footnotes", "links"];
+const SCENE_HEAD: [&str; 10] = ["id", "title", "context", "connected", "status", "label", "color", "tags", "footnotes", "links"];
 
 fn unknown_keys(item: &Value, known: &[&str]) -> Map<String, Value> {
     item.as_object()
@@ -449,7 +449,7 @@ pub(crate) fn has_own_file(node: &BinderNode) -> bool {
 
 /// The file of one binder item: its details as front matter, its keywords
 /// as `tags`, and its text.
-pub(crate) fn scene_text(node: &BinderNode, blocks: &[Block], extras: Option<&Extras>) -> String {
+pub(crate) fn scene_text(node: &BinderNode, tree: &BinderTree, blocks: &[Block], extras: Option<&Extras>) -> String {
     let mut other = Header::default();
     if !node.keywords.is_empty() {
         other.set_list("tags", &node.keywords);
@@ -475,6 +475,7 @@ pub(crate) fn scene_text(node: &BinderNode, blocks: &[Block], extras: Option<&Ex
             id: Some(node.id),
             title: node.title.clone(),
             context: node.context.clone(),
+            connected: crate::connected::connected_written(tree, node, blocks),
             status: node.status.clone(),
             label: node.label.clone(),
             color: node.color.clone(),
@@ -620,7 +621,7 @@ fn render(content: &ProjectContent) -> Result<Rendered> {
             continue;
         }
         let blocks = documents.get(&node.id).map(|document| document.blocks.as_slice()).unwrap_or_default();
-        contents.push((path.clone(), scene_text(node, blocks, content.extras.get(&node.id))));
+        contents.push((path.clone(), scene_text(node, &content.binder, blocks, content.extras.get(&node.id))));
         files.insert(node.id, path);
     }
     contents.push(("binder.json".into(), binder_json(&content.binder, &files, &content.extras)));
