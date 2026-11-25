@@ -236,6 +236,10 @@ What Writing Studio does today, in one place. [USAGE.md](USAGE.md) says how to u
   - Abbreviations such as "Mr." end a sentence early.
   - The thresholds are fixed.
 - **The context box** has no live preview, Markdown keys, or spelling, and its `[[links]]` are not clickable.
+- **Seen while taking the README's screenshots:**
+  - At the binder's default width, a scene inside a chapter that has a status and two keywords loses its title: the name has 0 px left.
+  - The outliner's Status column is too narrow, and cuts "Done" to "Do".
+  - The spelling tab says "1 words".
 - **What the page shows differently from the files:** `![image](x.png)` shows as a link, `<b>` shows as raw tags, and spelling underlines words inside code blocks.
 - **Not covered by tests,** and tried only in the window:
   - how the panels, the notice, and the scroll bar move;
