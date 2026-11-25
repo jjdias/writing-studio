@@ -59,7 +59,7 @@ In this order: profiles first, because every format after them reads one. Then w
 - Built with the `zip` crate, which `docx-rs` already brings in: no new crate in the build, only a new direct use of one already there.
 - Checked by tests that read the file back: the entries in the right order (`mimetype` first and stored), every file in the manifest present, and every XHTML file well formed.
 
-PDF was stage 6. It moved to [bonus.md](../todo/bonus.md#pdf-compile) before it started: it needs a typesetting engine chosen first, and the other formats did not wait on it.
+PDF was stage 6. It moved to the bonus list (since removed) before it started: it needs a typesetting engine chosen first, and the other formats did not wait on it.
 
 ### 6. Check the manuscript before compiling
 

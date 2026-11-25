@@ -26,7 +26,7 @@ Writing Studio is **open source** (MIT OR Apache-2.0) and **free for the communi
 | 13 | Context at every level: a file for each scene, chapter, part, and book, its context above its text, and the context of each level for a reader or an AI | Done | [done/phase-13.md](done/phase-13.md) |
 | 14 | Notes: characters, places, lore, research, and story notes become one kind of note, in folders the writer controls, written freely in the page, with templates, `[[links]]`, and footnotes | Done | [done/phase-14.md](done/phase-14.md) |
 | 15 | Free context: one free text in place of the synopsis, notes, and beats, and a connected list at the top of every file, of its keywords and the notes it is tied to | Done | [done/phase-15.md](done/phase-15.md) |
-| Bonus | Work with no phase yet | Not started | [todo/bonus.md](todo/bonus.md) |
+| 16 | Tests for the page: the Markdown page's JavaScript tested with Node's own runner, and built and checked in CI | Not started | [todo/phase-16.md](todo/phase-16.md) |
 
 Phases 1 to 9 and 11 to 15 are on `master`.
 

@@ -63,7 +63,7 @@ In `crates/context`, beside `scene_context`:
 
 - The project's files are made for reading, but a level's whole context (what it holds, its links) is made, not stored. A tool that reads folders, such as an AI working in the project, would need the program to give it that.
 - The choice: a setting, off until chosen, that keeps `.local/context/` up to date, one `.md` file of context for each level, rebuilt when something it reads is saved. `.local/` is this machine's only and never synced, so these files never conflict and never go stale on another machine.
-- The other way is to leave it to the optional local assistance in [bonus.md](../todo/bonus.md), which asks `crates/context` directly.
+- The other way is to leave it to the optional local assistance in the bonus list (since removed), which asks `crates/context` directly.
 
 **Skipped.** The maintainer chose not to keep context files in `.local/context/`. A tool that wants a level's context gets it from the program: **Copy context** now, and the optional local assistance in [bonus.md](bonus.md), which asks `crates/context` directly, later.
 

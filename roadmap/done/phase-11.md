@@ -54,7 +54,7 @@ So a writer gets what was asked for: chips in the scene's inspector, with sugges
 - **`#tag` typed in a scene's text.** Scene text is the book: compile would have to find and remove every tag, and "#1 bestseller" would read as one. Keywords stay outside the text, as the bonus entry already said.
 - **No spaces, and not only digits.** Obsidian needs those rules because it finds tags in text. Keywords are never looked for in text, and many already have spaces (labels became keywords in Phase 9). Only the Markdown export has to write a space differently (stage 6).
 - **Linking by itself.** A character named in a scene is offered as a link (stage 8); the writer decides.
-- **Assistance.** The scene context is built so that assistance can read it later ("Optional local assistance" in [bonus.md](../todo/bonus.md)); nothing in this phase sends text anywhere or runs a model.
+- **Assistance.** The scene context is built so that assistance can read it later ("Optional local assistance" in the bonus list (since removed)); nothing in this phase sends text anywhere or runs a model.
 
 ## The work
 
@@ -256,7 +256,7 @@ The tests in this repository are the only testing for now (see "How the work is 
 
 ## Not in this phase
 
-- Keywords on the story's entries themselves (a character tagged `antagonist`). Entries are linked, not tagged; tagging them is in [bonus.md](../todo/bonus.md).
+- Keywords on the story's entries themselves (a character tagged `antagonist`). Entries are linked, not tagged; tagging them is in the bonus list (since removed).
 - Any assistance, local or remote, and anything that sends text from the computer.
 - `OR` and parentheses in the binder search.
 - A mind map for anything but the manuscript and what is linked to it.
