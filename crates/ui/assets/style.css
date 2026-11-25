@@ -779,6 +779,9 @@ span.connected-chip { cursor: default; }
   background: transparent;
   padding: 4px 6px;
 }
+/* Its column is as narrow as it can be, so the field gives it the room of
+   the longest status ("On hold", "Revise"). */
+.outliner .status-input { min-width: 7.5em; }
 .outliner .cell-input:focus {
   border-color: var(--gold);
   background: var(--input);
@@ -1318,8 +1321,11 @@ button.keyword-dot:hover { box-shadow: 0 0 0 2px var(--line); }
 .library-search { margin: 0 12px 8px; width: auto; }
 .library-empty { padding: 4px 16px; }
 .library-row.scene-row .library-name { font-weight: 400; }
-.library-row .status-pill { flex: 0 0 auto; margin-left: 6px; font-size: 10px; }
-.library-row .card-keywords { display: inline-flex; gap: 3px; margin-left: 6px; flex: 0 0 auto; }
+/* In a narrow row the title keeps some room, and the keyword dots, then
+   the status, give theirs up first. */
+.library-row.scene-row .library-name { min-width: 4em; }
+.library-row .status-pill { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-left: 6px; font-size: 10px; }
+.library-row .card-keywords { display: inline-flex; gap: 3px; margin-left: 6px; flex: 0 100 auto; min-width: 0; overflow: hidden; }
 .library-row.picked { box-shadow: inset 3px 0 0 var(--gold); }
 .row-progress { display: inline-grid; place-items: center; margin-left: auto; padding-left: 6px; color: var(--gold); flex: 0 0 auto; }
 .row-progress .ring { width: 14px; height: 14px; }

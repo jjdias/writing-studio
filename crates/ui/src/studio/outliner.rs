@@ -153,7 +153,7 @@ pub(super) fn OutlineCells(row: OwnedOutlineRow) -> Element {
     rsx! {
         td {
             input {
-                class: "cell-input",
+                class: "cell-input status-input",
                 aria_label: "Status",
                 value: "{row.status}",
                 oninput: move |event| state.write().update_node_status(id, event.value()),
