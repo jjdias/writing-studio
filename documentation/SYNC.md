@@ -60,9 +60,10 @@ Nothing written on either computer is dropped.
 
 - Paragraphs changed on only one computer are taken.
 - **Paragraphs changed differently on both** are both kept, this computer's first. The scene opens with track changes on, and the other computer's paragraphs are listed as changes: **Accept** keeps them, **Reject** takes them out.
-- A title, synopsis, status, or beat changed differently on both keeps this computer's.
+- A title, status, or other detail changed differently on both keeps this computer's.
+- **A context** merges by paragraph, as a scene's text does: each computer's new paragraphs are kept, and a paragraph changed differently on both keeps both versions, this computer's first, and the sync says so. What each file lists as `connected:` is not merged: the program writes it again from the item.
 - Something deleted on one computer and changed on the other is kept.
-- A research file changed on both keeps this computer's, with the other's beside it, ending in `-theirs`.
+- A file in `attachments/` (one added to a note, or a cover) changed on both keeps this computer's, with the other's beside it, ending in `-theirs`.
 
 History lists everything the last sync could not combine.
 

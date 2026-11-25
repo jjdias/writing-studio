@@ -1,6 +1,6 @@
 # Phase 15 — Free context
 
-In progress: stages 1 to 5 are done. Branch: `phase-15`.
+Stages 1 to 6 are done; to try in the window. Branch: `phase-15`.
 
 Context stops being a form. A scene, a chapter, a part, and a book each get one **context**: free text, written as the writer likes, about what matters there. It replaces the synopsis, the notes, and a scene's goal, conflict, and outcome. The program does not need these as separate fields: an AI reading the project reads them as plain text anyway, as it reads notes since [Phase 14](../done/phase-14.md).
 
@@ -105,6 +105,8 @@ Measured on 300 scenes of about 500 words and 50 notes (351 files), the build th
 ### 6. Docs
 
 - `documentation/USAGE.md`, `PROJECT_FORMAT.md` (the keys, the cache, format 5), and `ARCHITECTURE.md` describe the context and the connected list; the roadmap's table lists this phase.
+
+**Done.** `USAGE.md` describes the Context box and its summary, **Connected** and `connected:`, **Update connections**, Diagnostics without beats, the outliner's Summary, and merging scenes' contexts; `PROJECT_FORMAT.md` the `context` and `connected` keys with an example, format 5 and the format 4 refusal, what writes a file's head, opening's pass, and the cache's `context` column; `ARCHITECTURE.md` the crates' parts in it. Found on the way and fixed with them, as they described what this phase changed: `SYNC.md` (a context merges by paragraph; `connected:` is not merged; an attached file, not a research file, gets a `-theirs` copy), `README.md` (notes, not characters and world notes; checks on a scene's text, not its beats), and USAGE's mind map, which still described the Story menu Phase 14 took away.
 
 ## How changes are checked
 

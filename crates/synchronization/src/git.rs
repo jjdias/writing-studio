@@ -355,7 +355,7 @@ fn merge_with(root: &Path, upstream: &str, report: &mut SyncReport) -> Result<()
     result
 }
 
-/// Research files are whole files. One changed on one side is taken; one
+/// Files in `attachments/` are whole files. One changed on one side is taken; one
 /// changed differently on both keeps this machine's, and the other's is put
 /// beside it with `-theirs` before the extension. A link is never followed:
 /// one that came through git could point anywhere.

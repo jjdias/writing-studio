@@ -23,13 +23,13 @@ Binder + stored documents → writing-studio-export → .md / .docx on disk
 | `writing-studio-core` | IDs, timestamps, errors, events, autosave debounce, format version |
 | `writing-studio-document` | Block document model, JSON, restricted HTML interchange, text comparison between two versions, tracked changes |
 | `writing-studio-editor` | Session, undo/redo, the page's text applied as blocks, counts |
-| `writing-studio-project` | Binder tree, with the manuscript and the notes, settings, drag-and-drop, trash/restore |
+| `writing-studio-project` | Binder tree, with the manuscript and the notes, each item's free context and its summary, settings, drag-and-drop, trash/restore |
 | `writing-studio-manuscript` | Book/chapter/scene outline |
 | `writing-studio-templates` | Blank novel seed and the first note templates |
-| `writing-studio-storage` | The project folder: Markdown and JSON files as the project, a SQLite cache beside them, snapshots, backups, and restore; the project exported as a folder of Markdown, and Markdown brought in |
+| `writing-studio-storage` | The project folder: Markdown and JSON files as the project, a SQLite cache beside them, snapshots, backups, and restore; the project exported as a folder of Markdown, and Markdown brought in; each item's connected list (`connected.rs`), written at the top of its file and shown in Context |
 | `writing-studio-plotting` | Plotlines, plot points, and scene links |
 | `writing-studio-search` | In-memory full-text index of manuscript text, rebuilt from SQLite when a project opens |
-| `writing-studio-diagnostics` | Scene goal, conflict, and outcome, and the counts and checks made on a scene's text. No dependencies |
+| `writing-studio-diagnostics` | The counts and checks made on a scene's text. No dependencies |
 | `writing-studio-context` | A scene's context: the scene, where it sits, the scenes around it, its plot points, and the notes linked to it or to what it is in, or mentioned in its text; as Markdown, capped to a length. Reads the model crates only, not the window or the files |
 | `writing-studio-format` | A scene or a note as a Markdown file with front matter, and back; the same Markdown for the page, export, and import; `[[Title]]` links. See [PROJECT_FORMAT.md](PROJECT_FORMAT.md) |
 | `writing-studio-spellcheck` | Checks words against a Hunspell dictionary (English US is compiled in) and the project's own words; suggests replacements. No network |
@@ -38,7 +38,7 @@ Binder + stored documents → writing-studio-export → .md / .docx on disk
 | `writing-studio-ui` | Workspace UI |
 | `writing-studio-desktop` | Native window |
 
-Notes are binder items under the Notes root, each a Markdown file in `notes/`, as scenes are in `manuscript/`; the plot grid is `plot.json`. Both are rows in the cache too. A file added to a note is copied into `attachments/`. Search is not stored: the Tantivy index is memory only.
+Notes are binder items under the Notes root, each a Markdown file in `notes/`, as scenes are in `manuscript/`; the plot grid is `plot.json`. Every item's file begins with its context and what it is connected to, for any reader, an AI among them (Phase 15): the connected list is the program's, worked out by `writing_studio_storage::connected` from the item, its text's links, and the binder, and kept current by the head fingerprint of each file, by opening a project, and by **Update connections**. Both are rows in the cache too. A file added to a note is copied into `attachments/`. Search is not stored: the Tantivy index is memory only.
 
 Inline comments, links, code blocks, and scene breaks are fields on the document JSON. A note sits on text runs (`marks.comment`, with `comment_kind` and `comment_resolved`), and so does a highlight (`marks.highlight`). `Document::review_items` lists them, joining neighboring runs that carry the same note. Tracked changes are the difference between the document and a baseline copy kept in `tracking_baselines`; nothing about them is stored in the document. See [Phase 4](../roadmap/done/phase-4.md) and [the roadmap](../roadmap/README.md).
 
