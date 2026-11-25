@@ -83,10 +83,18 @@ pub fn connected(tree: &BinderTree, node: &BinderNode, text_links: &[String]) ->
 }
 
 /// What `node`'s file lists: its ties written out, the text's links read
-/// from `blocks` as the file holds them.
+/// from the plain text of `blocks`, as the window reads them for Context.
 pub(crate) fn connected_written(tree: &BinderTree, node: &BinderNode, blocks: &[writing_studio_document::Block]) -> Vec<String> {
-    let links = links_in(&writing_studio_format::blocks_to_markdown(blocks));
+    let text: Vec<String> = blocks.iter().map(writing_studio_document::Block::plain_text).collect();
+    let links = links_in(&text.join("\n"));
     connected(tree, node, &links).iter().map(Tie::written).collect()
+}
+
+/// What a file's head lists as `connected`, read without its text.
+pub(crate) fn listed_in(file: &str) -> Option<Vec<String>> {
+    let file = file.strip_prefix('\u{feff}').unwrap_or(file);
+    let (mut header, _) = writing_studio_format::split_header(file).ok()?;
+    Some(header.take_list("connected"))
 }
 
 /// The part of `node`'s list that comes from the binder rather than its

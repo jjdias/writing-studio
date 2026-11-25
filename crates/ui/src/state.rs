@@ -4533,6 +4533,28 @@ impl StudioState {
         writing_studio_storage::connected(&self.binder, node, text_links)
     }
 
+    /// Write again every file whose connected list is out of date, so an AI
+    /// reading the project sees every connection: what is unsaved is saved
+    /// first, and a file changed outside is read in first, as when the
+    /// window comes back to the front.
+    pub fn update_connections(&mut self) {
+        self.save_all();
+        if self.has_unsaved() {
+            return;
+        }
+        self.check_files_on_disk();
+        let Some(store) = self.store.clone() else {
+            return;
+        };
+        let result = store.borrow().update_connections();
+        self.status = match result {
+            Ok(0) => "Every file's connections are up to date.".into(),
+            Ok(1) => "Updated the connections in 1 file.".into(),
+            Ok(many) => format!("Updated the connections in {many} files."),
+            Err(err) => format!("Could not update every file's connections: {err}"),
+        };
+    }
+
     /// What the writer says about an item: kept in its file, never compiled.
     pub fn update_node_context(&mut self, id: Id, context: String) {
         self.edit_node(id, |node| node.context = context);
@@ -5014,6 +5036,34 @@ mod tests {
         state.apply_editor_markdown("Mara ran. [[Mara]] again, and [[The Pilot]].");
         let written: Vec<String> = state.connected_of(scene).iter().map(writing_studio_storage::Tie::written).collect();
         assert_eq!(written, ["night", "[[The Pilot]]", "[[Mara]]", "[[Port Ely]]"]);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Update connections reads in a list changed by hand and writes it
+    /// again as the item has it, and says when nothing was out of date.
+    #[test]
+    fn update_connections_writes_the_lists_that_are_out_of_date() {
+        let (mut state, dir) = open_state("update-connections");
+        let scene = state.selected.unwrap();
+        state.add_keyword(scene, "night");
+        state.save_all();
+        let file = open_scene_file(&state);
+        let text = std::fs::read_to_string(&file).unwrap();
+        assert!(text.contains("connected:
+  - night
+"), "{text}");
+        std::fs::write(&file, text.replace("connected:
+  - night
+", "connected:
+  - day
+")).unwrap();
+        state.update_connections();
+        assert!(state.status.contains("Updated the connections in 1 file"), "{}", state.status);
+        assert!(std::fs::read_to_string(&file).unwrap().contains("connected:
+  - night
+"));
+        state.update_connections();
+        assert_eq!(state.status, "Every file's connections are up to date.");
         let _ = std::fs::remove_dir_all(dir);
     }
 

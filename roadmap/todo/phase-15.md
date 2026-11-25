@@ -1,6 +1,6 @@
 # Phase 15 — Free context
 
-In progress: stages 1 to 4 are done. Branch: `phase-15`.
+In progress: stages 1 to 5 are done. Branch: `phase-15`.
 
 Context stops being a form. A scene, a chapter, a part, and a book each get one **context**: free text, written as the writer likes, about what matters there. It replaces the synopsis, the notes, and a scene's goal, conflict, and outcome. The program does not need these as separate fields: an AI reading the project reads them as plain text anyway, as it reads notes since [Phase 14](../done/phase-14.md).
 
@@ -97,6 +97,10 @@ A list is only written when its own file is saved, so three things keep it true:
 - **When a project opens**, it already reads every file to fill the cache. It works out each list from what it read and writes again, one at a time, only the files whose list differs: what sync, git, or a hand edit changed outside the program. History lists how many were brought up to date, as it lists other repairs.
 - **Update connections**, in the Project menu, does the same pass at any time. Its tooltip says what it does ("Writes the top of every file whose context and keyword list are out of date, so an AI reading the project sees every connection"), and the status line says how many files changed. With nothing unsaved it runs at once; with something unsaved it saves first.
 - The pass holds one file at a time. It is not run in parallel: every write also updates the cache, which takes one writer at a time, and a project of a few hundred files is written in well under a second. (Measured when it is built, as the performance rule asks.)
+
+**Done.** As a change happens: stage 4 put the binder's part of each list in the file's head fingerprint, so linking or unlinking a note, renaming, trashing, or restoring a note or a scene, and renaming or merging a keyword write again, on the next save of the binder, the head of each file whose list changed and no other; typing in a scene writes that scene only. When a project opens, `ProjectStore::open` compares what each file listed (`ProjectContent::listed`) with what its item has, from the texts it just read, and writes again only the files that differ; History lists how many, as it lists other repairs, and a file that cannot be written does not stop the project from opening. **Update connections**, in the Project menu (`StudioState::update_connections`), saves what is unsaved, reads in what changed outside as when the window comes back to the front, and then runs the same pass against what is on disk (`ProjectStore::update_connections`); the status line says how many files changed. A file changed outside that the program has not read in is left alone, never written over. The pass works out each file's list from its head alone (`listed_in`) and writes a file out in full only when its list is wrong; the text's links come from its plain text, as Context's do.
+
+Measured on 300 scenes of about 500 words and 50 notes (351 files), the build that runs and a release build: opening, every list up to date, 0.69 s and 0.31 s; **Update connections** with nothing to write, 0.13 s and 0.07 s; with every file out of date, 1.58 s and 1.38 s. That last is the safe write of each file (about 4 ms each), not the pass, so the plan's "well under a second" holds only when few files are out of date; the pass is still one file at a time, as the cache takes one writer. Tests: `a_file_lists_what_its_item_is_connected_to` (opening rewrites a list changed by hand and says so, leaves the others alone; Update connections writes what the cache has and the files missed, then nothing, and never writes over a file changed outside) and `update_connections_writes_the_lists_that_are_out_of_date`.
 
 ### 6. Docs
 

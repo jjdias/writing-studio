@@ -457,7 +457,7 @@ fn ProjectMenu() -> Element {
             button {
                 class: "menu-item",
                 role: "menuitem",
-                title: "A folder of Markdown files, one for each scene and entry, for another writing program",
+                title: "A folder of Markdown files, one for each scene and note, for another writing program",
                 onclick: move |_| {
                     state.write().open_menu = None;
                     if let Some(parent) = pick_folder("Choose where to put the Markdown folder") {
@@ -465,6 +465,17 @@ fn ProjectMenu() -> Element {
                     }
                 },
                 "Markdown folder…"
+            }
+            div { class: "menu-rule" }
+            button {
+                class: "menu-item",
+                role: "menuitem",
+                title: "Writes the top of every file whose context and keyword list are out of date, so an AI reading the project sees every connection",
+                onclick: move |_| {
+                    state.write().open_menu = None;
+                    state.write().update_connections();
+                },
+                "Update connections"
             }
         }
     }

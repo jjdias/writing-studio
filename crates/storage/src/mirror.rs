@@ -28,7 +28,7 @@ use writing_studio_templates::blank_novel;
 use crate::files::{
     folder_of,
     has_own_file,
-    read_scene_file,
+    listed_for, read_scene_file,
     text_fingerprint, unknown_head, with_a_run_in_every_block, write_project_files_noted,
     Extras, Problem, binder_json, inside, mindmap_json, place, plot_json, read_mindmap, read_project_files,
     scene_text, settings_json, MINDMAP_FILE,
@@ -260,6 +260,22 @@ impl ProjectStore {
             // Recovered and moved items are written into the files now, so the
             // files say what the window shows.
             store.write_files_from_cache()?;
+        } else {
+            // A connected list changed outside the program, by sync, git, or
+            // a hand, or out of date for a change made there, is written
+            // again from what was just read. A file that cannot be written
+            // does not stop the project from opening.
+            let listed = &content.listed;
+            let documents: HashMap<Id, &Document> = content.documents.iter().map(|document| (document.id, document)).collect();
+            let problem = match store.rewrite_connections(|id, _| listed.get(&id).cloned(), Some(&documents)) {
+                Ok(0) => None,
+                Ok(1) => Some("1 file's connected list was out of date; it was written again".to_string()),
+                Ok(many) => Some(format!("{many} files' connected lists were out of date; they were written again")),
+                Err(err) => Some(format!("the connected lists could not all be brought up to date: {err}")),
+            };
+            if let Some(message) = problem {
+                store.mirror.problems.borrow_mut().push(Problem { file: "The project".into(), message });
+            }
         }
         Ok(store)
     }
@@ -629,6 +645,69 @@ impl ProjectStore {
         self.delete_document_cached(id)
     }
 
+    /// Write again every file whose `connected` list, on disk, is not the
+    /// one its item has now (Phase 15). Returns how many files were
+    /// written; a file that lists what it should is not touched. A file
+    /// changed outside since the program last read or wrote it is left
+    /// alone: it is the window's to read in first (`changed_outside`), and
+    /// opening a project brings its list up to date.
+    pub fn update_connections(&self) -> Result<usize> {
+        if !self.mirroring() {
+            return Ok(0);
+        }
+        self.rewrite_connections(
+            |_, path| {
+                let text = fs::read_to_string(self.root.join(path)).ok()?;
+                if self.mirror.on_disk.borrow().get(path) != Some(&text_fingerprint(&text)) {
+                    return None;
+                }
+                crate::connected::listed_in(&text)
+            },
+            None,
+        )
+    }
+
+    /// The pass itself, one file at a time: `listed` says what a file lists
+    /// now, and the file is written when that is not what it should list;
+    /// `None` leaves the file alone. The texts are `documents` when the
+    /// caller has them, as opening does, or the cache's. Only a file that
+    /// changes is written out in full.
+    fn rewrite_connections(
+        &self,
+        listed: impl Fn(Id, &str) -> Option<Vec<String>>,
+        documents: Option<&HashMap<Id, &Document>>,
+    ) -> Result<usize> {
+        let tree = self.load_binder()?;
+        *self.mirror.tree.borrow_mut() = Some(tree.clone());
+        let mut written = 0;
+        for node in tree.nodes.iter().filter(|node| has_own_file(node) && !self.is_missing(node.id)) {
+            let Some(path) = self.mirror.paths.borrow().get(&node.id).cloned() else {
+                continue;
+            };
+            let Some(found) = listed(node.id, &path) else {
+                continue;
+            };
+            let loaded;
+            let blocks: &[writing_studio_document::Block] = match documents {
+                Some(documents) => node.document_id.and_then(|id| documents.get(&id)).map(|document| document.blocks.as_slice()).unwrap_or(&[]),
+                None => {
+                    loaded = node.document_id.and_then(|id| self.load_document(id).ok()).map(|document| document.blocks).unwrap_or_default();
+                    &loaded
+                }
+            };
+            let extras = self.mirror.extras.borrow();
+            if listed_for(node, &tree, blocks, extras.get(&node.id)) == found {
+                continue;
+            }
+            let text = scene_text(node, &tree, blocks, extras.get(&node.id));
+            drop(extras);
+            self.write_file(&path, &text)?;
+            self.mirror.heads.borrow_mut().insert(node.id, head_fingerprint(node, &tree));
+            written += 1;
+        }
+        Ok(written)
+    }
+
     pub fn persist_binder(&self, tree: &BinderTree) -> Result<()> {
         if self.mirroring() {
             self.write_changed_scenes(tree)?;
@@ -844,7 +923,10 @@ connected:
   - Tied / Chapter 1 / Scene 1
 "), "{note}");
 
-        // A list changed by hand is not read, and the next save writes it again.
+        // A list changed by hand is not read: opening writes it again, and
+        // says so, and leaves the files that list what they should alone.
+        let note_file = file_of(&store, port_id);
+        let note_before = fs::read_to_string(&note_file).unwrap();
         fs::write(&path, text.replace("connected:
   - night
 ", "connected:
@@ -853,13 +935,30 @@ connected:
         drop(store);
         let store = ProjectStore::open(&dir).unwrap();
         assert!(store.load_binder().unwrap().get(scene.id).unwrap().keywords == ["night"]);
-        let mut document = store.load_document(scene.id).unwrap();
-        document.replace_plain_text("Mara ran. [[Mara]] again, once more.");
-        store.save_document(&document).unwrap();
         let text = fs::read_to_string(&path).unwrap();
         assert!(text.contains("connected:
   - night
 ") && !text.contains("invented"), "{text}");
+        assert!(store.problems().iter().any(|problem| problem.message.contains("1 file's connected list")), "{:?}", store.problems());
+        assert_eq!(fs::read_to_string(&note_file).unwrap(), note_before);
+
+        // Update connections writes what the files do not list yet, here a
+        // change the cache has and the files missed, and writes nothing more.
+        let mut tree = store.load_binder().unwrap();
+        tree.nodes.iter_mut().find(|node| node.id == port_id).unwrap().links.clear();
+        store.persist_binder_cached(&tree).unwrap();
+        assert_eq!(store.update_connections().unwrap(), 2, "the scene and the note");
+        assert!(!fs::read_to_string(&path).unwrap().contains("[[Port Ely]]"));
+        assert_eq!(store.update_connections().unwrap(), 0, "nothing out of date, nothing written");
+        // A file changed outside is the window's to read in first.
+        let outside = fs::read_to_string(&path).unwrap().replace("connected:
+  - night
+", "connected:
+  - outside
+");
+        fs::write(&path, &outside).unwrap();
+        assert_eq!(store.update_connections().unwrap(), 0);
+        assert_eq!(fs::read_to_string(&path).unwrap(), outside, "never written over");
         let _ = fs::remove_dir_all(dir);
     }
 

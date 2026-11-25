@@ -73,6 +73,9 @@ pub struct ProjectContent {
     /// Something was recovered or repaired while reading, so the files must
     /// be written again to say so.
     pub repaired: bool,
+    /// What each file's `connected` list said when it was read, to tell
+    /// which are out of date (Phase 15).
+    pub listed: HashMap<Id, Vec<String>>,
 }
 
 /// Something wrong with a project's files, found when it was read.
@@ -208,6 +211,7 @@ impl ProjectContent {
             problems: Vec::new(),
             missing: HashSet::new(),
             repaired: false,
+            listed: HashMap::new(),
         })
     }
 }
@@ -449,6 +453,18 @@ pub(crate) fn has_own_file(node: &BinderNode) -> bool {
 
 /// The file of one binder item: its details as front matter, its keywords
 /// as `tags`, and its text.
+/// What `scene_text` lists as connected, without writing the file: a
+/// book's, part's, or folder's links are in the text kept under its front
+/// matter.
+pub(crate) fn listed_for(node: &BinderNode, tree: &BinderTree, blocks: &[Block], extras: Option<&Extras>) -> Vec<String> {
+    match extras {
+        Some(found) if node.document_id.is_none() && !found.body.is_empty() => {
+            crate::connected::connected_written(tree, node, &writing_studio_format::markdown_to_blocks(&found.body))
+        }
+        _ => crate::connected::connected_written(tree, node, blocks),
+    }
+}
+
 pub(crate) fn scene_text(node: &BinderNode, tree: &BinderTree, blocks: &[Block], extras: Option<&Extras>) -> String {
     let mut other = Header::default();
     if !node.keywords.is_empty() {
@@ -791,6 +807,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
     let binder_file = JsonFile::read(root, "binder.json", &seen)?;
     let mut nodes = Vec::new();
     let mut documents = Vec::new();
+    let mut listed = HashMap::new();
     let mut next_index: HashMap<Option<Id>, i64> = HashMap::new();
     for item in binder_file.list("items") {
         let id = binder_file.id(item, "id")?;
@@ -846,6 +863,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
                 }
             };
             found.head = unknown_head(&file.header.other, &["tags"]);
+            listed.insert(id, file.header.connected.clone());
             // Keywords are in the file; a file from before they moved there
             // has none, and the binder line's are kept.
             let tags = tags_of(&file.header.other);
@@ -1003,6 +1021,7 @@ pub fn read_project_files(root: &Path) -> Result<ProjectContent> {
         problems,
         missing,
         repaired,
+        listed,
     })
 }
 
