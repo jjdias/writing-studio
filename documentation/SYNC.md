@@ -81,7 +81,7 @@ git lfs track "attachments/**"
 
 ## When sync stops
 
-The status line says why. The common cases:
+The notice at the foot of the window says why. The common cases:
 
 - **"git does not know your name and email yet"**: step 2 above.
 - **A message about permission, authentication, or a host key**: git could not reach the repository without a prompt; step 4 above.

@@ -1387,3 +1387,59 @@ button.keyword-dot:hover { box-shadow: 0 0 0 2px var(--line); }
 .library-notes-head { display: flex; align-items: center; gap: 6px; }
 .library-notes-head span { flex: 1; }
 .library-notes-head .library-add-btn { font-size: 11px; padding: 1px 6px; }
+
+/* The side panels slide in and out (their slot's width), and the page
+   moves by half the difference of the two so it stays in the middle of the
+   window, as far as the room beside it allows. Not while a sash is dragged. */
+.panel-slot { flex: 0 0 auto; display: flex; min-width: 0; min-height: 0; overflow: hidden; transition: width 0.28s cubic-bezier(0.2, 0.7, 0.2, 1); }
+.panel-slot.right { justify-content: flex-end; }
+.desk { container-type: inline-size; }
+.manuscript, .page-head {
+  position: relative;
+  --room: max(0px, (100cqw - min(100cqw, var(--line-length, 70ch) + 112px)) / 2);
+  left: clamp(calc(-1 * var(--room)), var(--shift, 0px), var(--room));
+  transition: left 0.28s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.workbench.resizing .panel-slot, .workbench.resizing .manuscript, .workbench.resizing .page-head { transition: none; }
+
+/* The page's scroll bar shows while it scrolls or under the pointer, and
+   fades a moment after. */
+.desk { scrollbar-width: thin; scrollbar-color: transparent transparent; transition: scrollbar-color 0.45s ease; }
+.desk.scrolling, .desk:hover { scrollbar-color: color-mix(in srgb, var(--muted) 55%, transparent) transparent; }
+.desk:not(.scrolling):hover { transition-delay: 0.4s; }
+
+/* What the program says, at the foot of the window, for a moment. */
+.status-notice {
+  position: fixed;
+  left: 50%;
+  bottom: 14px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(36rem, calc(100vw - 32px));
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  font-size: 12px;
+  color: var(--text);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 6px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+.status-notice.shown { opacity: 1; pointer-events: auto; transform: translate(-50%, 0); }
+.status-notice-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Notes in this scene: every note not yet linked, narrowed as it is typed. */
+.note-picker { margin-top: 6px; }
+.note-picker .keyword-field { width: 100%; }
+.note-picker-list { margin-top: 4px; max-height: 14rem; overflow: auto; border: 1px solid var(--line); border-radius: 4px; background: var(--input); }
+.note-picker-item { display: flex; justify-content: space-between; gap: 8px; width: 100%; padding: 4px 8px; border: 0; border-radius: 0; background: transparent; text-align: left; font-size: 12px; color: var(--text); cursor: pointer; }
+.note-picker-item:hover { background: var(--hover); }
+.note-picker-folder { color: var(--muted); font-size: 11px; flex: 0 0 auto; }
+.note-picker-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.note-picker .hint { margin: 4px 8px; font-size: 12px; }
+.library-today { margin: 2px 0 0; padding: 0 2px; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

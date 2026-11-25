@@ -108,6 +108,19 @@ Measured on 300 scenes of about 500 words and 50 notes (351 files), the build th
 
 **Done.** `USAGE.md` describes the Context box and its summary, **Connected** and `connected:`, **Update connections**, Diagnostics without beats, the outliner's Summary, and merging scenes' contexts; `PROJECT_FORMAT.md` the `context` and `connected` keys with an example, format 5 and the format 4 refusal, what writes a file's head, opening's pass, and the cache's `context` column; `ARCHITECTURE.md` the crates' parts in it. Found on the way and fixed with them, as they described what this phase changed: `SYNC.md` (a context merges by paragraph; `connected:` is not merged; an attached file, not a research file, gets a `-theirs` copy), `README.md` (notes, not characters and world notes; checks on a scene's text, not its beats), and USAGE's mind map, which still described the Story menu Phase 14 took away.
 
+### After the build
+
+Asked for by the maintainer after trying the phase:
+
+- **The side panels slide** in and out: each is in a slot whose width moves (`.panel-slot`), and what is in it stays a moment after it closes (`use_lingering`), so it slides shut whole; not while a sash is dragged.
+- **The page stays in the middle of the window** while the panels move: it is shifted by half the difference of their widths (`--shift`), as far as the room beside it allows, and moves with them.
+- **The page's scroll bar fades** when it is not used: it shows while the page scrolls or under the pointer (`.desk.scrolling`), then fades.
+- **Notes in this scene** has a list of every note not yet linked, with its folder, narrowed as it is typed (`NotePicker`), in place of a field whose suggestions the window did not show.
+- **No status bar.** What the program has to say shows for a few seconds in a notice at the foot of the window (`StatusNotice`), with **Undo** while it applies; saving on its own says nothing. Today's words and this sitting's, which only the bar showed, are under the book's count in the library, and a deadline's pace is that line's tooltip.
+- **A scene has a ring** in the binder, as a chapter and a book have, filled by its status (`status_fraction`), whose tooltip gives its status, words, characters, and reading time; Context's **Progress** is gone. A scene's size is kept as texts are read and saved (`StudioState::text_sizes`), and the open scene's is its session's, so the binder reads no text for it.
+
+Tests: `a_scenes_ring_fills_with_its_status` and `a_scene_row_carries_the_scenes_size`; how the panels, the page, the scroll bar, and the notice move is the maintainer's to try.
+
 ## How changes are checked
 
 - An item's context is written as `context: |-` and read back, with Markdown and `[[links]]` in it, and the old keys are kept as unknown keys.

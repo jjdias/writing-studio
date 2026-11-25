@@ -70,6 +70,21 @@ pub fn App() -> Element {
     // After the first render, so the page is there to run it.
     use_effect(|| {
         let _ = document::eval(&format!("if (!window.wsEditor) {{\n{CODEMIRROR_JS}\n}}"));
+        // The page's scroll bar shows while it scrolls, or under the
+        // pointer, and fades a moment after (`.desk.scrolling`).
+        let _ = document::eval(
+            r#"if (!window.wsScrollFade) {
+                window.wsScrollFade = true;
+                const timers = new WeakMap();
+                document.addEventListener('scroll', (event) => {
+                    const el = event.target;
+                    if (!el || !el.classList || !el.classList.contains('desk')) return;
+                    el.classList.add('scrolling');
+                    clearTimeout(timers.get(el));
+                    timers.set(el, setTimeout(() => el.classList.remove('scrolling'), 900));
+                }, { capture: true, passive: true });
+            }"#,
+        );
     });
     rsx! {
         // The page's own title, which assistive tools read, is the window's.
@@ -247,11 +262,30 @@ fn Workspace() -> Element {
         !focus && fold.inspector && inspector_mode && overlay == Some(FoldedPanel::Inspector);
     let library_on = if fold.binder { overlay_library } else { arrangement.sidebar_visible };
     let inspector_on = inspector_mode && if fold.inspector { overlay_inspector } else { arrangement.inspector_visible };
+    // Each side panel slides in and out: its slot's width moves, and what is
+    // in it stays a moment after it closes, so it slides shut whole. The
+    // page moves by half the difference of the two, so it stays in the
+    // middle of the window while they move (`--shift`).
+    let widths = use_context::<Signal<PanelWidths>>();
+    let resizing = use_context::<Signal<Option<ResizeDrag>>>().read().is_some();
+    let (left_width, right_width) = (widths.read().sidebar, widths.read().inspector);
+    let library_slot = if show_library { left_width + SASH_WIDTH } else { 0 };
+    let context_slot = if show_inspector { right_width + SASH_WIDTH } else { 0 };
+    let keep_library = use_lingering(show_library);
+    let keep_context = use_lingering(show_inspector);
+    let shift = (i64::from(context_slot) - i64::from(library_slot)) / 2;
+    let mut bench = String::from("workbench");
+    if focus {
+        bench.push_str(" focus");
+    }
+    if resizing {
+        bench.push_str(" resizing");
+    }
     rsx! {
         if menu_open {
             div { class: "menu-backdrop", onclick: move |_| state.write().open_menu = None }
         }
-        div { class: if focus { "workbench focus" } else { "workbench" },
+        div { class: "{bench}", style: "--shift: {shift}px;",
             // A panel over the page comes where it shows, so Tab reaches it
             // in the order it is seen.
             if overlay_library {
@@ -260,9 +294,11 @@ fn Workspace() -> Element {
                     Library {}
                 }
             }
-            if show_library {
-                Library {}
-                Sash { kind: ResizeKind::Sidebar, positive: true }
+            div { class: "panel-slot left", style: "width: {library_slot}px;",
+                if keep_library {
+                    Library {}
+                    Sash { kind: ResizeKind::Sidebar, positive: true }
+                }
             }
             div { class: "editor-group",
                 if !focus {
@@ -304,9 +340,11 @@ fn Workspace() -> Element {
                 }
             }
             // Context is on the right of the page, as the inspector was.
-            if show_inspector {
-                Sash { kind: ResizeKind::Inspector, positive: false }
-                ContextPane {}
+            div { class: "panel-slot right", style: "width: {context_slot}px;",
+                if keep_context {
+                    Sash { kind: ResizeKind::Inspector, positive: false }
+                    ContextPane {}
+                }
             }
             if overlay_inspector {
                 div { class: "overlay-backdrop", onclick: move |_| state.write().overlay = None }
@@ -317,7 +355,7 @@ fn Workspace() -> Element {
             // Focus mode keeps only the page and how many words are on it.
             div { class: "focus-count", aria_live: "polite", "{state.read().word_count()} words" }
         } else {
-            StatusBar {}
+            StatusNotice {}
         }
         ItemMenuView {}
     }
@@ -541,52 +579,70 @@ fn SettingsPanel() -> Element {
 
 /// Quiet counts, in order of use, then the save state. The bar never wraps:
 /// a count that does not fit drops out whole, and the save state stays.
+/// The width of a side panel's sash, in pixels, beside the panel in its slot.
+const SASH_WIDTH: u32 = 4;
+/// How long a closing panel keeps what is in it, to slide shut whole: the
+/// slot's transition in `style.css`, and a little more.
+const PANEL_SLIDE_MS: u64 = 300;
+
+/// Whether to keep a panel's contents: while it is shown, and for the slide
+/// after it is hidden.
+fn use_lingering(shown: bool) -> bool {
+    let mut kept = use_signal(|| shown);
+    use_effect(use_reactive((&shown,), move |(shown,)| {
+        if shown {
+            kept.set(true);
+        } else {
+            spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_millis(PANEL_SLIDE_MS)).await;
+                kept.set(false);
+            });
+        }
+    }));
+    shown || kept()
+}
+
+/// Saves the program does by itself, which need no word: anything else the
+/// status says shows for a moment at the foot of the window.
+fn is_routine(status: &str) -> bool {
+    matches!(status, "" | "Saved" | "Autosaved locally." | "All changes saved locally.")
+}
+
+/// What the program last said, at the foot of the window, in place of a
+/// status bar: it shows when there is something new to say, with Undo when
+/// it can be taken back, and fades a few seconds after.
 #[component]
-fn StatusBar() -> Element {
+fn StatusNotice() -> Element {
     let mut state = use_context::<Signal<StudioState>>();
     let status = state.read().status.clone();
-    let mode = state.read().mode;
-    let words = state.read().word_count();
-    let book_words = state.read().compile_book_word_count();
-    let book_title = state.read().compile_book_title();
-    let goal = state.read().goal();
-    let daily_goal = state.read().daily_goal();
-    let today_words = state.read().current_book_words_today();
-    let session_words = state.read().current_book_words_this_session();
-    let session_time = format_elapsed(state.read().session_shown_secs);
-    let unsaved = state.read().has_unsaved();
-    let book_text = if goal > 0 {
-        format!("{book_title}: {book_words} of {goal} words")
-    } else {
-        format!("{book_title}: {book_words} words")
-    };
-    // With a deadline, the book's count says the pace that meets it.
-    let book_text = match state.read().compile_book_pace() {
-        Some(pace) => format!("{book_text} · {}", pace_text(pace)),
-        None => book_text,
-    };
-    let today_text = if daily_goal > 0 {
-        format!("Today {today_words} of {daily_goal}")
-    } else {
-        format!("Today {today_words}")
-    };
-    let save_text = if unsaved { format!("Unsaved · {status}") } else { status };
     let undo_offered = state.read().undo_offered();
-    rsx! {
-        footer { class: "status",
-            span { class: "status-book", title: "{book_text}", "{book_text}" }
-            div { class: "status-stats",
-                if mode == WorkspaceMode::Writing {
-                    span { if words == 1 { "1 word in this scene" } else { "{words} words in this scene" } }
-                }
-                span { "{today_text}" }
-                span { "This sitting {session_words} · {session_time}" }
+    let mut shown = use_signal(|| false);
+    let mut said = use_signal(|| 0u64);
+    use_effect(use_reactive((&status,), move |(status,)| {
+        if is_routine(&status) {
+            return;
+        }
+        let now = *said.peek() + 1;
+        said.set(now);
+        shown.set(true);
+        spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(4500)).await;
+            if *said.peek() == now {
+                shown.set(false);
             }
-            span { class: "status-save", title: "{save_text}", "{save_text}" }
+        });
+    }));
+    let visible = (shown() || undo_offered) && !is_routine(&status);
+    rsx! {
+        div {
+            class: if visible { "status-notice shown" } else { "status-notice" },
+            role: "status",
+            aria_live: "polite",
+            span { class: "status-notice-text", "{status}" }
             if undo_offered {
                 button {
                     class: "status-undo",
-                    title: "Undo what the status line says",
+                    title: "Undo what this says",
                     onmousedown: move |event| event.prevent_default(),
                     onclick: move |_| state.write().take_undo_offer(),
                     "Undo"

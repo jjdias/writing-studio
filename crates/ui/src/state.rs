@@ -99,6 +99,9 @@ pub struct BinderRow {
     /// For what holds scenes: how many it holds, and how many are final.
     pub scenes: usize,
     pub finished: usize,
+    /// For a scene: its words and characters, for its ring's tooltip.
+    pub words: u32,
+    pub characters: u32,
     /// Under Notes: whether it is compiled with the book, as footnotes.
     /// `None` elsewhere.
     pub compiles: Option<bool>,
@@ -333,6 +336,9 @@ pub struct StudioState {
     /// The links of each item's text alone, as written, for the connected
     /// list (Phase 15). `link_index` has these and its context's, in lowercase.
     text_links: HashMap<Id, Vec<String>>,
+    /// Each text's words and characters, as it was last read or saved, for
+    /// the binder's rings; the open scene's are its session's.
+    text_sizes: HashMap<Id, (u32, u32)>,
     /// The first line of each item's text, for a link's tip.
     pub openings: HashMap<Id, String>,
     /// The mind map's text filter: what does not match is dimmed.
@@ -474,6 +480,7 @@ impl Default for StudioState {
             manuscript_index: Rc::new(RefCell::new(ManuscriptIndex::new())),
             link_index: HashMap::new(),
             text_links: HashMap::new(),
+            text_sizes: HashMap::new(),
             openings: HashMap::new(),
             map_query: String::new(),
             folded_map: Vec::new(),
@@ -1726,6 +1733,7 @@ impl StudioState {
                 Ok(()) => {
                     let id = session.document_id();
                     let text = session.plain_text();
+                    self.text_sizes.insert(id, (session.word_count(), session.char_count()));
                     session.mark_clean();
                     match self.manuscript_index.borrow_mut().upsert(id, &text) {
                         Ok(()) => self.status = "Saved".into(),
@@ -2348,6 +2356,12 @@ impl StudioState {
 
     fn binder_row(&self, node: &BinderNode, depth: u32, has_children: bool, collapsed: bool) -> BinderRow {
         let scene = node.kind == NodeKind::Scene;
+        // The open scene's size as it is now; another's as last saved.
+        let size = match (scene, node.document_id, &self.session) {
+            (true, Some(document), Some(session)) if session.document_id() == document => (session.word_count(), session.char_count()),
+            (true, Some(document), _) => self.text_sizes.get(&document).copied().unwrap_or_default(),
+            _ => (0, 0),
+        };
         let held: Vec<Id> = if scene {
             Vec::new()
         } else {
@@ -2370,6 +2384,8 @@ impl StudioState {
             left_out: self.binder.is_left_out(node.id),
             scenes: held.len(),
             finished,
+            words: size.0,
+            characters: size.1,
             compiles: (!node.kind.is_root() && self.binder.is_in_notes(node.id)).then_some(node.footnotes),
             color: binder_color_hex(&node.color).to_string(),
         }
@@ -3186,6 +3202,7 @@ impl StudioState {
             .iter()
             .map(|document| (document.id, document.to_plain_text()))
             .collect();
+        self.text_sizes = documents.iter().map(|document| (document.id, (document.word_count(), document.char_count()))).collect();
         let pairs: Vec<(Id, &str)> = owned.iter().map(|(id, text)| (*id, text.as_str())).collect();
         if let Err(err) = self.manuscript_index.borrow_mut().replace_all(&pairs) {
             self.status = format!("Search index failed: {err}");
@@ -5064,6 +5081,24 @@ mod tests {
 "));
         state.update_connections();
         assert_eq!(state.status, "Every file's connections are up to date.");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A scene's row carries its size for its ring's tooltip: the open
+    /// scene's as it is typed, another's as last saved.
+    #[test]
+    fn a_scene_row_carries_the_scenes_size() {
+        let (mut state, dir) = open_state("scene-size");
+        let first = state.selected.unwrap();
+        state.apply_editor_markdown("Mara ran for the quay.");
+        let size = |state: &StudioState, id: Id| {
+            let row = state.binder_rows().into_iter().find(|row| row.id == id).unwrap();
+            (row.words, row.characters)
+        };
+        assert_eq!(size(&state, first), (5, 22), "the open scene, as typed");
+        state.flush_editor();
+        state.add_node(NodeKind::Scene);
+        assert_eq!(size(&state, first), (5, 22), "as last saved, once another is open");
         let _ = std::fs::remove_dir_all(dir);
     }
 

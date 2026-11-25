@@ -37,12 +37,20 @@ pub(super) fn Library() -> Element {
         left_out: false,
         scenes: 0,
         finished: 0,
+        words: 0,
+        characters: 0,
         compiles: None,
         color: String::new(),
     });
     let widths = use_context::<Signal<PanelWidths>>();
     let width = widths.read().sidebar;
     let fraction = if goal > 0 { (book_words as f64 / goal as f64).min(1.0) } else { 0.0 };
+    let daily_goal = state.read().daily_goal();
+    let today_words = state.read().current_book_words_today();
+    let today_line = if daily_goal > 0 { format!("Today {today_words} of {daily_goal}") } else { format!("Today {today_words}") };
+    let session_words = state.read().current_book_words_this_session();
+    let session_time = writing_studio_project::format_elapsed(state.read().session_shown_secs);
+    let pace_line = state.read().compile_book_pace().map(pace_text).unwrap_or_else(|| "Words added to this book today and in this sitting".into());
     let deadline = state.read().compile_book_deadline();
     let days_left = match state.read().compile_book_pace() {
         Some(Pace::Due { days, .. }) => Some(time_left(days)),
@@ -71,6 +79,11 @@ pub(super) fn Library() -> Element {
                         if goal > 0 { "{book_words} of {goal} words" } else { "{book_words} words" }
                     }
                     if menu == Some(FrameMenu::Goals) { GoalsPanel {} }
+                }
+                // Today's words and this sitting's, which the status bar
+                // showed, with the pace a deadline asks for.
+                div { class: "library-today", title: "{pace_line}",
+                    "{today_line} · this sitting {session_words}, {session_time}"
                 }
                 if let Some(day) = deadline.clone() {
                     div { class: "library-deadline", title: "The day to reach the target by",
@@ -352,6 +365,9 @@ fn LibraryRow(row: BinderRow, active: bool) -> Element {
             if kind == NodeKind::Scene && !row.status.trim().is_empty() {
                 StatusPill { status: row.status.clone() }
             }
+            if kind == NodeKind::Scene {
+                span { class: "row-progress", title: "{scene_progress(&row)}", Ring { fraction: status_fraction(&row.status) } }
+            }
             // Under Notes, one dot in the note's own color, none without one.
             if row.compiles.is_some() {
                 if !row.color.is_empty() {
@@ -495,6 +511,24 @@ pub(super) fn StatusPill(status: String) -> Element {
     }
 }
 
+/// How far a scene is, by its status, for its ring: to do none, a draft a
+/// third, in revision two thirds, done all of it.
+pub(super) fn status_fraction(status: &str) -> f64 {
+    match status_tone(status) {
+        "final" => 1.0,
+        "revise" => 2.0 / 3.0,
+        "draft" => 1.0 / 3.0,
+        _ => 0.0,
+    }
+}
+
+/// A scene's ring's tooltip: its status, size, and reading time.
+fn scene_progress(row: &BinderRow) -> String {
+    let status = if row.status.trim().is_empty() { "No status".to_string() } else { row.status.trim().to_string() };
+    let words = if row.words == 1 { "1 word".to_string() } else { format!("{} words", row.words) };
+    format!("{status} · {words} · {} characters · {} to read", row.characters, reading_time(row.words))
+}
+
 pub(super) fn status_tone(status: &str) -> &'static str {
     let lower = status.trim().to_lowercase();
     if lower.contains("final") || lower.contains("done") {
@@ -571,6 +605,16 @@ pub(super) fn IconButton(name: String, open: bool, onclick: EventHandler<MouseEv
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A scene's ring fills with its status, as a chapter's with its scenes.
+    #[test]
+    fn a_scenes_ring_fills_with_its_status() {
+        assert_eq!(status_fraction("To do"), 0.0);
+        assert_eq!(status_fraction("Draft"), 1.0 / 3.0);
+        assert_eq!(status_fraction("Revise"), 2.0 / 3.0);
+        assert_eq!(status_fraction("Done"), 1.0);
+        assert_eq!(status_fraction("On hold"), 0.0);
+    }
 
     #[test]
     fn known_statuses_have_their_own_colors_and_others_keep_one() {

@@ -32,7 +32,6 @@ pub(super) fn Inspector() -> Element {
     rsx! {
         if let Some(node) = node {
             // The title is the heading on the page, so it is renamed there.
-            Progress {}
             div { class: "dash-heading", "{node.kind.icon_label()}" }
             if matches!(node.kind, NodeKind::Scene | NodeKind::Chapter | NodeKind::Part | NodeKind::Book) {
                 label { r#for: "item-context", "Context" }
@@ -373,27 +372,6 @@ pub(super) fn reading_time(words: u32) -> String {
     }
 }
 
-/// The open scene's size, at the top of the dashboard.
-#[component]
-fn Progress() -> Element {
-    let state = use_context::<Signal<StudioState>>();
-    let words = state.read().word_count();
-    let characters = state
-        .read()
-        .session
-        .as_ref()
-        .map(|session| session.plain_text().chars().count())
-        .unwrap_or(0);
-    rsx! {
-        div { class: "dash-heading", "Progress" }
-        dl { class: "dash-facts",
-            dt { "Characters" } dd { "{characters}" }
-            dt { "Words" } dd { "{words}" }
-            dt { "Reading time" } dd { "{reading_time(words)}" }
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -495,13 +473,7 @@ fn Keywords(id: Id) -> Element {
 fn NotesHere(id: Id, kind: NodeKind) -> Element {
     let mut state = use_context::<Signal<StudioState>>();
     let (own, through) = state.read().notes_reaching(id);
-    let offered: Vec<String> = state
-        .read()
-        .note_titles()
-        .into_iter()
-        .filter(|title| !own.iter().any(|(_, kept, _)| kept == title))
-        .collect();
-    let mut draft = use_signal(String::new);
+
     let heading = format!("Notes in this {}", kind.icon_label().to_lowercase());
     // Found when the scene was opened or last saved, for the open scene only.
     let named: Vec<(Id, String)> = if state.read().selected == Some(id) {
@@ -571,28 +543,87 @@ fn NotesHere(id: Id, kind: NodeKind) -> Element {
                 }
             }
         }
-        form {
-            class: "keyword-form",
-            onsubmit: move |event| {
-                event.prevent_default();
-                let title = draft();
-                if !title.trim().is_empty() {
-                    state.write().link_note_titled(id, &title);
-                    draft.set(String::new());
-                }
-            },
+        NotePicker { id }
+    }
+}
+
+/// Every note in the project not yet linked to the item, to choose from: a
+/// field narrows them by title or folder as it is typed, the list under it
+/// shows them, and a click, or Enter for the first, links one.
+#[component]
+fn NotePicker(id: Id) -> Element {
+    let mut state = use_context::<Signal<StudioState>>();
+    let mut query = use_signal(String::new);
+    let mut open = use_signal(|| false);
+    let choices: Vec<(Id, String, String)> = {
+        let current = state.read();
+        let (own, _) = current.notes_reaching(id);
+        let wanted = query().trim().to_lowercase();
+        let mut found: Vec<(Id, String, String)> = current
+            .binder
+            .nodes
+            .iter()
+            .filter(|node| current.note_of(node.id).is_some() && !node.links.contains(&id))
+            .filter(|node| !own.iter().any(|(note, _, linked)| *note == node.id && *linked))
+            .map(|node| {
+                let folder = node.parent_id.and_then(|parent| current.binder.get(parent)).map(|parent| parent.title.clone()).unwrap_or_default();
+                (node.id, node.title.clone(), folder)
+            })
+            .filter(|(_, title, folder)| wanted.is_empty() || title.to_lowercase().contains(&wanted) || folder.to_lowercase().contains(&wanted))
+            .collect();
+        found.sort_by_key(|(_, title, folder)| (folder.to_lowercase(), title.to_lowercase()));
+        found
+    };
+    let first = choices.first().map(|(note, _, _)| *note);
+    let shown = open() || !query().is_empty();
+    rsx! {
+        div { class: "note-picker",
             input {
                 class: "keyword-field",
-                list: "note-titles",
-                placeholder: "Link a note",
-                aria_label: "Link a note by its title",
-                value: "{draft}",
-                oninput: move |event| draft.set(event.value()),
+                placeholder: "Link a note…",
+                aria_label: "Find a note to link",
+                value: "{query}",
+                onfocus: move |_| open.set(true),
+                onblur: move |_| open.set(false),
+                oninput: move |event| query.set(event.value()),
+                onkeydown: move |event: KeyboardEvent| match event.key() {
+                    Key::Enter => {
+                        event.prevent_default();
+                        if let Some(note) = first {
+                            state.write().set_note_link(note, id, true);
+                            query.set(String::new());
+                        }
+                    }
+                    Key::Escape => {
+                        query.set(String::new());
+                        open.set(false);
+                    }
+                    _ => {}
+                },
             }
-        }
-        datalist { id: "note-titles",
-            for title in offered {
-                option { value: "{title}" }
+            if shown {
+                div { class: "note-picker-list", role: "listbox",
+                    if choices.is_empty() {
+                        p { class: "hint", if query().is_empty() { "Every note is linked here already, or there are none yet." } else { "No note matches." } }
+                    }
+                    for (note, title, folder) in choices {
+                        button {
+                            key: "{note}",
+                            class: "note-picker-item",
+                            role: "option",
+                            // Chosen before the field loses the focus.
+                            onmousedown: move |event| {
+                                event.prevent_default();
+                                state.write().set_note_link(note, id, true);
+                                query.set(String::new());
+                            },
+                            span { class: "note-picker-title", "{title}" }
+                            if !folder.is_empty() {
+                                span { class: "note-picker-folder", "{folder}" }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
