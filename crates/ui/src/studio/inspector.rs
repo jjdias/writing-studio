@@ -178,7 +178,13 @@ fn ConnectedChips(id: Id) -> Element {
                                 class: "keyword-chip connected-chip",
                                 key: "k-{word}",
                                 title: "Show what has this keyword",
-                                onclick: move |_| state.write().choose_keyword(&word),
+                                // The key and the label read the word too, so
+                                // the click gets its own copy (a release build
+                                // reads them after the click takes it).
+                                onclick: {
+                                    let word = word.clone();
+                                    move |_| state.write().choose_keyword(&word)
+                                },
                                 "{word}"
                             }
                         },
@@ -187,7 +193,10 @@ fn ConnectedChips(id: Id) -> Element {
                                 class: "keyword-chip connected-chip note",
                                 key: "n-{title}",
                                 title: "Open this note",
-                                onclick: move |_| state.write().open_note_titled(&title),
+                                onclick: {
+                                    let title = title.clone();
+                                    move |_| state.write().open_note_titled(&title)
+                                },
                                 "[[{title}]]"
                             }
                         },
