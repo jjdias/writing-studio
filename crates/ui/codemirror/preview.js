@@ -105,7 +105,9 @@ function criticGroup(node, doc) {
   return { color, note, suffixes, end };
 }
 
-function build(view) {
+// What the preview draws for the visible text: its decorations, and the
+// hidden ranges the caret steps over whole.
+export function previewDecorations(view) {
   const { state } = view;
   const doc = state.doc;
   const live = !state.facet(sourceMode);
@@ -349,7 +351,7 @@ function build(view) {
 export const preview = ViewPlugin.fromClass(
   class {
     constructor(view) {
-      const built = build(view);
+      const built = previewDecorations(view);
       this.decorations = built.decorations;
       this.atomic = built.atomic;
     }
@@ -361,7 +363,7 @@ export const preview = ViewPlugin.fromClass(
         update.startState.facet(sourceMode) !== update.state.facet(sourceMode) ||
         syntaxTree(update.startState) !== syntaxTree(update.state);
       if (!changed) return;
-      const built = build(update.view);
+      const built = previewDecorations(update.view);
       this.decorations = built.decorations;
       this.atomic = built.atomic;
     }

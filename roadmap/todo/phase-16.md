@@ -1,6 +1,6 @@
 # Phase 16 — Tests for the page
 
-In progress: stages 1 to 3 are done. Branch: `phase-16`.
+In progress: stages 1 to 4 are done. Branch: `phase-16`.
 
 The Markdown page is the program's one piece of JavaScript: about 1,900 lines in `crates/ui/codemirror` (`entry.js`, `syntax.js`, `preview.js`, `writing.js`, `places.js`) around the CodeMirror library, built into `crates/ui/assets/codemirror.js`. It is what the writer types into, and it has no tests: the Rust tests drive the window's state, not the page. This phase gives the page's own logic tests that run with `npm test` and in CI.
 
@@ -76,6 +76,10 @@ Found on the way, left as they are: the page shows `![image](x.png)` as a link a
 - `reviewItems` lists a scene's notes and highlights in order, and `selectReview` selects the one asked for, as the review panel does.
 - Spelling underlines the words it is given and none inside code, links, or a note's markup; `findWord` finds each copy.
 - Fading marks the sentence or the paragraph the caret is in.
+
+**Done.** `tests/preview.test.js`: what the reader sees with the caret elsewhere, for 16 texts (every inline mark, a heading, a quote, bullets as •, a Markdown link, a link to a note with and without its own words and to one that is missing, a note as its pin ✎, a colored highlight, a footnote as its number, an escape), each one also as it is written in Source mode; the marks coming back where the caret is; a known note's link with its tip and a missing one's faint class; a note's words with its kind and text, and a link with its address; the review list's notes and highlights in order, neighbours with one note as one item, and choosing one; spelling's words in a link's text but not its address or a note's text; finding a word round to the top; and the sentence or paragraph fading keeps. `preview.js` exports the preview's builder as `previewDecorations`, `places.js` exports `reviewItems`, `wordsIn`, and `sentenceAround`, and fading's choice of what to keep is `currentRange`, which the fading plugin now calls. The stand-in view has a `viewport`, and a test can mark the caret with another character when its text holds a `|`. 124 tests in all; hiding a heading's `#` on the line being edited, on purpose, made its test fail.
+
+Found on the way, left as it is: spelling underlines an unknown word inside a code block, as the program's list of unknown words includes it. Whether code is checked is the maintainer's call, so it is not in the tests.
 
 ### 5. In CI
 

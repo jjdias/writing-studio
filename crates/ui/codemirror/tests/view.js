@@ -13,13 +13,14 @@ import { knownNotes, noteMap, setNotes, sourceMode } from "../preview.js";
 
 /// A state of `text` with the page's language and its list of known notes.
 /// A `|` in the text marks the caret, and two mark a selection between
-/// them; they are taken out of the text. `source` is Source mode; `notes`
-/// are the known notes as the program sends them, `{ title, tip }` each.
-export function pageState(text, { source = false, notes = [], extensions = [] } = {}) {
+/// them; they are taken out of the text. `caret` is that mark, for a text
+/// that needs a `|` of its own. `source` is Source mode; `notes` are the
+/// known notes as the program sends them, `{ title, tip }` each.
+export function pageState(text, { source = false, notes = [], extensions = [], caret = "|" } = {}) {
   const marks = [];
   let plain = "";
   for (const ch of text) {
-    if (ch === "|") marks.push(plain.length);
+    if (ch === caret) marks.push(plain.length);
     else plain += ch;
   }
   const selection =
@@ -48,6 +49,9 @@ export function standIn(state) {
     },
     get visibleRanges() {
       return [{ from: 0, to: view.state.doc.length }];
+    },
+    get viewport() {
+      return { from: 0, to: view.state.doc.length };
     },
     focus() {},
   };

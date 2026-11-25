@@ -21,7 +21,7 @@ function blocks(state) {
 // Notes and highlights in the order the review panel lists them. Pieces in
 // one block next to each other with the same note, or the same color, are
 // one item, as the document groups them.
-function reviewItems(state, type) {
+export function reviewItems(state, type) {
   const items = [];
   let last = null;
   blocks(state).forEach((block, blockIndex) => {
@@ -116,7 +116,7 @@ function isText(state, pos) {
 }
 
 // Every place one of `words` is written as text, in `from`..`to`.
-function wordsIn(state, words, from, to) {
+export function wordsIn(state, words, from, to) {
   const found = [];
   if (!words.size) return found;
   for (let pos = from; pos <= to; ) {
@@ -179,7 +179,7 @@ export function findWord(view, word) {
 
 // The sentence around `offset` in `text`: from just after the last sentence
 // end before it to just after the next one, as the rich-text page found it.
-function sentenceAround(text, offset) {
+export function sentenceAround(text, offset) {
   const ends = /[.!?…]+["'”’)\]]*\s+/g;
   let start = 0;
   let end = text.length;
@@ -198,6 +198,18 @@ function sentenceAround(text, offset) {
 
 const current = Decoration.mark({ class: "ws-current" });
 
+// What fading leaves at full strength for the caret: its paragraph, or its
+// sentence in that paragraph, as `{ from, to }`, or null.
+export function currentRange(state, by) {
+  const head = state.selection.main.head;
+  const block = blocks(state).find((node) => node.from <= head && node.to >= head);
+  if (!block || block.from === block.to) return null;
+  if (by === "paragraph") return { from: block.from, to: block.to };
+  const text = state.doc.sliceString(block.from, block.to);
+  const [start, end] = sentenceAround(text, head - block.from);
+  return start < end ? { from: block.from + start, to: block.from + end } : null;
+}
+
 // Fading: everything but the caret's sentence or paragraph is faint.
 function fadePlugin(by) {
   return ViewPlugin.fromClass(
@@ -209,15 +221,9 @@ function fadePlugin(by) {
         if (update.docChanged || update.selectionSet || update.focusChanged) this.decorations = this.build(update.view);
       }
       build(view) {
-        const { state } = view;
         if (!view.hasFocus) return Decoration.none;
-        const head = state.selection.main.head;
-        const block = blocks(state).find((node) => node.from <= head && node.to >= head);
-        if (!block || block.from === block.to) return Decoration.none;
-        if (by === "paragraph") return Decoration.set([current.range(block.from, block.to)]);
-        const text = state.doc.sliceString(block.from, block.to);
-        const [start, end] = sentenceAround(text, head - block.from);
-        return start < end ? Decoration.set([current.range(block.from + start, block.from + end)]) : Decoration.none;
+        const range = currentRange(view.state, by);
+        return range ? Decoration.set([current.range(range.from, range.to)]) : Decoration.none;
       }
     },
     { decorations: (plugin) => plugin.decorations }
