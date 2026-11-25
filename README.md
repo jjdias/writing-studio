@@ -34,7 +34,8 @@ On the welcome screen, create a project and choose where its folder goes, outsid
 - [Using Writing Studio](documentation/USAGE.md): every feature, step by step
 - [Sync between computers](documentation/SYNC.md)
 - [How a project is stored](documentation/PROJECT_FORMAT.md)
-- For contributors: [architecture](documentation/ARCHITECTURE.md), [releasing](documentation/RELEASING.md), and the [roadmap](roadmap/README.md)
+- [Every feature in one list](documentation/features.md)
+- For contributors: [architecture](documentation/ARCHITECTURE.md) and [releasing](documentation/RELEASING.md)
 
 ## License
 

@@ -12,7 +12,7 @@ The files in the project folder are the project. The code that writes a scene is
 
 ### Why Markdown is stored
 
-Format 2 stored HTML, because Markdown cannot hold a few things a rich-text page could make: formatting on the spaces at a run's edges, formatting inside a code block, an empty list. Since Phase 12 the page itself is Markdown and never makes them, so storing the same Markdown loses nothing the writer can see, and the files are readable as they are by every Markdown tool. See [Phase 12](../roadmap/done/phase-12.md), stage 8.
+Format 2 stored HTML, because Markdown cannot hold a few things a rich-text page could make: formatting on the spaces at a run's edges, formatting inside a code block, an empty list. The page itself is now Markdown and never makes them, so storing the same Markdown loses nothing the writer can see, and the files are readable as they are by every Markdown tool.
 
 ## The folder
 
@@ -59,11 +59,11 @@ A scene is written as "One scene" under "Markdown export and import" shows: fron
 | --- | --- |
 | `id` | The binder item this file is the text of |
 | `title` | Its title |
-| `context` | What the writer says about it, as they like, on any level: right after `title`, several lines under `|-`; never compiled or counted. Its first paragraph, up to the first blank line, is its summary (Phase 15) |
-| `connected` | What it is connected to, a list the program writes and never reads (Phase 15): its keywords, then each note its context and text link to and each note linked to it from Context, as `"[[Title]]"`; a note's list then has the items it is linked to, by caption ("Tide / Chapter 1 / Harbor"). Only the item's own ties, not those of what it is in. A list changed by hand is written over |
+| `context` | What the writer says about it, as they like, on any level: right after `title`, several lines under `|-`; never compiled or counted. Its first paragraph, up to the first blank line, is its summary |
+| `connected` | What it is connected to, a list the program writes and never reads: its keywords, then each note its context and text link to and each note linked to it from Context, as `"[[Title]]"`; a note's list then has the items it is linked to, by caption ("Tide / Chapter 1 / Harbor"). Only the item's own ties, not those of what it is in. A list changed by hand is written over |
 | `status`, `label`, `color` | As in Context |
 | `tags` | Its keywords, a list, nested with `/`, spelled exactly as they are |
-| `footnotes` | `"true"` on a note compiled as footnotes, and on a folder of notes set so, whose notes each have it too (Phase 14) |
+| `footnotes` | `"true"` on a note compiled as footnotes, and on a folder of notes set so, whose notes each have it too |
 | `links` | A note's links to binder items made from Context, a list of their ids |
 
 ### The text

@@ -38,18 +38,18 @@ Binder + stored documents → writing-studio-export → .md / .docx on disk
 | `writing-studio-ui` | Workspace UI |
 | `writing-studio-desktop` | Native window |
 
-Notes are binder items under the Notes root, each a Markdown file in `notes/`, as scenes are in `manuscript/`; the plot grid is `plot.json`. Every item's file begins with its context and what it is connected to, for any reader, an AI among them (Phase 15): the connected list is the program's, worked out by `writing_studio_storage::connected` from the item, its text's links, and the binder, and kept current by the head fingerprint of each file, by opening a project, and by **Update connections**. Both are rows in the cache too. A file added to a note is copied into `attachments/`. Search is not stored: the Tantivy index is memory only.
+Notes are binder items under the Notes root, each a Markdown file in `notes/`, as scenes are in `manuscript/`; the plot grid is `plot.json`. Every item's file begins with its context and what it is connected to, for any reader, an AI among them: the connected list is the program's, worked out by `writing_studio_storage::connected` from the item, its text's links, and the binder, and kept current by the head fingerprint of each file, by opening a project, and by **Update connections**. Both are rows in the cache too. A file added to a note is copied into `attachments/`. Search is not stored: the Tantivy index is memory only.
 
-Inline comments, links, code blocks, and scene breaks are fields on the document JSON. A note sits on text runs (`marks.comment`, with `comment_kind` and `comment_resolved`), and so does a highlight (`marks.highlight`). `Document::review_items` lists them, joining neighboring runs that carry the same note. Tracked changes are the difference between the document and a baseline copy kept in `tracking_baselines`; nothing about them is stored in the document. See [Phase 4](../roadmap/done/phase-4.md) and [the roadmap](../roadmap/README.md).
+Inline comments, links, code blocks, and scene breaks are fields on the document JSON. A note sits on text runs (`marks.comment`, with `comment_kind` and `comment_resolved`), and so does a highlight (`marks.highlight`). `Document::review_items` lists them, joining neighboring runs that carry the same note. Tracked changes are the difference between the document and a baseline copy kept in `tracking_baselines`; nothing about them is stored in the document.
 
 ## Data flow
 
 1. The UI holds a `StudioState` with an optional `ProjectStore`. The files in the project folder are the project. The store also holds a SQLite cache in `.local/`, filled from the files when the project opens. Every save writes the file first and the cache second.
-2. Opening a scene loads JSON into an `EditorSession` wrapping a `Document`. Saved JSON is the block model, including links, code blocks, scene breaks, and inline comments. The page is a Markdown editor: CodeMirror 6, built from `crates/ui/codemirror` into one file the program carries (`crates/ui/assets/codemirror.js`), with nothing loaded from the network. Its JavaScript has its own tests (`npm test` there, with Node's runner and a stand-in for the editor view), and CI runs them and checks that the committed bundle is the one its sources make (Phase 16). It shows the scene as the format crate writes it in Markdown, and every change is read back through the format crate's Markdown reader onto that JSON, keeping the blocks' ids.
+2. Opening a scene loads JSON into an `EditorSession` wrapping a `Document`. Saved JSON is the block model, including links, code blocks, scene breaks, and inline comments. The page is a Markdown editor: CodeMirror 6, built from `crates/ui/codemirror` into one file the program carries (`crates/ui/assets/codemirror.js`), with nothing loaded from the network. Its JavaScript has its own tests (`npm test` there, with Node's runner and a stand-in for the editor view), and CI runs them and checks that the committed bundle is the one its sources make. It shows the scene as the format crate writes it in Markdown, and every change is read back through the format crate's Markdown reader onto that JSON, keeping the blocks' ids.
 3. Typing updates the session; idle autosave, blur, scene change, and Ctrl+S write JSON back through `ProjectStore`. A save also updates the in-memory search index.
 4. Binder moves and trash update `binder_nodes` (parent, `sort_index`, `label`, `color`, `deleted_at`, `restore_parent_id`). A note's links are its `links`, on the same row. The plot grid uses the tables in [PROJECT_FORMAT.md](PROJECT_FORMAT.md). Emptying trash clears plot points' and notes' links to what it deleted and drops a deleted book's word target.
 5. History restore either replaces one document from `snapshots` or copies a `.local/backups/*.sqlite` into the cache and writes the files again from it. That SQLite copy does not include `attachments/`.
-6. Compile loads documents, walks the chosen book, and writes a file the user chooses. Which book is compiled, and how today and the sitting follow that book, is in [Phase 3](../roadmap/done/phase-3.md) and [PROJECT_FORMAT.md](PROJECT_FORMAT.md).
+6. Compile loads documents, walks the chosen book, and writes a file the user chooses. Which book is compiled, and how today and the sitting follow that book, is in [PROJECT_FORMAT.md](PROJECT_FORMAT.md).
 
 ## Non-negotiables
 
@@ -59,4 +59,10 @@ Inline comments, links, code blocks, and scene breaks are fields on the document
 - Offline writing stays complete if a future optional sync service is unused or unavailable.
 - There is no account gate and no separate “community vs restricted” feature split in the core.
 
-See [Phase 1](../roadmap/done/phase-1.md), [Phase 2](../roadmap/done/phase-2.md), [Phase 3](../roadmap/done/phase-3.md), and [Phase 4](../roadmap/done/phase-4.md) for what each phase added, and [PROJECT_FORMAT.md](PROJECT_FORMAT.md) for on-disk layout. What comes next is in [the roadmap](../roadmap/README.md).
+## How the work is done
+
+- Add function, keep the code short, and take on no technical debt. When a feature replaces something, remove what it replaced in the same change, and leave no code that only a test uses.
+- No compatibility with earlier versions. When the format changes, do not write a conversion: refuse the old format with a clear message.
+- No performance testing for now. Keep to the rules in `.claude/rules/performance.md`, and measure only what is seen to be slow.
+
+[features.md](features.md) lists what the program does, and [PROJECT_FORMAT.md](PROJECT_FORMAT.md) the on-disk layout.

@@ -1,7 +1,7 @@
 # Build the packages: a Windows installer and a portable zip, and a Linux
 # .deb. It runs when what goes into a package changes, by hand from the
 # Actions tab, and from the Release workflow, which attaches the packages to
-# a GitHub Release. An AppImage is bonus work (roadmap/todo/bonus.md).
+# a GitHub Release.
 name: Package
 
 on:
